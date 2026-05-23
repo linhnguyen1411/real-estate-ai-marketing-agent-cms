@@ -1,0 +1,624 @@
+{
+  "customers": [
+    {
+      "id": "c-1",
+      "name": "Nguyễn Văn Anh",
+      "phone": "0905123456",
+      "email": "vananh.nguyen@gmail.com",
+      "source": "facebook",
+      "budget": 4.5,
+      "interested_area": "Hòa Xuân, Cẩm Lệ",
+      "property_type": "đất nền",
+      "status": "hot",
+      "notes": "Khách cần mua xây nhà ở ngay. Ưu tiên hướng Đông hoặc Đông Nam, lòng đường ít nhất 7.5m. Đã xem đất 1 lần nhưng chưa chốt vì muốn thương lượng thêm.",
+      "ai_summary": "Khách hàng rất thiện chí, nhu cầu thực tế cao ở Hòa Xuân. Ngân sách vững vàng khoảng 4.5 tỷ. Nên tập trung đẩy nhanh tiến độ đàm phán giá cả và hỗ trợ thủ tục pháp lý.",
+      "lead_score": 85,
+      "created_at": "2026-05-10T08:30:00Z"
+    },
+    {
+      "id": "c-2",
+      "name": "Phạm Thị Bình",
+      "phone": "0989789123",
+      "email": "thibinh.pham@yahoo.com",
+      "source": "zalo",
+      "budget": 7.2,
+      "interested_area": "Hòa Quý, Ngũ Hành Sơn",
+      "property_type": "nhà phố",
+      "status": "warm",
+      "notes": "Quan tâm nhà 3 tầng tiện lợi mở spa gia đình hoặc đầu tư giữ tiền. Cần pháp lý sạch, sổ hồng hoàn công đầy đủ.",
+      "ai_summary": "Nhu cầu kinh doanh spa kết hợp nhà vườn tại Hòa Quý. Phân khúc cao cấp, chú trọng pháp lý hoàn công. Đề xuất gửi danh sách nhà 3 mặt tiền thoáng mát.",
+      "lead_score": 70,
+      "created_at": "2026-05-12T14:20:00Z"
+    },
+    {
+      "id": "c-3",
+      "name": "Trần Minh Cường",
+      "phone": "0914555888",
+      "email": " cường.tm@investvn.vn",
+      "source": "referral",
+      "budget": 12.0,
+      "interested_area": "Nam Đà Nẵng",
+      "property_type": "shophouse",
+      "status": "new",
+      "notes": "Nhà đầu tư lâu năm từ Hà Nội. Đang tìm mua 1-2 block shophouse ven sông mạn phía Nam để cho thuê dài hạn.",
+      "ai_summary": "Nhà đầu tư cá mập Hà Nội, vốn tự có dồi dào găm giữ tài sản shophouse ven sông Nam Đà Nẵng. Thích giao tiếp chuyên nghiệp, phân tích thông số lợi nhuận dòng tiền.",
+      "lead_score": 75,
+      "created_at": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "c-4",
+      "name": "Lê Hoàng Dung",
+      "phone": "0934111222",
+      "email": "hoangdung.le@gmail.com",
+      "source": "website",
+      "budget": 2.8,
+      "interested_area": "Liên Chiểu",
+      "property_type": "căn hộ",
+      "status": "hot",
+      "notes": "Vợ chồng trẻ tìm căn hộ 2 phòng ngủ gần các trường đại học Liên Chiểu để tiện công việc. Thích căn hộ có ban công view biển hoặc thành phố.",
+      "ai_summary": "Khách hàng mua ở thực mảng căn hộ tầm trung Liên Chiểu. Thích trả góp qua ngân hàng. Ưu tiên các dự án có chính sách hỗ trợ lãi suất tốt.",
+      "lead_score": 90,
+      "created_at": "2026-05-16T11:45:00Z"
+    },
+    {
+      "id": "c-5",
+      "name": "Vũ Đình Em",
+      "phone": "0977444333",
+      "email": "dinhem.vu@gmail.com",
+      "source": "tiktok",
+      "budget": 5.0,
+      "interested_area": "Hòa Xuân, Cẩm Lệ",
+      "property_type": "đất nền",
+      "status": "new",
+      "notes": "Comment hỏi thông tin đất Hòa Xuân trên video TikTok. Đã inbox xin báo giá lô góc, tuy nhiên chưa phản hồi nhiều về chi tiết tài chính.",
+      "ai_summary": "Lead thu thập từ kênh TikTok. Chưa có đầy đủ thông tin sâu. Có mối quan tâm lớn đến đất nền lô góc Hòa Xuân. Cần gọi điện trực tiếp để xác định rõ năng lực tài chính.",
+      "lead_score": 40,
+      "created_at": "2026-05-18T16:10:00Z"
+    },
+    {
+      "id": "c-6",
+      "name": "Hoàng Thu Giang",
+      "phone": "0903888999",
+      "email": "thugiang.hoang@live.com",
+      "source": "facebook",
+      "budget": 9.5,
+      "interested_area": "Sơn Trà",
+      "property_type": "shophouse",
+      "status": "warm",
+      "notes": "Tìm shophouse trục đường lớn gần biển Sơn Trà kinh doanh homestay hoặc nhà hàng. Thích thiết kế tân cổ điển.",
+      "ai_summary": "Nhu cầu tích cực tại khu vực Sơn Trà cận biển. Mục tiêu kinh doanh du lịch thương mại cao cấp. Đang phân vân giữa Sơn Trà và Hòa Quý ven sông.",
+      "lead_score": 65,
+      "created_at": "2026-05-19T10:05:00Z"
+    },
+    {
+      "id": "c-7",
+      "name": "Đặng Quốc Huy",
+      "phone": "0912123321",
+      "email": "quochuy.dang@gmail.com",
+      "source": "website",
+      "budget": 15.0,
+      "interested_area": "Hòa Quý, Ngũ Hành Sơn",
+      "property_type": "kho xưởng",
+      "status": "closed",
+      "notes": "Đã chốt mua khu đất lớn 500m2 Hòa Quý làm kho bãi chứa vật liệu xây dựng. Giao dịch hoàn tất thành công trong tuần trước.",
+      "ai_summary": "Giao dịch thành công lô thương mại dịch vụ Hòa Quý. Khách hài lòng cao về tốc độ đàm phán pháp lý. Cần liên hệ chăm sóc định kỳ sau bán hàng.",
+      "lead_score": 100,
+      "created_at": "2026-05-05T09:30:00Z"
+    },
+    {
+      "id": "c-8",
+      "name": "Bùi Minh Khánh",
+      "phone": "0983666777",
+      "email": "minhkhanh.bui@gmail.com",
+      "source": "zalo",
+      "budget": 3.8,
+      "interested_area": "Liên Chiểu",
+      "property_type": "nhà phố",
+      "status": "warm",
+      "notes": "Cần tìm nhà phố nhỏ kiệt ô tô đi lọt tại khu vực quận Liên Chiểu. Tiện di chuyển về hướng trung tâm.",
+      "ai_summary": "Khách tài chính trung bình khá tìm nhà phố hướng Tây/Tây Bắc Liên Chiểu. Sợ nhà kiệt quá sâu. Ưu tiên gửi các sản phẩm kiệt thông rộng rãi trên 4m.",
+      "lead_score": 60,
+      "created_at": "2026-05-14T15:50:00Z"
+    },
+    {
+      "id": "c-9",
+      "name": "Ngô Thùy Linh",
+      "phone": "0906333555",
+      "email": "thuylinh.ngo@outlook.com",
+      "source": "referral",
+      "budget": 6.0,
+      "interested_area": "Hòa Xuân, Cẩm Lệ",
+      "property_type": "đất nền",
+      "status": "lost",
+      "notes": "Được khách cũ giới thiệu. Tuy nhiên khách đã tự mua trực tiếp từ đất chính chủ của người thân nên tạm ngừng tìm kiếm sản phẩm phân phối.",
+      "ai_summary": "Khách hàng ngắt liên kết tìm kiếm do đã hoàn tất giao dịch riêng tư từ nguồn người thân. Thiết lập trạng thái theo dõi nhẹ, chúc mừng lễ Tết.",
+      "lead_score": 10,
+      "created_at": "2026-05-01T08:00:00Z"
+    },
+    {
+      "id": "c-10",
+      "name": "Đỗ Ngọc Mạnh",
+      "phone": "0955999888",
+      "email": "ngocmanh.do@gmail.com",
+      "source": "zalo",
+      "budget": 22.0,
+      "interested_area": "Ngũ Hành Sơn",
+      "property_type": "khác",
+      "status": "hot",
+      "notes": "Tìm kiếm lô đất lớn/khách sạn mini ven sông hoặc mặt biển Ngũ Hành Sơn để khởi công biệt thự nghỉ dưỡng cao cấp.",
+      "ai_summary": "Khách hàng siêu cao cấp với hầu bao mạnh lên đến 22 tỷ đồng. Tìm đất xây Villa nghỉ dưỡng. Đang ngắm ngợi các lô trực diện sông Cổ Cò. Phản hồi cực nhanh qua điện thoại.",
+      "lead_score": 95,
+      "created_at": "2026-05-20T14:00:00Z"
+    }
+  ],
+  "properties": [
+    {
+      "id": "p-1",
+      "title": "Đất Nền Lô Góc Hòa Xuân - Đối Diện Công Viên Trực Diện Sông Cổ Cò",
+      "type": "đất",
+      "location": "B2-15 Đô Thị Sinh Thái Hòa Xuân, Cẩm Lệ, Đà Nẵng",
+      "area": 125.0,
+      "price": 4.6,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Đông Nam",
+      "road_width": 7.5,
+      "description": "Cực phẩm lô góc vị trí đắc địa nhất khu đô thị sinh thái Hòa Xuân. Mặt tiền sông đón gió mát mẻ quanh năm, đối diện là dải cây xanh công viên trung tâm. Hạ tầng điện ngầm đồng bộ cao cấp, dân cư tri thức cao, giao thông kết dính thuận tiện. Thích hợp vừa ở vừa mở văn phòng hoặc quán cafe sang trọng.",
+      "images": "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Vị trí ven sông sinh thái siêu thoáng đãng",
+        "Lô góc 2 mặt tiền hướng Đông Nam đón tài lộc",
+        "Sổ đỏ sẵn sàng giao dịch ngay trong ngày",
+        "Mặt tiền công viên cây xanh biệt lập"
+      ],
+      "ai_posts": {
+        "facebook": "💎 SIÊU PHẨM LÔ GÓC HÒA XUÂN - ĐỐI DIỆN CÔNG VIÊN - TRỰC DIỆN SÔNG CỔ CÒ 💎\n\n📍 Vị trí vàng: Đảo Vip B2-15 KĐT Sinh Thái Hòa Xuân, Cẩm Lệ, Đà Nẵng.\n📐 Diện tích: 125m² (Lô góc cực thoáng).\n🛣 Lòng đường: 7.5m thông thoáng.\n☀️ Hướng: Đông Nam đón gió trời cực mát.\n\n🌟 ĐIỂM VÀNG ĐẦU TƯ & AN CƯ:\n- Sở hữu tầm nhìn panorama trọn đời ra dòng sông Cổ Cò thơ mộng và công viên sinh thái xanh ngát.\n- Khu vực hạ tầng hiện đại, điện âm toàn phần cực sang trọng.\n- Phù hợp xây dựng biệt thự mini, văn phòng cao cấp, spa hoặc quán cafe thương mại.\n\n📚 Pháp lý: Sổ hồng chính chủ, hỗ trợ vay ngân hàng 70%.\n💰 Giá đầu tư: 4.6 Tỷ (Thương lượng chính chủ).\n\n☎️ Liên hệ ngay Hotline: 0905.xxx.xxx để đặt lịch xem đất trực tiếp!",
+        "zalo": "🔥 BÁN ĐẤT LÔ GÓC VEN SÔNG HÒA XUÂN 🔥\n- Diện tích 125m², đối diện công viên ven sông Cổ Cò cực mát.\n- Hướng Đông Nam phong thủy đón gió lành, lòng đường 7.5m lề 4m.\n- Hạ tầng điện âm toàn khu, an ninh văn minh hàng đầu Đà Nẵng.\n- Giá bán: 4.6 Tỷ (Sổ sẵn chốt ngay).\nInbox Zalo này hoặc gọi trực tiếp nhận sổ đỏ và vị trí chính xác!",
+        "tiktok": "Cực phẩm Đất nền ven sông Hòa Xuân Đà Nẵng lô góc đối diện công viên 🍃 View panorama sông Cổ Cò đắt giá. Tài chính 4.6 tỷ sở hữu ngay lô đất biệt thự sang trọng nhất nhì Cẩm Lệ. Alo xem đất ngay nhé! #batdongsandanang #dathoaxuan #bdsdanang #villavensong #nhadatdanang",
+        "website": "Báo cáo thị trường Đà Nẵng vừa ghi nhận một viên ngọc quý tại Đô thị Sinh thái Hòa Xuân mở bán. Lô góc B2-15 với diện tích 125m2 sở diện tích xây dựng lý tưởng nhất cho một tòa biệt thự văn phòng mini hướng Đông Nam mát mẻ. Toàn cảnh đối diện dải công viên xanh mướt chạy dọc sông Cổ Cò đảm bảo không gian sống trong sạch mát mẻ và nâng tầm đẳng cấp chủ nhân.",
+        "image_prompt": "Photorealistic high-quality architectural render of a modern luxury villa on a corner lot, facing a serene river with green park trees, bright sunny daylight, cinematic lighting, Đà Nẵng modern luxury real estate vibes, 8k resolution.",
+        "video_prompt": "Cinematic slow drone movement descending over a scenic winding river, panning onto a flat green corner land plot facing the waterfront park pathway in a premium modern residential district, clear blue sky."
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Nhà Phố Hiện Đại 3 Tầng Hòa Quý - Đầy Đủ Nội Thất Cao Cấp",
+      "type": "nhà phố",
+      "location": "Đường Võ Chí Công, Hòa Quý, Ngũ Hành Sơn, Đà Nẵng",
+      "area": 100.0,
+      "price": 5.8,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Tây Nam",
+      "road_width": 10.5,
+      "description": "Nhà phố xây mới hoàn toàn cấu trúc 3 tầng sang trọng phong cách Scandinavian hiện đại. Bàn giao đầy đủ nội thất gỗ sồi cao cấp, gara ô tô rộng rãi, phòng khách giếng trời tràn ngập ánh sáng, 3 phòng ngủ khép kín, phòng thờ và sân thượng rộng nhìn thẳng ra núi Ngũ Hành Sơn vĩ đại.",
+      "images": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Xây mới 100% full nội thất gỗ tự nhập cao cấp",
+        "Mặt tiền Võ Chí Công trục kinh doanh vạn năng",
+        "Hỗ trợ vay ngân hàng ưu đãi thời gian dài",
+        "Thiết kế lệch tầng đón tối đa tài lộc"
+      ]
+    },
+    {
+      "id": "p-3",
+      "title": "Căn Hộ Resort Ven Biển The Sang Residence Sơn Trà",
+      "type": "căn hộ",
+      "location": "Đường Lê Văn Hiến, Khuê Mỹ, Ngũ Hành Sơn, Đà Nẵng",
+      "area": 82.5,
+      "price": 3.4,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Đông Bắc",
+      "road_width": 15.0,
+      "description": "Căn hộ 2 phòng ngủ cao cấp thiết kế chuẩn nghỉ dưỡng cao cấp quốc tế. Ban công kính lớn nhìn trực diện ra bãi biển Mỹ Khê cát trắng mịn và bán đảo Sơn Trà. Bàn giao kèm tủ âm tường cao cấp, điều hòa multi âm trần Dainkin, phòng tắm master bồn tắm nằm cao cấp dát vàng.",
+      "images": "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "View biển trực diện đắt giá ngắm hoàng hôn",
+        "Gói tiện ích nội khu chuẩn resort 5 sao",
+        "Sẵn sổ hồng sở hữu lâu dài vĩnh viễn",
+        "Hiệu suất cho thuê căn hộ Airbnb cực cao"
+      ]
+    },
+    {
+      "id": "p-4",
+      "title": "Shophouse Đại Lộ Nguyễn Sinh Sắc - Kế Cận Biển Liên Chiểu",
+      "type": "shophouse",
+      "location": "Đại lộ Nguyễn Sinh Sắc, Hòa Minh, Liên Chiểu, Đà Nẵng",
+      "area": 140.0,
+      "price": 11.5,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Đông Bắc",
+      "road_width": 42.0,
+      "description": "Cặp Shophouse liền kề 4 tầng xây thô mặt ngoài hiện đại bậc nhất trục Liên Chiểu kinh doanh tấp nập. Trục đường Nguyễn Sinh Sắc kết nối trực tiếp ga đường sắt mới ra vịnh biển du lịch Nguyễn Tất Thành. Địa thế tối thượng để mở ngân hàng, trụ sở tập đoàn lớn hoặc chuỗi siêu thị cao cấp.",
+      "images": "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Mặt tiền đại lộ rộng 42m cực kỳ bề gia",
+        "Cách bãi tắm biển Nguyễn Tất Thành 3 phút walk",
+        "Xây dựng kiên cố 4 tầng đúc sẵn móng",
+        "Dòng tiền cho thuê kinh doanh ổn định sẵn có"
+      ]
+    },
+    {
+      "id": "p-5",
+      "title": "Đất Nền Biệt Thự Sát Sân Golf Nam Đà Nẵng",
+      "type": "đất",
+      "location": "Đô thị Sinh thái ven sông Nam Đà Nẵng, Hòa Quý, Đà Nẵng",
+      "area": 250.0,
+      "price": 7.5,
+      "legal_status": "HĐMB",
+      "direction": "Nam",
+      "road_width": 11.5,
+      "description": "Khu biệt thự vườn sinh thái tuyệt đẹp nằm liền kề tổ hợp sân Golf quốc tế BRG Đà Nẵng. Không gian sông nước sinh thái yên bình, hạ tầng sang trọng xanh mướt toàn bộ cây xanh quý hiếm. Cơ hội để những doanh nhân tinh hoa kiến thiết dinh thự ven sông trong lành tách bạch xô bồ.",
+      "images": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Sát vách câu lạc bộ Golf đẳng cấp giới thượng lưu",
+        "Quy mô lớn 250m2 xây vườn rộng mở",
+        "Không gian sinh thái biệt lập an ninh 24/7",
+        "Tiềm năng tăng giá lớn theo dự án phát triển phía Nam"
+      ]
+    },
+    {
+      "id": "p-6",
+      "title": "Nhà Hàng Mặt Tiền Đường Lê Lợi Trung Tâm Hải Châu",
+      "type": "nhà hàng",
+      "location": "Mặt tiền Lê Lợi, Thạch Thang, Hải Châu, Đà Nẵng",
+      "area": 180.0,
+      "price": 18.2,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Bắc",
+      "road_width": 10.5,
+      "description": "Tòa nhà 2 tầng kinh nghiệm làm nhà hàng nướng BBQ cao cấp Hàn Quốc tại trung tâm phồn hoa Hải Châu. Thiết kế có sẵn bếp công nghiệp hiện đại bậc nhất, hệ thống hút mùi âm sàn cực đỉnh cùng 5 phòng VIP máy lạnh lạnh sâu mát mắt.",
+      "images": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Trái tim quận nhất Hải Châu sầm uất",
+        "Sẵn trang thiết bị bếp nhà hàng đầu tư tiền tỷ",
+        "Hợp đồng thuê hiện hữu 45 triệu/tháng",
+        "Pháp lý sạch không vướng quy hoạch tranh chấp"
+      ]
+    },
+    {
+      "id": "p-7",
+      "title": "Đất Mặt Tiền 36m Võ Chí Công - Hòa Xuân Đầu Tư Kho Xưởng",
+      "type": "đất",
+      "location": "Đại lộ Võ Chí Công, Cẩm Lệ, Đà Nẵng",
+      "area": 500.0,
+      "price": 15.5,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Đông",
+      "road_width": 36.0,
+      "description": "Đất diện tích lớn cực đại thương mại dịch vụ ngay trên trục giao thương huyết mạch Võ Chí Công Hòa Xuân. Thuận lợi quy hoạch kho bãi, xưởng sản xuất, showroom ô tô lớn hoặc tòa nhà văn phòng logistics hiện đại. Contener ra vào đỗ thoải mái ngày đêm không cấm tải.",
+      "images": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Chiều dài mặt tiền rộng lớn 15m",
+        "Hành lang đường bộ Võ Chí Công cực thông thương",
+        "Phù hợp kinh doanh đa ngành công nghiệp nặng nhẹ",
+        "Sổ hồng 50 năm sử dụng đất lâu dài"
+      ]
+    },
+    {
+      "id": "p-8",
+      "title": "Căn Hộ Studio View Trực Diện Cầu Rồng Hải Châu",
+      "type": "căn hộ",
+      "location": "Đường Bạch Đằng, Bình Hiên, Hải Châu, Đà Nẵng",
+      "area": 45.0,
+      "price": 2.5,
+      "legal_status": "Sổ hồng riêng",
+      "direction": "Đông",
+      "road_width": 12.0,
+      "description": "Căn hộ Studio nhỏ xinh full nội thất thông minh thích hợp người trẻ hoặc làm AirBnb. Điểm cộng giá trị cao nhất là view đắt đỏ nhìn thẳng cảnh rồng phun lửa cầu Rồng sông Hàn mỗi tối cuối tuần lộng gió.",
+      "images": "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=800&q=80",
+      "selling_points": [
+        "Trung tâm Bạch Đằng sầm uất bậc nhất",
+        "View Cầu Phun Lửa đắt giá triệu đô",
+        "Thích hợp khai thác Airbnb cho khách du lịch ngoại quốc",
+        "Nội thất gỗ sồi biến hình đa năng tiện lợi"
+      ]
+    }
+  ],
+  "inbox": [
+    {
+      "id": "msg-1",
+      "sender_name": "Nguyên Văn Anh",
+      "platform": "facebook",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80",
+      "message": "Chào ad, lô góc Hòa Xuân B2-15 ven sông có thương lượng sâu nữa không ad? Tôi bớt được tầm 300 triệu là tôi vác tiền cọc qua gặp chủ luôn trong chiều nay.",
+      "intent": "thương lượng",
+      "status": "pending",
+      "customer_id": "c-1",
+      "ai_reply_suggestion": "Chào anh Văn Anh ạ! Dạ, lô góc Hòa Xuân B2-15 hiện tại chủ nhà đang cần dòng tiền giải quyết công việc nên cực kỳ có thiện chí. Hạn mức bớt lộc 300 triệu là khá sâu, tuy nhiên để hỗ trợ anh tốt nhất, em sẽ xin phép kết nối cuộc họp trực tiếp 3 bên hoặc gọi điện trao đổi gấp thương lượng bớt lộc. Anh sẵn sàng hẹn lúc mấy giờ chiều nay để em sắp xếp chủ nhà ạ? Em gửi thông tin sổ đỏ qua facebook chat trước cho anh xem nhé!",
+      "created_at": "2026-05-22T05:40:00Z"
+    },
+    {
+      "id": "msg-2",
+      "sender_name": "Phạm Thị Bình",
+      "platform": "zalo",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80",
+      "message": "Nhà 3 tầng Võ Chí Công Hòa Quý đấy có sổ đỏ hoàn công chưa em? Gửi chị xin bản chụp sơ đồ đất và thiết kế bên trong để chị bàn với chồng nhé.",
+      "intent": "hỏi vị trí",
+      "status": "pending",
+      "customer_id": "c-2",
+      "ai_reply_suggestion": "Dạ em chào chị Bình ạ! Nhà 3 tầng mặt tiền Võ Chí Công - Hòa Quý này đã có sổ hồng riêng, hoàn công công trình xây dựng đầy đủ 3 tầng trên sổ đỏ rồi ạ, nên chị hoàn toàn yên tâm mảng pháp lý nha chị. Em xin phép gửi sơ đồ sổ hồng, mặt bằng thiết kế kỹ thuật cùng một số hình ảnh thực tế nội thất Scandinavian cao cấp bên trong sang Zalo chị ngay nhé. Chị Bình có tiện nhận cuộc gọi ngắn để em hỗ trợ thuyết minh nhanh hơn không ạ?",
+      "created_at": "2026-05-22T05:15:00Z"
+    },
+    {
+      "id": "msg-3",
+      "sender_name": "Vũ Đình Em",
+      "platform": "tiktok",
+      "avatar": "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
+      "message": "Đất này giá nhiêu vậy ad? Inbox cho mình xin vị trí chính xác vè số tờ số thửa đi nhé.",
+      "intent": "hỏi giá",
+      "status": "pending",
+      "customer_id": "c-5",
+      "ai_reply_suggestion": "Chào anh Vũ Đình Em ạ! Dạ lô góc Hòa Xuân ven sông hiếm có này đang có giá bán là 4.6 tỷ đồng (sổ hồng chính chủ, có bớt lộc thiện chí ạ). Em đã gửi thông tin định vị Google Maps, mặt bằng phân lô chung và sổ đỏ trích lục qua inbox TikTok của anh rồi ạ. Anh check hòm thư giùm em nhé! Hoặc anh có thể kết nối Zalo với em qua số điện thoại này để nhận sổ rõ nét hơn ạ. Cảm ơn anh!",
+      "created_at": "2026-05-22T04:30:00Z"
+    },
+    {
+      "id": "msg-4",
+      "sender_name": "Trần Minh Cường",
+      "platform": "website",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+      "message": "Tôi đang quan tâm danh mục sản phẩm Shophouse phía Nam Đà Nẵng trục Võ Chí Công đầu tư dài hạn. Hãy lập giúp tôi bảng tính ROI và tỷ suất lợi nhuận cho thuê trung bình của khu vực đó gửi qua Mail của tôi nhé.",
+      "intent": "hỏi vị trí",
+      "status": "pending",
+      "customer_id": "c-3",
+      "ai_reply_suggestion": "Kính chào anh Trần Minh Cường! Rất vui được tiếp đón nhà đầu tư chuyên nghiệp từ Hà Nội. Trục shophouse Võ Chí Công và Nam Đà Nẵng hiện đang là lõi tăng trưởng trọng điểm phía Nam. Em đã nhận được email của anh và đang hoàn thiện bảng phân tích biên độ tăng giá, định giá đất, kèm theo chi tiết bảng tính tỷ lệ hoàn vốn (ROI) đạt mức trung bình 6 - 8%/năm từ hoạt động cho thuê văn phòng/thương mại. Em xin phép gửi tệp PDF chi tiết qua mail cường.tm@investvn.vn trong vòng 10 phút nữa. Hân hạnh được tư vấn chuyên sâu cho anh!",
+      "created_at": "2026-05-22T03:50:00Z"
+    },
+    {
+      "id": "msg-5",
+      "sender_name": "Lê Hoàng Dung",
+      "platform": "website",
+      "avatar": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&q=80",
+      "message": "Chào ad, căn hộ The Sang Residence tầm 3.4 tỷ đấy có được ngân hàng hỗ trợ 0% lãi suất trong 18 tháng đầu không em? Vợ chồng trẻ đang gom tiền cọc.",
+      "intent": "hỏi giá",
+      "status": "pending",
+      "customer_id": "c-4",
+      "ai_reply_suggestion": "Dạ em chào chị Dung ạ! Chúc mừng vợ chồng chị đã lựa chọn The Sang Residence, đây là dự án có giải pháp tài chính cư trú tốt bậc nhất mạn Ngũ Hành Sơn. Trả lời chị là hiện tại dự án đang có chính sách hỗ trợ vay lên đến 70% giá trị căn hộ từ ngân hàng Vietcombank/TPBank, đặc biệt ưu đãi hỗ trợ 0% lãi suất và ân hạn nợ gốc lên tới 18 tháng đầu như chị hỏi luôn ạ! Có nghĩa anh chị chỉ cần chuẩn bị khoảng 1 tỷ ban đầu là đã có thể ký hợp đồng mua bán sang xịn mịn rồi. Em gửi chị cụ thể bảng tính tiến độ thanh toán nhé!",
+      "created_at": "2026-05-22T02:10:00Z"
+    },
+    {
+      "id": "msg-6",
+      "sender_name": "A Hải bds",
+      "platform": "facebook",
+      "avatar": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=100&q=80",
+      "message": "Nhà đất kia đắt quá em ơi, bên Hòa Xuân tầm 3 tỷ đổ lại còn lô sạch nào đường 5m5 không? Anh tìm mua cho khách tài chính trung bình.",
+      "intent": "thương lượng",
+      "status": "pending",
+      "created_at": "2026-05-21T18:25:00Z"
+    },
+    {
+      "id": "msg-7",
+      "sender_name": "Thảo Nguyễn",
+      "platform": "zalo",
+      "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&q=80",
+      "message": "E ơi lô góc B2-15 4.6 tỷ ấy có dính cống hay hố ga gì ko? Chụp thực tế khu đất đấy giùm c xem với.",
+      "intent": "hỏi vị trí",
+      "status": "pending",
+      "created_at": "2026-05-21T15:40:00Z"
+    },
+    {
+      "id": "msg-8",
+      "sender_name": "Tấn Trung Trần",
+      "platform": "tiktok",
+      "message": "Lô Võ Chí Công dài 500m2 kia có chia nhỏ làm 5 lô 100m2 bán lẻ được không em ơi?",
+      "intent": "thương lượng",
+      "status": "ignored",
+      "created_at": "2026-05-21T12:05:00Z"
+    },
+    {
+      "id": "msg-9",
+      "sender_name": "Quốc Huy Đặng",
+      "platform": "zalo",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80",
+      "message": "Hôm nay làm thủ tục bàn giao chìa khóa kho Võ Chí Công đúng không em? Sắp xếp bạn hỗ trợ anh ký biên bản bàn giao nhé.",
+      "intent": "đặt lịch xem",
+      "status": "replied",
+      "customer_id": "c-7",
+      "created_at": "2026-05-21T08:15:00Z"
+    },
+    {
+      "id": "msg-10",
+      "sender_name": "Lâm Tới",
+      "platform": "facebook",
+      "message": "Tin nhắn spam tự động: Chuyên cung cấp đèn led trang trí tòa nhà và biệt thự sân vườn giá sỉ xuất xưởng, liên hệ...",
+      "intent": "không tiềm năng",
+      "status": "ignored",
+      "created_at": "2026-05-20T21:40:00Z"
+    },
+    {
+      "id": "msg-11",
+      "sender_name": "Phan Hoàng Long",
+      "platform": "zalo",
+      "message": "Căn hộ view cầu rồng Bạch Đằng 2.5 tỷ muốn xem nhà tối nay khoảng 7h30 có ai đón anh mở cửa ko em?",
+      "intent": "đặt lịch xem",
+      "status": "pending",
+      "created_at": "2026-05-22T05:55:00Z"
+    },
+    {
+      "id": "msg-12",
+      "sender_name": "Nguyễn Minh Vy",
+      "platform": "facebook",
+      "message": "Mặt tiền nhà hàng Lê Lợi Hải Châu cho thuê giá bớt được xuống 40 triệu / tháng không bạn ơi, đang quan tâm thương thảo dài hạn mở quán.",
+      "intent": "thương lượng",
+      "status": "pending",
+      "created_at": "2026-05-22T05:58:00Z"
+    },
+    {
+      "id": "msg-13",
+      "sender_name": "Đỗ Ngọc Mạnh",
+      "platform": "zalo",
+      "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=100&q=80",
+      "message": "Anh vừa gửi mấy mẫu thiết kế resort qua Zalo này rồi, em check xem có lô đất ven sông Cổ Cò nào tầm 20-25 tỷ thích hợp mẫu này ko giới thiệu anh luôn.",
+      "intent": "đặt lịch xem",
+      "status": "pending",
+      "customer_id": "c-10",
+      "created_at": "2026-05-22T06:01:00Z"
+    },
+    {
+      "id": "msg-14",
+      "sender_name": "Nga Phạm Bds",
+      "platform": "zalo",
+      "message": "Lô bên Golf Nam Đà Nẵng có thương lượng bao tiền thuế sang nhượng bên mua chịu ko e?",
+      "intent": "thương lượng",
+      "status": "pending",
+      "created_at": "2026-05-22T06:03:00Z"
+    },
+    {
+      "id": "msg-15",
+      "sender_name": "Kim Tuan",
+      "platform": "tiktok",
+      "message": "Khu Sân Golf BRG này đường xe hơi đi có thông ra đường rải nhựa ven biển Trường Sa không ad?",
+      "intent": "hỏi vị trí",
+      "status": "pending",
+      "created_at": "2026-05-22T06:05:00Z"
+    }
+  ],
+  "posts": [
+    {
+      "id": "post-1",
+      "title": "Tổng lực chào bán Lô Góc B2-15 sinh thái Hòa Xuân ven sông",
+      "platform": "facebook",
+      "content": "💎 KIỆT TÁC ĐẤT NỀN VEN SÔNG CỔ CÒ - LÔ GÓC HÒA XUÂN 💎\n\nNằm yên ấm tại phân khu biệt lập Đảo Vip, sở hữu 2 mặt tiền hướng Đông Nam siêu phong thủy tươi tốt đón lành tránh ác. Không gian dải công viên xanh rờn ngay tầm mắt đem lại chất sống an lành đỉnh cao.\n\n- Diện tích: 125 m2 cực đẹp.\n- Đường lòng: 7m5 thông tứ phía.\n- Sổ hồng sẵn trực giao.\n\nNhấc phone lên gọi ngay đặt lịch chiêm ngưỡng vàng mười!",
+      "status": "published",
+      "scheduled_at": "",
+      "property_id": "p-1",
+      "property_title": "Đất Nền Lô Góc Hòa Xuân - Đối Diện Công Viên Trực Diện Sông Cổ Cò",
+      "created_by_ai": true,
+      "engagement": {
+        "views": 2540,
+        "likes": 182,
+        "shares": 24,
+        "comments": 15
+      },
+      "created_at": "2026-05-18T05:00:00Z"
+    },
+    {
+      "id": "post-2",
+      "title": "Chính chủ gửi bán nhà 3 tầng sang trọng Võ Chí Công Hòa Quý",
+      "platform": "zalo",
+      "content": "Gửi bán nhà Võ Chí Công 3 tầng siêu đẹp, full gỗ Sồi Tây Âu nhập khẩu cực ấm cúng. Trục Võ Chí Công kinh doanh sôi nổi kết nối thẳng ra bãi biển hay biển Non Nước lừng danh. Sổ đỏ hoàn công pháp lý cực an tâm. Giá 5.8 tỷ thương lượng nhẹ bốc lộc lộc lộc.",
+      "status": "published",
+      "scheduled_at": "",
+      "property_id": "p-2",
+      "property_title": "Nhà Phố Hiện Đại 3 Tầng Hòa Quý - Đầy Đủ Nội Thất Cao Cấp",
+      "created_by_ai": true,
+      "engagement": {
+        "views": 840,
+        "likes": 42,
+        "shares": 5,
+        "comments": 7
+      },
+      "created_at": "2026-05-19T06:30:00Z"
+    },
+    {
+      "id": "post-3",
+      "title": "Preview Cập nhật tiến độ dự án The Sang Sơn Trà view biển Mỹ Khê",
+      "platform": "website",
+      "content": "The Sang Residence đang khẳng định vị thế căn hộ resort cao cấp hàng đầu ven biển Sơn Trà - Đà Nẵng. Với 100% căn hộ sở hữu logia rộng đón gió, vật liệu bàn giao cao cấp từ nhập khẩu Đức và Nhật. Đã cất nóc và sẵn sàng bàn giao nhà trong thời gian ngắn sắp tới. Xem chi tiết bảng phân tích đầu tư sinh lời căn resort ven đô thị tại đường dẫn...",
+      "status": "scheduled",
+      "scheduled_at": "2026-05-25T08:00:00Z",
+      "property_id": "p-3",
+      "property_title": "Căn Hộ Resort Ven Biển The Sang Residence Sơn Trà",
+      "created_by_ai": false,
+      "created_at": "2026-05-20T10:00:00Z"
+    },
+    {
+      "id": "post-4",
+      "title": "TikTok: Phong cách cuộc sống tỷ đô nghỉ dưỡng biệt thự sân Golf BRG",
+      "platform": "tiktok",
+      "content": "Khai phá đặc quyền thượng lưu cùng biệt thự nghỉ dưỡng bám sân Golf tiêu chuẩn huyền thoại BRG Đà Nẵng. Không gian sông nước kết hợp thảm cỏ xanh mướt trải dài vô tận. Nhanh tay săn ngay để kiến tạo lâu đài phong cách Địa Trung Hải vạn người mê mẩn! #bds_danang #bietthusan_golf #viral_property",
+      "status": "draft",
+      "property_id": "p-5",
+      "property_title": "Đất Nền Biệt Thự Sát Sân Golf Nam Đà Nẵng",
+      "created_by_ai": true,
+      "created_at": "2026-05-21T11:00:00Z"
+    },
+    {
+      "id": "post-5",
+      "title": "Tòa Shophouse mặt tiền Nguyễn Sinh Sắc trục thương mại biển",
+      "platform": "facebook",
+      "content": "BÁN CẶP SHOPHOUSE 4 TẦNG ĐẠI LỘ NGUYỄN SINH SẮC - SÁT VÁCH BIỂN NGUYỄN TẤT THÀNH\n\n- Diện tích đất: 140 m2 sàn rộng lớn.\n- Đường đôi 42 mét rộng thênh thang, lưu lượng giao thông cực đại đông đúc sầm uất.\n- Xây dựng 4 lầu hoàn thiện kiên cố, chuẩn tòa nhà ngân hàng lớn.\n- Hướng biển mát mẻ sảng khoái suốt 4 mùa.\n\nHàng ngộp giải quyết công việc hạ giá sâu. Inbox trực tiếp nhận pháp lý sổ hồng gối đầu cực yên tâm.",
+      "status": "published",
+      "scheduled_at": "",
+      "property_id": "p-4",
+      "property_title": "Shophouse Đại Lộ Nguyễn Sinh Sắc - Kế Cận Biển Liên Chiểu",
+      "created_by_ai": false,
+      "engagement": {
+        "views": 4120,
+        "likes": 312,
+        "shares": 52,
+        "comments": 35
+      },
+      "created_at": "2026-05-17T03:00:00Z"
+    }
+  ],
+  "automations": [
+    {
+      "id": "auto-1",
+      "name": "Tự động sinh bài Đăng BDS Mới",
+      "trigger_event": "Khi thêm mới bất động sản",
+      "action_description": "Trực tiếp kích hoạt AI sinh 3 phiên bản bài viết quảng cáo Marketing tương ứng cho Facebook, Zalo và website SEO",
+      "status": "active",
+      "last_run": "2026-05-22T05:50:00Z",
+      "run_count": 12,
+      "logs": [
+        "2026-05-22T05:50:00Z - Đã nghe thấy sự kiện thêm BDS 'Studio View Cầu Rồng Bạch Đằng'.",
+        "2026-05-22T05:50:02Z - AI sinh thành công bài đăng Facebook (tiêu đề: 'Căn hộ Studio Bạch Đằng').",
+        "2026-05-22T05:50:05Z - AI sinh bài viết Zalo và website SEO cập nhật vào DB bài nháp sẵn sàng."
+      ]
+    },
+    {
+      "id": "auto-2",
+      "name": "Bảo vệ Lead Vàng",
+      "trigger_event": "Lead Score vượt mốc 80",
+      "action_description": "Khi chấm điểm khách hàng tiềm năng > 80, tự động cập nhật độ hot gán tag ĐẶC BIỆT và lập Task giao cho sales gọi điện chăm sóc trong 2 giờ",
+      "status": "active",
+      "last_run": "2026-05-22T06:01:00Z",
+      "run_count": 8,
+      "logs": [
+        "2026-05-22T05:59:00Z - Thường xuyên chấm điểm thấy khách Đỗ Ngọc Mạnh (Zalo) đạt điểm số 95 do quan tâm BDS dòng Biệt Thự Sông 22 tỷ.",
+        "2026-05-22T06:01:00Z - Đang tạo tự động Task công việc: 'GỌI ĐIỆN TƯ VẤN VIP: Đỗ Ngọc Mạnh về rổ biệt thự ven sông'."
+      ]
+    },
+    {
+      "id": "auto-3",
+      "name": "Trả lời comment tự động bằng AI",
+      "trigger_event": "Nhận comment bình luận hỏi giá",
+      "action_description": "Quét inbox/comment phát hiện ý định hỏi pháp lý hay giá cả, tự khởi tạo AI soạn thảo nháp câu chúc và thông số chuẩn ghim gợi ý trả lời nhanh cho Admin",
+      "status": "active",
+      "last_run": "2026-05-22T06:05:00Z",
+      "run_count": 45,
+      "logs": [
+        "2026-05-22T06:05:00Z - Kênh TikTok nhận bình luận hỏi giá của Kim Tuan tại video BRG Golf.",
+        "2026-05-22T06:05:03Z - AI phân loại ý định 'hỏi vị trí' thành công và cập nhật phản hồi gợi ý sẵn sàng trong Inbox."
+      ]
+    },
+    {
+      "id": "auto-4",
+      "name": "Tổng hợp Báo cáo Sáng Sớm AI",
+      "trigger_event": "Gửi báo cáo định kỳ mỗi ngày",
+      "action_description": "Vào 7:00 sáng hàng ngày, chạy hệ thống tóm lược hành động khách hàng hot hôm qua, tổng lượt tương tác đăng bài và đề xuất 3 công việc trọng hành ngày cho giám đốc",
+      "status": "active",
+      "last_run": "2026-05-22T07:00:00Z",
+      "run_count": 22,
+      "logs": [
+        "2026-05-22T07:00:00Z - Đã gửi thành công báo cáo SEO & Chăm sóc khách hàng tự động vào hòm thư Admin."
+      ]
+    },
+    {
+      "id": "auto-5",
+      "name": "Bám đuổi Lead Ấm Quá Hạn",
+      "trigger_event": "Lead ấm không tương tác > 3 ngày",
+      "action_description": "Nếu trạng thái khách hàng là 'warm' nhưng chưa có thêm bất cứ ghi chú hay tin nhắn mới quá 3 ngày, AI tự động đề xuất quà tặng hoặc tài liệu phân tích thị trường gửi bám đuôi chăm sóc",
+      "status": "inactive",
+      "run_count": 0,
+      "logs": [
+        "Hệ thống đã sẵn sàng rà soát nhưng chiến dịch đang tạm ngừng thủ công."
+      ]
+    }
+  ],
+  "settings": {
+    "ai_mode": "gemini",
+    "ollama_endpoint": "http://localhost:11434",
+    "ollama_model": "qwen2.5",
+    "agent_tone": "sang trọng và chuyên nghiệp"
+  }
+}

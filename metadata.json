@@ -1,0 +1,6 @@
+{
+  "name": "Real Estate AI Marketing Agent CMS",
+  "description": "Hệ thống CMS/CRM tích hợp AI Agent hỗ trợ marketing, chăm sóc khách hàng và tự động hóa kinh doanh bất động sản.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
