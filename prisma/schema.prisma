@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  name            String
+  phone           String
+  email           String?
+  source          String   @default("website") // facebook, zalo, tiktok, website, referral
+  budget          Float    // in VND billions
+  interested_area String
+  property_type   String   @default("đất nền")
+  status          String   @default("new") // new, warm, hot, closed, lost
+  notes           String?
+  ai_summary      String?
+  lead_score      Int      @default(50)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  inbox           InboxMessage[]
+  @@index([status])
+  @@index([lead_score])
+}
+
+model Property {
+  id              String   @id @default(cuid())
+  title           String
+  type            String   @default("đất") // đất, nhà phố, căn hộ, shophouse, kho xưởng
+  location        String
+  area            Float    // square meters
+  price           Float    // in VND billions
+  legal_status    String   @default("Sổ hồng riêng")
+  direction       String?
+  road_width      Float?
+  description     String?
+  images          String?
+  selling_points  String[] @default([])
+  
+  ai_posts        Json?    // {facebook, zalo, tiktok, website, image_prompt, video_prompt}
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  posts           Post[]
+  inbox           InboxMessage[]
+  
+  @@index([type])
+  @@index([price])
+}
+
+model Post {
+  id              String   @id @default(cuid())
+  title           String
+  platform        String   // facebook, zalo, tiktok, website
+  content         String   @db.Text
+  status          String   @default("draft") // draft, scheduled, published
+  scheduled_at    DateTime?
+  
+  property_id     String?
+  property        Property? @relation(fields: [property_id], references: [id], onDelete: SetNull)
+  
+  created_by_ai   Boolean  @default(false)
+  engagement      Json?    // {views, likes, shares, comments}
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([platform])
+  @@index([status])
+  @@index([property_id])
+}
+
+model InboxMessage {
+  id              String   @id @default(cuid())
+  sender_name     String
+  platform        String   // facebook, zalo, tiktok, website
+  avatar          String?
+  message         String   @db.Text
+  intent          String?  // hỏi giá, hỏi vị trí, thương lượng, đặt lịch xem, không tiềm năng, chưa rõ
+  status          String   @default("pending") // pending, replied, ignored
+  
+  customer_id     String?
+  customer        Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  
+  property_id     String?
+  property        Property? @relation(fields: [property_id], references: [id], onDelete: SetNull)
+  
+  ai_reply_suggestion String? @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([status])
+  @@index([customer_id])
+  @@index([property_id])
+}
+
+model AutomationTask {
+  id              String   @id @default(cuid())
+  name            String
+  trigger_event   String
+  action_description String
+  status          String   @default("active") // active, inactive
+  
+  last_run        DateTime?
+  run_count       Int      @default(0)
+  logs            String[] @default([])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([status])
+}
+
+model AppSettings {
+  id              String   @id @default("default")
+  ai_mode         String   @default("gemini") // gemini, ollama
+  ollama_endpoint String   @default("http://localhost:11434")
+  ollama_model    String   @default("qwen2.5")
+  agent_tone      String   @default("chuyên nghiệp")
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

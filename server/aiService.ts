@@ -1,7 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import fs from "fs";
-import path from "path";
 import { AppSettings } from "../src/types";
+import { getSettings as getSettingsFromDB } from "./dbHelper";
 
 type ProviderName = "ollama" | "openai" | "gemini";
 
@@ -13,8 +12,6 @@ interface AIProviderStatus {
   message: string;
 }
 
-const DB_PATH = path.join(process.cwd(), "db.json");
-
 const DEFAULT_SETTINGS: AppSettings = {
   ai_mode: process.env.DEFAULT_AI_MODE === "openai"
     ? "openai"
@@ -24,22 +21,20 @@ const DEFAULT_SETTINGS: AppSettings = {
         ? "ollama"
         : "auto",
   ollama_endpoint: process.env.OLLAMA_ENDPOINT || "http://localhost:11434",
-  ollama_model: process.env.OLLAMA_MODEL || "qwen3:8b",
-  openai_model: process.env.OPENAI_MODEL || "gpt-5-mini",
-  agent_tone: process.env.AGENT_TONE || "sang trọng và chuyên nghiệp"
+  ollama_model: process.env.OLLAMA_MODEL || "qwen2.5",
+  openai_model: process.env.OPENAI_MODEL || "gpt-4",
+  agent_tone: process.env.AGENT_TONE || "chuyên nghiệp"
 };
 
-function getAppSettings(): AppSettings {
+// Get settings from Prisma database
+async function getAppSettings(): Promise<AppSettings> {
   try {
-    if (fs.existsSync(DB_PATH)) {
-      const db = JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
-      return { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
-    }
+    const settings = await getSettingsFromDB();
+    return { ...DEFAULT_SETTINGS, ...settings };
   } catch (error) {
-    console.error("Error loading app settings for AI Service:", error);
+    console.error("Error loading app settings from database, using defaults:", error);
+    return DEFAULT_SETTINGS;
   }
-
-  return DEFAULT_SETTINGS;
 }
 
 function normalizeEndpoint(endpoint: string) {
@@ -59,6 +54,12 @@ function buildSystemInstruction(systemInstruction: string) {
   ].join("\n");
 }
 
+function withTimeout(ms: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ms);
+  return { signal: controller.signal, cancel: () => clearTimeout(timeout) };
+}
+
 function stripThinking(text: string) {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
@@ -76,25 +77,34 @@ function extractJson(text: string) {
 }
 
 async function callOllama(systemInstruction: string, prompt: string): Promise<string> {
-  const settings = getAppSettings();
+  const settings = await getAppSettings();
   const endpoint = `${normalizeEndpoint(settings.ollama_endpoint)}/api/chat`;
+  const timeout = withTimeout(Number(process.env.OLLAMA_TIMEOUT_MS || 45000));
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: settings.ollama_model,
-      messages: [
-        { role: "system", content: buildSystemInstruction(systemInstruction) },
-        { role: "user", content: prompt }
-      ],
-      stream: false,
-      options: {
-        temperature: 0.2,
-        num_ctx: 8192
-      }
-    })
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      signal: timeout.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: settings.ollama_model,
+        think: false,
+        messages: [
+          { role: "system", content: buildSystemInstruction(systemInstruction) },
+          { role: "user", content: prompt }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.2,
+          num_ctx: 4096,
+          num_predict: 700
+        }
+      })
+    });
+  } finally {
+    timeout.cancel();
+  }
 
   if (!response.ok) {
     throw new Error(`Ollama HTTP ${response.status}: ${response.statusText}`);
@@ -112,21 +122,29 @@ async function callOpenAI(systemInstruction: string, prompt: string): Promise<st
     throw new Error("OPENAI_API_KEY chưa được cấu hình.");
   }
 
-  const settings = getAppSettings();
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: settings.openai_model || process.env.OPENAI_MODEL || "gpt-5-mini",
-      input: [
-        { role: "system", content: buildSystemInstruction(systemInstruction) },
-        { role: "user", content: prompt }
-      ]
-    })
-  });
+  const settings = await getAppSettings();
+  const timeout = withTimeout(Number(process.env.OPENAI_TIMEOUT_MS || 60000));
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: timeout.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: settings.openai_model || process.env.OPENAI_MODEL || "gpt-5-mini",
+        input: [
+          { role: "system", content: buildSystemInstruction(systemInstruction) },
+          { role: "user", content: prompt }
+        ]
+      })
+    });
+  } finally {
+    timeout.cancel();
+  }
 
   const json = await response.json();
   if (!response.ok) {
@@ -190,7 +208,7 @@ async function callProvider(provider: ProviderName, systemInstruction: string, p
 }
 
 export async function generateText(systemInstruction: string, prompt: string): Promise<string> {
-  const settings = getAppSettings();
+  const settings = await getAppSettings();
   const errors: string[] = [];
 
   for (const provider of providerOrder(settings.ai_mode)) {
@@ -208,7 +226,7 @@ export async function generateText(systemInstruction: string, prompt: string): P
 }
 
 export async function getAIProviderStatus(): Promise<AIProviderStatus[]> {
-  const settings = getAppSettings();
+  const settings = await getAppSettings();
   const statuses: AIProviderStatus[] = [];
 
   try {
@@ -309,7 +327,7 @@ Quy tắc score:
 }
 
 export async function generatePropertyMarketingContent(property: any, targetPlatform?: string, customTone?: string): Promise<any> {
-  const settings = getAppSettings();
+  const settings = await getAppSettings();
   const tone = customTone || settings.agent_tone;
   const systemInstruction = [
     "Bạn là AI marketing assistant chuyên bất động sản Việt Nam.",
@@ -329,6 +347,9 @@ Tạo bộ nội dung marketing cho bất động sản:
 - Hướng: ${property.direction}
 - Đường: ${property.road_width} m
 - Mô tả: ${property.description}
+- Mô tả rich text/copy: ${property.rich_description || property.description || ""}
+- Ghi chú bổ sung nội bộ: ${property.internal_notes || ""}
+- Trạng thái bán hàng: ${property.sale_status === "sold" ? "Đã bán" : "Đang bán"}
 - Điểm bán hàng: ${(property.selling_points || []).join(", ")}
 
 Trả đúng schema:
@@ -359,7 +380,7 @@ Trả đúng schema:
 }
 
 export async function generateAILiveChatReply(message: string, contextData: { customers: any[]; properties: any[]; posts: any[] }): Promise<string> {
-  const settings = getAppSettings();
+  const settings = await getAppSettings();
   const systemInstruction = [
     "Bạn là AI Assistant nội bộ cho công ty bất động sản.",
     `Giọng văn: ${settings.agent_tone}.`,
@@ -367,11 +388,18 @@ export async function generateAILiveChatReply(message: string, contextData: { cu
     "Nếu câu hỏi yêu cầu dữ liệu ngoài phạm vi được cấp quyền, hãy nói rõ là chưa có dữ liệu trong hệ thống."
   ].join("\n");
 
+  const topCustomers = contextData.customers
+    .slice()
+    .sort((a, b) => (b.lead_score || 0) - (a.lead_score || 0))
+    .slice(0, 5);
+  const topProperties = contextData.properties.slice(0, 5);
+  const recentPosts = contextData.posts.slice(0, 5);
+
   const prompt = `
 Dữ liệu user hiện được phép truy cập:
-- Khách hàng (${contextData.customers.length}): ${contextData.customers.map(c => `${c.name} | ${c.phone} | ${c.property_type} | ${c.interested_area} | ${c.budget} tỷ | score ${c.lead_score} | ${c.ai_summary}`).join("; ")}
-- Bất động sản (${contextData.properties.length}): ${contextData.properties.map(p => `${p.title} | ${p.location} | ${p.price} tỷ | ${p.area}m2 | ${p.legal_status}`).join("; ")}
-- Posts (${contextData.posts.length}): ${contextData.posts.map(p => `[${p.platform}] ${p.title} | ${p.status}`).join("; ")}
+- Tổng khách hàng được phép xem: ${contextData.customers.length}. Top khách ưu tiên: ${topCustomers.map(c => `${c.name} | ${c.phone} | ${c.property_type} | ${c.interested_area} | ${c.budget} tỷ | score ${c.lead_score} | ${c.ai_summary}`).join("; ")}
+- Tổng bất động sản được phép xem: ${contextData.properties.length}. Sản phẩm tiêu biểu: ${topProperties.map(p => `${p.title} | ${p.location} | ${p.price} tỷ | ${p.area}m2 | ${p.legal_status} | ${p.sale_status === "sold" ? "đã bán" : "đang bán"} | ghi chú: ${p.internal_notes || "không có"}`).join("; ")}
+- Tổng posts được phép xem: ${contextData.posts.length}. Posts gần đây: ${recentPosts.map(p => `[${p.platform}] ${p.title} | ${p.status}`).join("; ")}
 
 Câu hỏi của người dùng:
 ${message}

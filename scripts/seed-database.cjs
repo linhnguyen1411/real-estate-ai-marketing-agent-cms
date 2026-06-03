@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const Database = require('better-sqlite3');
 
 const dbPath = path.join(__dirname, '..', 'db.json');
+const dataDir = path.join(__dirname, '..', 'data');
+const sqlitePath = path.join(dataDir, 'cms.sqlite');
 
 const now = new Date().toISOString();
 
@@ -468,6 +471,12 @@ const assignments = {
 function attachAccess(collectionName, companyId = 'comp-da-nang') {
   database[collectionName] = database[collectionName].map((record) => ({
     ...record,
+    ...(collectionName === 'properties' ? {
+      rich_description: record.rich_description || record.description,
+      internal_notes: record.internal_notes || 'Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.',
+      sale_status: record.sale_status || 'available',
+      gallery_images: record.gallery_images || (record.images ? [record.images] : [])
+    } : {}),
     company_id: companyId,
     owner_user_id: 'u-company-admin',
     assigned_member_ids: assignments[collectionName][record.id] || []
@@ -485,4 +494,117 @@ if (fs.existsSync(dbPath)) {
 
 fs.writeFileSync(dbPath, JSON.stringify(database, null, 2), 'utf8');
 
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+if (fs.existsSync(sqlitePath)) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  fs.copyFileSync(sqlitePath, `${sqlitePath}.${timestamp}.bak`);
+}
+
+const sqlite = new Database(sqlitePath);
+sqlite.pragma('journal_mode = WAL');
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS companies (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL,
+    company_id TEXT,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS cms_records (
+    collection TEXT NOT NULL,
+    id TEXT NOT NULL,
+    company_id TEXT,
+    owner_user_id TEXT,
+    sale_status TEXT,
+    status TEXT,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (collection, id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cms_records_collection_company ON cms_records(collection, company_id);
+  CREATE INDEX IF NOT EXISTS idx_cms_records_collection_status ON cms_records(collection, status);
+  CREATE INDEX IF NOT EXISTS idx_cms_records_sale_status ON cms_records(collection, sale_status);
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS chat_history (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    company_id TEXT,
+    role TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_history_user_created ON chat_history(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_chat_history_company_created ON chat_history(company_id, created_at);
+  CREATE TABLE IF NOT EXISTS generated_contents (
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    user_id TEXT,
+    property_id TEXT,
+    property_title TEXT,
+    channel TEXT NOT NULL,
+    raw_content TEXT NOT NULL,
+    verified_content TEXT,
+    status TEXT NOT NULL DEFAULT 'raw',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_generated_company_channel ON generated_contents(company_id, channel);
+  CREATE INDEX IF NOT EXISTS idx_generated_property ON generated_contents(property_id);
+  CREATE INDEX IF NOT EXISTS idx_generated_status ON generated_contents(status);
+`);
+
+const seedSqlite = sqlite.transaction(() => {
+  sqlite.prepare('DELETE FROM companies').run();
+  sqlite.prepare('DELETE FROM users').run();
+  sqlite.prepare('DELETE FROM cms_records').run();
+  sqlite.prepare('DELETE FROM settings').run();
+  sqlite.prepare('DELETE FROM chat_history').run();
+  sqlite.prepare('DELETE FROM generated_contents').run();
+
+  const companyStmt = sqlite.prepare('INSERT INTO companies (id, data, created_at, updated_at) VALUES (?, ?, ?, ?)');
+  database.companies.forEach(company => companyStmt.run(company.id, JSON.stringify(company), company.created_at, now));
+
+  const userStmt = sqlite.prepare('INSERT INTO users (id, email, role, company_id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  database.users.forEach(user => userStmt.run(user.id, user.email, user.role, user.company_id || null, JSON.stringify(user), user.created_at, now));
+
+  const recordStmt = sqlite.prepare(`
+    INSERT INTO cms_records (collection, id, company_id, owner_user_id, sale_status, status, data, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  ['customers', 'properties', 'posts', 'inbox', 'automations'].forEach(collection => {
+    database[collection].forEach(record => {
+      recordStmt.run(
+        collection,
+        record.id,
+        record.company_id || null,
+        record.owner_user_id || null,
+        record.sale_status || null,
+        record.status || null,
+        JSON.stringify(record),
+        record.created_at || now,
+        now
+      );
+    });
+  });
+
+  sqlite.prepare("INSERT INTO settings (key, data, updated_at) VALUES ('app', ?, ?)").run(JSON.stringify(database.settings), now);
+});
+
+seedSqlite();
+sqlite.close();
+
+console.log(`Seeded SQLite ${sqlitePath}`);
 console.log(`Seeded ${database.customers.length} customers, ${database.properties.length} properties, ${database.posts.length} posts, ${database.inbox.length} inbox messages.`);

@@ -63,7 +63,11 @@ export interface Property {
   direction: string; // Đông, Tây, Nam, Bắc, Đông Nam, Tây Nam, Đông Bắc, Tây Bắc
   road_width: number; // meters (m)
   description: string;
+  rich_description?: string;
+  internal_notes?: string;
+  sale_status?: 'available' | 'sold';
   images: string; // Image placeholder URL or string
+  gallery_images?: string[];
   selling_points: string[]; // Key selling highligts
   ai_posts?: {
     facebook?: string;
@@ -156,4 +160,27 @@ export interface AppSettings {
   ollama_model: string;
   openai_model: string;
   agent_tone: string;
+}
+
+export interface ChatHistoryRecord {
+  id: string;
+  user_id: string;
+  company_id?: string;
+  role: 'user' | 'model';
+  message: string;
+  created_at: string;
+}
+
+export interface GeneratedContentRecord {
+  id: string;
+  company_id?: string;
+  user_id?: string;
+  property_id?: string;
+  property_title?: string;
+  channel: 'facebook' | 'zalo' | 'tiktok' | 'website' | 'image_prompt' | 'video_prompt';
+  raw_content: string;
+  verified_content?: string;
+  status: 'raw' | 'verified';
+  created_at: string;
+  verified_at?: string;
 }

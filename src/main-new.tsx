@@ -4,16 +4,15 @@ import {createRoot} from 'react-dom/client';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
-import ListingsPage from './ListingsPage.tsx';
+import ListingsPage from './ListingsPageNew.tsx';
 import './index.css';
 
 // Fetch properties data for public listings
 async function fetchPublicProperties() {
   try {
-    const response = await fetch('/api/public/properties');
+    const response = await fetch('/api/properties');
     if (!response.ok) throw new Error('Failed to fetch properties');
-    const json = await response.json();
-    return Array.isArray(json.data) ? json.data : [];
+    return await response.json();
   } catch (error) {
     console.error('Error fetching properties:', error);
     return [];
@@ -39,7 +38,7 @@ function PublicListingsWrapper() {
     );
   }
 
-  return <ListingsPage properties={properties} />;
+  return <ListingsPage properties={properties} onBack={() => window.location.href = '/'} />;
 }
 
 createRoot(document.getElementById('root')!).render(

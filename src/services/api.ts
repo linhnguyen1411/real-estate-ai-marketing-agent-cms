@@ -3,10 +3,13 @@ import {
   AuthUser,
   AutomationTask,
   Customer,
+  ChatHistoryRecord,
+  GeneratedContentRecord,
   InboxMessage,
   MarketingChannel,
   Post,
-  Property
+  Property,
+  User
 } from '../types';
 
 type ApiStatus = 'success' | 'error';
@@ -173,10 +176,31 @@ export function createCustomer(customer: Record<string, unknown>) {
   });
 }
 
+export function updateCustomer(customerId: string, customer: Record<string, unknown>) {
+  return apiRequest<Customer>(`/api/customers/${customerId}`, {
+    method: 'PUT',
+    body: JSON.stringify(customer)
+  });
+}
+
 export function createProperty(property: Record<string, unknown>) {
   return apiRequest<Property>('/api/properties', {
     method: 'POST',
     body: JSON.stringify(property)
+  });
+}
+
+export function updateProperty(propertyId: string, property: Record<string, unknown>) {
+  return apiRequest<Property>(`/api/properties/${propertyId}`, {
+    method: 'PUT',
+    body: JSON.stringify(property)
+  });
+}
+
+export function updatePost(postId: string, post: Record<string, unknown>) {
+  return apiRequest<Post>(`/api/posts/${postId}`, {
+    method: 'PUT',
+    body: JSON.stringify(post)
   });
 }
 
@@ -196,6 +220,53 @@ export function sendAssistantMessage(message: string) {
   return apiRequest<string>('/api/ai/chat', {
     method: 'POST',
     body: JSON.stringify({ message })
+  });
+}
+
+export function getAIStatus() {
+  return apiRequest<Array<{
+    provider: 'ollama' | 'openai' | 'gemini';
+    ok: boolean;
+    model?: string;
+    endpoint?: string;
+    message: string;
+  }>>('/api/ai/status');
+}
+
+export function getChatHistory(scope?: 'mine') {
+  return apiRequest<ChatHistoryRecord[]>(`/api/chat/history${scope ? `?scope=${scope}` : ''}`);
+}
+
+export function getGeneratedContents(params?: { channel?: string; status?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params?.channel) searchParams.set('channel', params.channel);
+  if (params?.status) searchParams.set('status', params.status);
+  const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+  return apiRequest<GeneratedContentRecord[]>(`/api/content/generated${suffix}`);
+}
+
+export function verifyContent(contentId: string, verifiedContent: string) {
+  return apiRequest<{ id: string; status: 'verified' }>(`/api/content/generated/${contentId}/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ verifiedContent })
+  });
+}
+
+export function getUsers() {
+  return apiRequest<User[]>('/api/users');
+}
+
+export function createUser(user: Record<string, unknown>) {
+  return apiRequest<User>('/api/users', {
+    method: 'POST',
+    body: JSON.stringify(user)
+  });
+}
+
+export function updateUser(userId: string, user: Record<string, unknown>) {
+  return apiRequest<User>(`/api/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(user)
   });
 }
 
