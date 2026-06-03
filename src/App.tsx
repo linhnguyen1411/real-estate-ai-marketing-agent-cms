@@ -1,4 +1,6 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, useMemo, FormEvent } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { 
   LayoutDashboard, 
   Users, 
@@ -30,30 +32,69 @@ import {
   Video,
   Image as ImageIcon,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  ShieldCheck,
+  UserPlus
 } from 'lucide-react';
-import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, AppSettings, MarketingChannel } from './types';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
+import MarkdownContent from './components/MarkdownContent';
+import MarkdownEditor from './components/MarkdownEditor';
 import {
   analyzeCustomer,
   createCustomer,
   createProperty,
+  createUser,
+  DashboardData,
   generateInboxReply,
   generatePropertyMarketing,
   getAuthToken,
+  getChatHistory,
   getCurrentUser,
+  getGeneratedContents,
   getInitialAppData,
+  getUsers,
   login,
   logout,
   runDemoAutomations,
   saveSettings,
   sendAssistantMessage,
   sendInboxReply,
-  toggleAutomation
+  toggleAutomation,
+  updateCustomer,
+  updatePost,
+  updateProperty,
+  updateUser,
+  verifyContent
 } from './services/api';
 
+const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: string }> = {
+  facebook: { name: 'Facebook', color: 'bg-indigo-500' },
+  zalo: { name: 'Zalo', color: 'bg-blue-400' },
+  tiktok: { name: 'TikTok', color: 'bg-rose-500' },
+  website: { name: 'Website', color: 'bg-emerald-400' }
+};
+
+const createEmptyPropertyForm = () => ({
+  title: '', type: 'đất', location: '', area: '100', price: '4.5',
+  legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
+  description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
+  sale_status: 'available', selling_points: ''
+});
+
+type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
+
+const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
+  facebook: { label: 'Facebook 3:4' },
+  zalo: { label: 'Zalo 1:1' },
+  tiktok: { label: 'TikTok 9:16' }
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('real_estate_ai_active_tab') || 'dashboard');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [loginEmail, setLoginEmail] = useState<string>('owner@example.com');
@@ -68,8 +109,8 @@ export default function App() {
   const [automations, setAutomations] = useState<AutomationTask[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [channels, setChannels] = useState<MarketingChannel[]>([]);
-  const [dashboardStats, setDashboardStats] = useState<any>(null);
-  
+  const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
+  const [managedUsers, setManagedUsers] = useState<User[]>([]);
   // Loading & interactive states
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -80,6 +121,9 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([ASSISTANT_WELCOME_MESSAGE]);
   const [userChatInput, setUserChatInput] = useState<string>('');
 
+  // Gallery carousel state for properties
+  const [propertyGalleryIndex, setPropertyGalleryIndex] = useState<{ [key: string]: number }>({});
+
   // Modals & form fields state
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
   const [newCustomerForm, setNewCustomerForm] = useState({
@@ -88,17 +132,63 @@ export default function App() {
   });
 
   const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
-  const [newPropertyForm, setNewPropertyForm] = useState({
-    title: '', type: 'đất', location: '', area: '100', price: '4.5',
-    legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
-    description: '', selling_points: ''
-  });
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
 
   const [selectedPropertyForAI, setSelectedPropertyForAI] = useState<Property | null>(null);
   const [aiGeneratingTone, setAiGeneratingTone] = useState<string>('sang trọng và chuyên nghiệp');
 
   const [selectedInboxMessage, setSelectedInboxMessage] = useState<InboxMessage | null>(null);
   const [responseReplyText, setResponseReplyText] = useState<string>('');
+  const [selectedPermissionMemberId, setSelectedPermissionMemberId] = useState<string>('');
+  const [newUserForm, setNewUserForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'member',
+    company_id: 'comp-da-nang',
+    status: 'active'
+  });
+
+  const dashboardData = useMemo<DashboardData>(() => {
+    const platforms: Post['platform'][] = ['facebook', 'zalo', 'tiktok', 'website'];
+
+    return {
+      stats: {
+        totalCustomers: customers.length,
+        leads: {
+          hot: customers.filter(customer => customer.status === 'hot').length,
+          warm: customers.filter(customer => customer.status === 'warm').length,
+          cold: customers.filter(customer => customer.status === 'new').length
+        },
+        totalProperties: properties.filter(property => property.sale_status !== 'sold').length,
+        totalPosts: posts.length,
+        pendingInbox: inbox.filter(message => message.status === 'pending').length,
+        todayTasksCount: customers.filter(customer => customer.status === 'hot' && customer.lead_score > 80).length
+      },
+      metrics: platforms.map(platform => {
+        const platformPosts = posts.filter(post => post.platform === platform);
+        return {
+          platform,
+          reach: platformPosts.reduce((sum, post) => sum + (post.engagement?.views || 0), 0),
+          engagement: platformPosts.reduce(
+            (sum, post) => sum
+              + (post.engagement?.likes || 0)
+              + (post.engagement?.shares || 0)
+              + (post.engagement?.comments || 0),
+            0
+          ),
+          leads: customers.filter(customer => customer.source === platform).length
+        };
+      })
+    };
+  }, [customers, properties, posts, inbox]);
+
+  const maxDashboardReach = Math.max(1, ...dashboardData.metrics.map(metric => metric.reach));
+  const topDashboardMetric = dashboardData.metrics.reduce(
+    (top, metric) => metric.reach > top.reach ? metric : top,
+    dashboardData.metrics[0]
+  );
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -133,7 +223,6 @@ export default function App() {
     setLoading(true);
     try {
       const data = await getInitialAppData();
-      setDashboardStats(data.dashboard);
       setCustomers(data.customers);
       setProperties(data.properties);
       setPosts(data.posts);
@@ -141,6 +230,24 @@ export default function App() {
       setAutomations(data.automations);
       setSettings(data.settings);
       setChannels(data.channels);
+      const chatHistory = await getChatHistory('mine').catch(() => []);
+      if (chatHistory.length > 0) {
+        setChatMessages(chatHistory.slice().reverse().map(item => ({
+          role: item.role,
+          content: item.message,
+          timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        })));
+      }
+      setGeneratedContents(await getGeneratedContents().catch(() => []));
+      if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
+        const users = await getUsers().catch(() => []);
+        setManagedUsers(users);
+        const firstMember = users.find(user => user.role === 'member');
+        setSelectedPermissionMemberId(prev => prev || firstMember?.id || '');
+      } else {
+        setManagedUsers([]);
+        setSelectedPermissionMemberId('');
+      }
 
     } catch (e: any) {
       console.error("Connection to APIs failed, utilizing db.json directly if cached...", e);
@@ -154,7 +261,11 @@ export default function App() {
     if (currentUser) {
       fetchAllData();
     }
-  }, [activeTab, currentUser]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('real_estate_ai_active_tab', activeTab);
+  }, [activeTab]);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -174,13 +285,15 @@ export default function App() {
 
   const handleLogout = () => {
     logout();
+    localStorage.removeItem('real_estate_ai_active_tab');
     setCurrentUser(null);
     setCustomers([]);
     setProperties([]);
     setPosts([]);
     setInbox([]);
     setAutomations([]);
-    setDashboardStats(null);
+    setGeneratedContents([]);
+    setManagedUsers([]);
   };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -192,6 +305,244 @@ export default function App() {
     navigator.clipboard.writeText(text);
     showToast("Đã sao chép vào bộ nhớ tạm thành công!", "success");
   };
+
+  const handlePostStatusUpdate = async (post: Post, status: Post['status']) => {
+    setActionLoading(`post-${status}-${post.id}`);
+    try {
+      const now = new Date();
+      const nextSchedule = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+      const updatedPost = await updatePost(post.id, {
+        status,
+        scheduled_at: status === 'draft' ? '' : status === 'scheduled' ? nextSchedule : now.toISOString(),
+        engagement: status === 'published'
+          ? (post.engagement || { views: 0, likes: 0, shares: 0, comments: 0 })
+          : post.engagement
+      });
+
+      setPosts(prev => prev.map(item => item.id === updatedPost.id ? updatedPost : item));
+      showToast(status === 'published' ? 'Da danh dau dang bai thanh cong.' : 'Da luu lich dang bai.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the cap nhat bai dang.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleVerifyGeneratedContent = async (record: GeneratedContentRecord) => {
+    setActionLoading(`verify-content-${record.id}`);
+    try {
+      await verifyContent(record.id, record.verified_content || record.raw_content);
+      setGeneratedContents(prev => prev.map(item => item.id === record.id
+        ? { ...item, status: 'verified', verified_content: item.verified_content || item.raw_content, verified_at: new Date().toISOString() }
+        : item
+      ));
+      showToast('Da duyet content de luu vao training data.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the duyet content.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateUser = async (e: FormEvent) => {
+    e.preventDefault();
+    setActionLoading('create-user');
+    try {
+      const payload = {
+        ...newUserForm,
+        role: currentUser?.role === 'company' ? 'member' : newUserForm.role,
+        company_id: currentUser?.role === 'company' ? currentUser.company_id : newUserForm.company_id
+      };
+      const created = await createUser(payload);
+      setManagedUsers(prev => [created, ...prev]);
+      if (!selectedPermissionMemberId && created.role === 'member') setSelectedPermissionMemberId(created.id);
+      setNewUserForm({
+        name: '',
+        email: '',
+        password: '',
+        role: 'member',
+        company_id: currentUser?.company_id || 'comp-da-nang',
+        status: 'active'
+      });
+      showToast('Da tao user moi.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the tao user.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleUserStatus = async (user: User) => {
+    setActionLoading(`user-status-${user.id}`);
+    try {
+      const updated = await updateUser(user.id, { status: user.status === 'active' ? 'inactive' : 'active' });
+      setManagedUsers(prev => prev.map(item => item.id === updated.id ? updated : item));
+      showToast('Da cap nhat trang thai user.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the cap nhat user.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleMemberAssignment = async (
+    collection: 'customers' | 'properties' | 'posts',
+    resource: Customer | Property | Post,
+    memberId: string
+  ) => {
+    if (!memberId) return;
+    const assignedIds = resource.assigned_member_ids || [];
+    const nextAssignedIds = assignedIds.includes(memberId)
+      ? assignedIds.filter(id => id !== memberId)
+      : [...assignedIds, memberId];
+
+    setActionLoading(`assign-${collection}-${resource.id}`);
+    try {
+      if (collection === 'customers') {
+        const updated = await updateCustomer(resource.id, { assigned_member_ids: nextAssignedIds });
+        setCustomers(prev => prev.map(item => item.id === updated.id ? updated : item));
+      }
+      if (collection === 'properties') {
+        const updated = await updateProperty(resource.id, { assigned_member_ids: nextAssignedIds });
+        setProperties(prev => prev.map(item => item.id === updated.id ? updated : item));
+      }
+      if (collection === 'posts') {
+        const updated = await updatePost(resource.id, { assigned_member_ids: nextAssignedIds });
+        setPosts(prev => prev.map(item => item.id === updated.id ? updated : item));
+      }
+      showToast('Da cap nhat quyen truy cap.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the cap quyen.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const resizeImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const maxDimension = 1280;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+
+        if (!context) {
+          reject(new Error('Không thể xử lý ảnh trên trình duyệt.'));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+      image.onerror = reject;
+      image.src = String(reader.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const readImageFiles = async (files: FileList | null): Promise<string[]> => {
+    if (!files?.length) return [];
+
+    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/')).slice(0, 6);
+    return Promise.all(imageFiles.map(resizeImageFile));
+  };
+
+  const openAddPropertyModal = () => {
+    setEditingProperty(null);
+    setNewPropertyForm(createEmptyPropertyForm());
+    setShowAddPropertyModal(true);
+  };
+
+  const openEditPropertyModal = (property: Property) => {
+    setEditingProperty(property);
+    setNewPropertyForm({
+      title: property.title,
+      type: property.type,
+      location: property.location,
+      area: String(property.area),
+      price: String(property.price),
+      legal_status: property.legal_status,
+      direction: property.direction,
+      road_width: String(property.road_width),
+      description: property.description,
+      rich_description: property.rich_description || '',
+      internal_notes: property.internal_notes || '',
+      images: property.images || '',
+      gallery_images: [...(property.gallery_images || [])],
+      sale_status: property.sale_status || 'available',
+      selling_points: (property.selling_points || []).join('\n')
+    });
+    setShowAddPropertyModal(true);
+  };
+
+  const closePropertyModal = () => {
+    setShowAddPropertyModal(false);
+    setEditingProperty(null);
+    setNewPropertyForm(createEmptyPropertyForm());
+  };
+
+  const handlePropertyImageUpload = async (prop: Property, files: FileList | null) => {
+    setActionLoading(`upload-prop-${prop.id}`);
+    try {
+      const uploadedImages = await readImageFiles(files);
+      if (!uploadedImages.length) {
+        showToast("Vui lòng chọn file ảnh hợp lệ.", "error");
+        return;
+      }
+
+      const gallery = [...(prop.gallery_images || []), ...uploadedImages].slice(0, 8);
+      const updated = await updateProperty(prop.id, {
+        images: prop.images || uploadedImages[0],
+        gallery_images: gallery
+      });
+      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
+      showToast("Đã upload và lưu ảnh bất động sản.", "success");
+    } catch (e: any) {
+      showToast(e.message || "Lỗi upload ảnh.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTogglePropertySold = async (prop: Property) => {
+    setActionLoading(`sold-prop-${prop.id}`);
+    try {
+      const updated = await updateProperty(prop.id, {
+        sale_status: prop.sale_status === 'sold' ? 'available' : 'sold'
+      });
+      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
+      showToast(updated.sale_status === 'sold' ? "Đã đánh dấu bất động sản là đã bán." : "Đã chuyển bất động sản về trạng thái đang bán.", "success");
+    } catch (e: any) {
+      showToast(e.message || "Lỗi cập nhật trạng thái bán.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const buildPropertyCopyText = (prop: Property) => [
+    prop.title,
+    `Vị trí: ${prop.location}`,
+    `Giá: ${prop.price} tỷ VND`,
+    `Diện tích: ${prop.area} m2`,
+    `Pháp lý: ${prop.legal_status}`,
+    `Hướng: ${prop.direction}`,
+    `Đường: ${prop.road_width} m`,
+    `Trạng thái: ${prop.sale_status === 'sold' ? 'Đã bán' : 'Đang bán'}`,
+    '',
+    prop.rich_description || prop.description,
+    '',
+    `Điểm nổi bật: ${(prop.selling_points || []).join(', ')}`,
+    prop.internal_notes ? `Ghi chú nội bộ: ${prop.internal_notes}` : ''
+  ].filter(Boolean).join('\n');
 
   // AI customer optimization
   const handleAICodeAnalyzeCustomer = async (id: string) => {
@@ -212,9 +563,9 @@ export default function App() {
     setActionLoading(`gen-prop-${propId}`);
     try {
       const property = await generatePropertyMarketing(propId, aiGeneratingTone);
-      showToast("Tự động hóa AI Content hoàn tất! Bản kịch bản đã được lưu nháp trong Posts CMS.", "success");
       setProperties(prev => prev.map(p => p.id === propId ? property : p));
       setSelectedPropertyForAI(property);
+      showToast("Đã tạo campaign brief và nội dung đa kênh.", "success");
     } catch (e: any) {
       showToast(e.message || "Lỗi liên tuyến AI Marketing.", "error");
     } finally {
@@ -274,24 +625,36 @@ export default function App() {
     }
   };
 
-  // Submit add property
-  const handleAddProperty = async (e: FormEvent) => {
+  // Submit add/edit property
+  const handleSaveProperty = async (e: FormEvent) => {
     e.preventDefault();
+    setActionLoading(editingProperty ? `edit-prop-${editingProperty.id}` : 'add-property');
     try {
-      const property = await createProperty({
+      const payload = {
         ...newPropertyForm,
+        area: Number(newPropertyForm.area),
+        price: Number(newPropertyForm.price),
+        road_width: Number(newPropertyForm.road_width),
         selling_points: newPropertyForm.selling_points.split('\n').filter(line => line.trim())
-      });
-      showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
-      setProperties(prev => [property, ...prev]);
-      setShowAddPropertyModal(false);
-      setNewPropertyForm({
-        title: '', type: 'đất', location: '', area: '100', price: '4.5',
-        legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
-        description: '', selling_points: ''
-      });
+      };
+
+      if (editingProperty) {
+        const property = await updateProperty(editingProperty.id, payload);
+        setProperties(prev => prev.map(item => item.id === property.id ? property : item));
+        setPropertyGalleryIndex(prev => ({ ...prev, [property.id]: 0 }));
+        if (selectedPropertyForAI?.id === property.id) setSelectedPropertyForAI(property);
+        showToast("Đã cập nhật bất động sản thành công!", "success");
+      } else {
+        const property = await createProperty(payload);
+        setProperties(prev => [property, ...prev]);
+        showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
+      }
+
+      closePropertyModal();
     } catch (e: any) {
-      showToast(e.message || "Lỗi thêm.", "error");
+      showToast(e.message || "Không thể lưu bất động sản.", "error");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -372,13 +735,34 @@ export default function App() {
   const filteredProperties = properties.filter(p => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     p.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.type.toLowerCase().includes(searchQuery.toLowerCase())
+    p.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.rich_description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.internal_notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.sale_status || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredPosts = posts.filter(pos => 
     pos.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     pos.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const priorityPlatforms = ['facebook', 'zalo'];
+  const publishPosts = [...filteredPosts].sort((a, b) => {
+    const aPriority = priorityPlatforms.includes(a.platform) ? 0 : 1;
+    const bPriority = priorityPlatforms.includes(b.platform) ? 0 : 1;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    if (a.status !== b.status) {
+      const order = { draft: 0, scheduled: 1, published: 2 };
+      return order[a.status] - order[b.status];
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+  const priorityGeneratedContents = generatedContents
+    .filter(item => priorityPlatforms.includes(item.channel))
+    .slice(0, 8);
+  const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
+  const managedMembers = managedUsers.filter(user => user.role === 'member' && user.status === 'active');
+  const selectedPermissionMember = managedUsers.find(user => user.id === selectedPermissionMemberId);
 
   if (authLoading && !currentUser) {
     return (
@@ -471,7 +855,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
+    <div className="h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
       
       {/* Toast Notification */}
       {toast && (
@@ -489,7 +873,7 @@ export default function App() {
       )}
 
       {/* Top Banner Alert / Workspace Header */}
-      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-6 py-4 flex items-center justify-between">
+      <header className="shrink-0 border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-gradient-to-tr from-rose-600 to-amber-500 rounded-xl">
             <Sparkles className="w-6 h-6 text-white" />
@@ -537,10 +921,10 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden h-[calc(100vh-73px)]">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         
         {/* Navigation Sidebar */}
-        <aside className="w-64 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto">
+        <aside className="w-64 min-h-0 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll">
           <div className="space-y-1">
             <div className="px-3 py-2 text-xs font-semibold text-slate-600 tracking-wider uppercase">Menu chính</div>
             {[
@@ -552,6 +936,7 @@ export default function App() {
               { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
+              ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
               { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
               { id: 'settings', label: 'Cấu hình hệ thống', icon: SettingsIcon },
             ].map(item => {
@@ -601,7 +986,7 @@ export default function App() {
         </aside>
 
         {/* Outer Content Area */}
-        <main className="flex-1 bg-slate-950/40 p-6 overflow-y-auto space-y-6">
+        <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-6 overflow-y-auto overflow-x-hidden space-y-6 app-scroll">
 
           {/* Search bar inside view headers */}
           {['crm', 'properties', 'posts'].includes(activeTab) && (
@@ -633,13 +1018,23 @@ export default function App() {
               )}
 
               {activeTab === 'properties' && (
-                <button
-                  onClick={() => setShowAddPropertyModal(true)}
-                  className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Thêm Bất Động Sản</span>
-                </button>
+                <div className="flex gap-2">
+                  <a
+                    href="/listings"
+                    target="_blank"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-indigo-600/25 transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Xem Listing Public</span>
+                  </a>
+                  <button
+                    onClick={openAddPropertyModal}
+                    className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Thêm Bất Động Sản</span>
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -669,18 +1064,18 @@ export default function App() {
                       <p className="text-slate-400 text-sm">Cập nhật và theo dõi hiệu suất tiếp thị trong ngày.</p>
                     </div>
                     <div className="bg-rose-950/40 px-4 py-2 rounded-xl text-xs font-mono border border-rose-500/20 text-rose-300">
-                      Thời gian hiện tại: 2026-05-22 06:09:05 UTC
+                      Cập nhật lúc: {new Date().toLocaleString('vi-VN')}
                     </div>
                   </div>
 
                   {/* Summary Metric Cards */}
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     {[
-                      { label: 'Tổng số khách hàng CRM', value: dashboardStats?.stats?.totalCustomers || 10, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
-                      { label: 'Lead Hot tiềm năng', value: dashboardStats?.stats?.leads?.hot || 3, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
-                      { label: 'Bất động sản mở bán', value: dashboardStats?.stats?.totalProperties || 8, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-                      { label: 'Bài quảng cáo đã tạo', value: dashboardStats?.stats?.totalPosts || 5, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-                      { label: 'Inbox chưa trả lời', value: dashboardStats?.stats?.pendingInbox || 14, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
+                      { label: 'Tổng số khách hàng CRM', value: dashboardData.stats.totalCustomers, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+                      { label: 'Lead Hot tiềm năng', value: dashboardData.stats.leads.hot, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
+                      { label: 'Bất động sản mở bán', value: dashboardData.stats.totalProperties, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+                      { label: 'Bài quảng cáo đã tạo', value: dashboardData.stats.totalPosts, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+                      { label: 'Inbox chưa trả lời', value: dashboardData.stats.pendingInbox, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
                       return (
@@ -692,7 +1087,7 @@ export default function App() {
                           <div>
                             <div className="text-3xl font-extrabold tracking-tight text-white">{stat.value}</div>
                             <div className="text-2xs text-slate-500 mt-1 flex items-center gap-1">
-                              <TrendingUp className="w-3 h-3 text-emerald-400" /> Active Realtime
+                              <TrendingUp className="w-3 h-3 text-emerald-400" /> Dữ liệu hiện tại
                             </div>
                           </div>
                         </div>
@@ -702,7 +1097,7 @@ export default function App() {
 
                   {/* Charts and Lists */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Platform effectiveness stats mock */}
+                    {/* Platform effectiveness stats */}
                     <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-white tracking-wide">Hiệu quả phễu Marketing theo Kênh</h3>
@@ -717,31 +1112,39 @@ export default function App() {
                       </div>
 
                       <div className="space-y-4">
-                        {[
-                          { name: 'Facebook ADS', reach: '12,400', progress: 'w-1/3', color: 'bg-indigo-500', eng: '2,450', leads: 45 },
-                          { name: 'Zalo OA', reach: '6,800', progress: 'w-1/5', color: 'bg-blue-400', eng: '1,890', leads: 32 },
-                          { name: 'TikTok Viral Reels', reach: '45,000', progress: 'w-4/5', color: 'bg-rose-500', eng: '8,200', leads: 58 },
-                          { name: 'Website SEO', reach: '18,200', progress: 'w-2/5', color: 'bg-emerald-400', eng: '5,600', leads: 64 },
-                        ].map((plat, i) => (
-                          <div key={i} className="space-y-1">
-                            <div className="grid grid-cols-4 items-center text-xs">
-                              <div className="font-bold text-slate-200">{plat.name}</div>
-                              <div className="text-center font-mono text-slate-400">{plat.reach}</div>
-                              <div className="text-center font-mono text-slate-400">{plat.eng}</div>
-                              <div className="text-right font-bold text-emerald-400">+{plat.leads} lead</div>
+                        {dashboardData.metrics.map((metric) => {
+                          const platform = metric.platform as Post['platform'];
+                          const meta = DASHBOARD_PLATFORM_META[platform];
+                          return (
+                            <div key={metric.platform} className="space-y-1">
+                              <div className="grid grid-cols-4 items-center text-xs">
+                                <div className="font-bold text-slate-200">{meta.name}</div>
+                                <div className="text-center font-mono text-slate-400">{metric.reach.toLocaleString('vi-VN')}</div>
+                                <div className="text-center font-mono text-slate-400">{metric.engagement.toLocaleString('vi-VN')}</div>
+                                <div className="text-right font-bold text-emerald-400">{metric.leads} lead</div>
+                              </div>
+                              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${meta.color}`}
+                                  style={{ width: `${(metric.reach / maxDashboardReach) * 100}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                              <div className={`h-full ${plat.color} ${plat.progress}`}></div>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-900 flex items-start gap-3 mt-4 text-xs text-slate-400 leading-relaxed">
                         <Cpu className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                         <div>
-                          <strong className="text-rose-400 block mb-0.5">Lời khuyên đề xuất từ AI Agent:</strong>
-                          Kênh <span className="text-rose-400 font-bold border-b border-rose-500/20">TikTok</span> đang đem lại lượng Reach đột phá cao nhất dòng sản phẩm đất nền Hòa Xuân. Hãy đẩy mạnh thêm 2 bài đăng kịch bản kịch tính và xuất bản ảnh render 3D để vớt thêm 15 lead nóng trong tuần này.
+                          <strong className="text-rose-400 block mb-0.5">Tổng hợp dữ liệu marketing:</strong>
+                          {topDashboardMetric.reach > 0 ? (
+                            <>
+                              Kênh <span className="text-rose-400 font-bold border-b border-rose-500/20">{DASHBOARD_PLATFORM_META[topDashboardMetric.platform as Post['platform']].name}</span> đang có reach cao nhất với {topDashboardMetric.reach.toLocaleString('vi-VN')} lượt xem. Số liệu được tổng hợp từ các bài đăng và lead hiện có trong hệ thống.
+                            </>
+                          ) : (
+                            'Chưa có dữ liệu tương tác từ các bài đăng để xác định kênh hiệu quả nhất.'
+                          )}
                         </div>
                       </div>
                     </div>
@@ -796,7 +1199,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-900">
-                          {customers.filter(c => c.lead_score >= 80).slice(0, 3).map((cust) => (
+                          {customers.filter(c => c.status === 'hot' && c.lead_score > 80).slice(0, 3).map((cust) => (
                             <tr key={cust.id} className="hover:bg-slate-900/30 transition-all">
                               <td className="py-3.5 px-4 font-bold text-white">{cust.name}</td>
                               <td className="py-3.5 px-4">
@@ -824,6 +1227,116 @@ export default function App() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <h3 className="text-sm font-bold text-white">Publish queue actions</h3>
+                          <p className="text-xs text-slate-500 mt-1">Facebook va Zalo duoc uu tien. Moi thao tac ben duoi deu goi API va luu database.</p>
+                        </div>
+                        <span className="text-2xs text-slate-500 font-mono">{publishPosts.length} posts</span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                        {publishPosts.map(post => (
+                          <div key={`publish-action-${post.id}`} className="border border-slate-800 rounded-lg p-4 bg-slate-950/40">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-white line-clamp-1">{post.title}</div>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <span className="uppercase text-2xs font-bold text-emerald-300">{post.platform}</span>
+                                  <span className="text-2xs text-slate-500">{post.status}</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(post.content)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-900 text-2xs font-bold"
+                                >
+                                  <Copy className="w-3 h-3" /> Copy
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePostStatusUpdate(post, 'scheduled')}
+                                  disabled={actionLoading === `post-scheduled-${post.id}` || post.status === 'published'}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-40 text-2xs font-bold"
+                                >
+                                  <Clock className="w-3 h-3" /> Schedule
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePostStatusUpdate(post, 'published')}
+                                  disabled={actionLoading === `post-published-${post.id}` || post.status === 'published'}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40 text-2xs font-bold"
+                                >
+                                  <Send className="w-3 h-3" /> Publish
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <h3 className="text-sm font-bold text-white">Generated content training</h3>
+                          <p className="text-xs text-slate-500 mt-1">Raw content va verified content cho Facebook/Zalo.</p>
+                        </div>
+                        <span className="text-2xs text-slate-500 font-mono">{priorityGeneratedContents.length} items</span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                        {priorityGeneratedContents.length === 0 && (
+                          <div className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg p-4">
+                            Chua co content sinh tu AI cho Facebook/Zalo. Hay generate content tu gio hang bat dong san truoc.
+                          </div>
+                        )}
+
+                        {priorityGeneratedContents.map(record => (
+                          <div key={record.id} className="border border-slate-800 rounded-lg p-4 bg-slate-950/40">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="uppercase text-2xs font-bold text-emerald-300">{record.channel}</span>
+                                <span className={`text-2xs px-2 py-0.5 rounded-full border ${
+                                  record.status === 'verified'
+                                    ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+                                    : 'text-amber-300 border-amber-500/30 bg-amber-500/10'
+                                }`}>
+                                  {record.status}
+                                </span>
+                              </div>
+                              <span className="text-2xs text-slate-600 font-mono">{record.created_at}</span>
+                            </div>
+                            <div className="text-xs font-semibold text-slate-300 mb-2">{record.property_title || 'No property linked'}</div>
+                            <p className="text-xs text-slate-400 whitespace-pre-line line-clamp-4 leading-relaxed">
+                              {record.verified_content || record.raw_content}
+                            </p>
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyText(record.verified_content || record.raw_content)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-900 text-2xs font-bold"
+                              >
+                                <Copy className="w-3 h-3" /> Copy
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleVerifyGeneratedContent(record)}
+                                disabled={record.status === 'verified' || actionLoading === `verify-content-${record.id}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40 text-2xs font-bold"
+                              >
+                                <CheckCircle2 className="w-3 h-3" /> Verify
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -960,18 +1473,62 @@ export default function App() {
                   {/* Property list grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProperties.map((prop) => (
-                      <div key={prop.id} className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group">
+                      <div key={prop.id} className={`bg-slate-900/40 rounded-2xl border overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group ${prop.sale_status === 'sold' ? 'border-emerald-700/50 opacity-80' : 'border-slate-900'}`}>
                         
-                        {/* Hero Image */}
-                        <div className="relative h-48 bg-slate-950 overflow-hidden shrink-0">
-                          <img 
-                            src={prop.images} 
-                            alt={prop.title} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500 opacity-80"
-                          />
+                        {/* Hero Image - Square Gallery */}
+                        <div className="relative aspect-square bg-slate-950 overflow-hidden shrink-0 group/gallery">
+                          {prop.gallery_images?.length ? (
+                            <>
+                              <img 
+                                src={prop.gallery_images[propertyGalleryIndex[prop.id] || 0]} 
+                                alt={prop.title} 
+                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-500 opacity-90"
+                              />
+                              {prop.gallery_images.length > 1 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const currentIndex = propertyGalleryIndex[prop.id] || 0;
+                                      const newIndex = currentIndex === 0 ? prop.gallery_images!.length - 1 : currentIndex - 1;
+                                      setPropertyGalleryIndex({ ...propertyGalleryIndex, [prop.id]: newIndex });
+                                    }}
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white p-1.5 rounded-lg opacity-0 group-hover/gallery:opacity-100 transition-opacity"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const currentIndex = propertyGalleryIndex[prop.id] || 0;
+                                      const newIndex = (currentIndex + 1) % prop.gallery_images!.length;
+                                      setPropertyGalleryIndex({ ...propertyGalleryIndex, [prop.id]: newIndex });
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white p-1.5 rounded-lg opacity-0 group-hover/gallery:opacity-100 transition-opacity"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white px-2 py-1 rounded-lg text-2xs font-bold">
+                                    {(propertyGalleryIndex[prop.id] || 0) + 1} / {prop.gallery_images.length}
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <img 
+                              src={prop.images} 
+                              alt={prop.title} 
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-500 opacity-80"
+                            />
+                          )}
                           <div className="absolute top-4 left-4 bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
                             {prop.type}
                           </div>
+                          {prop.sale_status === 'sold' && (
+                            <div className="absolute top-14 left-4 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
+                              ĐÃ BÁN
+                            </div>
+                          )}
                           <div className="absolute top-4 right-4 bg-rose-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold tracking-tight">
                             {prop.price} Tỷ VNĐ
                           </div>
@@ -990,10 +1547,20 @@ export default function App() {
                             <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
                               📍 {prop.location}
                             </p>
-                            <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                              {prop.description}
-                            </p>
+                            <MarkdownContent
+                              content={prop.rich_description || prop.description}
+                              compact
+                              className="line-clamp-3 text-xs leading-relaxed text-slate-400"
+                            />
                           </div>
+
+                          {prop.gallery_images?.length ? (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {prop.gallery_images.map((img, idx) => (
+                                <img key={idx} src={img} alt={`${prop.title} ${idx + 1}`} className="w-16 h-16 aspect-square rounded-lg object-cover object-center border border-slate-800 shrink-0" />
+                              ))}
+                            </div>
+                          ) : null}
 
                           <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-2.5 rounded-xl border border-slate-900/80 text-center text-xs font-semibold">
                             <div>
@@ -1022,8 +1589,48 @@ export default function App() {
                             </div>
                           </div>
 
+                          {prop.internal_notes && (
+                            <div className="bg-slate-950/50 border border-slate-900 rounded-xl p-3">
+                              <span className="block text-2xs font-bold text-amber-400 uppercase mb-1">Ghi chú AI/Search</span>
+                              <p className="text-2xs text-slate-400 leading-relaxed line-clamp-3">{prop.internal_notes}</p>
+                            </div>
+                          )}
+
                           {/* AI generated configuration buttons */}
-                          <div className="pt-4 border-t border-slate-900/80 flex items-center justify-between gap-3">
+                          <div className="pt-4 border-t border-slate-900/80 space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditPropertyModal(prop)}
+                                className="bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                                <span>Chỉnh sửa</span>
+                              </button>
+
+                              <label className="cursor-pointer bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all">
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>{actionLoading === `upload-prop-${prop.id}` ? 'Đang upload...' : 'Upload ảnh'}</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) => handlePropertyImageUpload(prop, e.target.files)}
+                                />
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopyText(buildPropertyCopyText(prop))}
+                                className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copy mô tả</span>
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
                             <div className="text-2xs text-slate-500 font-mono">
                               {prop.ai_posts?.facebook ? (
                                 <span className="text-emerald-400 flex items-center gap-1 font-bold">✓ Đã tối ưu AI</span>
@@ -1031,6 +1638,20 @@ export default function App() {
                                 <span className="text-slate-500 italic block">Chưa tối ưu marketing</span>
                               )}
                             </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePropertySold(prop)}
+                              disabled={actionLoading === `sold-prop-${prop.id}`}
+                              className={`border font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
+                                prop.sale_status === 'sold'
+                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50 hover:bg-emerald-900/60'
+                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-emerald-500/50 hover:text-emerald-300'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{prop.sale_status === 'sold' ? 'Đã bán' : 'Đánh dấu bán'}</span>
+                            </button>
 
                             <button
                               onClick={() => {
@@ -1043,6 +1664,7 @@ export default function App() {
                               <Sparkles className="w-3.5 h-3.5" />
                               <span>Sinh Content Marketing</span>
                             </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1074,7 +1696,9 @@ export default function App() {
                           value={selectedPropertyForAI?.id || ''}
                           onChange={(e) => {
                             const found = properties.find(p => p.id === e.target.value);
-                            if (found) setSelectedPropertyForAI(found);
+                            if (found) {
+                              setSelectedPropertyForAI(found);
+                            }
                           }}
                           className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
                         >
@@ -1104,6 +1728,7 @@ export default function App() {
                           <span className="text-2xs font-bold text-rose-400 uppercase">Thông tin BĐS Tóm lược</span>
                           <h4 className="text-xs font-bold text-white">{selectedPropertyForAI.title}</h4>
                           <p className="text-2xs text-slate-400 leading-relaxed max-h-24 overflow-y-auto">{selectedPropertyForAI.description}</p>
+                          <p className="text-2xs text-slate-500">Ảnh marketing sẽ dùng ảnh thật đầu tiên trong thư viện của BĐS này.</p>
                         </div>
                       )}
 
@@ -1113,7 +1738,7 @@ export default function App() {
                         className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
                       >
                         <Sparkles className="w-4 h-4" />
-                        <span>{actionLoading === `gen-prop-${selectedPropertyForAI?.id}` ? "Đang phát kiến nội dung..." : "Phát Kiến Nội Dung Bán Hàng Bằng AI"}</span>
+                        <span>{actionLoading === `gen-prop-${selectedPropertyForAI?.id}` ? "Đang lập chiến lược và viết bài..." : "Tạo Campaign & Content Đa Kênh"}</span>
                       </button>
                     </div>
 
@@ -1126,15 +1751,14 @@ export default function App() {
 
                       {selectedPropertyForAI?.ai_posts ? (
                         <div className="space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-900">
-                            {['facebook', 'zalo', 'tiktok', 'website', 'image_prompt', 'video_prompt'].map((plat) => (
+                          <div className="grid grid-cols-3 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-900">
+                            {['facebook', 'zalo', 'tiktok'].map((plat) => (
                               <button
                                 key={plat}
-                                className={`text-2xs py-1.5 px-2 rounded-lg font-bold capitalize transition-all truncate`}
+                                className="text-2xs py-1.5 px-2 rounded-lg font-bold capitalize transition-all truncate hover:bg-slate-800 text-slate-300"
                                 onClick={() => {
-                                  // Simply copy for user preview
                                   const text = selectedPropertyForAI.ai_posts?.[plat as keyof typeof selectedPropertyForAI.ai_posts];
-                                  if (text) handleCopyText(text);
+                                  if (typeof text === 'string') handleCopyText(text);
                                 }}
                               >
                                 {plat.replace('_', ' ')} 📋
@@ -1143,6 +1767,57 @@ export default function App() {
                           </div>
 
                           <div className="space-y-4">
+                            {selectedPropertyForAI.ai_posts.strategy && (
+                              <div className="p-4 bg-gradient-to-br from-indigo-950/50 to-slate-950 rounded-xl border border-indigo-500/20 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-indigo-300">Campaign Brief do AI phát triển</span>
+                                  <span className="text-3xs text-slate-500 uppercase">Chiến lược trước, content sau</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-2xs">
+                                  <div><span className="text-slate-500 block mb-1">Khách mục tiêu</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.target_customer}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Insight khách hàng</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.customer_insight}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Góc bán</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.campaign_angle}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Creative concept</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.creative_concept}</p></div>
+                                </div>
+                                <div className="pt-2 border-t border-indigo-500/10">
+                                  <span className="text-slate-500 text-2xs block mb-1">Thông điệp chủ đạo</span>
+                                  <p className="text-sm font-semibold text-white">{selectedPropertyForAI.ai_posts.strategy.key_message}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedPropertyForAI.ai_posts.seo && (
+                              <div className="p-4 bg-gradient-to-br from-emerald-950/40 to-slate-950 rounded-xl border border-emerald-500/20 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-emerald-300">Bộ SEO & Hashtag cho sản phẩm</span>
+                                  <button
+                                    onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.seo?.hashtags.join(' ') || '')}
+                                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" /> Copy hashtag
+                                  </button>
+                                </div>
+                                <div>
+                                  <span className="text-2xs text-slate-500 block mb-1">SEO title ({selectedPropertyForAI.ai_posts.seo.title.length}/60)</span>
+                                  <p className="text-sm font-semibold text-white">{selectedPropertyForAI.ai_posts.seo.title}</p>
+                                </div>
+                                <div>
+                                  <span className="text-2xs text-slate-500 block mb-1">Meta description ({selectedPropertyForAI.ai_posts.seo.meta_description.length}/155)</span>
+                                  <p className="text-xs leading-relaxed text-slate-300">{selectedPropertyForAI.ai_posts.seo.meta_description}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {selectedPropertyForAI.ai_posts.seo.hashtags.map(hashtag => (
+                                    <span key={hashtag} className="rounded-md bg-emerald-500/10 px-2 py-1 text-2xs font-semibold text-emerald-300">
+                                      {hashtag}
+                                    </span>
+                                  ))}
+                                </div>
+                                <p className="text-3xs text-slate-500">
+                                  SEO title/meta dùng cho Google. Hashtag được tự gắn vào Facebook và TikTok; Zalo giữ nội dung sạch.
+                                </p>
+                              </div>
+                            )}
+
                             {/* Facebook Section Column */}
                             {selectedPropertyForAI.ai_posts.facebook && (
                               <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
@@ -1169,24 +1844,65 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Prompts Section */}
-                            {(selectedPropertyForAI.ai_posts.image_prompt || selectedPropertyForAI.ai_posts.video_prompt) && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {selectedPropertyForAI.ai_posts.image_prompt && (
-                                  <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
-                                    <span className="text-2xs font-extrabold text-amber-400 uppercase flex items-center gap-1">
-                                      <ImageIcon className="w-3.5 h-3.5" /> Photographic Prompt (AI Images)
-                                    </span>
-                                    <p className="text-2xs text-slate-400 font-mono leading-relaxed line-clamp-3">{selectedPropertyForAI.ai_posts.image_prompt}</p>
-                                    <button 
-                                      onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.image_prompt || '')}
-                                      className="text-2xs text-rose-400 hover:underline block"
-                                    >
-                                      Sao chép Prompt Ảnh
-                                    </button>
-                                  </div>
-                                )}
+                            {/* TikTok Section */}
+                            {selectedPropertyForAI.ai_posts.tiktok && (
+                              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-rose-400">TikTok Reel Script 30-45 giây</span>
+                                  <button onClick={() => selectedPropertyForAI.ai_posts?.tiktok && handleCopyText(selectedPropertyForAI.ai_posts.tiktok)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5">
+                                    <Copy className="w-3.5 h-3.5" /> Copy
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed max-h-64 overflow-y-auto">{selectedPropertyForAI.ai_posts.tiktok}</p>
+                              </div>
+                            )}
 
+                            {/* Copy-ready image generation prompts */}
+                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                              <div>
+                                <span className="text-xs font-bold text-amber-400 block">Prompt tạo ảnh cho ChatGPT / Gemini</span>
+                                <span className="text-2xs text-slate-500">Tải hoặc đính kèm ảnh reference bên dưới vào ChatGPT/Gemini, sau đó copy prompt theo đúng kênh.</span>
+                              </div>
+                              {(selectedPropertyForAI.gallery_images?.[0] || selectedPropertyForAI.images) && (
+                                <div className="flex gap-3 items-center p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                                  <img
+                                    src={selectedPropertyForAI.gallery_images?.[0] || selectedPropertyForAI.images}
+                                    alt="Ảnh listing dùng làm reference"
+                                    className="w-20 h-20 rounded-lg object-cover"
+                                  />
+                                  <div className="text-2xs text-slate-400 leading-relaxed">
+                                    <strong className="text-slate-200 block mb-1">Ảnh reference cần đính kèm</strong>
+                                    Prompt yêu cầu AI tạo ảnh mới nhưng vẫn giữ đúng nhận diện và kiến trúc của tài sản này.
+                                  </div>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {(['facebook', 'zalo', 'tiktok'] as MarketingCreativeChannel[]).map(channel => {
+                                  const prompt = selectedPropertyForAI.ai_posts?.image_prompts?.[channel];
+                                  return (
+                                    <div key={channel} className="rounded-xl border border-slate-800 bg-slate-900 p-3 space-y-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-2xs font-bold text-slate-300">{MARKETING_CREATIVE_META[channel].label}</span>
+                                        <button
+                                          disabled={!prompt}
+                                          onClick={() => prompt && handleCopyText(prompt)}
+                                          className="text-2xs text-amber-400 disabled:text-slate-700 flex items-center gap-1"
+                                        >
+                                          <Copy className="w-3 h-3" /> Copy prompt
+                                        </button>
+                                      </div>
+                                      <p className="text-3xs text-slate-500 font-mono leading-relaxed line-clamp-6 whitespace-pre-line">
+                                        {prompt || 'Hãy tạo lại campaign để sinh prompt ảnh theo kênh.'}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Video prompt */}
+                            {selectedPropertyForAI.ai_posts.video_prompt && (
+                              <div className="grid grid-cols-1 gap-4">
                                 {selectedPropertyForAI.ai_posts.video_prompt && (
                                   <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
                                     <span className="text-2xs font-extrabold text-indigo-400 uppercase flex items-center gap-1">
@@ -1243,7 +1959,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-900">
-                          {filteredPosts.map((post) => (
+                          {publishPosts.map((post) => (
                             <tr key={post.id} className="hover:bg-slate-900/20 transition-all">
                               <td className="py-4 px-5 font-bold text-white">
                                 {post.title}
@@ -1460,7 +2176,9 @@ export default function App() {
                         <Bot className="w-5 h-5 text-rose-500" />
                         <div>
                           <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
-                          <span className="text-2xs text-emerald-400">Ollama/Gemini Online Engine</span>
+                          <span className="text-2xs text-emerald-400">
+                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
+                          </span>
                         </div>
                       </div>
 
@@ -1597,6 +2315,216 @@ export default function App() {
               )}
 
               {/* ==================================================== */}
+              {/* TAB 9: USER & PERMISSION MANAGEMENT */}
+              {/* ==================================================== */}
+              {activeTab === 'users' && canManageCmsUsers && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-rose-500" />
+                      User & Permission
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Owner quản lý toàn bộ user. Company admin chỉ tạo member và cấp quyền trong company/team của mình.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6">
+                    <form onSubmit={handleCreateUser} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      <div className="flex items-center gap-2 text-white font-bold text-sm">
+                        <UserPlus className="w-4 h-4 text-rose-400" />
+                        Tạo user mới
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-slate-400">Tên</label>
+                        <input
+                          value={newUserForm.name}
+                          onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                          placeholder="Sale Member"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-slate-400">Email</label>
+                        <input
+                          type="email"
+                          value={newUserForm.email}
+                          onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                          placeholder="member@example.com"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-slate-400">Password</label>
+                        <input
+                          type="password"
+                          value={newUserForm.password}
+                          onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                          placeholder="Mật khẩu đăng nhập"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400">Role</label>
+                          <select
+                            value={currentUser.role === 'company' ? 'member' : newUserForm.role}
+                            disabled={currentUser.role === 'company'}
+                            onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500 disabled:opacity-50"
+                          >
+                            {currentUser.role === 'owner' && <option value="owner">Owner</option>}
+                            {currentUser.role === 'owner' && <option value="company">Company Admin</option>}
+                            <option value="member">Member</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400">Company</label>
+                          <input
+                            value={currentUser.role === 'company' ? (currentUser.company_id || '') : newUserForm.company_id}
+                            disabled={currentUser.role === 'company'}
+                            onChange={(e) => setNewUserForm({ ...newUserForm, company_id: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500 disabled:opacity-50"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={actionLoading === 'create-user'}
+                        className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-3 rounded-xl transition-all"
+                      >
+                        {actionLoading === 'create-user' ? 'Đang tạo...' : 'Tạo user'}
+                      </button>
+                    </form>
+
+                    <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
+                      <div className="p-4 border-b border-slate-900 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold text-white">Danh sách user</h3>
+                          <p className="text-xs text-slate-500">{managedUsers.length} user trong phạm vi quản lý</p>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                          <thead className="text-xs uppercase text-slate-500 border-b border-slate-900">
+                            <tr>
+                              <th className="px-5 py-3">User</th>
+                              <th className="px-5 py-3">Role</th>
+                              <th className="px-5 py-3">Company</th>
+                              <th className="px-5 py-3">Status</th>
+                              <th className="px-5 py-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-900">
+                            {managedUsers.map(user => (
+                              <tr key={user.id} className="hover:bg-slate-900/30">
+                                <td className="px-5 py-4">
+                                  <div className="font-bold text-white">{user.name}</div>
+                                  <div className="text-2xs text-slate-500 font-mono">{user.email}</div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <span className="text-xs font-bold uppercase text-slate-300">{user.role}</span>
+                                </td>
+                                <td className="px-5 py-4 text-xs text-slate-400">{user.company_id || 'system'}</td>
+                                <td className="px-5 py-4">
+                                  <span className={`px-2.5 py-1 rounded-full text-2xs font-bold uppercase border ${
+                                    user.status === 'active'
+                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                      : 'bg-slate-800 text-slate-500 border-slate-700'
+                                  }`}>
+                                    {user.status}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-4 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleUserStatus(user)}
+                                    disabled={user.id === currentUser.id || actionLoading === `user-status-${user.id}`}
+                                    className="text-xs font-bold text-rose-400 hover:text-rose-300 disabled:opacity-40"
+                                  >
+                                    {user.status === 'active' ? 'Disable' : 'Enable'}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Cấp quyền tài nguyên cho Member</h3>
+                        <p className="text-xs text-slate-500">Member chỉ access được tài nguyên có tick trong danh sách này.</p>
+                      </div>
+                      <select
+                        value={selectedPermissionMemberId}
+                        onChange={(e) => setSelectedPermissionMemberId(e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                      >
+                        <option value="">Chọn member</option>
+                        {managedMembers.map(member => (
+                          <option key={member.id} value={member.id}>{member.name} - {member.email}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedPermissionMember ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        {[
+                          { key: 'properties' as const, title: 'Giỏ hàng BĐS', items: properties },
+                          { key: 'customers' as const, title: 'Khách hàng', items: customers },
+                          { key: 'posts' as const, title: 'Bài đăng', items: posts }
+                        ].map(section => (
+                          <div key={section.key} className="bg-slate-950/60 border border-slate-900 rounded-xl overflow-hidden">
+                            <div className="px-4 py-3 border-b border-slate-900">
+                              <div className="text-xs font-bold text-white">{section.title}</div>
+                              <div className="text-2xs text-slate-500">
+                                {section.items.filter(item => (item.assigned_member_ids || []).includes(selectedPermissionMember.id)).length}/{section.items.length} đã cấp
+                              </div>
+                            </div>
+                            <div className="max-h-80 overflow-y-auto app-scroll divide-y divide-slate-900">
+                              {section.items.map(item => {
+                                const checked = (item.assigned_member_ids || []).includes(selectedPermissionMember.id);
+                                const label = 'title' in item ? item.title : item.name;
+                                return (
+                                  <label key={item.id} className="flex items-start gap-3 px-4 py-3 text-xs cursor-pointer hover:bg-slate-900/50">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => handleToggleMemberAssignment(section.key, item, selectedPermissionMember.id)}
+                                      disabled={actionLoading === `assign-${section.key}-${item.id}`}
+                                      className="mt-0.5 accent-rose-600"
+                                    />
+                                    <span>
+                                      <span className="block font-semibold text-slate-200">{label}</span>
+                                      <span className="block text-2xs text-slate-500">{item.company_id || 'no-company'}</span>
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-slate-800 rounded-xl p-6 text-center text-xs text-slate-500">
+                        Chọn một member active để bắt đầu cấp quyền.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
               {/* TAB 9: INTEGRATIONS ACCOUNT */}
               {/* ==================================================== */}
               {activeTab === 'integrations' && (
@@ -1650,7 +2578,7 @@ export default function App() {
 
                         <div className="flex items-center justify-between text-3xs text-slate-500">
                           <span>Quét lần cuối: {chan.last_sync}</span>
-                          <button className="text-rose-400 hover:underline">Đã lưu cổng</button>
+                          <button type="button" className="text-rose-400 hover:underline">Đã lưu cổng</button>
                         </div>
                       </div>
                     ))}
@@ -1775,7 +2703,7 @@ export default function App() {
       {/* Modal Add Customer */}
       {showAddCustomerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-hidden space-y-6">
+          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh] space-y-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
                 <Users className="w-5 h-5 text-rose-500" /> Thêm khách hàng CRM mới
@@ -1924,17 +2852,18 @@ export default function App() {
       {/* Modal Add Property */}
       {showAddPropertyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-hidden space-y-6">
+          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh] space-y-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
-                <Home className="w-5 h-5 text-rose-500" /> Thêm bất động sản mới lên kệ
+                {editingProperty ? <Edit className="w-5 h-5 text-rose-500" /> : <Home className="w-5 h-5 text-rose-500" />}
+                {editingProperty ? 'Chỉnh sửa bất động sản' : 'Thêm bất động sản mới lên kệ'}
               </h3>
-              <button onClick={() => setShowAddPropertyModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={closePropertyModal} className="text-slate-400 hover:text-slate-200">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddProperty} className="space-y-4">
+            <form onSubmit={handleSaveProperty} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="block text-2xs font-semibold text-slate-400">Tiêu đề bất động sản</label>
@@ -1958,7 +2887,7 @@ export default function App() {
                     <option value="đất">Đất nền dự án</option>
                     <option value="nhà phố">Nhà phố đô thị</option>
                     <option value="căn hộ">Căn hộ Resort nghỉ dưỡng</option>
-                    <option value="shophouse">Shophouse Đại Lộ thương mại</option>
+                    <option value="shophouse">Shophouse - Đại Lộ thương mại</option>
                     <option value="nhà hàng">Nhà hàng / Khách sạn mini</option>
                   </select>
                 </div>
@@ -2051,6 +2980,76 @@ export default function App() {
               </div>
 
               <div className="space-y-1">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <label className="block text-2xs font-semibold text-slate-400">Mô tả Markdown để copy nhanh</label>
+                    <p className="mt-1 text-2xs text-slate-500">Dùng toolbar để định dạng và chèn icon. Nội dung copy giữ nguyên icon và Markdown.</p>
+                  </div>
+                </div>
+                <MarkdownEditor
+                  value={newPropertyForm.rich_description}
+                  onChange={(richDescription) => setNewPropertyForm({ ...newPropertyForm, rich_description: richDescription })}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Upload ảnh lưu trữ</label>
+                  <p className="text-2xs text-slate-500">Ảnh sẽ được tự động resize tối đa 1280px và nén trước khi lưu.</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={async (e) => {
+                      const uploaded = await readImageFiles(e.target.files);
+                      setNewPropertyForm({
+                        ...newPropertyForm,
+                        images: uploaded[0] || newPropertyForm.images,
+                        gallery_images: [...newPropertyForm.gallery_images, ...uploaded].slice(0, 8)
+                      });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200"
+                  />
+                  {newPropertyForm.gallery_images.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto pt-2">
+                      {newPropertyForm.gallery_images.map((img, idx) => (
+                        <div key={idx} className="relative shrink-0">
+                          <img src={img} alt={`Upload ${idx + 1}`} className="w-14 h-14 rounded-lg object-cover border border-slate-800" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const galleryImages = newPropertyForm.gallery_images.filter((_, imageIndex) => imageIndex !== idx);
+                              setNewPropertyForm({
+                                ...newPropertyForm,
+                                gallery_images: galleryImages,
+                                images: galleryImages[0] || ''
+                              });
+                            }}
+                            className="absolute -right-1 -top-1 rounded-full bg-rose-600 p-1 text-white shadow"
+                            aria-label="Xóa ảnh"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Trạng thái bán hàng</label>
+                  <select
+                    value={newPropertyForm.sale_status}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, sale_status: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="available">Đang bán</option>
+                    <option value="sold">Đã bán</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
                 <label className="block text-2xs font-semibold text-slate-400">Điểm nhấn bán hàng (Mỗi dòng một điểm)</label>
                 <textarea
                   rows={2}
@@ -2061,19 +3060,33 @@ export default function App() {
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="block text-2xs font-semibold text-slate-400">Ghi chú bổ sung cho AI/Search</label>
+                <textarea
+                  rows={3}
+                  value={newPropertyForm.internal_notes}
+                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, internal_notes: e.target.value })}
+                  placeholder="VD: chủ cần bán nhanh, thương lượng sâu, phù hợp khách đầu tư giữ tiền, ưu tiên khách có sẵn tiền..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowAddPropertyModal(false)}
+                  onClick={closePropertyModal}
                   className="bg-slate-950 hover:bg-slate-850 text-slate-400 text-xs px-4 py-2 rounded-xl border border-slate-800"
                 >
                   Bỏ qua
                 </button>
                 <button
                   type="submit"
-                  className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                  disabled={actionLoading === 'add-property' || actionLoading === `edit-prop-${editingProperty?.id}`}
+                  className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-xl transition-all shadow-md shadow-rose-600/10"
                 >
-                  Thêm mới BĐS
+                  {actionLoading === 'add-property' || actionLoading === `edit-prop-${editingProperty?.id}`
+                    ? 'Đang lưu...'
+                    : editingProperty ? 'Lưu thay đổi' : 'Thêm mới BĐS'}
                 </button>
               </div>
             </form>
