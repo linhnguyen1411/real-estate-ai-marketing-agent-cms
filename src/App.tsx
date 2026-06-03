@@ -1,0 +1,2086 @@
+import React, { useState, useEffect, FormEvent } from 'react';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Home, 
+  Sparkles, 
+  FileText, 
+  MessageSquare, 
+  Bot, 
+  Cpu, 
+  Layers, 
+  Settings as SettingsIcon, 
+  Plus, 
+  Search, 
+  Trash2, 
+  Edit, 
+  Check, 
+  Play, 
+  RefreshCw, 
+  TrendingUp, 
+  X, 
+  CheckCircle2, 
+  AlertCircle, 
+  Copy, 
+  Send,
+  Phone,
+  Mail,
+  MapPin,
+  DollarSign,
+  Video,
+  Image as ImageIcon,
+  ArrowRight,
+  ExternalLink
+} from 'lucide-react';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, AppSettings, MarketingChannel } from './types';
+import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
+import {
+  analyzeCustomer,
+  createCustomer,
+  createProperty,
+  generateInboxReply,
+  generatePropertyMarketing,
+  getAuthToken,
+  getCurrentUser,
+  getInitialAppData,
+  login,
+  logout,
+  runDemoAutomations,
+  saveSettings,
+  sendAssistantMessage,
+  sendInboxReply,
+  toggleAutomation
+} from './services/api';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [loginEmail, setLoginEmail] = useState<string>('owner@example.com');
+  const [loginPassword, setLoginPassword] = useState<string>('owner123');
+  const [loginError, setLoginError] = useState<string>('');
+  
+  // App variables states
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [inbox, setInbox] = useState<InboxMessage[]>([]);
+  const [automations, setAutomations] = useState<AutomationTask[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [channels, setChannels] = useState<MarketingChannel[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  
+  // Loading & interactive states
+  const [loading, setLoading] = useState<boolean>(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Chatbot states
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([ASSISTANT_WELCOME_MESSAGE]);
+  const [userChatInput, setUserChatInput] = useState<string>('');
+
+  // Modals & form fields state
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({
+    name: '', phone: '', email: '', source: 'facebook', budget: '5', 
+    interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'đất nền', status: 'new', notes: ''
+  });
+
+  const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
+  const [newPropertyForm, setNewPropertyForm] = useState({
+    title: '', type: 'đất', location: '', area: '100', price: '4.5',
+    legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
+    description: '', selling_points: ''
+  });
+
+  const [selectedPropertyForAI, setSelectedPropertyForAI] = useState<Property | null>(null);
+  const [aiGeneratingTone, setAiGeneratingTone] = useState<string>('sang trọng và chuyên nghiệp');
+
+  const [selectedInboxMessage, setSelectedInboxMessage] = useState<InboxMessage | null>(null);
+  const [responseReplyText, setResponseReplyText] = useState<string>('');
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    const restoreSession = async () => {
+      if (!getAuthToken()) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        logout();
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  // Read data from API server entry
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      const data = await getInitialAppData();
+      setDashboardStats(data.dashboard);
+      setCustomers(data.customers);
+      setProperties(data.properties);
+      setPosts(data.posts);
+      setInbox(data.inbox);
+      setAutomations(data.automations);
+      setSettings(data.settings);
+      setChannels(data.channels);
+
+    } catch (e: any) {
+      console.error("Connection to APIs failed, utilizing db.json directly if cached...", e);
+      showToast(e.message || "Lỗi kết nối API Server. Hãy kiểm tra logs backend hoặc reload trang.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchAllData();
+    }
+  }, [activeTab, currentUser]);
+
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setAuthLoading(true);
+
+    try {
+      const session = await login(loginEmail, loginPassword);
+      setCurrentUser(session.user);
+      setActiveTab('dashboard');
+    } catch (error: any) {
+      setLoginError(error.message || 'Đăng nhập thất bại.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setCurrentUser(null);
+    setCustomers([]);
+    setProperties([]);
+    setPosts([]);
+    setInbox([]);
+    setAutomations([]);
+    setDashboardStats(null);
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Safe helper to copy text
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast("Đã sao chép vào bộ nhớ tạm thành công!", "success");
+  };
+
+  // AI customer optimization
+  const handleAICodeAnalyzeCustomer = async (id: string) => {
+    setActionLoading(`analyze-cust-${id}`);
+    try {
+      const customer = await analyzeCustomer(id);
+      showToast(`AI đã phân tích chấm điểm tiềm năng: ${customer.lead_score} điểm.`, 'success');
+      setCustomers(prev => prev.map(c => c.id === id ? customer : c));
+    } catch (e: any) {
+      showToast(e.message || "Lỗi liên kết AI phân tích.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // AI property marketing content generator
+  const handleAIGeneratePropertyMarketing = async (propId: string) => {
+    setActionLoading(`gen-prop-${propId}`);
+    try {
+      const property = await generatePropertyMarketing(propId, aiGeneratingTone);
+      showToast("Tự động hóa AI Content hoàn tất! Bản kịch bản đã được lưu nháp trong Posts CMS.", "success");
+      setProperties(prev => prev.map(p => p.id === propId ? property : p));
+      setSelectedPropertyForAI(property);
+    } catch (e: any) {
+      showToast(e.message || "Lỗi liên tuyến AI Marketing.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // AI Inbox reply smart suggestion
+  const handleAILiveReplySuggestion = async (msgId: string) => {
+    setActionLoading(`reply-sugg-${msgId}`);
+    try {
+      const message = await generateInboxReply(msgId);
+      showToast("AI đã soạn thành công kịch bản trả lời khách!", "success");
+      setInbox(prev => prev.map(m => m.id === msgId ? message : m));
+      setResponseReplyText(message.ai_reply_suggestion || '');
+    } catch (e: any) {
+      showToast(e.message || "Lỗi soạn kịch bản từ Ollama/Gemini.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Submit reply message simulated
+  const handleSendManualReply = async (msgId: string) => {
+    if (!responseReplyText.trim()) {
+      showToast("Vui lòng điền nội dung câu trả lời", "error");
+      return;
+    }
+    setActionLoading(`send-reply-${msgId}`);
+    try {
+      const message = await sendInboxReply(msgId, responseReplyText);
+      showToast("Đã gửi phản hồi thành công và cập nhật trạng thái đã xử lý!", "success");
+      setInbox(prev => prev.map(m => m.id === msgId ? message : m));
+      setSelectedInboxMessage(null);
+      setResponseReplyText('');
+    } catch (e: any) {
+      showToast(e.message || "Lỗi gửi.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Submit add customer
+  const handleAddCustomer = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const customer = await createCustomer(newCustomerForm);
+      showToast("Đã thêm khách hàng mới thành công!", "success");
+      setCustomers(prev => [customer, ...prev]);
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({
+        name: '', phone: '', email: '', source: 'facebook', budget: '5', 
+        interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'đất nền', status: 'new', notes: ''
+      });
+    } catch (e: any) {
+      showToast(e.message || "Lỗi thêm khách.", "error");
+    }
+  };
+
+  // Submit add property
+  const handleAddProperty = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const property = await createProperty({
+        ...newPropertyForm,
+        selling_points: newPropertyForm.selling_points.split('\n').filter(line => line.trim())
+      });
+      showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
+      setProperties(prev => [property, ...prev]);
+      setShowAddPropertyModal(false);
+      setNewPropertyForm({
+        title: '', type: 'đất', location: '', area: '100', price: '4.5',
+        legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
+        description: '', selling_points: ''
+      });
+    } catch (e: any) {
+      showToast(e.message || "Lỗi thêm.", "error");
+    }
+  };
+
+  // Toggle automation trigger
+  const handleToggleAutomation = async (id: string) => {
+    try {
+      const automation = await toggleAutomation(id);
+      showToast(`Đã ${automation.status === 'active' ? 'bật' : 'tắt'} kịch bản tự động hóa!`, 'info');
+      setAutomations(prev => prev.map(a => a.id === id ? automation : a));
+    } catch (e: any) {
+      showToast(e.message || "Lỗi thao tác tự động hóa.", "error");
+    }
+  };
+
+  // Run manually test automation reports
+  const handleRunDemoAutomations = async () => {
+    setActionLoading('run-automations');
+    try {
+      const updatedAutomations = await runDemoAutomations();
+      showToast("Đã kích hoạt toàn bộ kịch bản tự động hóa và đồng bộ logs!", "success");
+      setAutomations(updatedAutomations);
+    } catch (e: any) {
+      showToast(e.message || "Lỗi kiểm thử.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Send direct chat message to Assistant Chatbot
+  const handleSendChatbotMessage = async () => {
+    if (!userChatInput.trim()) return;
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: userChatInput,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setChatMessages(prev => [...prev, userMsg]);
+    setUserChatInput('');
+    setActionLoading('chatbot-chat');
+    
+    try {
+      const assistantReply = await sendAssistantMessage(userMsg.content);
+      setChatMessages(prev => [...prev, {
+        role: 'model',
+        content: assistantReply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } catch (e: any) {
+      showToast(e.message || "Lỗi kết nối server AI.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Update Settings Configuration
+  const handleSaveSettings = async (e: FormEvent) => {
+    e.preventDefault();
+    setActionLoading('save-settings');
+    try {
+      const updatedSettings = await saveSettings(settings);
+      showToast("Đã lưu thiết lập cấu hình AI thành công!", "success");
+      setSettings(updatedSettings);
+    } catch (e: any) {
+      showToast(e.message || "Lỗi lưu.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Filter lists based on lookup
+  const filteredCustomers = customers.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.phone.includes(searchQuery) || 
+    c.interested_area.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.property_type.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredProperties = properties.filter(p => 
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.type.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredPosts = posts.filter(pos => 
+    pos.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    pos.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (authLoading && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
+        <div className="text-sm text-slate-400">Đang kiểm tra phiên đăng nhập...</div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    const demoAccounts = [
+      { label: 'Owner', email: 'owner@example.com', password: 'owner123', note: 'Toàn quyền hệ thống' },
+      { label: 'Company Admin', email: 'admin@danang.example.com', password: 'admin123', note: 'Quản lý company/team' },
+      { label: 'Member', email: 'member-a@danang.example.com', password: 'member123', note: 'Chỉ tài nguyên được cấp phát' }
+    ];
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 items-stretch">
+          <section className="flex flex-col justify-center">
+            <div className="inline-flex items-center gap-2 text-rose-300 text-xs font-bold uppercase tracking-wider mb-5">
+              <Sparkles className="w-4 h-4" />
+              Real Estate AI Marketing Agent CMS
+            </div>
+            <h1 className="text-4xl font-bold text-white leading-tight mb-4">Đăng nhập để quản lý CRM, tài nguyên team và AI Assistant</h1>
+            <p className="text-slate-400 text-sm leading-7 max-w-2xl">
+              Owner có toàn quyền. Company Admin chỉ quản lý dữ liệu của company/team. Member chỉ truy cập tài nguyên được admin client cấp phát.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-8">
+              {demoAccounts.map(account => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => {
+                    setLoginEmail(account.email);
+                    setLoginPassword(account.password);
+                  }}
+                  className="text-left bg-slate-900 border border-slate-800 hover:border-rose-500/60 rounded-lg p-4 transition-colors"
+                >
+                  <div className="text-sm font-bold text-white">{account.label}</div>
+                  <div className="text-xs text-slate-500 mt-1">{account.note}</div>
+                  <div className="text-[11px] text-slate-400 font-mono mt-3 break-all">{account.email}</div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-2xl space-y-5">
+            <div>
+              <h2 className="text-xl font-bold text-white">Login</h2>
+              <p className="text-xs text-slate-500 mt-1">Dùng tài khoản demo hoặc thông tin trong database seed.</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-400">Email</label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-400">Password</label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm outline-none focus:border-rose-500"
+              />
+            </div>
+
+            {loginError && (
+              <div className="text-xs text-rose-200 bg-rose-950/50 border border-rose-900 rounded-lg px-3 py-2">{loginError}</div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-sm py-3 rounded-lg transition-colors"
+            >
+              {authLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
+      
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 ${
+          toast.type === 'success' ? 'bg-emerald-950/95 border border-emerald-500 text-emerald-200' :
+          toast.type === 'error' ? 'bg-rose-950/95 border border-rose-500 text-rose-200' :
+          'bg-slate-900 border border-indigo-500 text-indigo-200'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-rose-400" />}
+          <span className="font-medium text-sm leading-relaxed">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-200 ml-2">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Top Banner Alert / Workspace Header */}
+      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-tr from-rose-600 to-amber-500 rounded-xl">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+              Real Estate AI Marketing Agent CMS
+            </h1>
+            <p className="text-xs text-slate-500 font-mono">MVP Production Framework v1.0 • Connected • Việt Nam</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden lg:flex flex-col items-end leading-tight">
+            <span className="text-xs font-bold text-slate-200">{currentUser.name}</span>
+            <span className="text-[11px] text-slate-500 uppercase">
+              {currentUser.role}{currentUser.company_name ? ` · ${currentUser.company_name}` : ''}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs font-semibold text-slate-300">
+              AI Powered: <span className="text-rose-400 uppercase font-bold">{settings.ai_mode} ({settings.ai_mode === 'openai' ? settings.openai_model : settings.ollama_model})</span>
+            </span>
+          </div>
+
+          <button 
+            onClick={fetchAllData}
+            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="px-3 py-2 text-xs font-bold text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-rose-500/60 transition-all"
+          >
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden h-[calc(100vh-73px)]">
+        
+        {/* Navigation Sidebar */}
+        <aside className="w-64 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto">
+          <div className="space-y-1">
+            <div className="px-3 py-2 text-xs font-semibold text-slate-600 tracking-wider uppercase">Menu chính</div>
+            {[
+              { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
+              { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
+              { id: 'properties', label: 'Giỏ hàng Bất động sản', icon: Home, badge: properties.length },
+              { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
+              { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
+              { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
+              { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
+              { id: 'automations', label: 'Automation AI Center', icon: Cpu },
+              { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
+              { id: 'settings', label: 'Cấu hình hệ thống', icon: SettingsIcon },
+            ].map(item => {
+              const IconComp = item.icon;
+              const isSelected = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setSearchQuery('');
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+                    isSelected 
+                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold' 
+                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <IconComp className={`w-4 h-4 transition-transform group-hover:scale-110 ${isSelected ? 'text-rose-500' : 'text-slate-500'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-900 text-center space-y-3 mt-4">
+            <h4 className="text-xs font-semibold text-rose-400">Sandbox Developer</h4>
+            <p className="text-2xs text-slate-400 leading-relaxed">
+              Tích hợp hệ thống Ollama cục bộ qua endpoint http://localhost:11434 với các model chất lượng Llama3.1 hoặc Qwen2.5.
+            </p>
+            <button
+              onClick={handleRunDemoAutomations}
+              disabled={actionLoading === 'run-automations'}
+              className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
+            >
+              <Cpu className="w-3.5 h-3.5 text-rose-500" />
+              <span>Chạy Thử Nghiệm Automation</span>
+            </button>
+          </div>
+        </aside>
+
+        {/* Outer Content Area */}
+        <main className="flex-1 bg-slate-950/40 p-6 overflow-y-auto space-y-6">
+
+          {/* Search bar inside view headers */}
+          {['crm', 'properties', 'posts'].includes(activeTab) && (
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-900">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="text"
+                  placeholder={`Tìm kiếm nhanh theo tên, địa lý hoặc chủng loại...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-900 focus:border-rose-500/50 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-3.5 text-slate-500 hover:text-slate-300">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {activeTab === 'crm' && (
+                <button
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm Khách Hàng CRM</span>
+                </button>
+              )}
+
+              {activeTab === 'properties' && (
+                <button
+                  onClick={() => setShowAddPropertyModal(true)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm Bất Động Sản</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Loading Indicator */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-24 space-y-4">
+              <div className="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
+              <p className="text-slate-400 text-sm font-mono animate-pulse">Đang nạp nhanh dữ liệu thời gian thực...</p>
+            </div>
+          )}
+
+          {/* Module Views */}
+          {!loading && (
+            <>
+              {/* ==================================================== */}
+              {/* TAB 1: DASHBOARD OVERVIEW */}
+              {/* ==================================================== */}
+              {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                  {/* Heading header */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                        Bảng điều khiển Tổng quan
+                      </h2>
+                      <p className="text-slate-400 text-sm">Cập nhật và theo dõi hiệu suất tiếp thị trong ngày.</p>
+                    </div>
+                    <div className="bg-rose-950/40 px-4 py-2 rounded-xl text-xs font-mono border border-rose-500/20 text-rose-300">
+                      Thời gian hiện tại: 2026-05-22 06:09:05 UTC
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    {[
+                      { label: 'Tổng số khách hàng CRM', value: dashboardStats?.stats?.totalCustomers || 10, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+                      { label: 'Lead Hot tiềm năng', value: dashboardStats?.stats?.leads?.hot || 3, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
+                      { label: 'Bất động sản mở bán', value: dashboardStats?.stats?.totalProperties || 8, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+                      { label: 'Bài quảng cáo đã tạo', value: dashboardStats?.stats?.totalPosts || 5, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+                      { label: 'Inbox chưa trả lời', value: dashboardStats?.stats?.pendingInbox || 14, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
+                    ].map((stat, idx) => {
+                      const Icon = stat.icon;
+                      return (
+                        <div key={idx} className={`p-4 rounded-2xl border bg-slate-900/40 flex flex-col justify-between h-32 ${stat.color}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-400 tracking-wide">{stat.label}</span>
+                            <Icon className="w-5 h-5 opacity-80" />
+                          </div>
+                          <div>
+                            <div className="text-3xl font-extrabold tracking-tight text-white">{stat.value}</div>
+                            <div className="text-2xs text-slate-500 mt-1 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-emerald-400" /> Active Realtime
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Charts and Lists */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Platform effectiveness stats mock */}
+                    <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white tracking-wide">Hiệu quả phễu Marketing theo Kênh</h3>
+                        <span className="text-2xs text-slate-400 font-mono">Đồng bộ tự động</span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 pt-2 text-center text-xs text-slate-400 font-medium pb-2 border-b border-slate-900">
+                        <div className="text-left font-semibold text-slate-300">Nền tảng</div>
+                        <div>Reach (Lượt xem)</div>
+                        <div>Engagement</div>
+                        <div className="text-right">Lead Thu được</div>
+                      </div>
+
+                      <div className="space-y-4">
+                        {[
+                          { name: 'Facebook ADS', reach: '12,400', progress: 'w-1/3', color: 'bg-indigo-500', eng: '2,450', leads: 45 },
+                          { name: 'Zalo OA', reach: '6,800', progress: 'w-1/5', color: 'bg-blue-400', eng: '1,890', leads: 32 },
+                          { name: 'TikTok Viral Reels', reach: '45,000', progress: 'w-4/5', color: 'bg-rose-500', eng: '8,200', leads: 58 },
+                          { name: 'Website SEO', reach: '18,200', progress: 'w-2/5', color: 'bg-emerald-400', eng: '5,600', leads: 64 },
+                        ].map((plat, i) => (
+                          <div key={i} className="space-y-1">
+                            <div className="grid grid-cols-4 items-center text-xs">
+                              <div className="font-bold text-slate-200">{plat.name}</div>
+                              <div className="text-center font-mono text-slate-400">{plat.reach}</div>
+                              <div className="text-center font-mono text-slate-400">{plat.eng}</div>
+                              <div className="text-right font-bold text-emerald-400">+{plat.leads} lead</div>
+                            </div>
+                            <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                              <div className={`h-full ${plat.color} ${plat.progress}`}></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-900 flex items-start gap-3 mt-4 text-xs text-slate-400 leading-relaxed">
+                        <Cpu className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="text-rose-400 block mb-0.5">Lời khuyên đề xuất từ AI Agent:</strong>
+                          Kênh <span className="text-rose-400 font-bold border-b border-rose-500/20">TikTok</span> đang đem lại lượng Reach đột phá cao nhất dòng sản phẩm đất nền Hòa Xuân. Hãy đẩy mạnh thêm 2 bài đăng kịch bản kịch tính và xuất bản ảnh render 3D để vớt thêm 15 lead nóng trong tuần này.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Automation triggers visual logs */}
+                    <div className="lg:col-span-5 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white tracking-wide">Nhật ký Tự Động Hóa Thực Tế</h3>
+                        <span className="text-2xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">Live</span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                        {automations.flatMap(a => a.logs.map(log => ({ name: a.name, log }))).slice(0, 5).map((item, idx) => (
+                          <div key={idx} className="p-3 bg-slate-950/60 rounded-xl border border-slate-900 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-slate-500 font-mono text-2xs">
+                              <span className="text-rose-400 font-semibold">{item.name}</span>
+                              <span>Chúng tôi vừa chạy</span>
+                            </div>
+                            <p className="text-slate-300 leading-relaxed">{item.log}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={() => setActiveTab('automations')}
+                        className="w-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-xs py-2.5 rounded-xl transition-all font-semibold"
+                      >
+                        Mở Trung Tâm Tự Động Hóa Automation
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Hot leads to handle immediately table summary */}
+                  <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white">Khách hàng cần liên hệ khẩn cấp (Lead Score &gt; 80)</h3>
+                      <button onClick={() => setActiveTab('crm')} className="text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1">
+                        Tất cả khách hàng <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-900 text-xs uppercase tracking-wider text-slate-500">
+                            <th className="py-3 px-4">Tên khách hàng</th>
+                            <th className="py-3 px-4">Nhu cầu & Vị trí</th>
+                            <th className="py-3 px-4">Ngân sách</th>
+                            <th className="py-3 px-4">Lead Score</th>
+                            <th className="py-3 px-4">AI tóm lược tóm tắt</th>
+                            <th className="py-3 px-4 text-right">Hành động khuyên dùng</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-900">
+                          {customers.filter(c => c.lead_score >= 80).slice(0, 3).map((cust) => (
+                            <tr key={cust.id} className="hover:bg-slate-900/30 transition-all">
+                              <td className="py-3.5 px-4 font-bold text-white">{cust.name}</td>
+                              <td className="py-3.5 px-4">
+                                <span className="text-rose-400 font-semibold">{cust.property_type}</span> ở {cust.interested_area}
+                              </td>
+                              <td className="py-3.5 px-4 text-amber-400 font-mono font-semibold">{cust.budget} tỷ VND</td>
+                              <td className="py-3.5 px-4">
+                                <span className="px-2 py-1 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 font-extrabold font-mono text-xs">
+                                  {cust.lead_score} 🔥
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-xs text-slate-400 max-w-xs truncate">{cust.ai_summary}</td>
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('chatbot');
+                                    setUserChatInput(`Đề xuất kế hoạch marketing và tóm tắt chăm sóc khách hàng ${cust.name}`);
+                                  }}
+                                  className="text-xs bg-slate-950 border border-slate-800 hover:border-rose-500 hover:text-white px-3 py-1.5 rounded-lg transition-all"
+                                >
+                                  Hỏi chatbot AI
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 2: CRM CUSTOMERS MANAGEMENT */}
+              {/* ==================================================== */}
+              {activeTab === 'crm' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        Quản lý khách hàng CRM
+                      </h2>
+                      <p className="text-slate-400 text-sm">Quản lý vòng đời khách hàng bất động sản và kích hoạt AI Agent phân tích hành vi.</p>
+                    </div>
+                  </div>
+
+                  {/* Customer Records Table/Grid */}
+                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-900 text-xs uppercase tracking-wider text-slate-500">
+                            <th className="py-4 px-5">Tên khách hàng</th>
+                            <th className="py-4 px-5">Liên hệ</th>
+                            <th className="py-4 px-5">Nguồn</th>
+                            <th className="py-4 px-5">Khu vực quan tâm / Budget</th>
+                            <th className="py-4 px-5">Trạng thái</th>
+                            <th className="py-4 px-5">Chỉ số tiềm năng & Ghi chú thực tế</th>
+                            <th className="py-4 px-5 text-right">Thao tác AI Agent</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-900">
+                          {filteredCustomers.map((cust) => (
+                            <tr key={cust.id} className="hover:bg-slate-900/20 transition-all even:bg-slate-900/10">
+                              <td className="py-4 px-5">
+                                <div className="font-bold text-white">{cust.name}</div>
+                                <span className="text-xs text-slate-500 font-mono">ID: {cust.id}</span>
+                              </td>
+                              <td className="py-4 px-5 space-y-1">
+                                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                                  <Phone className="w-3 h-3 text-slate-500" /> {cust.phone}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                                  <Mail className="w-3 h-3 text-slate-500" /> {cust.email || 'N/A'}
+                                </div>
+                              </td>
+                              <td className="py-4 px-5">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
+                                  cust.source === 'facebook' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' :
+                                  cust.source === 'zalo' ? 'bg-sky-600/10 text-sky-400 border border-sky-500/20' :
+                                  cust.source === 'tiktok' ? 'bg-pink-600/10 text-pink-400 border border-pink-500/20' :
+                                  'bg-slate-900 text-slate-400'
+                                }`}>
+                                  {cust.source}
+                                </span>
+                              </td>
+                              <td className="py-4 px-5 space-y-1">
+                                <div className="font-bold text-slate-200">
+                                  <span className="capitalize">{cust.property_type}</span> @ {cust.interested_area}
+                                </div>
+                                <div className="text-xs text-amber-400 font-bold font-mono">Bán kính: {cust.budget} tỷ VND</div>
+                              </td>
+                              <td className="py-4 px-5">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                                  cust.status === 'hot' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                  cust.status === 'warm' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                  cust.status === 'new' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                                  cust.status === 'closed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                  'bg-slate-800 text-slate-500'
+                                }`}>
+                                  {cust.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="py-4 px-5 max-w-sm space-y-2">
+                                <p className="text-xs text-slate-300 italic">“{cust.notes || 'Chưa có ghi chú.'}”</p>
+                                
+                                {cust.ai_summary && (
+                                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-900 space-y-1.5">
+                                    <span className="text-rose-400 text-2xs font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <Sparkles className="w-3.5 h-3.5" /> AI Tóm lược & Chỉ dẫn bán hàng
+                                    </span>
+                                    <p className="text-xs text-slate-400 leading-relaxed font-sans">{cust.ai_summary}</p>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-4 px-5 text-right space-y-2">
+                                <div className="flex flex-col items-end gap-1.5">
+                                  <div className="text-xs font-mono text-slate-400 mb-1">
+                                    Tiềm năng: <span className="font-bold text-white">{cust.lead_score} pts</span>
+                                  </div>
+                                  <button
+                                    onClick={() => handleAICodeAnalyzeCustomer(cust.id)}
+                                    disabled={actionLoading === `analyze-cust-${cust.id}`}
+                                    className="text-xs bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md hover:shadow-rose-600/20 transition-all"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>{actionLoading === `analyze-cust-${cust.id}` ? "Đang chạy..." : "Phân tích AI"}</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setActiveTab('chatbot');
+                                      setUserChatInput(`Viết bài bán lô đất hợp gu khách hàng ${cust.name} dựa trên tài chính của họ.`);
+                                    }}
+                                    className="text-2xs text-slate-400 hover:text-rose-400 underline"
+                                  >
+                                    Tạo bài gửi khách
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 3: PROPERTIES DIRECTORY */}
+              {/* ==================================================== */}
+              {activeTab === 'properties' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Giỏ hàng Bất động sản
+                    </h2>
+                    <p className="text-slate-400 text-sm">Chi tiết thông tin bất động sản, sổ đỏ, và tính năng tiếp thị tự động.</p>
+                  </div>
+
+                  {/* Property list grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredProperties.map((prop) => (
+                      <div key={prop.id} className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group">
+                        
+                        {/* Hero Image */}
+                        <div className="relative h-48 bg-slate-950 overflow-hidden shrink-0">
+                          <img 
+                            src={prop.images} 
+                            alt={prop.title} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500 opacity-80"
+                          />
+                          <div className="absolute top-4 left-4 bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
+                            {prop.type}
+                          </div>
+                          <div className="absolute top-4 right-4 bg-rose-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold tracking-tight">
+                            {prop.price} Tỷ VNĐ
+                          </div>
+                          
+                          <div className="absolute bottom-4 left-4 bg-slate-950/80 px-2.5 py-1 rounded-lg text-2xs text-slate-300 flex items-center gap-1 border border-slate-900">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500" /> {prop.direction}
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                          <div className="space-y-2">
+                            <h3 className="line-clamp-2 text-md font-bold text-white leading-relaxed group-hover:text-rose-400 transition-colors">
+                              {prop.title}
+                            </h3>
+                            <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                              📍 {prop.location}
+                            </p>
+                            <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                              {prop.description}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-2.5 rounded-xl border border-slate-900/80 text-center text-xs font-semibold">
+                            <div>
+                              <span className="block text-2xs text-slate-500">Diện tích</span>
+                              <span className="text-slate-200">{prop.area} m²</span>
+                            </div>
+                            <div>
+                              <span className="block text-2xs text-slate-500">Pháp lý</span>
+                              <span className="text-slate-200 truncate block">{prop.legal_status}</span>
+                            </div>
+                            <div>
+                              <span className="block text-2xs text-slate-500">Lòng đường</span>
+                              <span className="text-slate-200">{prop.road_width} m</span>
+                            </div>
+                          </div>
+
+                          {/* Key Selling Points Bullet points */}
+                          <div className="space-y-1">
+                            <span className="block text-2xs font-semibold uppercase text-slate-500">Đặc điểm nổi trội:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {prop.selling_points.map((pt, idx) => (
+                                <span key={idx} className="bg-slate-950 text-slate-400 border border-slate-900 text-2xs px-2 py-0.5 rounded-lg">
+                                  ✓ {pt}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* AI generated configuration buttons */}
+                          <div className="pt-4 border-t border-slate-900/80 flex items-center justify-between gap-3">
+                            <div className="text-2xs text-slate-500 font-mono">
+                              {prop.ai_posts?.facebook ? (
+                                <span className="text-emerald-400 flex items-center gap-1 font-bold">✓ Đã tối ưu AI</span>
+                              ) : (
+                                <span className="text-slate-500 italic block">Chưa tối ưu marketing</span>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                setSelectedPropertyForAI(prop);
+                                setAiGeneratingTone('sang trọng và chuyên nghiệp');
+                                setActiveTab('ai-content');
+                              }}
+                              className="bg-slate-950 hover:bg-rose-950 hover:text-rose-300 border border-slate-800 hover:border-rose-500/40 text-rose-400 font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Sinh Content Marketing</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 4: AI CONTENT GENERATOR */}
+              {/* ==================================================== */}
+              {activeTab === 'ai-content' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      AI Content & Prompt Generator Hub
+                    </h2>
+                    <p className="text-slate-400 text-sm">Thiết lập tham số bài đăng quảng cáo và yêu cầu AI tự tạo nội dung đa kênh.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Control Parameter Input */}
+                    <div className="lg:col-span-5 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      <h3 className="text-sm font-bold text-white">Thao tác cấu hình</h3>
+                      
+                      <div className="space-y-3">
+                        <label className="block text-xs font-semibold text-slate-400">1. Chọn sản phẩm bất động sản tiếp thị</label>
+                        <select
+                          value={selectedPropertyForAI?.id || ''}
+                          onChange={(e) => {
+                            const found = properties.find(p => p.id === e.target.value);
+                            if (found) setSelectedPropertyForAI(found);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
+                        >
+                          <option value="">-- Click để chọn bất động sản cần truyền thông --</option>
+                          {properties.map(p => (
+                            <option key={p.id} value={p.id}>{p.title} - ({p.price} Tỷ)</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="block text-xs font-semibold text-slate-400">2. Chọn giọng văn AI Agent truyền tải</label>
+                        <select
+                          value={aiGeneratingTone}
+                          onChange={(e) => setAiGeneratingTone(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
+                        >
+                          <option value="chuyên nghiệp, sang trọng tầm trung và cao cấp">Sang trọng & Chuyên nghiệp cao cấp</option>
+                          <option value="hài hước, gần gũi, giật gân, ngôn ngữ mạng xã hội viral">Viral tấu hài & Bắt trend mạng xã hội</option>
+                          <option value="cảm xúc, kiến tạo ước mơ, nhẹ nhàng, gia đình sum họp">Ấm áp, Cảm xúc & Gia đình sum họp</option>
+                          <option value="mạnh mẽ, dứt khoát, gấp rút, hối thúc đầu tư nhanh">Sôi động, Thúc bách, Khuyên đầu tư khẩn</option>
+                        </select>
+                      </div>
+
+                      {selectedPropertyForAI && (
+                        <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-2">
+                          <span className="text-2xs font-bold text-rose-400 uppercase">Thông tin BĐS Tóm lược</span>
+                          <h4 className="text-xs font-bold text-white">{selectedPropertyForAI.title}</h4>
+                          <p className="text-2xs text-slate-400 leading-relaxed max-h-24 overflow-y-auto">{selectedPropertyForAI.description}</p>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => selectedPropertyForAI && handleAIGeneratePropertyMarketing(selectedPropertyForAI.id)}
+                        disabled={!selectedPropertyForAI || actionLoading === `gen-prop-${selectedPropertyForAI?.id}`}
+                        className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>{actionLoading === `gen-prop-${selectedPropertyForAI?.id}` ? "Đang phát kiến nội dung..." : "Phát Kiến Nội Dung Bán Hàng Bằng AI"}</span>
+                      </button>
+                    </div>
+
+                    {/* Output Tabs platforms */}
+                    <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white">Kết quả sáng xuất Marketing</h3>
+                        <span className="text-2xs text-indigo-400 font-mono">Xây dựng tự động</span>
+                      </div>
+
+                      {selectedPropertyForAI?.ai_posts ? (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-900">
+                            {['facebook', 'zalo', 'tiktok', 'website', 'image_prompt', 'video_prompt'].map((plat) => (
+                              <button
+                                key={plat}
+                                className={`text-2xs py-1.5 px-2 rounded-lg font-bold capitalize transition-all truncate`}
+                                onClick={() => {
+                                  // Simply copy for user preview
+                                  const text = selectedPropertyForAI.ai_posts?.[plat as keyof typeof selectedPropertyForAI.ai_posts];
+                                  if (text) handleCopyText(text);
+                                }}
+                              >
+                                {plat.replace('_', ' ')} 📋
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="space-y-4">
+                            {/* Facebook Section Column */}
+                            {selectedPropertyForAI.ai_posts.facebook && (
+                              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-blue-400">Facebook Post Phiên bản AI</span>
+                                  <button onClick={() => selectedPropertyForAI.ai_posts?.facebook && handleCopyText(selectedPropertyForAI.ai_posts.facebook)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5">
+                                    <Copy className="w-3.5 h-3.5" /> Copy
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto">{selectedPropertyForAI.ai_posts.facebook}</p>
+                              </div>
+                            )}
+
+                            {/* Zalo Section Column */}
+                            {selectedPropertyForAI.ai_posts.zalo && (
+                              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-emerald-400">Zalo Message Phiên bản AI</span>
+                                  <button onClick={() => selectedPropertyForAI.ai_posts?.zalo && handleCopyText(selectedPropertyForAI.ai_posts.zalo)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5">
+                                    <Copy className="w-3.5 h-3.5" /> Copy
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto">{selectedPropertyForAI.ai_posts.zalo}</p>
+                              </div>
+                            )}
+
+                            {/* Prompts Section */}
+                            {(selectedPropertyForAI.ai_posts.image_prompt || selectedPropertyForAI.ai_posts.video_prompt) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedPropertyForAI.ai_posts.image_prompt && (
+                                  <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
+                                    <span className="text-2xs font-extrabold text-amber-400 uppercase flex items-center gap-1">
+                                      <ImageIcon className="w-3.5 h-3.5" /> Photographic Prompt (AI Images)
+                                    </span>
+                                    <p className="text-2xs text-slate-400 font-mono leading-relaxed line-clamp-3">{selectedPropertyForAI.ai_posts.image_prompt}</p>
+                                    <button 
+                                      onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.image_prompt || '')}
+                                      className="text-2xs text-rose-400 hover:underline block"
+                                    >
+                                      Sao chép Prompt Ảnh
+                                    </button>
+                                  </div>
+                                )}
+
+                                {selectedPropertyForAI.ai_posts.video_prompt && (
+                                  <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
+                                    <span className="text-2xs font-extrabold text-indigo-400 uppercase flex items-center gap-1">
+                                      <Video className="w-3.5 h-3.5" /> short cinematic clip prompt
+                                    </span>
+                                    <p className="text-2xs text-slate-400 font-mono leading-relaxed line-clamp-3">{selectedPropertyForAI.ai_posts.video_prompt}</p>
+                                    <button 
+                                      onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.video_prompt || '')}
+                                      className="text-2xs text-rose-400 hover:underline block"
+                                    >
+                                      Sao chép Prompt Video
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
+                          <Sparkles className="w-12 h-12 text-slate-700" />
+                          <p className="text-xs text-slate-500 max-w-sm">Chọn một bất động sản vàng bên trái và bấm nút "Phát kiến bằng AI" để tự sinh hàng loạt nội dung tiếp thị.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 5: POST CMS SCHEDULE */}
+              {/* ==================================================== */}
+              {activeTab === 'posts' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Hệ thống tự động bài đăng truyền thông CMS
+                    </h2>
+                    <p className="text-slate-400 text-sm">Chỉnh sửa, lên lịch phân phối nội dung giả lập tới Facebook, Zalo, Tiktok và Website.</p>
+                  </div>
+
+                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-900 text-xs uppercase tracking-wider text-slate-500">
+                            <th className="py-4 px-5">Tiêu đề truyền thông</th>
+                            <th className="py-4 px-5">Kênh phân phối</th>
+                            <th className="py-4 px-5">Nội dung (Bản Demo)</th>
+                            <th className="py-4 px-5">Bất động sản đính kèm</th>
+                            <th className="py-4 px-5">Lên lịch / Trạng thái</th>
+                            <th className="py-4 px-5 text-right">Lượt tương tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-900">
+                          {filteredPosts.map((post) => (
+                            <tr key={post.id} className="hover:bg-slate-900/20 transition-all">
+                              <td className="py-4 px-5 font-bold text-white">
+                                {post.title}
+                                {post.created_by_ai && (
+                                  <span className="block text-2xs text-rose-400 font-normal font-mono">🌟 Sinh bởi AI Agent</span>
+                                )}
+                              </td>
+                              <td className="py-4 px-5">
+                                <span className="uppercase text-xs font-bold text-slate-200 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-900">
+                                  {post.platform}
+                                </span>
+                              </td>
+                              <td className="py-4 px-5 max-w-sm">
+                                <p className="text-xs text-slate-400 line-clamp-3 whitespace-pre-line leading-relaxed">{post.content}</p>
+                                <button
+                                  onClick={() => handleCopyText(post.content)}
+                                  className="text-2xs text-rose-400 hover:underline mt-2 flex items-center gap-1"
+                                >
+                                  <Copy className="w-3 h-3" /> Copy trích lục
+                                </button>
+                              </td>
+                              <td className="py-4 px-5 text-xs text-slate-300">
+                                {post.property_title || 'Thảo luận thị trường'}
+                              </td>
+                              <td className="py-4 px-5 space-y-1">
+                                <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                                  post.status === 'published' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                  post.status === 'scheduled' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                                  'bg-slate-800 text-slate-500'
+                                }`}>
+                                  {post.status}
+                                </span>
+                                {post.scheduled_at && (
+                                  <span className="block text-2xs text-slate-500 font-mono">Ngày: {post.scheduled_at}</span>
+                                )}
+                              </td>
+                              <td className="py-4 px-5 text-right font-mono text-xs">
+                                {post.engagement ? (
+                                  <div className="space-y-1">
+                                    <div className="text-slate-300">👁 {post.engagement.views} views</div>
+                                    <div className="text-rose-500">♥ {post.engagement.likes} likes</div>
+                                    <div className="text-slate-500 font-sans text-2xs">🗣 {post.engagement.comments} comments</div>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-500 italic">Nháp chưa đăng</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 6: INBOX MULTICHANNEL */}
+              {/* ==================================================== */}
+              {activeTab === 'inbox' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Hòm thư khách hàng đa kênh (Social Media Inbox)
+                    </h2>
+                    <p className="text-slate-400 text-sm">Giao diện tiếp quản tin nhắn Messenger, Zalo, bình luận Tiktok và Website Livechat.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Message listing column */}
+                    <div className="lg:col-span-5 bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden divide-y divide-slate-900/80 max-h-[600px] overflow-y-auto">
+                      <div className="p-4 bg-slate-950 font-bold text-xs uppercase tracking-wider text-slate-500">Hòm thư nhận trong ngày</div>
+                      
+                      {inbox.map((msg) => {
+                        const isSelected = selectedInboxMessage?.id === msg.id;
+                        return (
+                          <div 
+                            key={msg.id}
+                            onClick={() => {
+                              setSelectedInboxMessage(msg);
+                              setResponseReplyText(msg.ai_reply_suggestion || '');
+                            }}
+                            className={`p-4 cursor-pointer transition-all ${
+                              isSelected ? 'bg-rose-500/5 border-l-4 border-rose-500' : 'hover:bg-slate-900/30'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={msg.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80"}
+                                  className="w-8 h-8 rounded-full object-cover border border-slate-800"
+                                />
+                                <div>
+                                  <div className="text-xs font-bold text-white leading-tight">{msg.sender_name}</div>
+                                  <span className="text-2xs text-rose-400 capitalize font-mono font-bold">{msg.platform} channel</span>
+                                </div>
+                              </div>
+
+                              <span className={`text-2xs px-2 py-0.5 rounded-full font-bold uppercase ${
+                                msg.intent === 'hỏi giá' ? 'bg-amber-600/20 text-amber-400' :
+                                msg.intent === 'thương lượng' ? 'bg-rose-600/20 text-rose-400 animate-pulse' :
+                                msg.intent === 'đặt lịch xem' ? 'bg-emerald-600/20 text-emerald-400' :
+                                'bg-slate-950 text-slate-500'
+                              }`}>
+                                {msg.intent || 'phân tích...'}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                              {msg.message}
+                            </p>
+
+                            <div className="flex items-center justify-between mt-3 text-2xs font-mono text-slate-500">
+                              <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              <span className={msg.status === 'pending' ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-500'}>
+                                {msg.status === 'replied' ? '✓ Đập hộp phản hồi' : '• Cần phản hồi'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Chat dialog workspace */}
+                    <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
+                      {selectedInboxMessage ? (
+                        <div className="space-y-4">
+                          <div className="border-b border-slate-900 pb-3 flex items-center justify-between">
+                            <div>
+                              <h3 className="font-bold text-white text-md">Khung chat tiếp nhận: {selectedInboxMessage.sender_name}</h3>
+                              <p className="text-xs text-slate-500 font-mono capitalize">Nền tảng đồng bộ: {selectedInboxMessage.platform}</p>
+                            </div>
+                            <button onClick={() => setSelectedInboxMessage(null)} className="text-slate-500 hover:text-slate-300 text-xs">
+                              Đóng khung
+                            </button>
+                          </div>
+
+                          {/* Conversation flow */}
+                          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                            <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-900 max-w-md">
+                              <span className="block text-2xs text-rose-400 font-semibold mb-1">Khách hàng gửi:</span>
+                              <p className="text-xs text-slate-200 leading-relaxed font-medium">{selectedInboxMessage.message}</p>
+                            </div>
+
+                            {selectedInboxMessage.ai_reply_suggestion && (
+                              <div className="p-3.5 bg-rose-950/20 rounded-xl border border-rose-500/20 max-w-md ml-auto">
+                                <span className="block text-2xs text-rose-400 font-bold mb-1 flex items-center gap-1">
+                                  <Sparkles className="w-3.5 h-3.5" /> Gợi ý AI soạn thảo tự động:
+                                </span>
+                                <p className="text-xs text-rose-100 whitespace-pre-line leading-relaxed italic">{selectedInboxMessage.ai_reply_suggestion}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Quick reply typing text area */}
+                          <div className="space-y-3 pt-4 border-t border-slate-900">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-400">Giao diện trả lời của Admin</span>
+                              <button
+                                onClick={() => handleAILiveReplySuggestion(selectedInboxMessage.id)}
+                                disabled={actionLoading === `reply-sugg-${selectedInboxMessage.id}`}
+                                className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-rose-400 px-3 py-1.5 rounded-lg flex items-center gap-1"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                                <span>{actionLoading === `reply-sugg-${selectedInboxMessage.id}` ? "Đang gõ..." : "AI soạn hộ câu trả lời"}</span>
+                              </button>
+                            </div>
+
+                            <textarea
+                              rows={4}
+                              value={responseReplyText}
+                              onChange={(e) => setResponseReplyText(e.target.value)}
+                              placeholder="Nhập nội dung phản hồi thủ công hoặc chỉnh sửa nội dung AI vừa hỗ trợ ở trên..."
+                              className="w-full bg-slate-950 border border-slate-900 rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                            />
+
+                            <div className="flex justify-end gap-3">
+                              <button
+                                onClick={() => handleSendManualReply(selectedInboxMessage.id)}
+                                disabled={actionLoading === `send-reply-${selectedInboxMessage.id}`}
+                                className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1 shadow-md"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Gửi Phản Hồi Demo
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
+                          <MessageSquare className="w-12 h-12 text-slate-700" />
+                          <p className="text-xs text-slate-500 max-w-sm">Chọn một tin nhắn bất kỳ từ danh sách bên trái để phản hồi, phân loại ý định hành vi, và sử dụng AI soạn kịch bản trả lời nhanh.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 7: CHATBOT AI INTERNAL */}
+              {/* ==================================================== */}
+              {activeTab === 'chatbot' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Trợ lý ảo AI Chatbot (Nội bộ doanh nghiệp)
+                    </h2>
+                    <p className="text-slate-400 text-sm">Hỏi đáp trực tiếp hệ thống AI nắm giữ toàn bộ cơ sở dữ liệu khách hàng CRM, rổ bất động sản và tự phát bài truyền thông.</p>
+                  </div>
+
+                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[550px] overflow-hidden justify-between">
+                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Bot className="w-5 h-5 text-rose-500" />
+                        <div>
+                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
+                          <span className="text-2xs text-emerald-400">Ollama/Gemini Online Engine</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUserChatInput(hint)}
+                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
+                          >
+                            {hint}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dialog Container */}
+                    <div className="flex-1 p-5 overflow-y-auto space-y-4 max-h-[400px]">
+                      {chatMessages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
+                            msg.role === 'user' 
+                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none' 
+                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
+                          }`}>
+                            <p>{msg.content}</p>
+                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {actionLoading === 'chatbot-chat' && (
+                        <div className="flex justify-start">
+                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
+                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sender Console */}
+                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={userChatInput}
+                        onChange={(e) => setUserChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
+                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      />
+                      <button
+                        onClick={handleSendChatbotMessage}
+                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
+                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 8: AUTOMATION AI CENTER */}
+              {/* ==================================================== */}
+              {activeTab === 'automations' && (
+                <div className="space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        Trung tâm Tự Động Hóa AI Automation Center
+                      </h2>
+                      <p className="text-slate-400 text-sm">Thiết lập các workflow sự kiện tự động kích hoạt AI xử lý thông tin.</p>
+                    </div>
+
+                    <button
+                      onClick={handleRunDemoAutomations}
+                      disabled={actionLoading === 'run-automations'}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-md"
+                    >
+                      <Play className="w-3.5 h-3.5" /> Chạy thử toàn diện (Simulate)
+                    </button>
+                  </div>
+
+                  {/* Automation Tasks Grid visual */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {automations.map((auto) => (
+                      <div key={auto.id} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 flex flex-col justify-between hover:border-slate-800 transition-all space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="font-bold text-white text-sm">{auto.name}</h3>
+                              <span className="text-2xs text-rose-400 font-mono">Trigger: {auto.trigger_event}</span>
+                            </div>
+
+                            <button
+                              onClick={() => handleToggleAutomation(auto.id)}
+                              className={`px-3 py-1.5 rounded-lg text-2xs font-extrabold transition-all border ${
+                                auto.status === 'active' 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                  : 'bg-slate-950 text-slate-500 border-slate-900'
+                              }`}
+                            >
+                              {auto.status === 'active' ? '● RUNNING' : '○ PAUSED'}
+                            </button>
+                          </div>
+
+                          <p className="text-xs text-slate-400 leading-relaxed font-sans">{auto.action_description}</p>
+                        </div>
+
+                        {/* Executed count */}
+                        <div className="flex justify-between text-2xs text-slate-500 border-t border-slate-900/85 pt-3">
+                          <span>Chạy được: <strong>{auto.run_count} lần</strong></span>
+                          <span>Đồng bộ: {auto.last_run ? new Date(auto.last_run).toLocaleTimeString() : 'Chưa chạy'}</span>
+                        </div>
+
+                        {/* Recent log snippet view */}
+                        {auto.logs && auto.logs.length > 0 && (
+                          <div className="p-3 bg-slate-950 rounded-xl border border-slate-900/80 font-mono text-3xs text-slate-400 space-y-1 overflow-y-auto max-h-24">
+                            <span className="text-slate-500 block">NHẬT KÝ LIVE TRUY VẤN:</span>
+                            {auto.logs.map((log, lidx) => (
+                              <p key={lidx}>{log}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 9: INTEGRATIONS ACCOUNT */}
+              {/* ==================================================== */}
+              {activeTab === 'integrations' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Tích hợp kênh mạng xã hội & Tài khoản CMS
+                    </h2>
+                    <p className="text-slate-400 text-sm">Kiểm soát trạng thái kết nối cổng API của các fanpage và tài khoản liên kết.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {channels.map((chan, idx) => (
+                      <div key={idx} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 flex flex-col justify-between hover:border-slate-800 transition-all space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                              chan.platform === 'facebook' ? 'bg-blue-600 text-white' :
+                              chan.platform === 'zalo' ? 'bg-sky-500 text-white' :
+                              chan.platform === 'tiktok' ? 'bg-white text-black' :
+                              'bg-rose-600 text-white'
+                            }`}>
+                              {chan.platform[0].toUpperCase()}
+                            </span>
+                            <div>
+                              <h3 className="font-bold text-white text-xs leading-none">{chan.name}</h3>
+                              <span className="text-3xs text-slate-500 capitalize">{chan.platform} API Client</span>
+                            </div>
+                          </div>
+
+                          <span className={`px-2.5 py-1 rounded-full text-3xs font-black tracking-tight ${
+                            chan.connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-950 text-slate-500 border-transparent'
+                          }`}>
+                            {chan.connected ? "CONNECTED" : "DISCONNECTED"}
+                          </span>
+                        </div>
+
+                        {/* Stats if connected */}
+                        {chan.connected && (
+                          <div className="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-900 text-center text-xs">
+                            <div>
+                              <span className="block text-3xs text-slate-505">Tin nhắn nhận</span>
+                              <span className="font-bold text-white">{chan.messages_count} messages</span>
+                            </div>
+                            <div>
+                              <span className="block text-3xs text-slate-505">Bình luận</span>
+                              <span className="font-bold text-white">{chan.comments_count} comments</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-3xs text-slate-500">
+                          <span>Quét lần cuối: {chan.last_sync}</span>
+                          <button className="text-rose-400 hover:underline">Đã lưu cổng</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* API integration instructions warning */}
+                  <div className="bg-slate-900/20 p-5 rounded-2xl border border-slate-900 space-y-3">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-500" /> Hướng dẫn tích hợp cổng API thật (Prod Sync)
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed max-w-3xl">
+                      Hệ thống đang cấu hình mock API dạng demo sandbox chất lượng. Để đấu nối sản phẩm thật với Facebook Graph API, Zalo OA Webhook hay TikTok Marketing, bạn chỉ cần phát sinh cổng redirect OAuth, cấu hình Access Token gối đầu của doanh nghiệp trong trang Cài đặt, và hướng sự kiện webhook về địa chỉ của API Server.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 10: CONFIG SETTINGS */}
+              {/* ==================================================== */}
+              {activeTab === 'settings' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      Cổng cấu hình hệ thống AI Agent
+                    </h2>
+                    <p className="text-slate-400 text-sm">Chuyển đổi phương thức xử lý AI thông minh qua Gemini API hoặc Ollama local chạy cục bộ.</p>
+                  </div>
+
+                  <form onSubmit={handleSaveSettings} className="bg-slate-900/40 p-6 rounded-2xl border border-slate-900 space-y-6 max-w-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">Chế độ vận hành AI chính</label>
+                        <select
+                          value={settings.ai_mode}
+                          onChange={(e) => setSettings({ ...settings, ai_mode: e.target.value as AppSettings['ai_mode'] })}
+                          className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        >
+                          <option value="auto">Auto: Ollama local, fallback ChatGPT</option>
+                          <option value="ollama">Ollama Local API Client</option>
+                          <option value="openai">OpenAI / ChatGPT API</option>
+                          <option value="gemini">Google Gemini API</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">Giọng văn Agent định chuẩn Việt Nam</label>
+                        <input
+                          type="text"
+                          value={settings.agent_tone}
+                          onChange={(e) => setSettings({ ...settings, agent_tone: e.target.value })}
+                          placeholder="Mặc định: sang trọng và chuyên nghiệp"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">Ollama API Endpoint (Nếu chọn Ollama)</label>
+                        <input
+                          type="text"
+                          value={settings.ollama_endpoint}
+                          onChange={(e) => setSettings({ ...settings, ollama_endpoint: e.target.value })}
+                          placeholder="Mặc định: http://localhost:11434"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">Default Model Target (Ollama)</label>
+                        <input
+                          type="text"
+                          value={settings.ollama_model}
+                          onChange={(e) => setSettings({ ...settings, ollama_model: e.target.value })}
+                          placeholder="Mặc định: qwen3:8b"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">OpenAI / ChatGPT Model Fallback</label>
+                        <input
+                          type="text"
+                          value={settings.openai_model}
+                          onChange={(e) => setSettings({ ...settings, openai_model: e.target.value })}
+                          placeholder="Mặc định: gpt-5-mini"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+
+                    </div>
+
+                    <div className="p-4 bg-slate-950 rounded-xl border border-slate-900/80 text-xs text-slate-400 leading-relaxed space-y-1.5">
+                      <strong className="text-rose-400 block font-bold">LỜI KHUYÊN DÀNH CHO DEVELOPERS:</strong>
+                      <p>Hệ thống tự động đồng bộ hóa cấu hình về file <span className="text-white font-mono font-bold">db.json</span> vĩnh viễn khóa gối đầu ở server side.</p>
+                      <p>Sử dụng phím Settings Secrets ở ngoài thanh bên AI Studio để ghi đè <span className="text-white font-mono font-bold">GEMINI_API_KEY</span> chính xác khi chạy production.</p>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-900">
+                      <button
+                        type="submit"
+                        disabled={actionLoading === 'save-settings'}
+                        className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-md transition-all"
+                      >
+                        {actionLoading === 'save-settings' ? 'Đang lưu thiết lập...' : 'Cập nhật thiết lập'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+            </>
+          )}
+
+        </main>
+      </div>
+
+      {/* ==================================================== */}
+      {/* MODAL WORKSPACES */}
+      {/* ==================================================== */}
+
+      {/* Modal Add Customer */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-hidden space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
+                <Users className="w-5 h-5 text-rose-500" /> Thêm khách hàng CRM mới
+              </h3>
+              <button onClick={() => setShowAddCustomerModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCustomer} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Họ và tên tên khách</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustomerForm.name}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+                    placeholder="Nguyễn Văn A"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Số điện thoại</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                    placeholder="e.g. 0905xxxxx"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Địa chỉ Email</label>
+                  <input
+                    type="email"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                    placeholder="optional@gmail.com"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Kênh tìm đến (Source)</label>
+                  <select
+                    value={newCustomerForm.source}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, source: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="facebook">Facebook Ads/Page</option>
+                    <option value="zalo">Zalo OA/Inbox</option>
+                    <option value="tiktok">TikTok Video Comments</option>
+                    <option value="website">Website Form/Chat</option>
+                    <option value="referral">Môi giới / Giới thiệu</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Ngân sách tài chính tối đa (Tỷ VND)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={newCustomerForm.budget}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, budget: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Khu vực địa lý chăm sóc</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustomerForm.interested_area}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, interested_area: e.target.value })}
+                    placeholder="e.g. Hòa Xuân, Cẩm Lệ"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Loại hình sản phẩm quan tâm</label>
+                  <select
+                    value={newCustomerForm.property_type}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, property_type: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  >
+                    <option value="đất nền">Đất nền dự án / đất vườn</option>
+                    <option value="nhà phố">Nhà phố xây sẵn</option>
+                    <option value="căn hộ">Căn hộ Resort chung cư</option>
+                    <option value="shophouse">Shophouse đại lộ thương mại</option>
+                    <option value="kho xưởng">Kho bãi đất sét kho xưởng</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Mức độ phân khúc</label>
+                  <select
+                    value={newCustomerForm.status}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, status: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="new">NEW (Khách mới tinh hỏi thăm)</option>
+                    <option value="warm">WARM (Có nhu cầu, đang phân vân)</option>
+                    <option value="hot">HOT (Thiện chí cọc, tiền sẵn sàng)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-2xs font-semibold text-slate-400">Ghi chú sâu về nhu cầu cụ thể</label>
+                <textarea
+                  rows={3}
+                  value={newCustomerForm.notes}
+                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, notes: e.target.value })}
+                  placeholder="Khách cần hướng Đông Nam, lòng đường trên 7m5..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="bg-slate-950 hover:bg-slate-850 text-slate-400 text-xs px-4 py-2 rounded-xl border border-slate-800"
+                >
+                  Bỏ qua
+                </button>
+                <button
+                  type="submit"
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                >
+                  Tạo khách hàng
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Add Property */}
+      {showAddPropertyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-hidden space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
+                <Home className="w-5 h-5 text-rose-500" /> Thêm bất động sản mới lên kệ
+              </h3>
+              <button onClick={() => setShowAddPropertyModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddProperty} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Tiêu đề bất động sản</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPropertyForm.title}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, title: e.target.value })}
+                    placeholder="Bán Lô Đất Góc Hòa Xuân"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Phân khúc / Chủng loại</label>
+                  <select
+                    value={newPropertyForm.type}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, type: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="đất">Đất nền dự án</option>
+                    <option value="nhà phố">Nhà phố đô thị</option>
+                    <option value="căn hộ">Căn hộ Resort nghỉ dưỡng</option>
+                    <option value="shophouse">Shophouse Đại Lộ thương mại</option>
+                    <option value="nhà hàng">Nhà hàng / Khách sạn mini</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Vị trí địa chỉ chính xác</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPropertyForm.location}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, location: e.target.value })}
+                    placeholder="Võ Chí Công, Hải Châu, Đà Nẵng"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Giá trị gắm giữ (Tỷ đồng)</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    required
+                    value={newPropertyForm.price}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, price: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Diện tích sử dụng (m2)</label>
+                  <input
+                    type="number"
+                    required
+                    value={newPropertyForm.area}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, area: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Pháp lý hiện hành</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPropertyForm.legal_status}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, legal_status: e.target.value })}
+                    placeholder="Sổ hồng riêng / Hợp đồng mua bán"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Hướng đất</label>
+                  <select
+                    value={newPropertyForm.direction}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, direction: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="Đông">Đông đón tài lộc</option>
+                    <option value="Đông Nam">Đông Nam mát mẻ</option>
+                    <option value="Tây">Tây đón tài lộc</option>
+                    <option value="Tây Nam">Tây Nam phong thủy</option>
+                    <option value="Bắc">Bắc</option>
+                    <option value="Nam">Nam</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Lòng đường rộng bao nhiêu (mét)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    required
+                    value={newPropertyForm.road_width}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, road_width: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-2xs font-semibold text-slate-400">Mô tả tổng quát cho chiến dịch</label>
+                <textarea
+                  rows={2}
+                  value={newPropertyForm.description}
+                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, description: e.target.value })}
+                  placeholder="Lô đất vàng sinh thái, đắc địa đối diện công viên..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-2xs font-semibold text-slate-400">Điểm nhấn bán hàng (Mỗi dòng một điểm)</label>
+                <textarea
+                  rows={2}
+                  value={newPropertyForm.selling_points}
+                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, selling_points: e.target.value })}
+                  placeholder="View trực diện bờ sông\nHạ tầng điện ngầm đồng bộ\nĐầu tư sinh lời cao..."
+                  className="w-full bg-slate-950 border border-slate-800 text-xs rounded-xl p-3"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPropertyModal(false)}
+                  className="bg-slate-950 hover:bg-slate-850 text-slate-400 text-xs px-4 py-2 rounded-xl border border-slate-800"
+                >
+                  Bỏ qua
+                </button>
+                <button
+                  type="submit"
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                >
+                  Thêm mới BĐS
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
