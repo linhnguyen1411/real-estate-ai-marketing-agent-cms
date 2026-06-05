@@ -27,7 +27,12 @@ export default function MarkdownContent({ content, className = '', compact = fal
           ),
           strong: ({ children }) => <strong className="font-bold">{children}</strong>,
           a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-rose-500 underline">
+            <a
+              href={href}
+              target={href?.startsWith('/') ? undefined : '_blank'}
+              rel={href?.startsWith('/') ? undefined : 'noreferrer'}
+              className="font-semibold text-rose-500 underline"
+            >
               {children}
             </a>
           )

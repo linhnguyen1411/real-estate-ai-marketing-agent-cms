@@ -8,6 +8,7 @@ import {
   InboxMessage,
   MarketingChannel,
   Post,
+  PublicChatGuest,
   Property,
   User
 } from '../types';
@@ -197,6 +198,12 @@ export function updateProperty(propertyId: string, property: Record<string, unkn
   });
 }
 
+export function deleteProperty(propertyId: string) {
+  return apiRequest<Property>(`/api/properties/${propertyId}`, {
+    method: 'DELETE'
+  });
+}
+
 export function updatePost(postId: string, post: Record<string, unknown>) {
   return apiRequest<Post>(`/api/posts/${postId}`, {
     method: 'PUT',
@@ -235,6 +242,28 @@ export function getAIStatus() {
 
 export function getChatHistory(scope?: 'mine') {
   return apiRequest<ChatHistoryRecord[]>(`/api/chat/history${scope ? `?scope=${scope}` : ''}`);
+}
+
+export function getPublicChatGuests() {
+  return apiRequest<PublicChatGuest[]>('/api/chat/guests');
+}
+
+export function getPublicChatGuestHistory(sessionId: string) {
+  return apiRequest<ChatHistoryRecord[]>(`/api/chat/guests/${encodeURIComponent(sessionId)}/history`);
+}
+
+export function updatePublicChatGuestAi(sessionId: string, aiEnabled: boolean) {
+  return apiRequest<PublicChatGuest>(`/api/chat/guests/${encodeURIComponent(sessionId)}/ai`, {
+    method: 'PUT',
+    body: JSON.stringify({ ai_enabled: aiEnabled })
+  });
+}
+
+export function sendPublicChatGuestMessage(sessionId: string, message: string) {
+  return apiRequest<ChatHistoryRecord>(`/api/chat/guests/${encodeURIComponent(sessionId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ message })
+  });
 }
 
 export function getGeneratedContents(params?: { channel?: string; status?: string }) {

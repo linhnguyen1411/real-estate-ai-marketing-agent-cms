@@ -47,6 +47,8 @@ createRoot(document.getElementById('root')!).render(
       <HelmetProvider>
         <Routes>
           <Route path="/" element={<App />} />
+          <Route path="/bds-da-nang" element={<PublicListingsWrapper />} />
+          <Route path="/bds-da-nang/:propertySlug" element={<PublicListingsWrapper />} />
           <Route path="/listings" element={<PublicListingsWrapper />} />
         </Routes>
       </HelmetProvider>

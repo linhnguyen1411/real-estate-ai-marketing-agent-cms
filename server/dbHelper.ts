@@ -103,6 +103,16 @@ function ensureSchema(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_chat_history_user_created ON chat_history(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_chat_history_company_created ON chat_history(company_id, created_at);
+    CREATE TABLE IF NOT EXISTS public_chat_guests (
+      session_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      customer_id TEXT,
+      ai_enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_public_chat_guests_updated ON public_chat_guests(updated_at);
     CREATE TABLE IF NOT EXISTS generated_contents (
       id TEXT PRIMARY KEY,
       company_id TEXT,
@@ -300,6 +310,65 @@ export function getChatHistoryByUser(userId: string, limit = 50) {
     .all(userId, limit) as any[];
 }
 
+export function upsertPublicChatGuest(input: {
+  session_id: string;
+  name: string;
+  phone: string;
+  customer_id?: string;
+}) {
+  const now = new Date().toISOString();
+  getSqlite().prepare(`
+    INSERT INTO public_chat_guests (session_id, name, phone, customer_id, ai_enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      name = excluded.name,
+      phone = excluded.phone,
+      customer_id = COALESCE(excluded.customer_id, public_chat_guests.customer_id),
+      updated_at = excluded.updated_at
+  `).run(input.session_id, input.name, input.phone, input.customer_id || null, now, now);
+  return getPublicChatGuest(input.session_id);
+}
+
+export function getPublicChatGuest(sessionId: string) {
+  return getSqlite()
+    .prepare("SELECT * FROM public_chat_guests WHERE session_id = ?")
+    .get(sessionId) as any | undefined;
+}
+
+export function getPublicChatGuests() {
+  return getSqlite()
+    .prepare(`
+      SELECT
+        guest.*,
+        (
+          SELECT message FROM chat_history
+          WHERE user_id = 'public-' || guest.session_id
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) AS last_message,
+        (
+          SELECT created_at FROM chat_history
+          WHERE user_id = 'public-' || guest.session_id
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) AS last_message_at,
+        (
+          SELECT COUNT(*) FROM chat_history
+          WHERE user_id = 'public-' || guest.session_id
+        ) AS message_count
+      FROM public_chat_guests guest
+      ORDER BY COALESCE(last_message_at, guest.updated_at) DESC
+    `)
+    .all() as any[];
+}
+
+export function updatePublicChatGuestAi(sessionId: string, aiEnabled: boolean) {
+  getSqlite()
+    .prepare("UPDATE public_chat_guests SET ai_enabled = ?, updated_at = ? WHERE session_id = ?")
+    .run(aiEnabled ? 1 : 0, new Date().toISOString(), sessionId);
+  return getPublicChatGuest(sessionId);
+}
+
 export function searchCmsRecords(
   collection: CmsCollection,
   tokens: string[],
@@ -308,7 +377,7 @@ export function searchCmsRecords(
 ) {
   const clauses = ["records.collection = ?"];
   const params: any[] = [collection];
-  if (options?.availableOnly) clauses.push("(records.sale_status IS NULL OR records.sale_status != 'sold')");
+  if (options?.availableOnly) clauses.push("(records.sale_status IS NULL OR records.sale_status NOT IN ('sold', 'hidden'))");
 
   if (tokens.length > 0) {
     const matchQuery = tokens.map(token => `"${token.replace(/"/g, '""')}"`).join(" OR ");

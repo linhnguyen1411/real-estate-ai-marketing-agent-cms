@@ -12,6 +12,12 @@ interface AIProviderStatus {
   message: string;
 }
 
+interface GenerationOptions {
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   ai_mode: process.env.DEFAULT_AI_MODE === "openai"
     ? "openai"
@@ -76,10 +82,74 @@ function extractJson(text: string) {
   return cleaned;
 }
 
-async function callOllama(systemInstruction: string, prompt: string): Promise<string> {
+function compactSeoText(value: unknown) {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateSeoText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  const truncated = value.slice(0, maxLength - 3);
+  const wordBoundary = truncated.lastIndexOf(' ');
+  return `${truncated.slice(0, wordBoundary > 20 ? wordBoundary : truncated.length).trim()}...`;
+}
+
+function toHashtag(value: unknown) {
+  const normalized = compactSeoText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, match => match === 'Đ' ? 'D' : 'd')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(word => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join('');
+  return normalized ? `#${normalized}` : '';
+}
+
+export function buildPropertySeo(property: any) {
+  const location = compactSeoText(property.location);
+  const primaryLocation = location.split(',')[0] || 'Đà Nẵng';
+  const shortLocation = primaryLocation.split(/\s+-\s+/)[0] || primaryLocation;
+  const type = compactSeoText(property.type || 'bất động sản');
+  const title = truncateSeoText(
+    `Bán ${type} ${shortLocation}, ${property.area}m2, ${property.price} tỷ | Estoria`,
+    60
+  );
+  const metaDescription = truncateSeoText(
+    `Bán ${type} tại ${location}, diện tích ${property.area}m2, giá ${property.price} tỷ, pháp lý ${property.legal_status}. Xem chi tiết và đặt lịch cùng Estoria.`,
+    155
+  );
+  const keywords = Array.from(new Set([
+    `bán ${type} ${primaryLocation}`,
+    `${type} ${location}`,
+    `bất động sản ${primaryLocation}`,
+    'bất động sản Đà Nẵng',
+    property.legal_status
+  ].map(compactSeoText).filter(Boolean)));
+  const hashtags = Array.from(new Set([
+    '#BatDongSan',
+    '#BatDongSanDaNang',
+    toHashtag(type),
+    toHashtag(primaryLocation),
+    toHashtag(`Ban ${type}`),
+    toHashtag(property.legal_status),
+    '#NhaDatDaNang'
+  ].filter(Boolean)));
+
+  return { title, meta_description: metaDescription, keywords, hashtags };
+}
+
+export function appendStandardHashtags(content: string, hashtags: string[]) {
+  const missingHashtags = hashtags.filter(hashtag => !content.toLowerCase().includes(hashtag.toLowerCase()));
+  return missingHashtags.length ? `${content.trim()}\n\n${missingHashtags.join(' ')}` : content.trim();
+}
+
+async function callOllama(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const settings = await getAppSettings();
   const endpoint = `${normalizeEndpoint(settings.ollama_endpoint)}/api/chat`;
-  const timeout = withTimeout(Number(process.env.OLLAMA_TIMEOUT_MS || 45000));
+  const timeout = withTimeout(options.timeoutMs || Number(process.env.OLLAMA_TIMEOUT_MS || 45000));
 
   let response: Response;
   try {
@@ -96,9 +166,9 @@ async function callOllama(systemInstruction: string, prompt: string): Promise<st
         ],
         stream: false,
         options: {
-          temperature: 0.2,
-          num_ctx: 4096,
-          num_predict: 700
+          temperature: options.temperature ?? 0.2,
+          num_ctx: 8192,
+          num_predict: options.maxOutputTokens || 700
         }
       })
     });
@@ -116,14 +186,14 @@ async function callOllama(systemInstruction: string, prompt: string): Promise<st
   return stripThinking(content);
 }
 
-async function callOpenAI(systemInstruction: string, prompt: string): Promise<string> {
+async function callOpenAI(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY chưa được cấu hình.");
   }
 
   const settings = await getAppSettings();
-  const timeout = withTimeout(Number(process.env.OPENAI_TIMEOUT_MS || 60000));
+  const timeout = withTimeout(options.timeoutMs || Number(process.env.OPENAI_TIMEOUT_MS || 60000));
   let response: Response;
 
   try {
@@ -176,7 +246,7 @@ function getGeminiClient() {
   });
 }
 
-async function callGemini(systemInstruction: string, prompt: string): Promise<string> {
+async function callGemini(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const ai = getGeminiClient();
   if (!ai) {
     throw new Error("GEMINI_API_KEY chưa được cấu hình.");
@@ -187,7 +257,8 @@ async function callGemini(systemInstruction: string, prompt: string): Promise<st
     contents: prompt,
     config: {
       systemInstruction: buildSystemInstruction(systemInstruction),
-      temperature: 0.2
+      temperature: options.temperature ?? 0.2,
+      maxOutputTokens: options.maxOutputTokens
     }
   });
 
@@ -201,19 +272,19 @@ function providerOrder(mode: AppSettings["ai_mode"]): ProviderName[] {
   return ["ollama", "openai", "gemini"];
 }
 
-async function callProvider(provider: ProviderName, systemInstruction: string, prompt: string) {
-  if (provider === "ollama") return callOllama(systemInstruction, prompt);
-  if (provider === "openai") return callOpenAI(systemInstruction, prompt);
-  return callGemini(systemInstruction, prompt);
+async function callProvider(provider: ProviderName, systemInstruction: string, prompt: string, options: GenerationOptions = {}) {
+  if (provider === "ollama") return callOllama(systemInstruction, prompt, options);
+  if (provider === "openai") return callOpenAI(systemInstruction, prompt, options);
+  return callGemini(systemInstruction, prompt, options);
 }
 
-export async function generateText(systemInstruction: string, prompt: string): Promise<string> {
+export async function generateText(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const settings = await getAppSettings();
   const errors: string[] = [];
 
   for (const provider of providerOrder(settings.ai_mode)) {
     try {
-      const result = await callProvider(provider, systemInstruction, prompt);
+      const result = await callProvider(provider, systemInstruction, prompt, options);
       if (result.trim()) return result;
       errors.push(`${provider}: empty response`);
     } catch (error: any) {
@@ -279,6 +350,236 @@ function jsonOnlyInstruction() {
   return "Chỉ trả về một JSON object hợp lệ. Không markdown. Không thêm giải thích ngoài JSON.";
 }
 
+const UNSUPPORTED_MARKETING_CLAIMS = [
+  "an ninh tốt",
+  "an ninh đảm bảo",
+  "tiện ích đầy đủ",
+  "vị trí vàng",
+  "vị trí chiến lược",
+  "cơ hội vàng",
+  "cơ hội tuyệt vời",
+  "siêu phẩm",
+  "sinh lời",
+  "tăng giá",
+  "tiềm năng phát triển",
+  "giá trị bền vững",
+  "vượt thời gian",
+  "không gian sống lý tưởng",
+  "lợi thế sinh thái",
+  "đầu tư thông minh",
+  "sống chất lượng",
+  "tài sản tiềm năng",
+  "an tâm sở hữu",
+  "cam kết sinh lời",
+  "thanh khoản",
+  "giá tốt nhất",
+  "khan hiếm"
+];
+
+function findUnsupportedMarketingClaim(value: unknown) {
+  const normalized = JSON.stringify(value).toLowerCase();
+  return UNSUPPORTED_MARKETING_CLAIMS.find(pattern => normalized.includes(pattern));
+}
+
+function buildFallbackMarketingStrategy(property: any) {
+  const audienceByType: Record<string, string> = {
+    "đất": "Người mua muốn tự xây nhà theo nhu cầu và người đang tìm tài sản có pháp lý rõ ràng",
+    "nhà phố": "Gia đình cần chỗ ở hoàn thiện và người mua muốn kết hợp ở với kinh doanh",
+    "căn hộ": "Gia đình trẻ hoặc người mua ưu tiên không gian ở gọn, dễ sử dụng",
+    "shophouse": "Người mua cần mặt bằng có thể khai thác kinh doanh",
+    "kho xưởng": "Doanh nghiệp cần mặt bằng phục vụ vận hành, lưu kho hoặc sản xuất",
+    "nhà hàng": "Người kinh doanh F&B cần mặt bằng có công năng phù hợp"
+  };
+  const sellingPoints = (property.selling_points || []).filter(Boolean);
+  return {
+    target_customer: audienceByType[property.type] || `Người đang tìm ${property.type} tại ${property.location}`,
+    customer_insight: `Khách cần kiểm tra sự phù hợp giữa mức giá ${property.price} tỷ, công năng thực tế và pháp lý ${property.legal_status} trước khi đi xem.`,
+    campaign_angle: sellingPoints.length
+      ? `Biến ${sellingPoints.slice(0, 2).join(" và ")} thành lý do chính để khách đặt lịch xem`
+      : `Giúp khách đánh giá nhanh tài sản dựa trên công năng và thông tin minh bạch`,
+    creative_concept: `Một buổi đi xem có chuẩn bị: cho khách biết chính xác điều gì đáng kiểm tra tại tài sản này`,
+    key_message: `${property.title}: xem đúng nhu cầu, kiểm tra đúng thông tin, quyết định dựa trên thực tế.`
+  };
+}
+
+function buildMarketingImagePrompts(property: any, strategy: any) {
+  const shared = [
+    "Tôi đã đính kèm ảnh thật của bất động sản. Hãy dùng ảnh đó làm reference chính để tạo MỘT ẢNH MỚI, không chỉ thêm chữ hoặc bộ lọc lên ảnh cũ.",
+    `Bất động sản: ${property.title}. Loại hình: ${property.type}. Vị trí: ${property.location}.`,
+    `Creative concept: ${strategy.creative_concept}. Thông điệp hình ảnh: ${strategy.key_message}.`,
+    `Các đặc điểm được phép thể hiện: ${(property.selling_points || []).join(", ") || property.description}.`,
+    "Giữ đúng nhận diện, kiến trúc, số tầng, mặt tiền, tỷ lệ và bối cảnh có thật của tài sản trong ảnh reference.",
+    "Được phép cải thiện ánh sáng, thời tiết, góc máy, bố cục, màu sắc và độ chỉn chu thương mại nhưng kết quả vẫn phải chân thực.",
+    "Không tự thêm hồ bơi, biển, công viên, nội thất, người, xe, tầng nhà, tòa nhà hoặc tiện ích không xuất hiện trong ảnh reference.",
+    "Không chữ, không logo, không watermark, không khung poster. Chừa khoảng trống hợp lý để có thể thêm headline sau."
+  ];
+  return {
+    facebook: [
+      ...shared,
+      "Kênh sử dụng: Facebook feed. Tỷ lệ dọc 4:5.",
+      "Bố cục: ảnh quảng cáo bất động sản cao cấp, tài sản là chủ thể chính, góc nhìn rộng vừa đủ và có chiều sâu; ánh sáng tự nhiên thu hút khi xem trên mobile."
+    ].join("\n"),
+    zalo: [
+      ...shared,
+      "Kênh sử dụng: Zalo. Tỷ lệ vuông 1:1.",
+      "Bố cục: rõ ràng, gần gũi, tài sản nằm ở trung tâm, dễ nhận diện ngay trên màn hình nhỏ; ưu tiên cảm giác xem nhà thực tế, đáng tin cậy."
+    ].join("\n"),
+    tiktok: [
+      ...shared,
+      "Kênh sử dụng: TikTok/Reels cover. Tỷ lệ dọc 9:16.",
+      "Bố cục: cinematic vertical cover, góc máy giàu chiều sâu, tài sản nằm ở vùng trung tâm an toàn; chừa khoảng trống phía trên và dưới cho UI/caption."
+    ].join("\n")
+  };
+}
+
+function buildCtaKeyword(property: any) {
+  return String(property.location || property.type || "XEM NHÀ")
+    .split(",")[0]
+    .trim()
+    .toUpperCase();
+}
+
+function buildGroundedBenefits(property: any) {
+  const points = (property.selling_points || []).filter(Boolean);
+  const benefits = points.map((point: string) => {
+    const normalized = point.toLowerCase();
+    if (normalized.includes("lô góc")) return `${point}: có nhiều mặt thoáng để cân nhắc khi lên phương án sử dụng`;
+    if (normalized.includes("đường")) return `${point}: thuận tiện quan sát và kiểm tra lối tiếp cận khi đi xem`;
+    if (normalized.includes("công viên")) return `${point}: phù hợp với người ưu tiên khả năng tiếp cận không gian công cộng`;
+    if (normalized.includes("dân cư")) return `${point}: có thể trực tiếp khảo sát môi trường xung quanh khi đi xem`;
+    if (normalized.includes("hoàn công") || normalized.includes("pháp lý") || normalized.includes("sổ")) return `${point}: thông tin quan trọng để kiểm tra hồ sơ trước khi quyết định`;
+    if (normalized.includes("kinh doanh") || normalized.includes("thương mại")) return `${point}: đáng khảo sát nếu cần công năng kết hợp kinh doanh`;
+    if (normalized.includes("xe tải")) return `${point}: đáng kiểm tra với nhu cầu vận chuyển và vận hành`;
+    if (normalized.includes("ban công") || normalized.includes("thoáng")) return `${point}: tạo lợi thế về độ mở của không gian`;
+    return point;
+  });
+  return benefits.length ? benefits : [property.description];
+}
+
+function buildMarketingFallbacks(property: any, strategy: any) {
+  const keyword = buildCtaKeyword(property);
+  const benefits = buildGroundedBenefits(property);
+  const facts = `${property.area}m² • ${property.price} tỷ • ${property.legal_status} • đường ${property.road_width}m • hướng ${property.direction}`;
+  return {
+    facebook: `CÓ NHỮNG BẤT ĐỘNG SẢN CHỈ CẦN XEM ẢNH. CÓ NHỮNG BẤT ĐỘNG SẢN NÊN ĐẾN TẬN NƠI.\n\n${property.title} thuộc nhóm thứ hai, bởi giá trị đáng chú ý nằm ở cách các đặc điểm thực tế kết hợp với nhau:\n\n${benefits.map((item: string) => `✓ ${item}`).join("\n")}\n\nThông tin chính: ${facts}.\n\nNếu bạn đang tìm ${property.type} tại ${property.location}, đây là một lựa chọn đáng đưa vào lịch khảo sát để tự đánh giá độ phù hợp.\n\nNhắn "${keyword}" để nhận vị trí chi tiết, hồ sơ tài sản và khung giờ xem thuận tiện. Xem đúng thông tin trước, rồi mới quyết định bước tiếp theo.\n\n#batdongsan #nhadat #${keyword.replace(/\s+/g, "")}`,
+    zalo: `Em gửi anh/chị ${property.title} tại ${property.location}.\n\nĐiểm đáng xem trực tiếp:\n${benefits.slice(0, 3).map((item: string) => `• ${item}`).join("\n")}\n\nThông tin chính: ${facts}.\n\nAnh/chị nhắn "${keyword}", em gửi ngay vị trí chi tiết, hồ sơ tài sản và sắp xếp lịch xem phù hợp.`,
+    tiktok: `HOOK: "Vì sao ${property.title} đáng để đến xem tận nơi?"\n\nCẢNH 1 - Toàn cảnh tài sản\nVOICE-OVER: "Không chỉ là ${property.area}m² với mức giá ${property.price} tỷ. Điều cần xem là các lợi thế này kết hợp ra sao ngoài thực tế."\n\nCẢNH 2 - Quay điểm nổi bật thứ nhất\nTEXT: "${benefits[0]}"\n\nCẢNH 3 - Quay điểm nổi bật thứ hai\nTEXT: "${benefits[1] || property.legal_status}"\n\nCẢNH 4 - Chốt thông tin\nTEXT: "${property.legal_status} • Đường ${property.road_width}m • Hướng ${property.direction}"\n\nCTA: "Comment hoặc inbox từ khóa ${keyword} để nhận vị trí và lịch xem."\n\nCAPTION: Đừng quyết định chỉ từ ảnh. Nhắn "${keyword}" để nhận hồ sơ và xem thực tế.\n#batdongsan #reviewnhadat #nhadat`
+  };
+}
+
+async function generateChannelMarketingCopy(
+  channel: "facebook" | "zalo" | "tiktok",
+  property: any,
+  strategy: any,
+  tone: string,
+  fallback: string
+) {
+  const keyword = buildCtaKeyword(property);
+  const frameworks = {
+    facebook: "Dùng AIDA: hook gây chú ý -> khơi gợi nhu cầu -> chứng minh bằng đặc điểm thật -> CTA mạnh.",
+    zalo: "Dùng direct response: vào thẳng lý do nên xem -> lợi ích chính -> thông tin đủ tin cậy -> CTA một bước.",
+    tiktok: "Dùng hook-retention-CTA: hook 3 giây -> cảnh quay giữ người xem -> payoff -> CTA bình luận/inbox."
+  };
+  try {
+    const result = await generateText(
+      [
+        `Bạn là copywriter performance marketing bất động sản, chuyên viết cho ${channel}.`,
+        `Giọng văn: ${tone}.`,
+        frameworks[channel],
+        "Viết có sức bán, nhịp câu tự nhiên, tạo mong muốn đi xem và hành động ngay.",
+        "Không chỉ liệt kê thông số. Phải chuyển đặc điểm thành ý nghĩa/lợi ích hợp lý cho người mua.",
+        "Không bịa tiện ích, khoảng cách, lợi nhuận, độ khan hiếm, ưu đãi hoặc cam kết đầu tư.",
+        "Chỉ trả nội dung hoàn chỉnh để đăng, không giải thích."
+      ].join("\n"),
+      `
+CAMPAIGN ANGLE: ${strategy.campaign_angle}
+CREATIVE CONCEPT: ${strategy.creative_concept}
+TARGET CUSTOMER: ${strategy.target_customer}
+
+FACTS:
+${JSON.stringify({
+  title: property.title,
+  type: property.type,
+  location: property.location,
+  area: property.area,
+  price: property.price,
+  legal_status: property.legal_status,
+  direction: property.direction,
+  road_width: property.road_width,
+  description: property.description,
+  selling_points: property.selling_points
+}, null, 2)}
+
+CTA bắt buộc: kêu gọi nhắn từ khóa "${keyword}" để nhận vị trí chi tiết, hồ sơ và lịch xem.
+${channel === "facebook" ? "Độ dài 160-240 từ, dễ đọc trên mobile, có 4-6 hashtag." : ""}
+${channel === "zalo" ? "Độ dài 90-140 từ, thân thiện và trực tiếp, không hashtag." : ""}
+${channel === "tiktok" ? "Viết kịch bản 30-45 giây gồm hook, cảnh quay, voice-over/text, caption và CTA." : ""}
+`,
+      { temperature: 0.65, maxOutputTokens: channel === "tiktok" ? 850 : 650, timeoutMs: 90000 }
+    );
+    if (result.trim().length < 120 || findUnsupportedMarketingClaim(result)) return fallback;
+    return result.trim();
+  } catch (error) {
+    console.warn(`[Marketing copy fallback] ${channel}:`, error);
+    return fallback;
+  }
+}
+
+async function generateMarketingStrategy(property: any, tone: string) {
+  const fallback = buildFallbackMarketingStrategy(property);
+  try {
+    const raw = await generateText(
+      [
+        "Bạn là strategist marketing bất động sản Việt Nam.",
+        "Không viết lại thông số listing. Hãy tìm một góc tiếp cận mới nhưng phải suy ra hợp lý từ dữ liệu.",
+        "Không bịa tiện ích, hành vi khu vực, lợi nhuận, độ khan hiếm hoặc cam kết đầu tư.",
+        jsonOnlyInstruction()
+      ].join("\n"),
+      `
+Dữ liệu listing:
+${JSON.stringify({
+  title: property.title,
+  type: property.type,
+  location: property.location,
+  area: property.area,
+  price: property.price,
+  legal_status: property.legal_status,
+  direction: property.direction,
+  road_width: property.road_width,
+  description: property.description,
+  selling_points: property.selling_points
+}, null, 2)}
+
+Giọng điệu mong muốn: ${tone}
+
+Tạo campaign brief. Phải đưa ra insight/góc bán có giá trị hơn việc nhắc lại thông số, nhưng mọi lập luận phải dựa trên dữ liệu listing.
+Trả JSON:
+{
+  "target_customer": "chân dung khách cụ thể",
+  "customer_insight": "mối quan tâm hoặc câu hỏi thật sự của khách trước khi đi xem",
+  "campaign_angle": "góc bán duy nhất của chiến dịch",
+  "creative_concept": "ý tưởng kể chuyện hoặc trải nghiệm nội dung",
+  "key_message": "thông điệp chủ đạo một câu"
+}
+`,
+      { temperature: 0.45, maxOutputTokens: 700, timeoutMs: 90000 }
+    );
+    const parsed = JSON.parse(extractJson(raw));
+    if (!Object.keys(fallback).every(key => typeof parsed[key] === "string" && parsed[key].trim().length > 15)) {
+      return fallback;
+    }
+    const unsupportedClaim = findUnsupportedMarketingClaim(parsed);
+    if (unsupportedClaim) {
+      console.warn(`AI campaign strategy contained unsupported claim "${unsupportedClaim}", using grounded strategy.`);
+      return fallback;
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("AI campaign strategy failed, using grounded strategy:", error);
+    return fallback;
+  }
+}
+
 export async function analyzeCustomerWithAI(customer: any): Promise<{ ai_summary: string; lead_score: number }> {
   const systemInstruction = [
     "Bạn là chuyên gia CRM bất động sản Việt Nam.",
@@ -329,54 +630,26 @@ Quy tắc score:
 export async function generatePropertyMarketingContent(property: any, targetPlatform?: string, customTone?: string): Promise<any> {
   const settings = await getAppSettings();
   const tone = customTone || settings.agent_tone;
-  const systemInstruction = [
-    "Bạn là AI marketing assistant chuyên bất động sản Việt Nam.",
-    `Giọng văn: ${tone}.`,
-    "Viết đúng sự thật theo dữ liệu tài sản được cung cấp, không phóng đại pháp lý/lợi nhuận.",
-    jsonOnlyInstruction()
-  ].join("\n");
-
-  const prompt = `
-Tạo bộ nội dung marketing cho bất động sản:
-- Tiêu đề: ${property.title}
-- Loại hình: ${property.type}
-- Vị trí: ${property.location}
-- Diện tích: ${property.area} m2
-- Giá: ${property.price} tỷ VND
-- Pháp lý: ${property.legal_status}
-- Hướng: ${property.direction}
-- Đường: ${property.road_width} m
-- Mô tả: ${property.description}
-- Mô tả rich text/copy: ${property.rich_description || property.description || ""}
-- Ghi chú bổ sung nội bộ: ${property.internal_notes || ""}
-- Trạng thái bán hàng: ${property.sale_status === "sold" ? "Đã bán" : "Đang bán"}
-- Điểm bán hàng: ${(property.selling_points || []).join(", ")}
-
-Trả đúng schema:
-{
-  "facebook": "Bài Facebook có CTA inbox/đặt lịch xem",
-  "zalo": "Tin Zalo ngắn, rõ giá trị và pháp lý",
-  "tiktok": "Kịch bản video ngắn + hashtag",
-  "website": "Bài SEO có heading HTML cơ bản",
-  "image_prompt": "English photorealistic image generation prompt",
-  "video_prompt": "English short real estate video prompt"
-}
-`;
-
-  try {
-    const rawResult = await generateText(systemInstruction, prompt);
-    return JSON.parse(extractJson(rawResult));
-  } catch (error) {
-    console.error("AI marketing generator failed, falling back to static templates:", error);
-    return {
-      facebook: `Hàng mới: ${property.title}\n\nVị trí: ${property.location}\nDiện tích: ${property.area}m2 - Giá: ${property.price} tỷ\nPháp lý: ${property.legal_status}. Đường ${property.road_width}m, hướng ${property.direction}.\n\nInbox để nhận sổ, vị trí chi tiết và lịch xem thực tế.`,
-      zalo: `${property.title} - ${property.price} tỷ. ${property.area}m2 tại ${property.location}. Pháp lý: ${property.legal_status}. Nhắn em để nhận thông tin chi tiết.`,
-      tiktok: `Mở cảnh tuyến đường trước nhà, lia sang vị trí ${property.location}, nhấn mạnh diện tích ${property.area}m2 và pháp lý ${property.legal_status}. CTA: inbox nhận vị trí và lịch xem. #bdsdanang #nhadat`,
-      website: `<h2>${property.title}</h2><p>${property.description}</p><p>Diện tích ${property.area}m2, giá ${property.price} tỷ, pháp lý ${property.legal_status}.</p>`,
-      image_prompt: `Photorealistic real estate exterior in ${property.location}, natural daylight, wide angle, clean street, high detail architectural photography.`,
-      video_prompt: `Cinematic vertical real estate walkthrough, slow street approach, reveal property frontage, natural daylight, professional real estate tour style.`
-    };
-  }
+  const strategy = await generateMarketingStrategy(property, tone);
+  const fallbacks = buildMarketingFallbacks(property, strategy);
+  const [facebook, zalo, tiktok] = await Promise.all([
+    generateChannelMarketingCopy("facebook", property, strategy, tone, fallbacks.facebook),
+    generateChannelMarketingCopy("zalo", property, strategy, tone, fallbacks.zalo),
+    generateChannelMarketingCopy("tiktok", property, strategy, tone, fallbacks.tiktok)
+  ]);
+  const imagePrompts = buildMarketingImagePrompts(property, strategy);
+  const seo = buildPropertySeo(property);
+  return {
+    strategy,
+    seo,
+    facebook: appendStandardHashtags(facebook, seo.hashtags),
+    zalo,
+    tiktok: appendStandardHashtags(tiktok, seo.hashtags),
+    website: `<h1>${seo.title}</h1><p>${seo.meta_description}</p><h2>${property.title}</h2><p>${property.description}</p><p>${strategy.key_message}</p>`,
+    image_prompts: imagePrompts,
+    image_prompt: imagePrompts.facebook,
+    video_prompt: tiktok
+  };
 }
 
 export async function generateAILiveChatReply(message: string, contextData: { customers: any[]; properties: any[]; posts: any[] }): Promise<string> {

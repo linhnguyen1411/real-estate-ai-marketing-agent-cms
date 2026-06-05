@@ -12,11 +12,17 @@ import {
   getSettings, updateSettings,
   readDatabase, writeDatabase,
   saveChatMessage, getChatHistoryByUser, searchCmsRecords, saveGeneratedContent, verifyGeneratedContent,
-  getAllDataForContext
+  getAllDataForContext,
+  getPublicChatGuest,
+  getPublicChatGuests,
+  updatePublicChatGuestAi,
+  upsertPublicChatGuest
 } from './server/dbHelper';
 import { 
   analyzeCustomerWithAI, 
   generatePropertyMarketingContent, 
+  buildPropertySeo,
+  appendStandardHashtags,
   generateAILiveChatReply, 
   generateAIConsultantReply,
   generateText,
@@ -28,7 +34,16 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
+app.set('trust proxy', true);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({ status: 'error', message: 'JSON request không hợp lệ.' });
+    return;
+  }
+  next(err);
+});
 
 // Log API requests
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -168,6 +183,63 @@ function detectQueryIntent(message: string) {
   return 'properties';
 }
 
+function isGreetingOnlyMessage(message: string) {
+  const normalized = normalizeText(message).replace(/\s+/g, ' ').trim();
+  if (!normalized) return false;
+
+  const hasSearchIntent = /(gia|bao nhieu|ty|trieu|m2|dien tich|phap ly|so hong|so do|vi tri|o dau|dia chi|nha|dat|can ho|shophouse|shop house|du an|dau tu|mua bds|ban nha|ban dat|thue|xem|tu van|hoa xuan|sonata|song han|bien)/.test(normalized);
+  if (hasSearchIntent) return false;
+
+  const asksIdentity = /(^|\s)(ban|em)?\s*(ten gi|la ai|la ai vay|ten la gi)(\s|$)/.test(normalized);
+  const startsWithGreeting = /^(xin chao|chao|hello|hi|alo|aloo)\b/.test(normalized);
+  if (startsWithGreeting && (asksIdentity || normalized.split(/\s+/).length <= 8)) return true;
+
+  return /^(test|ok|cam on|thanks|thank you)(\s+(em|anh|chi|ban|shop|ad|admin|nhe|a|nha))*[.!?]*$/.test(normalized);
+}
+
+function isWeatherQuestion(message: string) {
+  const normalized = normalizeText(message).replace(/\s+/g, ' ').trim();
+  return /(thoi tiet|du bao|weather|troi hom nay|hom nay troi|troi.*(mua|nang|lanh|nong)|ti.t)/.test(normalized);
+}
+
+function hasPublicRealEstateIntent(message: string) {
+  const normalized = normalizeText(message).replace(/\s+/g, ' ').trim();
+  if (!normalized) return false;
+
+  const phraseIntent = /(bds|bat dong san|can ho|chung cu|shophouse|shop house|du an|mat tien|mat bang|kho bai|o dau|vi tri|dia chi|khu vuc|hoa xuan|hoa quy|son tra|lien chieu|ngu hanh son|sonata|song han|phao hoa|bao nhieu|ngan sach|dien tich|phap ly|so hong|so do|hoan cong|ban nha|ban dat|cho thue|dau tu|kinh doanh|homestay|xem nha|xem dat|lich xem|tu van)/.test(normalized);
+  const wordIntent = /\b(nha|dat|lo|nen|xay|bien|gia|ty|ti|trieu|m2|mua|thue|spa)\b/.test(normalized);
+  return phraseIntent || wordIntent;
+}
+
+async function generatePublicSmallTalkReply(message: string, recentHistory: string) {
+  try {
+    return await generateText(
+      [
+        'Bạn là Lily, trợ lý tư vấn bất động sản Đà Nẵng trên website Estoria.',
+        'Tin nhắn hiện tại không có intent bất động sản rõ ràng.',
+        'Hãy trả lời tự nhiên, vui vẻ, ngắn gọn bằng tiếng Việt trong 2-4 câu.',
+        'Nếu người dùng hỏi chuyện thường thức, thời tiết, chào hỏi, đùa vui hoặc hỏi bâng quơ thì trả lời ở mức hữu ích vừa đủ.',
+        'Không bịa dữ liệu realtime, tin tức mới, giá thị trường realtime, y tế/pháp lý/tài chính chuyên sâu. Nếu thiếu dữ liệu realtime thì nói rõ là em chưa có dữ liệu realtime.',
+        'Luôn kết thúc bằng một câu chuyển hướng mềm về mua bán BĐS Đà Nẵng, ví dụ hỏi khách đang quan tâm nhà phố, đất nền, căn hộ, shophouse, khu vực hoặc ngân sách nào.',
+        'Không giới thiệu sản phẩm cụ thể khi chưa có intent BĐS.'
+      ].join('\n'),
+      [
+        `Lịch sử gần nhất:\n${recentHistory || 'Chưa có lịch sử.'}`,
+        '',
+        `Tin nhắn khách:\n${message}`
+      ].join('\n'),
+      { temperature: 0.7, timeoutMs: 12000 }
+    );
+  } catch (error) {
+    console.error('Public small talk AI failed, using static redirect:', error instanceof Error ? error.message : error);
+    return [
+      'Dạ, câu này em trả lời nhanh trong phạm vi hỗ trợ được thôi ạ.',
+      'Hiện em phù hợp nhất để hỗ trợ lọc BĐS Đà Nẵng theo khu vực, ngân sách, pháp lý và lịch xem thực tế.',
+      'Anh/chị đang quan tâm nhà phố, đất nền, căn hộ hay shophouse để em tư vấn đúng hơn ạ?'
+    ].join('\n\n');
+  }
+}
+
 function compactProperty(property: Property) {
   return {
     id: property.id,
@@ -184,6 +256,27 @@ function compactProperty(property: Property) {
     selling_points: (property.selling_points || []).slice(0, 6),
     internal_notes: String(property.internal_notes || '').slice(0, 300)
   };
+}
+
+const publicListingsPath = '/';
+
+function slugify(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120);
+}
+
+function getPropertySlug(property: Property) {
+  return `${slugify(property.title)}-${property.id}`;
+}
+
+function getPropertyPath(property: Property) {
+  return `/${encodeURIComponent(getPropertySlug(property))}`;
 }
 
 function compactCustomer(customer: Customer) {
@@ -220,6 +313,34 @@ function rankProperties(properties: Property[], message: string, limit = 5) {
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(item => item.property);
+}
+
+function formatPublicPropertySuggestions(properties: Property[]) {
+  if (!properties.length) {
+    return 'Hiện danh sách BĐS chưa có sản phẩm công khai phù hợp để em gửi anh/chị.';
+  }
+
+  return properties.map((property, index) => {
+    const cleanSnippet = (value: unknown, maxLength: number) => {
+      const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+      return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength).trim()}...` : cleaned;
+    };
+    const sellingPoints = (property.selling_points || [])
+      .map(point => cleanSnippet(point, 90))
+      .filter(Boolean)
+      .slice(0, 3);
+    const description = cleanSnippet(property.description, 220);
+    return [
+      `### ${index + 1}. ${property.title}`,
+      `- 📍 **Vị trí:** ${property.location}`,
+      `- 💰 **Giá:** ${property.price} tỷ`,
+      `- 📐 **Diện tích:** ${property.area}m²`,
+      `- 📄 **Pháp lý:** ${property.legal_status}`,
+      sellingPoints.length ? `- ✨ **Điểm đáng chú ý:** ${sellingPoints.join(' • ')}` : '',
+      description ? `- 📝 **Mô tả nhanh:** ${description}` : '',
+      `- 🔗 [**Xem chi tiết sản phẩm**](${getPropertyPath(property)})`
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
 }
 
 function buildAssistantDbContext(db: any, req: Request, message: string) {
@@ -353,7 +474,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 });
 
 app.get('/api/public/properties', (req: Request, res: Response) => {
-  const publicProperties = getProperties().filter((property: Property) => property.sale_status !== 'sold');
+  const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
   res.json({ status: 'success', data: publicProperties });
 });
 
@@ -371,6 +492,80 @@ app.get('/api/public/chat/history', (req: Request, res: Response) => {
   res.json({ status: 'success', data: history });
 });
 
+app.post('/api/public/chat/guest', (req: Request, res: Response) => {
+  const sessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  const phone = String(req.body?.phone || '').trim().replace(/[^\d+.\-\s]/g, '').slice(0, 40);
+
+  if (!sessionId || !name || !phone) {
+    res.status(400).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.' });
+    return;
+  }
+
+  const customerId = `guest-${sessionId}`;
+  const existingCustomer = getCustomers().find(customer => customer.id === customerId);
+  if (!existingCustomer) {
+    createCustomer({
+      id: customerId,
+      name,
+      phone,
+      email: '',
+      source: 'website',
+      budget: 0,
+      interested_area: '',
+      property_type: 'khác',
+      status: 'new',
+      notes: `Guest chat session: ${sessionId}`,
+      ai_summary: 'Khách guest bắt đầu trò chuyện từ website.',
+      lead_score: 35,
+      created_at: new Date().toISOString(),
+      company_id: 'comp-da-nang',
+      owner_user_id: 'u-owner',
+      assigned_member_ids: []
+    } as Customer);
+  }
+
+  const guest = upsertPublicChatGuest({ session_id: sessionId, name, phone, customer_id: customerId });
+  res.json({ status: 'success', data: guest });
+});
+
+app.post('/api/public/contact', (req: Request, res: Response) => {
+  const name = String(req.body?.name || '').trim();
+  const phone = String(req.body?.phone || '').trim();
+  const budget = String(req.body?.budget || '').trim();
+  const area = String(req.body?.area || '').trim();
+  const note = String(req.body?.note || '').trim();
+
+  if (!name || !phone) {
+    res.status(400).json({ status: 'error', message: 'Vui lòng nhập tên và số điện thoại.' });
+    return;
+  }
+
+  const messageLines = [
+    `Khách gửi form liên hệ từ website.`,
+    `Họ tên: ${name}`,
+    `Số điện thoại: ${phone}`,
+    budget ? `Ngân sách: ${budget}` : '',
+    area ? `Khu vực quan tâm: ${area}` : '',
+    note ? `Nhu cầu chi tiết: ${note}` : ''
+  ].filter(Boolean);
+
+  const inboxMessage = createInboxMessage({
+    id: `in-web-${Date.now()}`,
+    sender_name: name,
+    platform: 'website',
+    message: messageLines.join('\n'),
+    intent: 'đặt lịch xem',
+    status: 'pending',
+    company_id: 'comp-da-nang',
+    owner_user_id: 'u-owner',
+    assigned_member_ids: [],
+    created_at: new Date().toISOString()
+  });
+
+  res.json({ status: 'success', data: inboxMessage });
+});
+
 app.post('/api/public/chat', async (req: Request, res: Response) => {
   const { message, sessionId } = req.body;
 
@@ -381,6 +576,11 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
 
   const normalizedSessionId = String(sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const publicUserId = normalizedSessionId ? `public-${normalizedSessionId}` : 'public-visitor';
+  const publicGuest = normalizedSessionId ? getPublicChatGuest(normalizedSessionId) : null;
+  if (!publicGuest) {
+    res.status(403).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.' });
+    return;
+  }
   const recentHistoryRecords = getChatHistoryByUser(publicUserId, 6);
   const recentHistory = recentHistoryRecords
     .reverse()
@@ -429,6 +629,88 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
       created_at: new Date().toISOString()
     });
 
+    if (!Boolean(publicGuest.ai_enabled)) {
+      res.json({
+        status: 'success',
+        aiPaused: true,
+        data: '',
+        message: 'Admin đang trực tiếp hỗ trợ cuộc trò chuyện này.'
+      });
+      return;
+    }
+
+    const hasRealEstateIntent = hasPublicRealEstateIntent(String(message));
+    if (!hasRealEstateIntent) {
+      const smallTalkResponse = await generatePublicSmallTalkReply(String(message), recentHistory);
+
+      saveChatMessage({
+        id: `chat-public-${Date.now()}-model`,
+        user_id: publicUserId,
+        role: 'model',
+        message: smallTalkResponse,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ status: 'success', data: smallTalkResponse });
+      return;
+    }
+
+    if (isGreetingOnlyMessage(String(message))) {
+      const greetingResponse = [
+        'Dạ chào anh/chị ạ, em là Lily bên Estoria.',
+        'Anh/chị đang quan tâm loại BĐS nào ở Đà Nẵng để em lọc đúng nhu cầu hơn: nhà phố, đất nền, căn hộ hay shophouse ạ?'
+      ].join('\n\n');
+
+      saveChatMessage({
+        id: `chat-public-${Date.now()}-model`,
+        user_id: publicUserId,
+        role: 'model',
+        message: greetingResponse,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ status: 'success', data: greetingResponse });
+      return;
+    }
+
+    if (isWeatherQuestion(String(message))) {
+      const weatherResponse = [
+        'Dạ, em chưa có dữ liệu thời tiết realtime để trả lời chính xác ạ.',
+        'Anh/chị nên kiểm tra nhanh trên ứng dụng thời tiết để có thông tin cập nhật nhất.',
+        'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
+      ].join('\n\n');
+
+      saveChatMessage({
+        id: `chat-public-${Date.now()}-model`,
+        user_id: publicUserId,
+        role: 'model',
+        message: weatherResponse,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ status: 'success', data: weatherResponse });
+      return;
+    }
+
+    if (!hasPublicRealEstateIntent(String(message))) {
+      const offTopicResponse = [
+        'Dạ, câu này em chưa có dữ liệu realtime để trả lời chính xác ạ.',
+        'Anh/chị nên kiểm tra nhanh trên ứng dụng thời tiết để có thông tin cập nhật nhất.',
+        'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
+      ].join('\n\n');
+
+      saveChatMessage({
+        id: `chat-public-${Date.now()}-model`,
+        user_id: publicUserId,
+        role: 'model',
+        message: offTopicResponse,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ status: 'success', data: offTopicResponse });
+      return;
+    }
+
     if (isNegotiationQuestion) {
       const negotiationResponse = recentlyMentionedProperty
         ? `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Nếu anh/chị thực sự quan tâm ${recentlyMentionedProperty.title}, anh/chị để lại số điện thoại để anh Linh bên em liên hệ trao đổi trực tiếp với chủ và phản hồi ngay cho mình nhé.\n\nAnh Linh: 0905 777 594\nChị Hằng: 0984 755 258`
@@ -461,7 +743,12 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         asksArea ? `diện tích ${directProperty.area}m2` : '',
         asksLocation ? `vị trí ${directProperty.location}` : ''
       ].filter(Boolean).join(', ');
-      const directResponse = `Dạ, ${directProperty.title} hiện có ${details}. Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem căn ạ?`;
+      const directResponse = [
+        `Dạ, em gửi anh/chị thông tin đang cần về **${directProperty.title}**:`,
+        `- ${details.split(', ').join('\n- ')}`,
+        `- 🔗 [**Xem chi tiết sản phẩm**](${getPropertyPath(directProperty)})`,
+        '**Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem ạ?**'
+      ].join('\n\n');
 
       saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
@@ -477,7 +764,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
     const propertyContext = JSON.stringify(retrievedPublicProperties.map(compactProperty), null, 2);
     console.log(`[PUBLIC RETRIEVAL] query="${String(message).slice(0, 80)}" selected=${retrievedPublicProperties.length} contextChars=${propertyContext.length}`);
 
-    const aiResponse = await generateText(
+    let aiResponse = await generateText(
       [
         'Bạn là Lily, chuyên viên tư vấn bất động sản thân thiện trên trang bán hàng.',
         'Chỉ tư vấn dựa trên danh sách bất động sản đang bán được cung cấp.',
@@ -486,12 +773,29 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         'Luôn trả lời bằng tiếng Việt tự nhiên, mềm mại như một chuyên viên tư vấn đang trò chuyện trực tiếp.',
         'Xưng "em" và gọi khách là "anh/chị"; có thể mở đầu bằng "Dạ chào anh/chị ạ" khi phù hợp.',
         'Mở đầu bằng cách ghi nhận đúng nhu cầu của khách, sau đó giới thiệu sản phẩm bằng câu nối tự nhiên như "bên em đang sẵn hàng..." hoặc "em thấy căn này khá hợp với nhu cầu của anh/chị".',
-        'Giải thích ngắn gọn vì sao sản phẩm phù hợp bằng 2-3 ý nổi bật được viết thành câu văn mượt mà; chỉ dùng bullet khi cần so sánh nhiều sản phẩm.',
+        'Khi giới thiệu từ 2 sản phẩm trở lên: TUYỆT ĐỐI không viết thành một đoạn văn liên tục. Mỗi sản phẩm phải là một block Markdown riêng, đánh số rõ ràng.',
+        'Mỗi block sản phẩm phải có: tiêu đề, vị trí, giá, diện tích, pháp lý, 1-3 điểm đáng chú ý và lý do phù hợp. Dùng bullet, mỗi thông tin một dòng.',
+        'Sau mỗi block sản phẩm phải có một dòng trống. Không đặt hai sản phẩm trên cùng một dòng.',
+        'Mỗi sản phẩm bắt buộc có link xem chi tiết dạng slug SEO ở root domain: [Xem chi tiết sản phẩm](/<slug-title-id>).',
+        'Khi chỉ giới thiệu 1 sản phẩm: vẫn chia thành đoạn ngắn và bullet thông tin chính để dễ đọc trên điện thoại.',
         'Kết thúc bằng một câu hỏi nhẹ nhàng để tiếp tục tư vấn hoặc mời khách để lại số điện thoại/Zalo, không thúc ép.',
         'Tránh các cụm từ cứng nhắc như "Dựa trên yêu cầu", "gợi ý sản phẩm phù hợp nhất là", "Nếu bạn quan tâm", "vui lòng để lại".',
         'Không lặp lại nguyên văn dữ liệu theo mẫu nhãn "Vị trí:", "Điểm nổi bật:" trừ khi khách yêu cầu bảng thông tin.',
         'Khi khách trả giá, hỏi bớt, hỏi chốt hoặc hỏi một mức giá có bán không: tuyệt đối không xác nhận có thể thương lượng và không tự cam kết thay chủ. Trả lời ngắn gọn rằng cần liên hệ trực tiếp, rồi cung cấp Anh Linh: 0905 777 594 và Chị Hằng: 0984 755 258.',
-        'Ưu tiên câu trả lời từ 3-6 câu, có thể dùng 1-2 emoji phù hợp nhưng không lạm dụng.'
+        'Có thể dùng emoji làm nhãn thông tin nhưng không lạm dụng.',
+        'Format bắt buộc khi có nhiều sản phẩm:',
+        'Mở đầu 1-2 câu ngắn.',
+        '### 1. Tên sản phẩm',
+        '- 📍 **Vị trí:** ...',
+        '- 💰 **Giá:** ...',
+        '- 📐 **Diện tích:** ...',
+        '- 📄 **Pháp lý:** ...',
+        '- ✨ **Điểm đáng chú ý:** ...',
+        '- **Phù hợp khi:** ...',
+        '- 🔗 [**Xem chi tiết sản phẩm**](/<slug-title-id>)',
+        '### 2. Tên sản phẩm',
+        '... cùng cấu trúc ...',
+        'Kết thúc bằng 1-2 câu hỏi lọc nhu cầu, mỗi câu một dòng.'
       ].join('\n'),
       [
         `Các bất động sản liên quan nhất đã được backend truy xuất:\n${propertyContext || 'Chưa có sản phẩm công khai phù hợp.'}`,
@@ -504,6 +808,32 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         'Dạ chào anh/chị ạ. Với nhu cầu tìm căn có thể ngắm pháo hoa, bên em đang sẵn căn S161 – Sonata Townhouse khá phù hợp. Căn nằm ở vị trí đẹp bên sông Hàn nên vừa có view sông thoáng, vừa thuận tiện di chuyển ra biển và trung tâm thương mại. Em có thể gửi thêm hình ảnh thực tế và lịch xem căn để anh/chị tham khảo nhé?'
       ].join('\n')
     );
+    let hasPropertyDetailLink = /\[[^\]]+\]\(\/[^)\s]+\)/.test(aiResponse);
+    if (
+      retrievedPublicProperties.length >= 2
+      && (!/###\s+\d+\.|(?:^|\n)-\s+/m.test(aiResponse) || !hasPropertyDetailLink)
+    ) {
+      aiResponse = [
+        'Dạ, em tách rõ từng sản phẩm để anh/chị dễ so sánh:',
+        formatPublicPropertySuggestions(retrievedPublicProperties.slice(0, 3)),
+        '**Anh/chị muốn em lọc tiếp theo khu vực, khoảng ngân sách hay loại hình nào ạ?**'
+      ].join('\n\n');
+      hasPropertyDetailLink = true;
+    }
+    if (!hasPropertyDetailLink) {
+      const mentionedProperties = retrievedPublicProperties.filter(property =>
+        aiResponse.toLowerCase().includes(property.title.toLowerCase())
+      ).slice(0, 3);
+      if (mentionedProperties.length) {
+        aiResponse = [
+          aiResponse,
+          '**Xem chi tiết:**',
+          ...mentionedProperties.map(property =>
+            `- [${property.title}](${getPropertyPath(property)})`
+          )
+        ].join('\n\n');
+      }
+    }
 
     saveChatMessage({
       id: `chat-public-${Date.now()}-model`,
@@ -519,20 +849,18 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
     const suggestedProperties = recentlyMentionedProperty
       ? [recentlyMentionedProperty]
       : retrievedPublicProperties.slice(0, 3);
-    const suggestions = suggestedProperties.map((property: Property) =>
-      `${property.title} tại ${property.location}, diện tích ${property.area}m2, giá ${property.price} tỷ và pháp lý ${property.legal_status}.`
-    ).join('\n');
+    const suggestions = formatPublicPropertySuggestions(suggestedProperties);
 
     const fallbackResponse = recentlyMentionedProperty
       ? [
-          `Dạ, căn anh/chị vừa hỏi là ${recentlyMentionedProperty.title}.`,
-          `Căn này hiện có giá ${recentlyMentionedProperty.price} tỷ, diện tích ${recentlyMentionedProperty.area}m2 và pháp lý ${recentlyMentionedProperty.legal_status}.`,
-          'Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem căn ạ?'
-        ].join(' ')
+          `Dạ, em gửi anh/chị thông tin rõ hơn về sản phẩm vừa hỏi:`,
+          formatPublicPropertySuggestions([recentlyMentionedProperty]),
+          '**Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem ạ?**'
+        ].join('\n\n')
       : [
-          'Dạ chào anh/chị ạ. Hiện kết nối tư vấn đang hơi chậm, em gửi trước một vài sản phẩm bên em đang sẵn hàng để anh/chị tham khảo nhé.',
-          suggestions || 'Hiện giỏ hàng chưa có sản phẩm công khai phù hợp để em gửi anh/chị.',
-          'Anh/chị đang ưu tiên nhất về vị trí, khoảng giá hay tiện ích nào để em lọc sát nhu cầu hơn ạ?'
+          'Dạ chào anh/chị ạ. Hiện kết nối tư vấn đang hơi chậm, em gửi trước một số sản phẩm đang sẵn hàng để anh/chị dễ so sánh:',
+          suggestions,
+          '**Để em lọc sát hơn, anh/chị đang ưu tiên tiêu chí nào nhất?**\n- Khu vực mong muốn\n- Khoảng ngân sách\n- Loại hình hoặc tiện ích cần có'
         ].join('\n\n');
 
     saveChatMessage({
@@ -709,7 +1037,7 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
   const leadWarm = customers.filter(c => c.status === 'warm').length;
   const leadCold = customers.filter(c => c.status === 'new').length;
   
-  const totalProperties = properties.filter(p => p.sale_status !== 'sold').length;
+  const totalProperties = properties.filter(p => !['sold', 'hidden'].includes(p.sale_status || 'available')).length;
   const totalPosts = posts.length;
   const pendingInbox = inbox.filter(i => i.status === 'pending').length;
   
@@ -895,7 +1223,7 @@ app.post('/api/properties', (req: Request, res: Response) => {
     description: propData.description || '',
     rich_description: propData.rich_description || propData.description || '',
     internal_notes: propData.internal_notes || '',
-    sale_status: propData.sale_status === 'sold' ? 'sold' : 'available',
+    sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
     images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
     gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
     selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
@@ -909,6 +1237,12 @@ app.post('/api/properties', (req: Request, res: Response) => {
   
   // Create static empty placeholders to prompt the user
   newProperty.ai_posts = {
+    seo: {
+      title: '',
+      meta_description: '',
+      keywords: [],
+      hashtags: []
+    },
     facebook: "",
     zalo: "",
     tiktok: "",
@@ -946,10 +1280,10 @@ app.put('/api/properties/:id', (req: Request, res: Response) => {
 
 app.delete('/api/properties/:id', (req: Request, res: Response) => {
   const db = readDatabase();
-  const target = db.properties.find(p => p.id === req.params.id);
-  const filtered = db.properties.filter(p => p.id !== req.params.id);
+  const index = db.properties.findIndex(p => p.id === req.params.id);
+  const target = index >= 0 ? db.properties[index] : null;
   
-  if (filtered.length === db.properties.length) {
+  if (!target || index === -1) {
     res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
     return;
   }
@@ -959,7 +1293,13 @@ app.delete('/api/properties/:id', (req: Request, res: Response) => {
     return;
   }
 
-  db.properties = filtered;
+  db.properties[index] = {
+    ...db.properties[index],
+    sale_status: 'hidden'
+  };
+  writeDatabase(db);
+  res.json({ status: 'success', data: db.properties[index], message: 'Soft deleted property.' });
+  return;
   writeDatabase(db);
   res.json({ status: 'success', message: 'Đã xóa bất động sản thành công' });
 });
@@ -1005,15 +1345,24 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
         const existingPost = db.posts.find(post => post.property_id === propertyId && post.platform === platform && post.status === 'draft');
         if (existingPost) {
           existingPost.content = content[platform];
+          existingPost.title = content.seo?.title || existingPost.title;
+          existingPost.seo_title = content.seo?.title;
+          existingPost.meta_description = content.seo?.meta_description;
+          existingPost.keywords = content.seo?.keywords || [];
+          existingPost.hashtags = platform === 'zalo' ? [] : (content.seo?.hashtags || []);
         } else {
           db.posts.push({
             id: `post-${Date.now()}-${platform}`,
-            title: `[Tự động AI - Draft] Bài viết ${platform.toUpperCase()} - ${property.title}`,
+            title: content.seo?.title || property.title,
             platform: platform,
             content: content[platform],
             status: 'draft',
             property_id: property.id,
             property_title: property.title,
+            seo_title: content.seo?.title,
+            meta_description: content.seo?.meta_description,
+            keywords: content.seo?.keywords || [],
+            hashtags: platform === 'zalo' ? [] : (content.seo?.hashtags || []),
             created_by_ai: true,
             created_at: new Date().toISOString(),
             company_id: property.company_id,
@@ -1047,7 +1396,6 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
   }
 });
 
-
 // ----------------------------------------------------
 // Posts CMS API (CRUD)
 // ----------------------------------------------------
@@ -1059,16 +1407,27 @@ app.get('/api/posts', (req: Request, res: Response) => {
 app.post('/api/posts', (req: Request, res: Response) => {
   const db = readDatabase();
   const postData = req.body;
+  const linkedProperty = db.properties.find(property => property.id === postData.property_id);
+  const propertySeo = linkedProperty ? buildPropertySeo(linkedProperty) : null;
+  const platform = postData.platform || 'facebook';
+  const hashtags = propertySeo && platform !== 'zalo' ? propertySeo.hashtags : [];
+  const content = hashtags.length
+    ? appendStandardHashtags(postData.content || '', hashtags)
+    : (postData.content || '');
 
   const newPost: Post = {
     id: `post-${Date.now()}`,
-    title: postData.title || 'Bài viết mới',
-    platform: postData.platform || 'facebook',
-    content: postData.content || '',
+    title: postData.title || propertySeo?.title || 'Bài viết mới',
+    platform,
+    content,
     status: postData.status || 'draft',
     scheduled_at: postData.scheduled_at || '',
     property_id: postData.property_id || '',
     property_title: postData.property_title || '',
+    seo_title: postData.seo_title || propertySeo?.title || postData.title || '',
+    meta_description: postData.meta_description || propertySeo?.meta_description || '',
+    keywords: Array.isArray(postData.keywords) ? postData.keywords : (propertySeo?.keywords || []),
+    hashtags: Array.isArray(postData.hashtags) ? postData.hashtags : hashtags,
     created_by_ai: postData.created_by_ai || false,
     engagement: { views: 0, likes: 0, shares: 0, comments: 0 },
     created_at: new Date().toISOString(),
@@ -1306,6 +1665,70 @@ app.get('/api/chat/history', (req: Request, res: Response) => {
   res.json({ status: 'success', data: history });
 });
 
+app.get('/api/chat/guests', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  if (user.role === 'member') {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem danh sách khách chat.' });
+    return;
+  }
+  res.json({ status: 'success', data: getPublicChatGuests() });
+});
+
+app.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  if (user.role === 'member') {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem lịch sử khách chat.' });
+    return;
+  }
+  const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const history = getChatHistoryByUser(`public-${sessionId}`, 200).slice().reverse();
+  res.json({ status: 'success', data: history });
+});
+
+app.put('/api/chat/guests/:sessionId/ai', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  if (user.role === 'member') {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền đổi trạng thái AI.' });
+    return;
+  }
+  const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const guest = updatePublicChatGuestAi(sessionId, Boolean(req.body?.ai_enabled));
+  if (!guest) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách chat.' });
+    return;
+  }
+  res.json({ status: 'success', data: guest });
+});
+
+app.post('/api/chat/guests/:sessionId/messages', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  if (user.role === 'member') {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền gửi tin cho khách.' });
+    return;
+  }
+  const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const guest = getPublicChatGuest(sessionId);
+  const message = String(req.body?.message || '').trim();
+  if (!guest) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách chat.' });
+    return;
+  }
+  if (!message) {
+    res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống.' });
+    return;
+  }
+  updatePublicChatGuestAi(sessionId, false);
+  const saved = saveChatMessage({
+    id: `chat-admin-${Date.now()}-${user.id}`,
+    user_id: `public-${sessionId}`,
+    company_id: user.company_id,
+    role: 'model',
+    message,
+    created_at: new Date().toISOString()
+  });
+  res.json({ status: 'success', data: saved });
+});
+
 app.get('/api/content/generated', (req: Request, res: Response) => {
   const db = readDatabase();
   const user = getAuthUser(req);
@@ -1450,6 +1873,77 @@ app.put('/api/settings', (req: Request, res: Response) => {
 // ----------------------------------------------------
 // Web Front-end Asset serving
 // ----------------------------------------------------
+function getPublicOrigin(req: Request) {
+  const configuredOrigin = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(configuredOrigin)) return configuredOrigin;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+app.get('/robots.txt', (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  res
+    .type('text/plain')
+    .send([
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /api/',
+      'Disallow: /admin/',
+      `Sitemap: ${origin}/sitemap.xml`
+    ].join('\n'));
+});
+
+app.get('/bds-da-nang', (req: Request, res: Response) => {
+  res.redirect(301, publicListingsPath);
+});
+
+app.get('/bds-da-nang/:propertySlug', (req: Request, res: Response) => {
+  res.redirect(301, `/${encodeURIComponent(req.params.propertySlug)}`);
+});
+
+app.get('/listings', (req: Request, res: Response) => {
+  const propertyId = String(req.query.property || '').trim();
+  if (propertyId) {
+    const property = getProperties().find((item: Property) => item.id === propertyId);
+    if (property) {
+      res.redirect(301, getPropertyPath(property));
+      return;
+    }
+  }
+  res.redirect(301, publicListingsPath);
+});
+
+app.get('/sitemap.xml', (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
+  const urls = [
+    origin,
+    ...publicProperties.map(property => `${origin}${getPropertyPath(property)}`)
+  ];
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls.map((url, index) => [
+      '  <url>',
+      `    <loc>${escapeXml(url)}</loc>`,
+      `    <changefreq>${index === 0 ? 'daily' : 'weekly'}</changefreq>`,
+      `    <priority>${index === 0 ? '1.0' : '0.8'}</priority>`,
+      '  </url>'
+    ].join('\n')),
+    '</urlset>'
+  ].join('\n');
+
+  res.type('application/xml').send(xml);
+});
+
 const distPath = path.join(process.cwd(), 'dist');
 
 if (process.env.NODE_ENV === 'production') {

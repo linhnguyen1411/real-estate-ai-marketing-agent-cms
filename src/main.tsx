@@ -1,7 +1,7 @@
 import React from 'react';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import ListingsPage from './ListingsPage.tsx';
@@ -21,6 +21,7 @@ async function fetchPublicProperties() {
 }
 
 function PublicListingsWrapper() {
+  const { propertySlug } = useParams();
   const [properties, setProperties] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -39,7 +40,12 @@ function PublicListingsWrapper() {
     );
   }
 
-  return <ListingsPage properties={properties} />;
+  return <ListingsPage properties={properties} propertySlug={propertySlug} />;
+}
+
+function LegacyPropertyRedirect() {
+  const { propertySlug } = useParams();
+  return <Navigate to={propertySlug ? `/${propertySlug}` : '/'} replace />;
 }
 
 createRoot(document.getElementById('root')!).render(
@@ -47,8 +53,13 @@ createRoot(document.getElementById('root')!).render(
     <Router>
       <HelmetProvider>
         <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/listings" element={<PublicListingsWrapper />} />
+          <Route path="/admin/login" element={<App />} />
+          <Route path="/admin/dashboard" element={<App />} />
+          <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
+          <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
+          <Route path="/listings" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<PublicListingsWrapper />} />
+          <Route path="/:propertySlug" element={<PublicListingsWrapper />} />
         </Routes>
       </HelmetProvider>
     </Router>

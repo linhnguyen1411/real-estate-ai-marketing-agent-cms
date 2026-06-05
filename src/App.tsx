@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, FormEvent } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { 
   LayoutDashboard, 
@@ -37,9 +37,10 @@ import {
   ChevronRight,
   Clock,
   ShieldCheck,
-  UserPlus
+  UserPlus,
+  Menu
 } from 'lucide-react';
-import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
@@ -47,12 +48,15 @@ import {
   analyzeCustomer,
   createCustomer,
   createProperty,
+  deleteProperty,
   createUser,
   DashboardData,
   generateInboxReply,
   generatePropertyMarketing,
   getAuthToken,
   getChatHistory,
+  getPublicChatGuestHistory,
+  getPublicChatGuests,
   getCurrentUser,
   getGeneratedContents,
   getInitialAppData,
@@ -62,8 +66,10 @@ import {
   runDemoAutomations,
   saveSettings,
   sendAssistantMessage,
+  sendPublicChatGuestMessage,
   sendInboxReply,
   toggleAutomation,
+  updatePublicChatGuestAi,
   updateCustomer,
   updatePost,
   updateProperty,
@@ -85,12 +91,22 @@ const createEmptyPropertyForm = () => ({
   sale_status: 'available', selling_points: ''
 });
 
+type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
+
+const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
+  facebook: { label: 'Facebook 3:4' },
+  zalo: { label: 'Zalo 1:1' },
+  tiktok: { label: 'TikTok 9:16' }
+};
+
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('real_estate_ai_active_tab') || 'dashboard');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const [loginEmail, setLoginEmail] = useState<string>('owner@example.com');
-  const [loginPassword, setLoginPassword] = useState<string>('owner123');
+  const [loginEmail, setLoginEmail] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
   
   // App variables states
@@ -103,11 +119,18 @@ export default function App() {
   const [channels, setChannels] = useState<MarketingChannel[]>([]);
   const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
   const [managedUsers, setManagedUsers] = useState<User[]>([]);
+  const [chatHistoryRecords, setChatHistoryRecords] = useState<ChatHistoryRecord[]>([]);
+  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState('');
+  const [publicChatGuests, setPublicChatGuests] = useState<PublicChatGuest[]>([]);
+  const [selectedChatGuestId, setSelectedChatGuestId] = useState<string>('');
+  const [selectedGuestChatHistory, setSelectedGuestChatHistory] = useState<ChatHistoryRecord[]>([]);
+  const [guestReplyInput, setGuestReplyInput] = useState('');
   // Loading & interactive states
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   // Chatbot states
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([ASSISTANT_WELCOME_MESSAGE]);
@@ -153,7 +176,7 @@ export default function App() {
           warm: customers.filter(customer => customer.status === 'warm').length,
           cold: customers.filter(customer => customer.status === 'new').length
         },
-        totalProperties: properties.filter(property => property.sale_status !== 'sold').length,
+        totalProperties: properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')).length,
         totalPosts: posts.length,
         pendingInbox: inbox.filter(message => message.status === 'pending').length,
         todayTasksCount: customers.filter(customer => customer.status === 'hot' && customer.lead_score > 80).length
@@ -210,6 +233,16 @@ export default function App() {
     restoreSession();
   }, []);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (currentUser && location.pathname === '/admin/login') {
+      navigate('/admin/dashboard', { replace: true });
+    }
+    if (!currentUser && location.pathname !== '/admin/login') {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, currentUser, location.pathname, navigate]);
+
   // Read data from API server entry
   const fetchAllData = async () => {
     setLoading(true);
@@ -222,6 +255,10 @@ export default function App() {
       setAutomations(data.automations);
       setSettings(data.settings);
       setChannels(data.channels);
+      setChatHistoryRecords(await getChatHistory().catch(() => []));
+      const guests = await getPublicChatGuests().catch(() => []);
+      setPublicChatGuests(guests);
+      setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
       const chatHistory = await getChatHistory('mine').catch(() => []);
       if (chatHistory.length > 0) {
         setChatMessages(chatHistory.slice().reverse().map(item => ({
@@ -255,6 +292,33 @@ export default function App() {
     }
   }, [currentUser]);
 
+  const refreshPublicGuestChats = async (sessionId = selectedChatGuestId) => {
+    const guests = await getPublicChatGuests().catch(() => publicChatGuests);
+    setPublicChatGuests(guests);
+    if (!sessionId && guests[0]?.session_id) {
+      setSelectedChatGuestId(guests[0].session_id);
+      sessionId = guests[0].session_id;
+    }
+    if (sessionId) {
+      setSelectedGuestChatHistory(await getPublicChatGuestHistory(sessionId).catch(() => []));
+    }
+  };
+
+  const refreshChatHistoryRecords = async () => {
+    setChatHistoryRecords(await getChatHistory().catch(() => chatHistoryRecords));
+  };
+
+  useEffect(() => {
+    if (!currentUser || !['chatbot', 'chat-history'].includes(activeTab)) return;
+    refreshPublicGuestChats(selectedChatGuestId);
+    refreshChatHistoryRecords();
+    const timer = window.setInterval(() => {
+      refreshPublicGuestChats(selectedChatGuestId);
+      refreshChatHistoryRecords();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [currentUser, activeTab, selectedChatGuestId]);
+
   useEffect(() => {
     localStorage.setItem('real_estate_ai_active_tab', activeTab);
   }, [activeTab]);
@@ -268,6 +332,7 @@ export default function App() {
       const session = await login(loginEmail, loginPassword);
       setCurrentUser(session.user);
       setActiveTab('dashboard');
+      navigate('/admin/dashboard', { replace: true });
     } catch (error: any) {
       setLoginError(error.message || 'Đăng nhập thất bại.');
     } finally {
@@ -286,6 +351,13 @@ export default function App() {
     setAutomations([]);
     setGeneratedContents([]);
     setManagedUsers([]);
+    setChatHistoryRecords([]);
+    setPublicChatGuests([]);
+    setSelectedChatGuestId('');
+    setSelectedGuestChatHistory([]);
+    setGuestReplyInput('');
+    setAdminMenuOpen(false);
+    navigate('/admin/login', { replace: true });
   };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -555,9 +627,9 @@ export default function App() {
     setActionLoading(`gen-prop-${propId}`);
     try {
       const property = await generatePropertyMarketing(propId, aiGeneratingTone);
-      showToast("Tự động hóa AI Content hoàn tất! Bản kịch bản đã được lưu nháp trong Posts CMS.", "success");
       setProperties(prev => prev.map(p => p.id === propId ? property : p));
       setSelectedPropertyForAI(property);
+      showToast("Đã tạo campaign brief và nội dung đa kênh.", "success");
     } catch (e: any) {
       showToast(e.message || "Lỗi liên tuyến AI Marketing.", "error");
     } finally {
@@ -701,6 +773,80 @@ export default function App() {
     }
   };
 
+  const handleToggleGuestAi = async (guest: PublicChatGuest) => {
+    setActionLoading(`guest-ai-${guest.session_id}`);
+    try {
+      const nextEnabled = !Boolean(guest.ai_enabled);
+      const updated = await updatePublicChatGuestAi(guest.session_id, nextEnabled);
+      setPublicChatGuests(prev => prev.map(item => item.session_id === updated.session_id ? updated : item));
+      showToast(nextEnabled ? 'Đã bật lại AI cho khách này.' : 'Đã tắt AI, admin sẽ tự chat với khách.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Không thể cập nhật trạng thái AI.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSendGuestReply = async () => {
+    const message = guestReplyInput.trim();
+    if (!selectedChatGuestId || !message) return;
+    setActionLoading(`guest-reply-${selectedChatGuestId}`);
+    try {
+      const saved = await sendPublicChatGuestMessage(selectedChatGuestId, message);
+      setSelectedGuestChatHistory(prev => [...prev, saved]);
+      setGuestReplyInput('');
+      await refreshPublicGuestChats(selectedChatGuestId);
+    } catch (error: any) {
+      showToast(error.message || 'Không thể gửi tin nhắn cho khách.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSendHistoryGuestReply = async () => {
+    const message = guestReplyInput.trim();
+    if (!selectedHistoryGuest || !message) return;
+    setActionLoading(`guest-reply-${selectedHistoryGuest.session_id}`);
+    try {
+      await sendPublicChatGuestMessage(selectedHistoryGuest.session_id, message);
+      setGuestReplyInput('');
+      await refreshPublicGuestChats(selectedHistoryGuest.session_id);
+      await refreshChatHistoryRecords();
+    } catch (error: any) {
+      showToast(error.message || 'Không thể gửi tin nhắn cho khách.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSoftDeleteProperty = async (prop: Property) => {
+    setActionLoading(`hide-prop-${prop.id}`);
+    try {
+      const updated = await deleteProperty(prop.id);
+      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
+      showToast('Đã ẩn sản phẩm khỏi listing công khai. Có thể khôi phục trong CMS.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Không thể ẩn sản phẩm.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRestoreProperty = async (prop: Property) => {
+    setActionLoading(`restore-prop-${prop.id}`);
+    try {
+      const updated = await updateProperty(prop.id, { sale_status: 'available' });
+      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
+      showToast('Đã khôi phục sản phẩm về listing công khai.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Không thể khôi phục sản phẩm.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Update Settings Configuration
   const handleSaveSettings = async (e: FormEvent) => {
     e.preventDefault();
@@ -755,6 +901,29 @@ export default function App() {
   const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
   const managedMembers = managedUsers.filter(user => user.role === 'member' && user.status === 'active');
   const selectedPermissionMember = managedUsers.find(user => user.id === selectedPermissionMemberId);
+  const filteredChatHistoryRecords = chatHistoryRecords.filter(record => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return true;
+    return record.user_id.toLowerCase().includes(normalizedQuery)
+      || record.message.toLowerCase().includes(normalizedQuery)
+      || record.role.toLowerCase().includes(normalizedQuery);
+  });
+  const chatHistorySessions = Array.from(
+    filteredChatHistoryRecords.reduce((groups, record) => {
+      const sessionId = record.user_id;
+      groups.set(sessionId, [...(groups.get(sessionId) || []), record]);
+      return groups;
+    }, new Map<string, ChatHistoryRecord[]>())
+  ).map(([sessionId, records]) => ({
+    sessionId,
+    records: records.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    lastMessageAt: records.reduce((latest, record) => Math.max(latest, new Date(record.created_at).getTime()), 0)
+  })).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const selectedChatHistorySession = chatHistorySessions.find(session => session.sessionId === selectedChatHistorySessionId)
+    || chatHistorySessions[0];
+  const selectedHistoryGuest = selectedChatHistorySession?.sessionId.startsWith('public-')
+    ? publicChatGuests.find(guest => `public-${guest.session_id}` === selectedChatHistorySession.sessionId)
+    : undefined;
 
   if (authLoading && !currentUser) {
     return (
@@ -765,48 +934,24 @@ export default function App() {
   }
 
   if (!currentUser) {
-    const demoAccounts = [
-      { label: 'Owner', email: 'owner@example.com', password: 'owner123', note: 'Toàn quyền hệ thống' },
-      { label: 'Company Admin', email: 'admin@danang.example.com', password: 'admin123', note: 'Quản lý company/team' },
-      { label: 'Member', email: 'member-a@danang.example.com', password: 'member123', note: 'Chỉ tài nguyên được cấp phát' }
-    ];
-
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 items-stretch">
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8 items-stretch">
           <section className="flex flex-col justify-center">
             <div className="inline-flex items-center gap-2 text-rose-300 text-xs font-bold uppercase tracking-wider mb-5">
               <Sparkles className="w-4 h-4" />
               Real Estate AI Marketing Agent CMS
             </div>
-            <h1 className="text-4xl font-bold text-white leading-tight mb-4">Đăng nhập để quản lý CRM, tài nguyên team và AI Assistant</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-4">Đăng nhập để quản lý CRM, tài nguyên team và AI Assistant</h1>
             <p className="text-slate-400 text-sm leading-7 max-w-2xl">
               Owner có toàn quyền. Company Admin chỉ quản lý dữ liệu của company/team. Member chỉ truy cập tài nguyên được admin client cấp phát.
             </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-8">
-              {demoAccounts.map(account => (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => {
-                    setLoginEmail(account.email);
-                    setLoginPassword(account.password);
-                  }}
-                  className="text-left bg-slate-900 border border-slate-800 hover:border-rose-500/60 rounded-lg p-4 transition-colors"
-                >
-                  <div className="text-sm font-bold text-white">{account.label}</div>
-                  <div className="text-xs text-slate-500 mt-1">{account.note}</div>
-                  <div className="text-[11px] text-slate-400 font-mono mt-3 break-all">{account.email}</div>
-                </button>
-              ))}
-            </div>
           </section>
 
-          <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-2xl space-y-5">
+          <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-5">
             <div>
               <h2 className="text-xl font-bold text-white">Login</h2>
-              <p className="text-xs text-slate-500 mt-1">Dùng tài khoản demo hoặc thông tin trong database seed.</p>
+              <p className="text-xs text-slate-500 mt-1">Nhập tài khoản đã được cấp để truy cập CMS.</p>
             </div>
 
             <div className="space-y-2">
@@ -851,7 +996,7 @@ export default function App() {
       
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 ${
+        <div className={`fixed bottom-4 left-3 right-3 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 sm:bottom-6 sm:left-auto sm:right-6 sm:px-5 sm:py-4 ${
           toast.type === 'success' ? 'bg-emerald-950/95 border border-emerald-500 text-emerald-200' :
           toast.type === 'error' ? 'bg-rose-950/95 border border-rose-500 text-rose-200' :
           'bg-slate-900 border border-indigo-500 text-indigo-200'
@@ -865,20 +1010,28 @@ export default function App() {
       )}
 
       {/* Top Banner Alert / Workspace Header */}
-      <header className="shrink-0 border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <header className="shrink-0 border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setAdminMenuOpen(true)}
+            className="lg:hidden p-2 text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-slate-700"
+            aria-label="Má»Ÿ menu CMS"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
           <div className="p-2 bg-gradient-to-tr from-rose-600 to-amber-500 rounded-xl">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm sm:text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
               Real Estate AI Marketing Agent CMS
             </h1>
-            <p className="text-xs text-slate-500 font-mono">MVP Production Framework v1.0 • Connected • Việt Nam</p>
+            <p className="hidden sm:block text-xs text-slate-500 font-mono">MVP Production Framework v1.0 • Connected • Việt Nam</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           <div className="hidden lg:flex flex-col items-end leading-tight">
             <span className="text-xs font-bold text-slate-200">{currentUser.name}</span>
             <span className="text-[11px] text-slate-500 uppercase">
@@ -886,7 +1039,7 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
+          <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -913,20 +1066,31 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex flex-1 min-h-0 overflow-hidden">
+        {adminMenuOpen && (
+          <button
+            type="button"
+            aria-label="ÄÃ³ng menu CMS"
+            onClick={() => setAdminMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden"
+          />
+        )}
         
         {/* Navigation Sidebar */}
-        <aside className="w-64 min-h-0 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll">
+        <aside className={`fixed inset-y-0 left-0 z-50 w-72 min-h-0 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
+          adminMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
           <div className="space-y-1">
             <div className="px-3 py-2 text-xs font-semibold text-slate-600 tracking-wider uppercase">Menu chính</div>
             {[
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
-              { id: 'properties', label: 'Giỏ hàng Bất động sản', icon: Home, badge: properties.length },
+              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: properties.length },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
               { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
               { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
+              { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
               ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
               { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
@@ -940,6 +1104,7 @@ export default function App() {
                   onClick={() => {
                     setActiveTab(item.id);
                     setSearchQuery('');
+                    setAdminMenuOpen(false);
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
                     isSelected 
@@ -978,11 +1143,11 @@ export default function App() {
         </aside>
 
         {/* Outer Content Area */}
-        <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-6 overflow-y-auto overflow-x-hidden space-y-6 app-scroll">
+        <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-6 app-scroll">
 
           {/* Search bar inside view headers */}
-          {['crm', 'properties', 'posts'].includes(activeTab) && (
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-900">
+          {['crm', 'properties', 'posts', 'chat-history'].includes(activeTab) && (
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-3 sm:p-4 rounded-2xl border border-slate-900">
               <div className="relative flex-1 max-w-md">
                 <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
@@ -1010,14 +1175,14 @@ export default function App() {
               )}
 
               {activeTab === 'properties' && (
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <a
-                    href="/listings"
+                    href="/"
                     target="_blank"
                     className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-indigo-600/25 transition-all"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    <span>Xem Listing Public</span>
+                    <span>Xem trang BĐS Public</span>
                   </a>
                   <button
                     onClick={openAddPropertyModal}
@@ -1046,7 +1211,7 @@ export default function App() {
               {/* TAB 1: DASHBOARD OVERVIEW */}
               {/* ==================================================== */}
               {activeTab === 'dashboard' && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Heading header */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -1457,7 +1622,7 @@ export default function App() {
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Giỏ hàng Bất động sản
+                      Danh sách Bất động sản
                     </h2>
                     <p className="text-slate-400 text-sm">Chi tiết thông tin bất động sản, sổ đỏ, và tính năng tiếp thị tự động.</p>
                   </div>
@@ -1465,7 +1630,13 @@ export default function App() {
                   {/* Property list grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProperties.map((prop) => (
-                      <div key={prop.id} className={`bg-slate-900/40 rounded-2xl border overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group ${prop.sale_status === 'sold' ? 'border-emerald-700/50 opacity-80' : 'border-slate-900'}`}>
+                      <div key={prop.id} className={`bg-slate-900/40 rounded-2xl border overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group ${
+                        prop.sale_status === 'hidden'
+                          ? 'border-amber-700/50 opacity-70'
+                          : prop.sale_status === 'sold'
+                            ? 'border-emerald-700/50 opacity-80'
+                            : 'border-slate-900'
+                      }`}>
                         
                         {/* Hero Image - Square Gallery */}
                         <div className="relative aspect-square bg-slate-950 overflow-hidden shrink-0 group/gallery">
@@ -1519,6 +1690,11 @@ export default function App() {
                           {prop.sale_status === 'sold' && (
                             <div className="absolute top-14 left-4 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
                               ĐÃ BÁN
+                            </div>
+                          )}
+                          {prop.sale_status === 'hidden' && (
+                            <div className="absolute top-14 left-4 bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
+                              ĐÃ ẨN
                             </div>
                           )}
                           <div className="absolute top-4 right-4 bg-rose-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold tracking-tight">
@@ -1622,7 +1798,7 @@ export default function App() {
                               </button>
                             </div>
 
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="text-2xs text-slate-500 font-mono">
                               {prop.ai_posts?.facebook ? (
                                 <span className="text-emerald-400 flex items-center gap-1 font-bold">✓ Đã tối ưu AI</span>
@@ -1643,6 +1819,20 @@ export default function App() {
                             >
                               <Check className="w-3.5 h-3.5" />
                               <span>{prop.sale_status === 'sold' ? 'Đã bán' : 'Đánh dấu bán'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => prop.sale_status === 'hidden' ? handleRestoreProperty(prop) : handleSoftDeleteProperty(prop)}
+                              disabled={actionLoading === `hide-prop-${prop.id}` || actionLoading === `restore-prop-${prop.id}`}
+                              className={`border font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
+                                prop.sale_status === 'hidden'
+                                  ? 'bg-amber-950/60 text-amber-300 border-amber-700/50 hover:bg-amber-900/60'
+                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-amber-500/50 hover:text-amber-300'
+                              }`}
+                            >
+                              {prop.sale_status === 'hidden' ? <RefreshCw className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              <span>{prop.sale_status === 'hidden' ? 'Khôi phục' : 'Ẩn'}</span>
                             </button>
 
                             <button
@@ -1688,7 +1878,9 @@ export default function App() {
                           value={selectedPropertyForAI?.id || ''}
                           onChange={(e) => {
                             const found = properties.find(p => p.id === e.target.value);
-                            if (found) setSelectedPropertyForAI(found);
+                            if (found) {
+                              setSelectedPropertyForAI(found);
+                            }
                           }}
                           className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
                         >
@@ -1718,6 +1910,7 @@ export default function App() {
                           <span className="text-2xs font-bold text-rose-400 uppercase">Thông tin BĐS Tóm lược</span>
                           <h4 className="text-xs font-bold text-white">{selectedPropertyForAI.title}</h4>
                           <p className="text-2xs text-slate-400 leading-relaxed max-h-24 overflow-y-auto">{selectedPropertyForAI.description}</p>
+                          <p className="text-2xs text-slate-500">Ảnh marketing sẽ dùng ảnh thật đầu tiên trong thư viện của BĐS này.</p>
                         </div>
                       )}
 
@@ -1727,7 +1920,7 @@ export default function App() {
                         className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
                       >
                         <Sparkles className="w-4 h-4" />
-                        <span>{actionLoading === `gen-prop-${selectedPropertyForAI?.id}` ? "Đang phát kiến nội dung..." : "Phát Kiến Nội Dung Bán Hàng Bằng AI"}</span>
+                        <span>{actionLoading === `gen-prop-${selectedPropertyForAI?.id}` ? "Đang lập chiến lược và viết bài..." : "Tạo Campaign & Content Đa Kênh"}</span>
                       </button>
                     </div>
 
@@ -1740,15 +1933,14 @@ export default function App() {
 
                       {selectedPropertyForAI?.ai_posts ? (
                         <div className="space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-900">
-                            {['facebook', 'zalo', 'tiktok', 'website', 'image_prompt', 'video_prompt'].map((plat) => (
+                          <div className="grid grid-cols-3 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-900">
+                            {['facebook', 'zalo', 'tiktok'].map((plat) => (
                               <button
                                 key={plat}
-                                className={`text-2xs py-1.5 px-2 rounded-lg font-bold capitalize transition-all truncate`}
+                                className="text-2xs py-1.5 px-2 rounded-lg font-bold capitalize transition-all truncate hover:bg-slate-800 text-slate-300"
                                 onClick={() => {
-                                  // Simply copy for user preview
                                   const text = selectedPropertyForAI.ai_posts?.[plat as keyof typeof selectedPropertyForAI.ai_posts];
-                                  if (text) handleCopyText(text);
+                                  if (typeof text === 'string') handleCopyText(text);
                                 }}
                               >
                                 {plat.replace('_', ' ')} 📋
@@ -1757,6 +1949,57 @@ export default function App() {
                           </div>
 
                           <div className="space-y-4">
+                            {selectedPropertyForAI.ai_posts.strategy && (
+                              <div className="p-4 bg-gradient-to-br from-indigo-950/50 to-slate-950 rounded-xl border border-indigo-500/20 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-indigo-300">Campaign Brief do AI phát triển</span>
+                                  <span className="text-3xs text-slate-500 uppercase">Chiến lược trước, content sau</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-2xs">
+                                  <div><span className="text-slate-500 block mb-1">Khách mục tiêu</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.target_customer}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Insight khách hàng</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.customer_insight}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Góc bán</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.campaign_angle}</p></div>
+                                  <div><span className="text-slate-500 block mb-1">Creative concept</span><p className="text-slate-200 leading-relaxed">{selectedPropertyForAI.ai_posts.strategy.creative_concept}</p></div>
+                                </div>
+                                <div className="pt-2 border-t border-indigo-500/10">
+                                  <span className="text-slate-500 text-2xs block mb-1">Thông điệp chủ đạo</span>
+                                  <p className="text-sm font-semibold text-white">{selectedPropertyForAI.ai_posts.strategy.key_message}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedPropertyForAI.ai_posts.seo && (
+                              <div className="p-4 bg-gradient-to-br from-emerald-950/40 to-slate-950 rounded-xl border border-emerald-500/20 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-emerald-300">Bộ SEO & Hashtag cho sản phẩm</span>
+                                  <button
+                                    onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.seo?.hashtags.join(' ') || '')}
+                                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" /> Copy hashtag
+                                  </button>
+                                </div>
+                                <div>
+                                  <span className="text-2xs text-slate-500 block mb-1">SEO title ({selectedPropertyForAI.ai_posts.seo.title.length}/60)</span>
+                                  <p className="text-sm font-semibold text-white">{selectedPropertyForAI.ai_posts.seo.title}</p>
+                                </div>
+                                <div>
+                                  <span className="text-2xs text-slate-500 block mb-1">Meta description ({selectedPropertyForAI.ai_posts.seo.meta_description.length}/155)</span>
+                                  <p className="text-xs leading-relaxed text-slate-300">{selectedPropertyForAI.ai_posts.seo.meta_description}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {selectedPropertyForAI.ai_posts.seo.hashtags.map(hashtag => (
+                                    <span key={hashtag} className="rounded-md bg-emerald-500/10 px-2 py-1 text-2xs font-semibold text-emerald-300">
+                                      {hashtag}
+                                    </span>
+                                  ))}
+                                </div>
+                                <p className="text-3xs text-slate-500">
+                                  SEO title/meta dùng cho Google. Hashtag được tự gắn vào Facebook và TikTok; Zalo giữ nội dung sạch.
+                                </p>
+                              </div>
+                            )}
+
                             {/* Facebook Section Column */}
                             {selectedPropertyForAI.ai_posts.facebook && (
                               <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
@@ -1783,24 +2026,65 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Prompts Section */}
-                            {(selectedPropertyForAI.ai_posts.image_prompt || selectedPropertyForAI.ai_posts.video_prompt) && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {selectedPropertyForAI.ai_posts.image_prompt && (
-                                  <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
-                                    <span className="text-2xs font-extrabold text-amber-400 uppercase flex items-center gap-1">
-                                      <ImageIcon className="w-3.5 h-3.5" /> Photographic Prompt (AI Images)
-                                    </span>
-                                    <p className="text-2xs text-slate-400 font-mono leading-relaxed line-clamp-3">{selectedPropertyForAI.ai_posts.image_prompt}</p>
-                                    <button 
-                                      onClick={() => handleCopyText(selectedPropertyForAI.ai_posts?.image_prompt || '')}
-                                      className="text-2xs text-rose-400 hover:underline block"
-                                    >
-                                      Sao chép Prompt Ảnh
-                                    </button>
-                                  </div>
-                                )}
+                            {/* TikTok Section */}
+                            {selectedPropertyForAI.ai_posts.tiktok && (
+                              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-rose-400">TikTok Reel Script 30-45 giây</span>
+                                  <button onClick={() => selectedPropertyForAI.ai_posts?.tiktok && handleCopyText(selectedPropertyForAI.ai_posts.tiktok)} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5">
+                                    <Copy className="w-3.5 h-3.5" /> Copy
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed max-h-64 overflow-y-auto">{selectedPropertyForAI.ai_posts.tiktok}</p>
+                              </div>
+                            )}
 
+                            {/* Copy-ready image generation prompts */}
+                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 space-y-3">
+                              <div>
+                                <span className="text-xs font-bold text-amber-400 block">Prompt tạo ảnh cho ChatGPT / Gemini</span>
+                                <span className="text-2xs text-slate-500">Tải hoặc đính kèm ảnh reference bên dưới vào ChatGPT/Gemini, sau đó copy prompt theo đúng kênh.</span>
+                              </div>
+                              {(selectedPropertyForAI.gallery_images?.[0] || selectedPropertyForAI.images) && (
+                                <div className="flex gap-3 items-center p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+                                  <img
+                                    src={selectedPropertyForAI.gallery_images?.[0] || selectedPropertyForAI.images}
+                                    alt="Ảnh listing dùng làm reference"
+                                    className="w-20 h-20 rounded-lg object-cover"
+                                  />
+                                  <div className="text-2xs text-slate-400 leading-relaxed">
+                                    <strong className="text-slate-200 block mb-1">Ảnh reference cần đính kèm</strong>
+                                    Prompt yêu cầu AI tạo ảnh mới nhưng vẫn giữ đúng nhận diện và kiến trúc của tài sản này.
+                                  </div>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {(['facebook', 'zalo', 'tiktok'] as MarketingCreativeChannel[]).map(channel => {
+                                  const prompt = selectedPropertyForAI.ai_posts?.image_prompts?.[channel];
+                                  return (
+                                    <div key={channel} className="rounded-xl border border-slate-800 bg-slate-900 p-3 space-y-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-2xs font-bold text-slate-300">{MARKETING_CREATIVE_META[channel].label}</span>
+                                        <button
+                                          disabled={!prompt}
+                                          onClick={() => prompt && handleCopyText(prompt)}
+                                          className="text-2xs text-amber-400 disabled:text-slate-700 flex items-center gap-1"
+                                        >
+                                          <Copy className="w-3 h-3" /> Copy prompt
+                                        </button>
+                                      </div>
+                                      <p className="text-3xs text-slate-500 font-mono leading-relaxed line-clamp-6 whitespace-pre-line">
+                                        {prompt || 'Hãy tạo lại campaign để sinh prompt ảnh theo kênh.'}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Video prompt */}
+                            {selectedPropertyForAI.ai_posts.video_prompt && (
+                              <div className="grid grid-cols-1 gap-4">
                                 {selectedPropertyForAI.ai_posts.video_prompt && (
                                   <div className="p-3.5 bg-slate-950/40 rounded-xl border border-slate-900 space-y-2">
                                     <span className="text-2xs font-extrabold text-indigo-400 uppercase flex items-center gap-1">
@@ -2061,6 +2345,149 @@ export default function App() {
               {/* ==================================================== */}
               {activeTab === 'chatbot' && (
                 <div className="space-y-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-rose-500" />
+                        Chatbot khách website
+                      </h2>
+                      <p className="text-slate-400 text-sm">
+                        Chọn từng khách đã nhập họ tên/số điện thoại để theo dõi hội thoại. Bỏ tick AI để admin tự chat trực tiếp với khách.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refreshPublicGuestChats(selectedChatGuestId)}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-rose-500/60"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Tải lại
+                    </button>
+                  </div>
+
+                  <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40 lg:grid-cols-[330px_1fr]">
+                    <aside className="border-b border-slate-900 bg-slate-950/70 lg:border-b-0 lg:border-r">
+                      <div className="border-b border-slate-900 p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Khách đã chat</div>
+                        <div className="mt-1 text-sm text-slate-300">{publicChatGuests.length} khách guest</div>
+                      </div>
+                      <div className="max-h-[560px] overflow-y-auto p-3 app-scroll">
+                        {publicChatGuests.map(guest => {
+                          const selected = selectedChatGuestId === guest.session_id;
+                          return (
+                            <button
+                              key={guest.session_id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedChatGuestId(guest.session_id);
+                                setGuestReplyInput('');
+                              }}
+                              className={`mb-2 w-full rounded-xl border p-3 text-left transition-all ${
+                                selected
+                                  ? 'border-rose-500/50 bg-rose-500/10'
+                                  : 'border-slate-900 bg-slate-900/50 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-bold text-white">{guest.name}</div>
+                                  <div className="text-xs text-slate-500">{guest.phone}</div>
+                                </div>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-bold ${
+                                  Boolean(guest.ai_enabled) ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'
+                                }`}>
+                                  {Boolean(guest.ai_enabled) ? 'AI' : 'Admin'}
+                                </span>
+                              </div>
+                              <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">{guest.last_message || 'Chưa có tin nhắn'}</p>
+                              <div className="mt-2 flex justify-between text-2xs text-slate-600">
+                                <span>{guest.message_count || 0} tin</span>
+                                <span>{guest.last_message_at ? new Date(guest.last_message_at).toLocaleString('vi-VN') : ''}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {publicChatGuests.length === 0 && (
+                          <div className="p-6 text-center text-xs text-slate-500">
+                            Chưa có khách nào bắt đầu chat.
+                          </div>
+                        )}
+                      </div>
+                    </aside>
+
+                    <section className="flex min-w-0 flex-col">
+                      {selectedChatGuestId ? (
+                        <>
+                          {(() => {
+                            const selectedGuest = publicChatGuests.find(guest => guest.session_id === selectedChatGuestId);
+                            return (
+                              <div className="flex flex-col gap-3 border-b border-slate-900 bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-bold text-white">{selectedGuest?.name || 'Khách guest'}</div>
+                                  <div className="text-xs text-slate-500">{selectedGuest?.phone} · {selectedChatGuestId}</div>
+                                </div>
+                                {selectedGuest && (
+                                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedGuest.ai_enabled)}
+                                      onChange={() => handleToggleGuestAi(selectedGuest)}
+                                      className="h-4 w-4 accent-emerald-500"
+                                    />
+                                    AI tự trả lời
+                                  </label>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          <div className="flex-1 space-y-3 overflow-y-auto p-4 app-scroll">
+                            {selectedGuestChatHistory.map(record => (
+                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                                <div className={`max-w-3xl rounded-2xl px-4 py-3 text-sm leading-6 ${
+                                  record.role === 'user'
+                                    ? 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
+                                    : 'rounded-tr-none bg-rose-600 text-white'
+                                }`}>
+                                  <MarkdownContent content={record.message} compact className="break-words" />
+                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-slate-500' : 'text-rose-100'}`}>
+                                    {record.role === 'user' ? 'Khách' : 'AI/Admin'} · {new Date(record.created_at).toLocaleString('vi-VN')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex gap-3 border-t border-slate-900 bg-slate-950 p-4">
+                            <input
+                              value={guestReplyInput}
+                              onChange={event => setGuestReplyInput(event.target.value)}
+                              onKeyDown={event => event.key === 'Enter' && handleSendGuestReply()}
+                              placeholder="Nhập tin nhắn admin gửi cho khách..."
+                              className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-rose-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSendGuestReply}
+                              disabled={!guestReplyInput.trim() || actionLoading === `guest-reply-${selectedChatGuestId}`}
+                              className="rounded-xl bg-rose-600 p-3 text-white hover:bg-rose-500 disabled:opacity-50"
+                            >
+                              <Send className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-slate-500">
+                          Chọn một khách ở danh sách bên trái để mở hội thoại.
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                </div>
+              )}
+
+              {false && activeTab === 'chatbot' && (
+                <div className="space-y-6">
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                       Trợ lý ảo AI Chatbot (Nội bộ doanh nghiệp)
@@ -2139,6 +2566,211 @@ export default function App() {
                       </button>
                     </div>
 
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'chat-history' && (
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-rose-500" />
+                        Lịch sử trò chuyện
+                      </h2>
+                      <p className="text-slate-400 text-sm">
+                        Theo dõi toàn bộ hội thoại đã lưu từ chatbot public và chatbot nội bộ CMS.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fetchAllData}
+                      disabled={loading}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-rose-500/60 disabled:opacity-50 sm:w-auto"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                      Tải lại lịch sử
+                    </button>
+                  </div>
+
+                  <div className="grid overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40 lg:min-h-[620px] lg:grid-cols-[330px_1fr]">
+                    <aside className="border-b border-slate-900 bg-slate-950/70 lg:border-b-0 lg:border-r">
+                      <div className="border-b border-slate-900 p-3 sm:p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">User/session đã chat</div>
+                        <div className="mt-1 text-sm text-slate-300">{chatHistorySessions.length} hội thoại</div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto p-2 app-scroll sm:max-h-80 sm:p-3 lg:max-h-[560px]">
+                        {chatHistorySessions.map(session => {
+                          const isPublicSession = session.sessionId.startsWith('public-');
+                          const lastMessage = session.records[session.records.length - 1];
+                          const selected = selectedChatHistorySession?.sessionId === session.sessionId;
+                          return (
+                            <button
+                              key={session.sessionId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedChatHistorySessionId(session.sessionId);
+                                setGuestReplyInput('');
+                              }}
+                              className={`mb-2 w-full rounded-xl border p-2.5 text-left transition-all sm:p-3 ${
+                                selected ? 'border-rose-500/50 bg-rose-500/10' : 'border-slate-900 bg-slate-900/50 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`rounded-full px-2 py-0.5 text-2xs font-bold ${
+                                  isPublicSession ? 'bg-emerald-500/10 text-emerald-300' : 'bg-indigo-500/10 text-indigo-300'
+                                }`}>
+                                  {isPublicSession ? 'Public' : 'CMS'}
+                                </span>
+                                <span className="text-2xs text-slate-600">{session.records.length} tin</span>
+                              </div>
+                              <div className="mt-2 truncate text-[11px] font-mono text-slate-300 sm:text-xs">{session.sessionId}</div>
+                              <div className="mt-2 text-2xs text-slate-600">
+                                {lastMessage ? new Date(lastMessage.created_at).toLocaleString('vi-VN') : ''}
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {chatHistorySessions.length === 0 && (
+                          <div className="p-6 text-center text-xs text-slate-500">Chưa có lịch sử chat phù hợp.</div>
+                        )}
+                      </div>
+                    </aside>
+
+                    <section className="flex min-h-[430px] min-w-0 flex-col border-t border-slate-900 lg:min-h-0 lg:border-t-0">
+                      {selectedChatHistorySession ? (
+                        <>
+                          <div className="flex flex-col gap-2 border-b border-slate-900 bg-slate-950 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-white">
+                                {selectedChatHistorySession.sessionId.startsWith('public-') ? 'Public website' : 'CMS nội bộ'}
+                              </div>
+                              <div className="truncate text-xs font-mono text-slate-500">{selectedChatHistorySession.sessionId}</div>
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {selectedChatHistorySession.records.length} tin nhắn
+                            </div>
+                          </div>
+
+                          {selectedHistoryGuest && (
+                            <div className="border-b border-slate-900 bg-slate-950/70 px-3 py-2 sm:px-4">
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedHistoryGuest.ai_enabled)}
+                                  onChange={() => handleToggleGuestAi(selectedHistoryGuest)}
+                                  className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-rose-500 focus:ring-rose-500"
+                                />
+                                AI tự trả lời
+                              </label>
+                            </div>
+                          )}
+
+                          <div className="h-[420px] space-y-3 overflow-y-auto p-3 app-scroll sm:h-[520px] sm:p-4 lg:h-[560px]">
+                            {selectedChatHistorySession.records.map(record => (
+                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                                <div className={`max-w-[92%] rounded-2xl px-3 py-2.5 text-sm leading-6 sm:max-w-3xl sm:px-4 sm:py-3 ${
+                                  record.role === 'user'
+                                    ? 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
+                                    : 'rounded-tr-none bg-rose-600 text-white'
+                                }`}>
+                                  <MarkdownContent content={record.message} compact className="break-words" />
+                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-slate-500' : 'text-rose-100'}`}>
+                                    {record.role === 'user' ? 'Khách/User' : 'AI/Admin'} · {new Date(record.created_at).toLocaleString('vi-VN')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {selectedHistoryGuest && (
+                            <div className="border-t border-slate-900 bg-slate-950 p-3 sm:p-4">
+                              <div className="mb-2 text-2xs text-slate-500">
+                                Gửi tin tại đây sẽ tự chuyển phiên này sang chế độ admin trả lời.
+                              </div>
+                              <div className="flex gap-2 sm:gap-3">
+                                <input
+                                  value={guestReplyInput}
+                                  onChange={event => setGuestReplyInput(event.target.value)}
+                                  onKeyDown={event => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      handleSendHistoryGuestReply();
+                                    }
+                                  }}
+                                  placeholder="Nhập tin nhắn admin gửi cho khách..."
+                                  className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-rose-500 sm:px-4 sm:py-3"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleSendHistoryGuestReply}
+                                  disabled={!guestReplyInput.trim() || actionLoading === `guest-reply-${selectedHistoryGuest.session_id}`}
+                                  className="rounded-xl bg-rose-600 px-3 py-2.5 text-white hover:bg-rose-500 disabled:opacity-50 sm:px-4 sm:py-3"
+                                >
+                                  <Send className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-slate-500">
+                          Chọn một user/session bên trái để xem lịch sử chat.
+                        </div>
+                      )}
+                    </section>
+                  </div>
+
+                  <div className="hidden">
+                    {chatHistorySessions.map(session => {
+                      const isPublicSession = session.sessionId.startsWith('public-');
+                      const lastMessage = session.records[session.records.length - 1];
+                      return (
+                        <section key={session.sessionId} className="overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40">
+                          <div className="flex flex-col gap-2 border-b border-slate-900 bg-slate-950 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold uppercase ${
+                                  isPublicSession ? 'bg-emerald-500/10 text-emerald-300' : 'bg-indigo-500/10 text-indigo-300'
+                                }`}>
+                                  {isPublicSession ? 'Public website' : 'CMS nội bộ'}
+                                </span>
+                                <span className="text-xs font-mono text-slate-500">{session.sessionId}</span>
+                              </div>
+                              <p className="mt-1 truncate text-xs text-slate-400">
+                                {lastMessage?.message || 'Chưa có nội dung'}
+                              </p>
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {session.records.length} tin nhắn · {lastMessage ? new Date(lastMessage.created_at).toLocaleString('vi-VN') : ''}
+                            </div>
+                          </div>
+
+                          <div className="max-h-[520px] space-y-3 overflow-y-auto p-4 app-scroll">
+                            {session.records.map(record => (
+                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-3xl rounded-2xl px-4 py-3 text-sm leading-6 ${
+                                  record.role === 'user'
+                                    ? 'rounded-tr-none bg-rose-600 text-white'
+                                    : 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
+                                }`}>
+                                  <MarkdownContent content={record.message} compact className="break-words" />
+                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-rose-100' : 'text-slate-500'}`}>
+                                    {record.role === 'user' ? 'Khách/User' : 'AI'} · {new Date(record.created_at).toLocaleString('vi-VN')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      );
+                    })}
+
+                    {chatHistorySessions.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-10 text-center text-sm text-slate-500">
+                        Chưa có lịch sử chat phù hợp với bộ lọc hiện tại.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2378,7 +3010,7 @@ export default function App() {
                     {selectedPermissionMember ? (
                       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                         {[
-                          { key: 'properties' as const, title: 'Giỏ hàng BĐS', items: properties },
+                          { key: 'properties' as const, title: 'Danh sách BĐS', items: properties },
                           { key: 'customers' as const, title: 'Khách hàng', items: customers },
                           { key: 'posts' as const, title: 'Bài đăng', items: posts }
                         ].map(section => (
@@ -2785,7 +3417,7 @@ export default function App() {
                     <option value="đất">Đất nền dự án</option>
                     <option value="nhà phố">Nhà phố đô thị</option>
                     <option value="căn hộ">Căn hộ Resort nghỉ dưỡng</option>
-                    <option value="shophouse">Shophouse Đại Lộ thương mại</option>
+                    <option value="shophouse">Shophouse - Đại Lộ thương mại</option>
                     <option value="nhà hàng">Nhà hàng / Khách sạn mini</option>
                   </select>
                 </div>
