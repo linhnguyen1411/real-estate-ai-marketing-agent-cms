@@ -255,7 +255,7 @@
         "video_prompt": ""
       },
       "rich_description": "Lô góc khu dân cư hiện hữu, gần công viên và tuyến đường kết nối trung tâm. Phù hợp xây nhà ở hoặc giữ tài sản.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
+      "internal_notes": "Test ghi ch? AI search",
       "sale_status": "available",
       "gallery_images": [
         "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80"
@@ -479,7 +479,7 @@
         "shares": 0,
         "comments": 0
       },
-      "created_at": "2026-06-04T08:36:00.730Z",
+      "created_at": "2026-06-03T06:31:41.875Z",
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [

@@ -135,3 +135,26 @@ Máy chủ backend Ruby của bạn sẽ tự động khởi động tại đị
 2. **Kiểm thử AI Phân Tích CRM:** Ở tab **Khách hàng CRM**, hãy nhấn nút **"Phân tích AI"** tại một khách hàng bất kỳ. AI Agent sẽ đọc dữ liệu nhu cầu thực tế của khách, tóm gọn các bước tiếp cận thông thái và bổ sung điểm tiềm năng cho chuyên viên.
 3. **Thử nghiệm AI Tạo Tin Tức:** Tại tab **Giỏ hàng Bất động sản**, bấm chọn **"Sinh Content Marketing"** trên một tấm card. Bạn có thể điều chỉnh tone giọng và thưởng thức bài viết kịch bản 4 kênh khác biệt cùng Prompt sinh ảnh siêu thực.
 4. **Hỏi đáp AI Chatbot:** Ở mục **Chatbot AI**, hãy gõ các câu lệnh bằng tiếng Việt như: *"Khách nào đang nóng nhất?"*, *"Viết bài bán lô đất Hòa Xuân 4.6 tỷ"* để AI Agent lục lọi database thời gian thực và đàm thoại đắc lực.
+
+---
+
+## Local Database
+
+D? �n hi?n d�ng SQLite local t?i `data/cms.sqlite` d? luu d? li?u CMS th?t trong qu� tr�nh ch?y local/dev.
+
+C�c nh�m d? li?u ch�nh:
+- `cms_records`: gi? h�ng b?t d?ng s?n, kh�ch h�ng, b�i post, inbox, automation.
+- `chat_history`: l?ch s? chat v?i AI assistant/chatbox.
+- `generated_contents`: content AI d� sinh raw, content verified d�ng l�m d? li?u training/d�nh gi�.
+- `companies`, `users`, `settings`: company/team, ph�n quy?n, c?u h�nh h? th?ng.
+
+Seed database:
+```bash
+npm run seed
+```
+
+K�nh uu ti�n hi?n t?i:
+- Facebook
+- Zalo
+
+C�c k�nh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? ph�ng v� c� th? tri?n khai s�u hon sau.

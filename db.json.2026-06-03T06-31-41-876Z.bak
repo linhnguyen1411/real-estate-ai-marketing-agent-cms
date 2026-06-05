@@ -254,12 +254,6 @@
         "image_prompt": "",
         "video_prompt": ""
       },
-      "rich_description": "Lô góc khu dân cư hiện hữu, gần công viên và tuyến đường kết nối trung tâm. Phù hợp xây nhà ở hoặc giữ tài sản.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80"
-      ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [
@@ -283,12 +277,6 @@
         "Công năng kinh doanh",
         "Khu dân cư ổn định",
         "Gần trục Minh Mạng"
-      ],
-      "rich_description": "Nhà xây mới 3 tầng, bố trí tầng trệt thông thoáng, thích hợp vừa ở vừa kinh doanh dịch vụ chăm sóc cá nhân.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
       ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
@@ -314,12 +302,6 @@
         "Dòng tiền cho thuê",
         "Khu đô thị mới"
       ],
-      "rich_description": "Shophouse trên trục thương mại mới, phù hợp khai thác cafe, showroom hoặc văn phòng đại diện.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80"
-      ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [
@@ -343,12 +325,6 @@
         "Ban công thoáng",
         "Gần trường đại học",
         "Thanh toán linh hoạt"
-      ],
-      "rich_description": "Căn hộ tầng trung, thiết kế sáng, gần trường đại học và khu công nghệ cao, phù hợp gia đình trẻ.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80"
       ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
@@ -374,12 +350,6 @@
         "Khai thác du lịch",
         "Pháp lý sạch"
       ],
-      "rich_description": "Nhà thương mại gần biển, dễ nhận diện, phù hợp khai thác homestay, nhà hàng nhỏ hoặc văn phòng du lịch.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80"
-      ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [
@@ -403,12 +373,6 @@
         "Xe tải ra vào thuận tiện",
         "Gần trục vận tải",
         "Phù hợp kho bãi"
-      ],
-      "rich_description": "Khu đất diện tích lớn, phù hợp làm kho bãi, xưởng nhẹ hoặc điểm tập kết vật liệu xây dựng.",
-      "internal_notes": "Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.",
-      "sale_status": "available",
-      "gallery_images": [
-        "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=1200&q=80"
       ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
@@ -479,7 +443,7 @@
         "shares": 0,
         "comments": 0
       },
-      "created_at": "2026-06-04T08:36:00.730Z",
+      "created_at": "2026-06-03T06:08:04.283Z",
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [
@@ -531,7 +495,7 @@
       "intent": "hỏi giá",
       "status": "replied",
       "customer_id": "c-4",
-      "ai_reply_suggestion": "Dạ căn hộ có hỗ trợ vay ngân hàng. Em gửi chị bảng chính sách thanh toán và đặt lịch xem căn mẫu nhé.",
+      "ai_reply_suggestion": "Chào anh/chị Lê Hoàng Dung,  \n\nCăn hộ khu vực Liên Chiểu hiện tại đang có nhiều sản phẩm hỗ trợ vay ngân hàng với lãi suất ưu đãi. Anh/chị quan tâm cụ thể loại căn hộ nào ạ? Admin sẽ hỗ trợ tư vấn và hỗ trợ liên hệ môi giới để xem thực tế trong ngày.  \n\nChị có thể inbox số điện thoại hoặc đặt lịch xem qua inbox để được hỗ trợ nhanh hơn ạ!",
       "created_at": "2026-06-01T15:20:00.000Z",
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
@@ -563,10 +527,11 @@
       "name": "Tạo nháp content khi thêm bất động sản mới",
       "trigger_event": "Khi thêm mới bất động sản",
       "action_description": "Sinh bản nháp Facebook, Zalo, TikTok và Website SEO cho sản phẩm mới.",
-      "status": "active",
+      "status": "inactive",
       "last_run": "2026-06-02T07:00:00.000Z",
       "run_count": 3,
       "logs": [
+        "2026-06-03T06:22:47.732Z - Trạng thái hoạt động chuyển sang: INACTIVE",
         "2026-06-02T07:00:00.000Z - Đã tạo nháp content cho shophouse Sơn Trà."
       ],
       "company_id": "comp-da-nang",
@@ -582,9 +547,10 @@
       "trigger_event": "Lead Score vượt mốc 80",
       "action_description": "Gắn nhãn khách VIP, tạo việc gọi lại và ưu tiên trên dashboard.",
       "status": "active",
-      "last_run": "2026-06-01T03:30:00.000Z",
-      "run_count": 5,
+      "last_run": "2026-06-03T06:22:52.549Z",
+      "run_count": 6,
       "logs": [
+        "2026-06-03T06:22:52.549Z - Chạy thử nghiệm thủ công bởi quản trị viên. Kết quả hoàn hảo.",
         "2026-06-01T03:30:00.000Z - Lead hot được chuyển vào danh sách ưu tiên."
       ],
       "company_id": "comp-da-nang",
@@ -600,9 +566,12 @@
       "trigger_event": "Nhận comment bình luận hỏi giá",
       "action_description": "Phân loại intent và tạo câu trả lời ngắn, lịch sự, có CTA đặt lịch xem.",
       "status": "active",
-      "last_run": "",
-      "run_count": 0,
-      "logs": [],
+      "last_run": "2026-06-03T06:29:31.047Z",
+      "run_count": 2,
+      "logs": [
+        "2026-06-03T06:29:31.047Z - Triggered by event: [Tin nhắn của Lê Hoàng Dung] - Executed successfully.",
+        "2026-06-03T06:22:52.549Z - Chạy thử nghiệm thủ công bởi quản trị viên. Kết quả hoàn hảo."
+      ],
       "company_id": "comp-da-nang",
       "owner_user_id": "u-company-admin",
       "assigned_member_ids": [

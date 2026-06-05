@@ -10,6 +10,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export const ASSISTANT_WELCOME_MESSAGE: ChatMessage = {
   role: 'model',
-  content: 'Xin chào! Tôi là Trợ lý Real Estate AI Marketing Agent. Tôi nắm bắt toàn bộ danh sách khách hàng CRM và giỏ hàng bất động sản. Bạn cần tôi trợ giúp gì hôm nay?',
+  content: 'Xin chào! Tôi là Trợ lý Real Estate AI Marketing Agent. Tôi nắm bắt toàn bộ danh sách khách hàng CRM và danh sách bất động sản. Bạn cần tôi trợ giúp gì hôm nay?',
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };

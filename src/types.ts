@@ -63,9 +63,31 @@ export interface Property {
   direction: string; // Đông, Tây, Nam, Bắc, Đông Nam, Tây Nam, Đông Bắc, Tây Bắc
   road_width: number; // meters (m)
   description: string;
+  rich_description?: string;
+  internal_notes?: string;
+  sale_status?: 'available' | 'sold' | 'hidden';
   images: string; // Image placeholder URL or string
+  gallery_images?: string[];
   selling_points: string[]; // Key selling highligts
   ai_posts?: {
+    strategy?: {
+      target_customer: string;
+      customer_insight: string;
+      campaign_angle: string;
+      creative_concept: string;
+      key_message: string;
+    };
+    image_prompts?: {
+      facebook: string;
+      zalo: string;
+      tiktok: string;
+    };
+    seo?: {
+      title: string;
+      meta_description: string;
+      keywords: string[];
+      hashtags: string[];
+    };
     facebook?: string;
     zalo?: string;
     tiktok?: string;
@@ -87,6 +109,10 @@ export interface Post {
   scheduled_at?: string;
   property_id?: string;
   property_title?: string;
+  seo_title?: string;
+  meta_description?: string;
+  keywords?: string[];
+  hashtags?: string[];
   created_by_ai: boolean;
   engagement?: {
     views: number;
@@ -156,4 +182,40 @@ export interface AppSettings {
   ollama_model: string;
   openai_model: string;
   agent_tone: string;
+}
+
+export interface ChatHistoryRecord {
+  id: string;
+  user_id: string;
+  company_id?: string;
+  role: 'user' | 'model';
+  message: string;
+  created_at: string;
+}
+
+export interface PublicChatGuest {
+  session_id: string;
+  name: string;
+  phone: string;
+  customer_id?: string;
+  ai_enabled: 0 | 1 | boolean;
+  created_at: string;
+  updated_at: string;
+  last_message?: string;
+  last_message_at?: string;
+  message_count?: number;
+}
+
+export interface GeneratedContentRecord {
+  id: string;
+  company_id?: string;
+  user_id?: string;
+  property_id?: string;
+  property_title?: string;
+  channel: 'facebook' | 'zalo' | 'tiktok' | 'website' | 'image_prompt' | 'video_prompt';
+  raw_content: string;
+  verified_content?: string;
+  status: 'raw' | 'verified';
+  created_at: string;
+  verified_at?: string;
 }

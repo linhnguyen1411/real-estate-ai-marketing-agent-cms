@@ -1,19 +1,18 @@
 import React from 'react';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
-import ListingsPage from './ListingsPage.tsx';
+import ListingsPage from './ListingsPageNew.tsx';
 import './index.css';
 
 // Fetch properties data for public listings
 async function fetchPublicProperties() {
   try {
-    const response = await fetch('/api/public/properties');
+    const response = await fetch('/api/properties');
     if (!response.ok) throw new Error('Failed to fetch properties');
-    const json = await response.json();
-    return Array.isArray(json.data) ? json.data : [];
+    return await response.json();
   } catch (error) {
     console.error('Error fetching properties:', error);
     return [];
@@ -21,7 +20,6 @@ async function fetchPublicProperties() {
 }
 
 function PublicListingsWrapper() {
-  const { propertySlug } = useParams();
   const [properties, setProperties] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -40,12 +38,7 @@ function PublicListingsWrapper() {
     );
   }
 
-  return <ListingsPage properties={properties} propertySlug={propertySlug} />;
-}
-
-function LegacyPropertyRedirect() {
-  const { propertySlug } = useParams();
-  return <Navigate to={propertySlug ? `/${propertySlug}` : '/'} replace />;
+  return <ListingsPage properties={properties} onBack={() => window.location.href = '/'} />;
 }
 
 createRoot(document.getElementById('root')!).render(
@@ -53,13 +46,10 @@ createRoot(document.getElementById('root')!).render(
     <Router>
       <HelmetProvider>
         <Routes>
-          <Route path="/admin/login" element={<App />} />
-          <Route path="/admin/dashboard" element={<App />} />
-          <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
-          <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
-          <Route path="/listings" element={<Navigate to="/" replace />} />
-          <Route path="/" element={<PublicListingsWrapper />} />
-          <Route path="/:propertySlug" element={<PublicListingsWrapper />} />
+          <Route path="/" element={<App />} />
+          <Route path="/bds-da-nang" element={<PublicListingsWrapper />} />
+          <Route path="/bds-da-nang/:propertySlug" element={<PublicListingsWrapper />} />
+          <Route path="/listings" element={<PublicListingsWrapper />} />
         </Routes>
       </HelmetProvider>
     </Router>
