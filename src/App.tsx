@@ -77,6 +77,16 @@ import {
   verifyContent
 } from './services/api';
 
+const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
+const TRANSACTION_TYPE_OPTIONS = ['Bán', 'Cho thuê'];
+const DIRECTION_OPTIONS = ['Đông', 'Tây', 'Nam', 'Bắc', 'Đông Nam', 'Đông Bắc', 'Tây Nam', 'Tây Bắc'];
+const LEGAL_STATUS_OPTIONS = ['Sổ đỏ', 'Sổ hồng', 'Sổ hồng riêng', 'Sổ hồng hoàn công', 'Sở hữu lâu dài', 'Sở hữu 50 năm', 'Hợp đồng mua bán', 'Đang chờ sổ'];
+const PROPERTY_STATUS_OPTIONS = [
+  { value: 'available', label: 'Đang bán/cho thuê' },
+  { value: 'sold', label: 'Đã bán/đã thuê' },
+  { value: 'hidden', label: 'Đã ẩn' }
+];
+
 const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: string }> = {
   facebook: { name: 'Facebook', color: 'bg-indigo-500' },
   zalo: { name: 'Zalo', color: 'bg-blue-400' },
@@ -85,8 +95,9 @@ const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: s
 };
 
 const createEmptyPropertyForm = () => ({
-  title: '', type: 'đất', location: '', area: '100', price: '4.5',
-  legal_status: 'Sổ hồng riêng', direction: 'Đông Nam', road_width: '7.5',
+  title: '', transaction_type: 'Bán', type: 'Đất nền', location: '', area: '100', floor_area: '', price: '4.5',
+  legal_status: 'Sổ hồng', direction: 'Đông Nam', road_width: '7.5',
+  floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
   description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
   sale_status: 'available', selling_points: ''
 });
@@ -129,6 +140,13 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [propertyFilters, setPropertyFilters] = useState({
+    price: 'all',
+    area: 'all',
+    type: 'all',
+    transactionType: 'all',
+    status: 'visible'
+  });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
@@ -143,7 +161,7 @@ export default function App() {
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
   const [newCustomerForm, setNewCustomerForm] = useState({
     name: '', phone: '', email: '', source: 'facebook', budget: '5', 
-    interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'đất nền', status: 'new', notes: ''
+    interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'Đất nền', status: 'new', notes: ''
   });
 
   const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
@@ -528,13 +546,20 @@ export default function App() {
     setEditingProperty(property);
     setNewPropertyForm({
       title: property.title,
+      transaction_type: property.transaction_type || 'Bán',
       type: property.type,
       location: property.location,
       area: String(property.area),
+      floor_area: property.floor_area ? String(property.floor_area) : '',
       price: String(property.price),
       legal_status: property.legal_status,
       direction: property.direction,
       road_width: String(property.road_width),
+      floors: property.floors ? String(property.floors) : '',
+      bedrooms: property.bedrooms ? String(property.bedrooms) : '',
+      bathrooms: property.bathrooms ? String(property.bathrooms) : '',
+      garage: Boolean(property.garage),
+      pool: Boolean(property.pool),
       description: property.description,
       rich_description: property.rich_description || '',
       internal_notes: property.internal_notes || '',
@@ -594,12 +619,20 @@ export default function App() {
 
   const buildPropertyCopyText = (prop: Property) => [
     prop.title,
+    `Hình thức: ${prop.transaction_type || 'Bán'}`,
+    `Loại hình: ${prop.type}`,
     `Vị trí: ${prop.location}`,
     `Giá: ${prop.price} tỷ VND`,
     `Diện tích: ${prop.area} m2`,
+    prop.floor_area ? `Diện tích sàn: ${prop.floor_area} m2` : '',
     `Pháp lý: ${prop.legal_status}`,
     `Hướng: ${prop.direction}`,
     `Đường: ${prop.road_width} m`,
+    prop.floors ? `Số tầng: ${prop.floors}` : '',
+    prop.bedrooms ? `Phòng ngủ: ${prop.bedrooms}` : '',
+    prop.bathrooms ? `Phòng tắm: ${prop.bathrooms}` : '',
+    prop.garage ? 'Có gara' : '',
+    prop.pool ? 'Có hồ bơi' : '',
     `Trạng thái: ${prop.sale_status === 'sold' ? 'Đã bán' : 'Đang bán'}`,
     '',
     prop.rich_description || prop.description,
@@ -682,7 +715,7 @@ export default function App() {
       setShowAddCustomerModal(false);
       setNewCustomerForm({
         name: '', phone: '', email: '', source: 'facebook', budget: '5', 
-        interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'đất nền', status: 'new', notes: ''
+        interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'Đất nền', status: 'new', notes: ''
       });
     } catch (e: any) {
       showToast(e.message || "Lỗi thêm khách.", "error");
@@ -694,12 +727,22 @@ export default function App() {
     e.preventDefault();
     setActionLoading(editingProperty ? `edit-prop-${editingProperty.id}` : 'add-property');
     try {
+      const sellingPoints = newPropertyForm.selling_points.split('\n').map(line => line.trim()).filter(Boolean);
+      const fallbackDescription = sellingPoints.join('. ') || newPropertyForm.rich_description || '';
       const payload = {
         ...newPropertyForm,
         area: Number(newPropertyForm.area),
+        floor_area: newPropertyForm.floor_area ? Number(newPropertyForm.floor_area) : undefined,
         price: Number(newPropertyForm.price),
         road_width: Number(newPropertyForm.road_width),
-        selling_points: newPropertyForm.selling_points.split('\n').filter(line => line.trim())
+        floors: newPropertyForm.floors ? Number(newPropertyForm.floors) : undefined,
+        bedrooms: newPropertyForm.bedrooms ? Number(newPropertyForm.bedrooms) : undefined,
+        bathrooms: newPropertyForm.bathrooms ? Number(newPropertyForm.bathrooms) : undefined,
+        garage: Boolean(newPropertyForm.garage),
+        pool: Boolean(newPropertyForm.pool),
+        description: fallbackDescription,
+        rich_description: newPropertyForm.rich_description || fallbackDescription,
+        selling_points: sellingPoints
       };
 
       if (editingProperty) {
@@ -870,14 +913,41 @@ export default function App() {
     c.property_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredProperties = properties.filter(p => 
-    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.rich_description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.internal_notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.sale_status || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProperties = properties.filter(p => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    const saleStatus = p.sale_status || 'available';
+    const searchableText = [
+      p.title,
+      p.location,
+      p.type,
+      p.transaction_type || '',
+      p.legal_status,
+      p.direction,
+      p.rich_description || p.description || '',
+      p.internal_notes || '',
+      saleStatus
+    ].join(' ').toLowerCase();
+
+    const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
+    const matchesType = propertyFilters.type === 'all' || p.type === propertyFilters.type;
+    const matchesTransaction = propertyFilters.transactionType === 'all' || (p.transaction_type || 'Bán') === propertyFilters.transactionType;
+    const matchesStatus =
+      propertyFilters.status === 'all'
+        || (propertyFilters.status === 'visible' ? saleStatus !== 'hidden' : saleStatus === propertyFilters.status);
+    const matchesPrice =
+      propertyFilters.price === 'all'
+        || (propertyFilters.price === 'under3' && p.price < 3)
+        || (propertyFilters.price === '3to5' && p.price >= 3 && p.price <= 5)
+        || (propertyFilters.price === '5to10' && p.price > 5 && p.price <= 10)
+        || (propertyFilters.price === 'over10' && p.price > 10);
+    const matchesArea =
+      propertyFilters.area === 'all'
+        || (propertyFilters.area === 'under80' && p.area < 80)
+        || (propertyFilters.area === '80to150' && p.area >= 80 && p.area <= 150)
+        || (propertyFilters.area === 'over150' && p.area > 150);
+
+    return matchesSearch && matchesType && matchesTransaction && matchesStatus && matchesPrice && matchesArea;
+  });
 
   const filteredPosts = posts.filter(pos => 
     pos.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1627,6 +1697,88 @@ export default function App() {
                     <p className="text-slate-400 text-sm">Chi tiết thông tin bất động sản, sổ đỏ, và tính năng tiếp thị tự động.</p>
                   </div>
 
+                  <div className="rounded-2xl border border-slate-900 bg-slate-900/35 p-4">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <div className="space-y-1">
+                        <label className="block text-2xs font-semibold uppercase text-slate-500">Khoảng giá</label>
+                        <select
+                          value={propertyFilters.price}
+                          onChange={(e) => setPropertyFilters({ ...propertyFilters, price: e.target.value })}
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                        >
+                          <option value="all">Tất cả giá</option>
+                          <option value="under3">Dưới 3 tỷ</option>
+                          <option value="3to5">3 - 5 tỷ</option>
+                          <option value="5to10">5 - 10 tỷ</option>
+                          <option value="over10">Trên 10 tỷ</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-2xs font-semibold uppercase text-slate-500">Khu vực / diện tích</label>
+                        <select
+                          value={propertyFilters.area}
+                          onChange={(e) => setPropertyFilters({ ...propertyFilters, area: e.target.value })}
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                        >
+                          <option value="all">Tất cả diện tích</option>
+                          <option value="under80">Dưới 80 m²</option>
+                          <option value="80to150">80 - 150 m²</option>
+                          <option value="over150">Trên 150 m²</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-2xs font-semibold uppercase text-slate-500">Loại hình</label>
+                        <select
+                          value={propertyFilters.type}
+                          onChange={(e) => setPropertyFilters({ ...propertyFilters, type: e.target.value })}
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                        >
+                          <option value="all">Tất cả loại hình</option>
+                          {PROPERTY_TYPE_OPTIONS.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-2xs font-semibold uppercase text-slate-500">Hình thức</label>
+                        <select
+                          value={propertyFilters.transactionType}
+                          onChange={(e) => setPropertyFilters({ ...propertyFilters, transactionType: e.target.value })}
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                        >
+                          <option value="all">Bán và cho thuê</option>
+                          {TRANSACTION_TYPE_OPTIONS.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-2xs font-semibold uppercase text-slate-500">Trạng thái</label>
+                        <select
+                          value={propertyFilters.status}
+                          onChange={(e) => setPropertyFilters({ ...propertyFilters, status: e.target.value })}
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                        >
+                          <option value="visible">Mặc định: không hiện BĐS đã ẩn</option>
+                          <option value="available">Đang bán/cho thuê</option>
+                          <option value="sold">Đã bán/đã thuê</option>
+                          <option value="hidden">Chỉ BĐS đã ẩn</option>
+                          <option value="all">Tất cả trạng thái</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-2xs text-slate-500">
+                      <span>Đang hiển thị {filteredProperties.length}/{properties.length} bất động sản.</span>
+                      <button
+                        type="button"
+                        onClick={() => setPropertyFilters({ price: 'all', area: 'all', type: 'all', transactionType: 'all', status: 'visible' })}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-semibold text-slate-300 hover:border-slate-700"
+                      >
+                        Xóa bộ lọc
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Property list grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProperties.map((prop) => (
@@ -1685,7 +1837,7 @@ export default function App() {
                             />
                           )}
                           <div className="absolute top-4 left-4 bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
-                            {prop.type}
+                            {(prop.transaction_type || 'Bán')} • {prop.type}
                           </div>
                           {prop.sale_status === 'sold' && (
                             <div className="absolute top-14 left-4 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
@@ -1744,6 +1896,17 @@ export default function App() {
                               <span className="text-slate-200">{prop.road_width} m</span>
                             </div>
                           </div>
+
+                          {(prop.floor_area || prop.floors || prop.bedrooms || prop.bathrooms || prop.garage || prop.pool) && (
+                            <div className="flex flex-wrap gap-1.5 text-2xs">
+                              {prop.floor_area ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Sàn {prop.floor_area} m²</span> : null}
+                              {prop.floors ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.floors} tầng</span> : null}
+                              {prop.bedrooms ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.bedrooms} PN</span> : null}
+                              {prop.bathrooms ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.bathrooms} WC</span> : null}
+                              {prop.garage ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Gara</span> : null}
+                              {prop.pool ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Hồ bơi</span> : null}
+                            </div>
+                          )}
 
                           {/* Key Selling Points Bullet points */}
                           <div className="space-y-1">
@@ -3326,11 +3489,9 @@ export default function App() {
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, property_type: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
                   >
-                    <option value="đất nền">Đất nền dự án / đất vườn</option>
-                    <option value="nhà phố">Nhà phố xây sẵn</option>
-                    <option value="căn hộ">Căn hộ Resort chung cư</option>
-                    <option value="shophouse">Shophouse đại lộ thương mại</option>
-                    <option value="kho xưởng">Kho bãi đất sét kho xưởng</option>
+                    {PROPERTY_TYPE_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -3414,11 +3575,22 @@ export default function App() {
                     onChange={(e) => setNewPropertyForm({ ...newPropertyForm, type: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
                   >
-                    <option value="đất">Đất nền dự án</option>
-                    <option value="nhà phố">Nhà phố đô thị</option>
-                    <option value="căn hộ">Căn hộ Resort nghỉ dưỡng</option>
-                    <option value="shophouse">Shophouse - Đại Lộ thương mại</option>
-                    <option value="nhà hàng">Nhà hàng / Khách sạn mini</option>
+                    {PROPERTY_TYPE_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Hình thức</label>
+                  <select
+                    value={newPropertyForm.transaction_type}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, transaction_type: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    {TRANSACTION_TYPE_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -3435,7 +3607,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Giá trị gắm giữ (Tỷ đồng)</label>
+                  <label className="block text-2xs font-semibold text-slate-400">Giá trị / giá thuê (Tỷ đồng)</label>
                   <input
                     type="number"
                     step="0.05"
@@ -3447,7 +3619,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Diện tích sử dụng (m2)</label>
+                  <label className="block text-2xs font-semibold text-slate-400">Diện tích đất / căn hộ (m2)</label>
                   <input
                     type="number"
                     required
@@ -3458,30 +3630,42 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Pháp lý hiện hành</label>
+                  <label className="block text-2xs font-semibold text-slate-400">Diện tích sàn (m2)</label>
                   <input
-                    type="text"
-                    required
-                    value={newPropertyForm.legal_status}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, legal_status: e.target.value })}
-                    placeholder="Sổ hồng riêng / Hợp đồng mua bán"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={newPropertyForm.floor_area}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, floor_area: e.target.value })}
+                    placeholder="Bỏ trống nếu không áp dụng"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Hướng đất</label>
+                  <label className="block text-2xs font-semibold text-slate-400">Pháp lý hiện hành</label>
+                  <select
+                    required
+                    value={newPropertyForm.legal_status}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, legal_status: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    {LEGAL_STATUS_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Hướng</label>
                   <select
                     value={newPropertyForm.direction}
                     onChange={(e) => setNewPropertyForm({ ...newPropertyForm, direction: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
                   >
-                    <option value="Đông">Đông đón tài lộc</option>
-                    <option value="Đông Nam">Đông Nam mát mẻ</option>
-                    <option value="Tây">Tây đón tài lộc</option>
-                    <option value="Tây Nam">Tây Nam phong thủy</option>
-                    <option value="Bắc">Bắc</option>
-                    <option value="Nam">Nam</option>
+                    {DIRECTION_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -3496,17 +3680,67 @@ export default function App() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="block text-2xs font-semibold text-slate-400">Mô tả tổng quát cho chiến dịch</label>
-                <textarea
-                  rows={2}
-                  value={newPropertyForm.description}
-                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, description: e.target.value })}
-                  placeholder="Lô đất vàng sinh thái, đắc địa đối diện công viên..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                />
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Số tầng</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={newPropertyForm.floors}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, floors: e.target.value })}
+                    placeholder="Bỏ trống nếu là đất"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Số phòng ngủ</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={newPropertyForm.bedrooms}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, bedrooms: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Số phòng tắm</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={newPropertyForm.bathrooms}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, bathrooms: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="block text-2xs font-semibold text-slate-400">Công năng phụ</label>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={newPropertyForm.garage}
+                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, garage: e.target.checked })}
+                        className="h-4 w-4 accent-rose-600"
+                      />
+                      Gara
+                    </label>
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={newPropertyForm.pool}
+                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, pool: e.target.checked })}
+                        className="h-4 w-4 accent-rose-600"
+                      />
+                      Hồ bơi
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -3573,8 +3807,9 @@ export default function App() {
                     onChange={(e) => setNewPropertyForm({ ...newPropertyForm, sale_status: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
                   >
-                    <option value="available">Đang bán</option>
-                    <option value="sold">Đã bán</option>
+                    {PROPERTY_STATUS_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>

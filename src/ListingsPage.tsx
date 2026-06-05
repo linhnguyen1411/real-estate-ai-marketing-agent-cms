@@ -45,9 +45,27 @@ const facebookUrl = 'https://www.facebook.com/estoria.dn';
 const phoneNumber = '0905 777 594';
 const heroImageUrl = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=2200&q=90';
 const publicListingsPath = '/';
+const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
+const PRICE_RANGES = [
+  { value: 'all', label: 'Tất cả mức giá' },
+  { value: 'under3', label: 'Dưới 3 tỷ' },
+  { value: '3to5', label: '3 - 5 tỷ' },
+  { value: '5to10', label: '5 - 10 tỷ' },
+  { value: 'over10', label: 'Trên 10 tỷ' }
+];
+const AREA_RANGES = [
+  { value: 'all', label: 'Tất cả diện tích' },
+  { value: 'under80', label: 'Dưới 80 m²' },
+  { value: '80to150', label: '80 - 150 m²' },
+  { value: 'over150', label: 'Trên 150 m²' }
+];
 
 function formatPrice(price: number) {
   return `${price.toLocaleString('vi-VN')} tỷ`;
+}
+
+function getTransactionType(property: Property) {
+  return String(property.transaction_type || 'Bán').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán';
 }
 
 function getImage(property?: Property) {
@@ -116,6 +134,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   onSelect,
   large = false
 }) => {
+  const transactionType = getTransactionType(property);
+
   return (
     <a
       href={getPropertyPath(property)}
@@ -135,7 +155,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
           className="block h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute left-3 top-3 rounded-md bg-white/95 px-2.5 py-1 text-xs font-bold text-slate-900 shadow-sm">
-          {property.type}
+          {transactionType} • {property.type}
         </div>
         <div className="absolute right-3 top-3 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
           {formatPrice(property.price)}
@@ -196,6 +216,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
+  const [selectedTransactionType, setSelectedTransactionType] = useState('all');
+  const [selectedPriceRange, setSelectedPriceRange] = useState('all');
+  const [selectedAreaRange, setSelectedAreaRange] = useState('all');
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [chatOpen, setChatOpen] = useState(true);
@@ -300,12 +323,27 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       const matchesQuery = !normalizedQuery
         || property.title.toLowerCase().includes(normalizedQuery)
         || property.location.toLowerCase().includes(normalizedQuery)
+        || property.type.toLowerCase().includes(normalizedQuery)
+        || getTransactionType(property).toLowerCase().includes(normalizedQuery)
         || property.description.toLowerCase().includes(normalizedQuery)
         || (property.rich_description || '').toLowerCase().includes(normalizedQuery);
       const matchesType = selectedType === 'all' || property.type === selectedType;
-      return matchesQuery && matchesType;
+      const matchesTransaction = selectedTransactionType === 'all' || getTransactionType(property) === selectedTransactionType;
+      const matchesPrice =
+        selectedPriceRange === 'all'
+          || (selectedPriceRange === 'under3' && property.price < 3)
+          || (selectedPriceRange === '3to5' && property.price >= 3 && property.price <= 5)
+          || (selectedPriceRange === '5to10' && property.price > 5 && property.price <= 10)
+          || (selectedPriceRange === 'over10' && property.price > 10);
+      const matchesArea =
+        selectedAreaRange === 'all'
+          || (selectedAreaRange === 'under80' && property.area < 80)
+          || (selectedAreaRange === '80to150' && property.area >= 80 && property.area <= 150)
+          || (selectedAreaRange === 'over150' && property.area > 150);
+
+      return matchesQuery && matchesType && matchesTransaction && matchesPrice && matchesArea;
     });
-  }, [activeProperties, searchQuery, selectedType]);
+  }, [activeProperties, searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType]);
 
   const projectGroups = useMemo(() => {
     const groups = new Map<string, Property[]>();
@@ -323,12 +361,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     : siteOrigin;
   const seoTitle = selectedProperty
     ? selectedProperty.ai_posts?.seo?.title || `${selectedProperty.title} tại ${selectedProperty.location} | Estoria`
-    : 'Bất động sản Đà Nẵng đang bán, pháp lý rõ ràng | Estoria';
+    : 'Bất động sản Đà Nẵng bán/cho thuê, pháp lý rõ ràng | Estoria';
   const seoDescription = selectedProperty
     ? selectedProperty.ai_posts?.seo?.meta_description || truncateText(
         `${selectedProperty.title} tại ${selectedProperty.location}, diện tích ${selectedProperty.area} m2, giá ${formatPrice(selectedProperty.price)}, pháp lý ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
       )
-    : `Khám phá ${activeProperties.length} bất động sản Đà Nẵng đang bán: căn hộ, nhà phố, đất và shophouse có thông tin giá, diện tích, pháp lý rõ ràng.`;
+    : `Khám phá ${activeProperties.length} bất động sản Đà Nẵng đang bán/cho thuê: căn hộ, nhà phố, đất và shophouse có thông tin giá, diện tích, pháp lý rõ ràng.`;
   const seoImage = selectedProperty ? getImage(selectedProperty) : getImage(featuredProperties[0]);
 
   const structuredData = useMemo(() => {
@@ -351,7 +389,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
-        name: 'Danh sách bất động sản Đà Nẵng đang bán',
+        name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
         description: seoDescription,
         url: siteOrigin,
         mainEntity: {
@@ -518,6 +556,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     window.history.pushState({}, '', publicListingsPath);
   };
 
+  const quickFilterResults = filteredProperties.slice(0, 6);
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedType('all');
+    setSelectedTransactionType('all');
+    setSelectedPriceRange('all');
+    setSelectedAreaRange('all');
+  };
+
   return (
     <div className="h-screen overflow-y-auto overflow-x-hidden bg-slate-50 text-slate-950 app-scroll">
       <Helmet>
@@ -555,7 +603,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           <nav className="hidden items-center gap-7 text-sm font-semibold text-slate-300 md:flex">
             <a href="#featured" className="hover:text-white">BĐS nổi bật</a>
             <a href="#projects" className="hover:text-white">Dự án</a>
-            <a href="#listings" className="hover:text-white">BĐS đang bán</a>
+            <a href="#listings" className="hover:text-white">BĐS bán/thuê</a>
             <a href="#contact" className="hover:text-white">Liên hệ</a>
           </nav>
 
@@ -583,7 +631,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div className="grid gap-3 text-sm font-semibold text-slate-300">
               <a href="#featured" onClick={() => setMobileMenuOpen(false)}>BĐS nổi bật</a>
               <a href="#projects" onClick={() => setMobileMenuOpen(false)}>Dự án</a>
-              <a href="#listings" onClick={() => setMobileMenuOpen(false)}>BĐS đang bán</a>
+              <a href="#listings" onClick={() => setMobileMenuOpen(false)}>BĐS bán/thuê</a>
               <a href="#contact" onClick={() => setMobileMenuOpen(false)}>Liên hệ</a>
             </div>
           </div>
@@ -604,7 +652,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div className="max-w-3xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-rose-100">
                 <Sparkles className="h-4 w-4" />
-                Danh sách Bất động sản đang bán
+                Danh sách Bất động sản bán/cho thuê
               </div>
               <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl lg:text-6xl">
                 Nhà đất chọn lọc tại Đà Nẵng, tư vấn nhanh bằng AI
@@ -619,6 +667,115 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <a href="#contact" className="rounded-lg bg-white px-5 py-3 text-sm font-bold text-slate-950 hover:bg-slate-100">
                   Nhận tư vấn
                 </a>
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Kết quả lọc realtime</p>
+                  <h2 className="mt-1 text-xl font-extrabold text-slate-950">
+                    {filteredProperties.length} sản phẩm phù hợp
+                  </h2>
+                </div>
+                {filteredProperties.length > quickFilterResults.length && (
+                  <a href="#listings" className="text-sm font-bold text-rose-700 hover:text-rose-600">
+                    Xem tất cả {filteredProperties.length} sản phẩm
+                  </a>
+                )}
+              </div>
+
+              {quickFilterResults.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {quickFilterResults.map(property => (
+                    <PropertyCard key={`quick-${property.id}`} property={property} onSelect={openProperty} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                  Chưa có sản phẩm phù hợp. Anh/chị thử đổi khoảng giá, loại hình hoặc khu vực.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-200 bg-white">
+          <div className="mx-auto max-w-7xl px-4 py-5">
+            <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_180px_180px_auto] lg:items-end">
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Tìm nhanh sản phẩm</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  <input
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                    placeholder="Nhập khu vực, tên dự án, loại hình..."
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Hình thức</label>
+                <select
+                  value={selectedTransactionType}
+                  onChange={event => setSelectedTransactionType(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
+                >
+                  <option value="all">Bán / Cho thuê</option>
+                  {TRANSACTION_TYPES.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Loại hình</label>
+                <select
+                  value={selectedType}
+                  onChange={event => setSelectedType(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
+                >
+                  <option value="all">Tất cả loại hình</option>
+                  {propertyTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Khoảng giá</label>
+                <select
+                  value={selectedPriceRange}
+                  onChange={event => setSelectedPriceRange(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
+                >
+                  {PRICE_RANGES.map(range => (
+                    <option key={range.value} value={range.value}>{range.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Diện tích</label>
+                <select
+                  value={selectedAreaRange}
+                  onChange={event => setSelectedAreaRange(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
+                >
+                  {AREA_RANGES.map(range => (
+                    <option key={range.value} value={range.value}>{range.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 lg:justify-end">
+                <a href="#listings" className="inline-flex flex-1 items-center justify-center rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500 lg:flex-none">
+                  Xem {filteredProperties.length} BĐS
+                </a>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:border-slate-300"
+                >
+                  Xóa
+                </button>
               </div>
             </div>
           </div>
@@ -660,8 +817,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                     <Building2 className="h-5 w-5" />
                   </div>
                   <h3 className="font-bold text-slate-950">{name}</h3>
-                  <p className="mt-2 text-sm text-slate-600">{group.length} sản phẩm đang mở bán</p>
-                  <p className="mt-4 text-xs font-bold text-rose-700">Xem BĐS đang bán</p>
+                  <p className="mt-2 text-sm text-slate-600">{group.length} sản phẩm đang hiển thị</p>
+                  <p className="mt-4 text-xs font-bold text-rose-700">Xem BĐS bán/thuê</p>
                 </a>
               ))}
             </div>
@@ -673,10 +830,10 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Bất động sản nổi bật</p>
               <h2 className="mt-2 text-3xl font-extrabold text-slate-950">
-                {activeProperties.length} bất động sản Đà Nẵng đang bán
+                {filteredProperties.length}/{activeProperties.length} bất động sản đang bán/cho thuê
               </h2>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_180px] lg:w-[560px]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[920px] lg:grid-cols-[1.4fr_150px_150px_150px_150px]">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <input
@@ -687,6 +844,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 />
               </div>
               <select
+                value={selectedTransactionType}
+                onChange={event => setSelectedTransactionType(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
+              >
+                <option value="all">Bán / Cho thuê</option>
+                {TRANSACTION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              <select
                 value={selectedType}
                 onChange={event => setSelectedType(event.target.value)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
@@ -694,6 +861,24 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <option value="all">Tất cả loại hình</option>
                 {propertyTypes.map(type => (
                   <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              <select
+                value={selectedPriceRange}
+                onChange={event => setSelectedPriceRange(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
+              >
+                {PRICE_RANGES.map(range => (
+                  <option key={range.value} value={range.value}>{range.label}</option>
+                ))}
+              </select>
+              <select
+                value={selectedAreaRange}
+                onChange={event => setSelectedAreaRange(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
+              >
+                {AREA_RANGES.map(range => (
+                  <option key={range.value} value={range.value}>{range.label}</option>
                 ))}
               </select>
             </div>
@@ -832,7 +1017,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <Bot className="h-5 w-5 text-rose-300" />
                 <div>
                   <div className="text-sm font-bold">Lily AI tư vấn bán hàng</div>
-                  <div className="text-xs text-slate-400">Trả lời theo danh sách BĐS đang bán</div>
+                  <div className="text-xs text-slate-400">Trả lời theo danh sách BĐS bán/cho thuê</div>
                 </div>
               </div>
               <button type="button" onClick={() => setChatOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -955,6 +1140,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1fr_320px] lg:gap-8">
               <div>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white">{getTransactionType(selectedProperty)}</span>
                   <span className="rounded-md bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700">{selectedProperty.type}</span>
                   <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{selectedProperty.legal_status}</span>
                 </div>
@@ -978,7 +1164,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </div>
 
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-                <div className="text-sm text-slate-500">Giá bán</div>
+                <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-rose-600">{formatPrice(selectedProperty.price)}</div>
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">

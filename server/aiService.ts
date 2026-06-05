@@ -499,13 +499,20 @@ TARGET CUSTOMER: ${strategy.target_customer}
 FACTS:
 ${JSON.stringify({
   title: property.title,
+  transaction_type: property.transaction_type || "bán",
   type: property.type,
   location: property.location,
   area: property.area,
+  floor_area: property.floor_area,
   price: property.price,
   legal_status: property.legal_status,
   direction: property.direction,
   road_width: property.road_width,
+  floors: property.floors,
+  bedrooms: property.bedrooms,
+  bathrooms: property.bathrooms,
+  garage: property.garage,
+  pool: property.pool,
   description: property.description,
   selling_points: property.selling_points
 }, null, 2)}
