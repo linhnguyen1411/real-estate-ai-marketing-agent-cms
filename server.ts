@@ -513,7 +513,7 @@ app.post('/api/public/chat/guest', (req: Request, res: Response) => {
       source: 'website',
       budget: 0,
       interested_area: '',
-      property_type: 'khác',
+      property_type: 'Khác',
       status: 'new',
       notes: `Guest chat session: ${sessionId}`,
       ai_summary: 'Khách guest bắt đầu trò chuyện từ website.',
@@ -1093,7 +1093,7 @@ app.post('/api/customers', (req: Request, res: Response) => {
     source: customerData.source || 'website',
     budget: parseFloat(customerData.budget) || 0,
     interested_area: customerData.interested_area || 'Đà Nẵng',
-    property_type: customerData.property_type || 'đất nền',
+    property_type: customerData.property_type || 'Đất nền',
     status: customerData.status || 'new',
     notes: customerData.notes || '',
     ai_summary: customerData.ai_summary || 'Chưa phân tích',
@@ -1213,17 +1213,25 @@ app.post('/api/properties', (req: Request, res: Response) => {
   const newProperty: Property = {
     id: `p-${Date.now()}`,
     title: propData.title || 'BĐS Chưa đặt tên',
-    type: propData.type || 'đất',
+    transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
+    type: propData.type || 'Đất nền',
     location: propData.location || '',
     area: parseFloat(propData.area) || 0,
+    floor_area: parseFloat(propData.floor_area) || undefined,
     price: parseFloat(propData.price) || 0,
     legal_status: propData.legal_status || 'Sổ hồng riêng',
     direction: propData.direction || 'Đông',
     road_width: parseFloat(propData.road_width) || 5.5,
+    floors: parseInt(propData.floors, 10) || undefined,
+    bedrooms: parseInt(propData.bedrooms, 10) || undefined,
+    bathrooms: parseInt(propData.bathrooms, 10) || undefined,
+    garage: Boolean(propData.garage),
+    pool: Boolean(propData.pool),
     description: propData.description || '',
     rich_description: propData.rich_description || propData.description || '',
     internal_notes: propData.internal_notes || '',
     sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
+    is_featured: Boolean(propData.is_featured),
     images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
     gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
     selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
@@ -1509,7 +1517,7 @@ app.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
 
   // Look up related customer/property for rich prompt context
   const customer = db.customers.find(c => c.id === msg.customer_id);
-  const property = db.properties.find(p => p.id === (customer?.property_type === 'đất nền' ? 'p-1' : 'p-2'));
+  const property = db.properties.find(p => p.id === (customer?.property_type === 'Đất nền' ? 'p-1' : 'p-2'));
 
   try {
     const aiSuggestion = await generateAIConsultantReply(msg.message, customer, property);

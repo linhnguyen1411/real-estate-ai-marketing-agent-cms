@@ -268,7 +268,7 @@ export default function ListingsPage({ properties, onBack }: ListingsPageProps) 
       {/* Featured Properties Section */}
       <section id="featured" className="max-w-7xl mx-auto px-4 py-16 space-y-8">
         <div className="text-center space-y-3">
-          <h3 className="text-4xl font-bold text-white">Bất Động Sản Nổi Bật</h3>
+          <h2 className="text-4xl font-bold text-white">Bất Động Sản Nổi Bật</h2>
           <p className="text-slate-400 text-lg">Những dự án được yêu thích nhất</p>
         </div>
 

@@ -41,7 +41,7 @@ export interface Customer {
   source: 'facebook' | 'zalo' | 'tiktok' | 'website' | 'referral';
   budget: number; // in VND billions (tỷ)
   interested_area: string;
-  property_type: 'đất nền' | 'nhà phố' | 'căn hộ' | 'shophouse' | 'kho xưởng' | 'khác';
+  property_type: 'Đất nền' | 'Nhà Phố' | 'Căn Hộ' | 'Shophouse' | 'Kho xưởng' | 'Nhà hàng' | 'Khách sạn' | 'Biệt thự' | 'Villa' | 'Khác';
   status: 'new' | 'warm' | 'hot' | 'closed' | 'lost';
   notes: string;
   ai_summary: string;
@@ -55,17 +55,25 @@ export interface Customer {
 export interface Property {
   id: string;
   title: string;
-  type: 'đất' | 'nhà phố' | 'căn hộ' | 'shophouse' | 'kho xưởng' | 'nhà hàng';
+  type: 'Đất nền' | 'Nhà Phố' | 'Căn Hộ' | 'Shophouse' | 'Kho xưởng' | 'Nhà hàng' | 'Khách sạn' | 'Biệt thự' | 'Villa' | 'Khác';
+  transaction_type?: 'Bán' | 'Cho thuê';
   location: string;
   area: number; // square meters (m2)
+  floor_area?: number; // gross floor area (m2)
   price: number; // in VND billions (tỷ)
   legal_status: string; // Sổ hồng riêng, HĐMB, Đang chờ sổ
   direction: string; // Đông, Tây, Nam, Bắc, Đông Nam, Tây Nam, Đông Bắc, Tây Bắc
   road_width: number; // meters (m)
+  floors?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  garage?: boolean;
+  pool?: boolean;
   description: string;
   rich_description?: string;
   internal_notes?: string;
   sale_status?: 'available' | 'sold' | 'hidden';
+  is_featured?: boolean;
   images: string; // Image placeholder URL or string
   gallery_images?: string[];
   selling_points: string[]; // Key selling highligts
