@@ -99,7 +99,7 @@ const createEmptyPropertyForm = () => ({
   legal_status: 'Sổ hồng', direction: 'Đông Nam', road_width: '7.5',
   floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
   description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
-  sale_status: 'available', selling_points: ''
+  sale_status: 'available', is_featured: false, selling_points: ''
 });
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
@@ -566,6 +566,7 @@ export default function App() {
       images: property.images || '',
       gallery_images: [...(property.gallery_images || [])],
       sale_status: property.sale_status || 'available',
+      is_featured: Boolean(property.is_featured),
       selling_points: (property.selling_points || []).join('\n')
     });
     setShowAddPropertyModal(true);
@@ -612,6 +613,22 @@ export default function App() {
       showToast(updated.sale_status === 'sold' ? "Đã đánh dấu bất động sản là đã bán." : "Đã chuyển bất động sản về trạng thái đang bán.", "success");
     } catch (e: any) {
       showToast(e.message || "Lỗi cập nhật trạng thái bán.", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTogglePropertyFeatured = async (prop: Property) => {
+    setActionLoading(`featured-prop-${prop.id}`);
+    try {
+      const updated = await updateProperty(prop.id, {
+        is_featured: !prop.is_featured
+      });
+      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
+      showToast(updated.is_featured ? "Đã gán BĐS nổi bật." : "Đã bỏ gán BĐS nổi bật.", "success");
+    } catch (e: any) {
+      showToast(e.message || "Lỗi cập nhật BĐS nổi bật.", "error");
     } finally {
       setActionLoading(null);
     }
@@ -1836,8 +1853,24 @@ export default function App() {
                               className="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-500 opacity-80"
                             />
                           )}
-                          <div className="absolute top-4 left-4 bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
+                          <div className="absolute left-4 top-4 flex max-w-[calc(100%-7rem)] flex-wrap items-center gap-1.5">
+                            <div className="bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
                             {(prop.transaction_type || 'Bán')} • {prop.type}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePropertyFeatured(prop)}
+                              disabled={actionLoading === `featured-prop-${prop.id}`}
+                              title={prop.is_featured ? 'Bỏ gắn nổi bật' : 'Gắn BĐS nổi bật'}
+                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-2xs font-extrabold transition-all ${
+                                prop.is_featured
+                                  ? 'border-rose-500/70 bg-rose-600 text-white shadow-sm shadow-rose-600/20'
+                                  : 'border-slate-800 bg-slate-950/90 text-slate-400 hover:border-rose-500/60 hover:text-rose-300'
+                              }`}
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              {prop.is_featured ? 'Nổi bật' : 'Bỏ nổi bật'}
+                            </button>
                           </div>
                           {prop.sale_status === 'sold' && (
                             <div className="absolute top-14 left-4 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
@@ -3812,6 +3845,16 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+
+                <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={newPropertyForm.is_featured}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, is_featured: e.target.checked })}
+                    className="h-4 w-4 accent-rose-600"
+                  />
+                  Gắn BDS nổi bật
+                </label>
               </div>
 
               <div className="space-y-1">

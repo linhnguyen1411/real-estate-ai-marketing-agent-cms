@@ -1231,6 +1231,7 @@ app.post('/api/properties', (req: Request, res: Response) => {
     rich_description: propData.rich_description || propData.description || '',
     internal_notes: propData.internal_notes || '',
     sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
+    is_featured: Boolean(propData.is_featured),
     images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
     gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
     selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],

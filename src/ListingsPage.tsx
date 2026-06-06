@@ -242,6 +242,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     }
   ]);
   const [contactStatus, setContactStatus] = useState('');
+  const [visibleProjectCount, setVisibleProjectCount] = useState(6);
+  const [visibleListingCount, setVisibleListingCount] = useState(6);
 
   React.useEffect(() => {
     if (!guestProfile) return;
@@ -351,8 +353,15 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       const key = property.location.split(',')[0].trim() || property.type;
       groups.set(key, [...(groups.get(key) || []), property]);
     });
-    return Array.from(groups.entries()).slice(0, 4);
+    return Array.from(groups.entries());
   }, [activeProperties]);
+
+  const visibleProjectGroups = projectGroups.slice(0, visibleProjectCount);
+  const visibleFilteredProperties = filteredProperties.slice(0, visibleListingCount);
+
+  React.useEffect(() => {
+    setVisibleListingCount(6);
+  }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType]);
 
   const propertyTypes = Array.from(new Set(activeProperties.map(property => property.type)));
   const siteOrigin = window.location.origin;
@@ -650,7 +659,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/75 to-slate-950/15" />
           <div className="relative mx-auto flex min-h-[560px] max-w-7xl flex-col justify-center px-4 pb-20 pt-20 md:min-h-[720px] md:pb-24 md:pt-24">
             <div className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-rose-100">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide" style={ { color: '#f6f871' } }>
                 <Sparkles className="h-4 w-4" />
                 Danh sách Bất động sản bán/cho thuê
               </div>
@@ -670,33 +679,6 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </div>
             </div>
 
-            <div className="mt-5 border-t border-slate-100 pt-5">
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Kết quả lọc realtime</p>
-                  <h2 className="mt-1 text-xl font-extrabold text-slate-950">
-                    {filteredProperties.length} sản phẩm phù hợp
-                  </h2>
-                </div>
-                {filteredProperties.length > quickFilterResults.length && (
-                  <a href="#listings" className="text-sm font-bold text-rose-700 hover:text-rose-600">
-                    Xem tất cả {filteredProperties.length} sản phẩm
-                  </a>
-                )}
-              </div>
-
-              {quickFilterResults.length > 0 ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {quickFilterResults.map(property => (
-                    <PropertyCard key={`quick-${property.id}`} property={property} onSelect={openProperty} />
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                  Chưa có sản phẩm phù hợp. Anh/chị thử đổi khoảng giá, loại hình hoặc khu vực.
-                </div>
-              )}
-            </div>
           </div>
         </section>
 
@@ -784,8 +766,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section id="featured" className="mx-auto max-w-7xl px-4 py-16">
           <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Featured listings</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Bất động sản nổi bật</h2>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Được đề xuất</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Bất động sản được đề xuất</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">
               Các sản phẩm giá trị cao, vị trí tốt và có đủ thông tin để khách ra quyết định nhanh.
@@ -807,7 +789,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {projectGroups.map(([name, group]) => (
+              {visibleProjectGroups.map(([name, group]) => (
                 <a
                   key={name}
                   href="#listings"
@@ -822,15 +804,27 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </a>
               ))}
             </div>
+
+            {visibleProjectCount < projectGroups.length && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleProjectCount(count => Math.min(count + 6, projectGroups.length))}
+                  className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  Xem thêm
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
         <section id="listings" className="mx-auto max-w-7xl px-4 py-16">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Bất động sản nổi bật</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Bất động đang giao dịch</p>
               <h2 className="mt-2 text-3xl font-extrabold text-slate-950">
-                {filteredProperties.length}/{activeProperties.length} bất động sản đang bán/cho thuê
+                Bất động sản đang bán/cho thuê
               </h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[920px] lg:grid-cols-[1.4fr_150px_150px_150px_150px]">
@@ -885,10 +879,22 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {filteredProperties.map(property => (
+            {visibleFilteredProperties.map(property => (
               <PropertyCard key={property.id} property={property} onSelect={openProperty} />
             ))}
           </div>
+
+          {visibleListingCount < filteredProperties.length && (
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisibleListingCount(count => Math.min(count + 6, filteredProperties.length))}
+                className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+              >
+                Xem thêm
+              </button>
+            </div>
+          )}
 
           {filteredProperties.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">

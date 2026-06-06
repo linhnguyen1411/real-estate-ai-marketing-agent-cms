@@ -73,6 +73,7 @@ export interface Property {
   rich_description?: string;
   internal_notes?: string;
   sale_status?: 'available' | 'sold' | 'hidden';
+  is_featured?: boolean;
   images: string; // Image placeholder URL or string
   gallery_images?: string[];
   selling_points: string[]; // Key selling highligts
