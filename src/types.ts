@@ -74,6 +74,8 @@ export interface Property {
   internal_notes?: string;
   sale_status?: 'available' | 'sold' | 'hidden';
   is_featured?: boolean;
+  public_view_count?: number;
+  last_public_view_at?: string;
   images: string; // Image placeholder URL or string
   gallery_images?: string[];
   selling_points: string[]; // Key selling highligts
@@ -190,6 +192,8 @@ export interface AppSettings {
   ollama_model: string;
   openai_model: string;
   agent_tone: string;
+  site_view_count?: number;
+  last_site_view_at?: string;
 }
 
 export interface ChatHistoryRecord {

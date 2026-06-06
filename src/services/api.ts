@@ -52,6 +52,8 @@ export interface DashboardData {
     totalPosts: number;
     pendingInbox: number;
     todayTasksCount: number;
+    siteViews?: number;
+    propertyViews?: number;
   };
   metrics: Array<{
     platform: string;

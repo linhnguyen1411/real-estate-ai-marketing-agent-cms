@@ -197,6 +197,8 @@ export default function App() {
         totalProperties: properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')).length,
         totalPosts: posts.length,
         pendingInbox: inbox.filter(message => message.status === 'pending').length,
+        siteViews: Number(settings.site_view_count || 0),
+        propertyViews: properties.reduce((sum, property) => sum + Number(property.public_view_count || 0), 0),
         todayTasksCount: customers.filter(customer => customer.status === 'hot' && customer.lead_score > 80).length
       },
       metrics: platforms.map(platform => {
@@ -215,7 +217,7 @@ export default function App() {
         };
       })
     };
-  }, [customers, properties, posts, inbox]);
+  }, [customers, properties, posts, inbox, settings.site_view_count]);
 
   const maxDashboardReach = Math.max(1, ...dashboardData.metrics.map(metric => metric.reach));
   const topDashboardMetric = dashboardData.metrics.reduce(
@@ -1313,13 +1315,15 @@ export default function App() {
                   </div>
 
                   {/* Summary Metric Cards */}
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
                     {[
                       { label: 'Tổng số khách hàng CRM', value: dashboardData.stats.totalCustomers, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
                       { label: 'Lead Hot tiềm năng', value: dashboardData.stats.leads.hot, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
                       { label: 'Bất động sản mở bán', value: dashboardData.stats.totalProperties, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
                       { label: 'Bài quảng cáo đã tạo', value: dashboardData.stats.totalPosts, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
                       { label: 'Inbox chưa trả lời', value: dashboardData.stats.pendingInbox, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
+                      { label: 'Lượt xem site', value: dashboardData.stats.siteViews || 0, icon: TrendingUp, color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' },
+                      { label: 'Lượt xem BĐS', value: dashboardData.stats.propertyViews || 0, icon: Search, color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
                       return (
@@ -1900,6 +1904,19 @@ export default function App() {
                             <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
                               📍 {prop.location}
                             </p>
+<<<<<<< Updated upstream
+=======
+                            {Number.isFinite(prop.map_latitude) && Number.isFinite(prop.map_longitude) && (
+                              <span className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-950/40 px-2 py-1 text-2xs font-bold text-blue-300">
+                                <MapPin className="h-3 w-3" />
+                                Có Google Map
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-2xs font-bold text-slate-400">
+                              <TrendingUp className="h-3 w-3" />
+                              {prop.public_view_count || 0} lượt xem
+                            </span>
+>>>>>>> Stashed changes
                             <MarkdownContent
                               content={prop.rich_description || prop.description}
                               compact
