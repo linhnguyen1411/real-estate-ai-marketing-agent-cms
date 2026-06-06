@@ -58,6 +58,8 @@ export interface Property {
   type: 'Đất nền' | 'Nhà Phố' | 'Căn Hộ' | 'Shophouse' | 'Kho xưởng' | 'Nhà hàng' | 'Khách sạn' | 'Biệt thự' | 'Villa' | 'Khác';
   transaction_type?: 'Bán' | 'Cho thuê';
   location: string;
+  map_latitude?: number | null;
+  map_longitude?: number | null;
   area: number; // square meters (m2)
   floor_area?: number; // gross floor area (m2)
   price: number; // in VND billions (tỷ)

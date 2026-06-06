@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { Property } from './types';
 import MarkdownContent from './components/MarkdownContent';
+import PropertyShareActions from './components/PropertyShareActions';
+import { getPublicPropertySlug, getPublicPropertyUrl } from './utils/propertyShare';
 
 interface ListingsPageProps {
   properties: Property[];
@@ -41,7 +43,7 @@ interface PublicChatGuestProfile {
 const PUBLIC_CHAT_SESSION_KEY = 'real_estate_public_chat_session';
 const PUBLIC_CHAT_GUEST_KEY = 'real_estate_public_chat_guest';
 const zaloUrl = 'https://zalo.me/0905777594';
-const facebookUrl = 'https://www.facebook.com/estoria.dn';
+const facebookUrl = 'https://www.facebook.com/linhnph92';
 const phoneNumber = '0905 777 594';
 const heroImageUrl = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=2200&q=90';
 const publicListingsPath = '/';
@@ -76,6 +78,18 @@ function getImage(property?: Property) {
   return property.gallery_images?.[0] || property.images || 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
 }
 
+function hasGoogleMap(property: Property) {
+  return Number.isFinite(property.map_latitude) && Number.isFinite(property.map_longitude);
+}
+
+function getGoogleMapUrl(property: Property) {
+  return `https://maps.google.com/maps?q=${property.map_latitude},${property.map_longitude}&z=16&output=embed`;
+}
+
+function getGoogleMapLink(property: Property) {
+  return `https://www.google.com/maps/search/?api=1&query=${property.map_latitude},${property.map_longitude}`;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -88,7 +102,7 @@ function slugify(value: string) {
 }
 
 function getPropertySlug(property: Property) {
-  return `${slugify(property.title)}-${property.id}`;
+  return getPublicPropertySlug(property);
 }
 
 function getPropertyPath(property: Property) {
@@ -314,7 +328,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   }, [activeProperties, propertySlug]);
 
   const featuredProperties = useMemo(
-    () => activeProperties.slice().sort((a, b) => b.price - a.price).slice(0, 3),
+    () => activeProperties.filter(property => property.is_featured).slice(0, 6),
     [activeProperties]
   );
 
@@ -589,9 +603,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <meta property="og:locale" content="vi_VN" />
         <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
         <meta property="og:site_name" content="Estoria" />
+        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={seoDescription} />
-        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={seoImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={seoTitle} />
@@ -1172,6 +1186,13 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-rose-600">{formatPrice(selectedProperty.price)}</div>
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
+                  <PropertyShareActions
+                    property={selectedProperty}
+                    buttonClassName="h-9 px-3 border-slate-200 bg-slate-50 text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  />
+                </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Diện tích</div>
@@ -1197,6 +1218,35 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </div>
               </aside>
             </div>
+
+            {hasGoogleMap(selectedProperty) && (
+              <div className="border-t border-slate-200 p-4 sm:p-6">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Google Map</p>
+                    <h3 className="mt-1 text-xl font-extrabold text-slate-950">Vị trí bất động sản</h3>
+                    <p className="mt-1 text-sm text-slate-600">{selectedProperty.location}</p>
+                  </div>
+                  <a
+                    href={getGoogleMapLink(selectedProperty)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    Mở Google Map
+                  </a>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                  <iframe
+                    title={`Google Map ${selectedProperty.title}`}
+                    src={getGoogleMapUrl(selectedProperty)}
+                    className="h-[320px] w-full border-0 sm:h-[420px]"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

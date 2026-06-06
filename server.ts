@@ -1216,6 +1216,8 @@ app.post('/api/properties', (req: Request, res: Response) => {
     transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
     type: propData.type || 'Đất nền',
     location: propData.location || '',
+    map_latitude: Number.isFinite(Number(propData.map_latitude)) ? Number(propData.map_latitude) : null,
+    map_longitude: Number.isFinite(Number(propData.map_longitude)) ? Number(propData.map_longitude) : null,
     area: parseFloat(propData.area) || 0,
     floor_area: parseFloat(propData.floor_area) || undefined,
     price: parseFloat(propData.price) || 0,
@@ -1896,6 +1898,127 @@ function escapeXml(value: string) {
     .replace(/'/g, '&apos;');
 }
 
+function escapeHtml(value: unknown) {
+  return escapeXml(String(value || ''));
+}
+
+function stripHtml(value: unknown) {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[#*_`[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateMeta(value: string, maxLength = 180) {
+  const cleanValue = stripHtml(value);
+  return cleanValue.length > maxLength
+    ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
+    : cleanValue;
+}
+
+function absoluteUrl(value: string, origin: string) {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('//')) return `${origin.split(':')[0]}:${value}`;
+  if (value.startsWith('/')) return `${origin}${value}`;
+  return value;
+}
+
+function getPropertyImageValue(property: Property, index = 0) {
+  return property.gallery_images?.[index] || property.images || '';
+}
+
+function getPropertyPublicImageUrl(property: Property, origin: string, index = 0) {
+  const image = getPropertyImageValue(property, index);
+  if (!image) return '';
+  if (image.startsWith('data:image/')) return `${origin}/property-images/${encodeURIComponent(property.id)}/${index}.jpg`;
+  return absoluteUrl(image, origin);
+}
+
+function getPropertyShareMeta(property: Property, origin: string) {
+  const url = `${origin}${getPropertyPath(property)}`;
+  const image = getPropertyPublicImageUrl(property, origin);
+  const sellingPoints = (property.selling_points || []).filter(Boolean).slice(0, 4).join(' • ');
+  const baseDescription = [
+    `${property.title} tại ${property.location}`,
+    `${property.area} m2`,
+    `${property.price} tỷ`,
+    property.legal_status,
+    sellingPoints,
+    property.rich_description || property.description
+  ].filter(Boolean).join('. ');
+  const title = property.ai_posts?.seo?.title || `${property.title} | Estoria`;
+  const description = property.ai_posts?.seo?.meta_description || truncateMeta(baseDescription);
+
+  return { title, description, image, url };
+}
+
+function renderIndexWithMeta(indexHtml: string, meta: { title: string; description: string; image: string; url: string }) {
+  const tags = [
+    `<title>${escapeHtml(meta.title)}</title>`,
+    `<meta name="description" content="${escapeHtml(meta.description)}" />`,
+    '<meta property="og:locale" content="vi_VN" />',
+    '<meta property="og:type" content="product" />',
+    '<meta property="og:site_name" content="Estoria" />',
+    `<meta property="og:url" content="${escapeHtml(meta.url)}" />`,
+    `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
+    `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
+    meta.image ? `<meta property="og:image" content="${escapeHtml(meta.image)}" />` : '',
+    meta.image ? '<meta property="og:image:secure_url" content="' + escapeHtml(meta.image) + '" />' : '',
+    meta.image ? '<meta property="og:image:type" content="image/jpeg" />' : '',
+    meta.image ? '<meta property="og:image:alt" content="' + escapeHtml(meta.title) + '" />' : '',
+    '<meta name="twitter:card" content="summary_large_image" />',
+    `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
+    meta.image ? `<meta name="twitter:image" content="${escapeHtml(meta.image)}" />` : '',
+    `<link rel="canonical" href="${escapeHtml(meta.url)}" />`
+  ].filter(Boolean).join('\n    ');
+
+  return indexHtml
+    .replace(/<title>.*?<\/title>/i, '')
+    .replace(/<meta name="description"[^>]*>/gi, '')
+    .replace(/<meta property="og:[^"]+"[^>]*>/gi, '')
+    .replace(/<meta name="twitter:[^"]+"[^>]*>/gi, '')
+    .replace(/<link rel="canonical"[^>]*>/gi, '')
+    .replace('</head>', `    ${tags}\n  </head>`);
+}
+
+function findPublicPropertyBySlug(propertySlug: string) {
+  const decodedSlug = decodeURIComponent(propertySlug || '').toLowerCase();
+  return getProperties().find((property: Property) => {
+    if (['sold', 'hidden'].includes(property.sale_status || 'available')) return false;
+    return property.id === decodedSlug || getPropertySlug(property).toLowerCase() === decodedSlug;
+  }) as Property | undefined;
+}
+
+app.get('/property-images/:propertyId/:imageIndex.jpg', (req: Request, res: Response) => {
+  const property = getProperties().find((item: Property) => item.id === req.params.propertyId) as Property | undefined;
+  if (!property || ['sold', 'hidden'].includes(property.sale_status || 'available')) {
+    res.status(404).send('Image not found');
+    return;
+  }
+
+  const imageIndex = Number.parseInt(req.params.imageIndex, 10) || 0;
+  const image = getPropertyImageValue(property, imageIndex);
+  const dataUrlMatch = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+
+  if (!dataUrlMatch) {
+    res.redirect(getPropertyPublicImageUrl(property, getPublicOrigin(req), imageIndex));
+    return;
+  }
+
+  const imageBuffer = Buffer.from(dataUrlMatch[2], 'base64');
+  res
+    .status(200)
+    .set({
+      'Content-Type': dataUrlMatch[1],
+      'Content-Length': String(imageBuffer.length),
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    })
+    .send(imageBuffer);
+});
+
 app.get('/robots.txt', (req: Request, res: Response) => {
   const origin = getPublicOrigin(req);
   res
@@ -1954,8 +2077,22 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
 
 const distPath = path.join(process.cwd(), 'dist');
 
+function sendPropertyMetaHtml(req: Request, res: Response, indexPath: string) {
+  const property = findPublicPropertyBySlug(req.params.propertySlug);
+  if (!property) return false;
+
+  const indexHtml = fs.readFileSync(indexPath, 'utf-8');
+  const meta = getPropertyShareMeta(property, getPublicOrigin(req));
+  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(renderIndexWithMeta(indexHtml, meta));
+  return true;
+}
+
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
+  app.get('/:propertySlug', (req: Request, res: Response, next: NextFunction) => {
+    if (sendPropertyMetaHtml(req, res, path.join(distPath, 'index.html'))) return;
+    next();
+  });
   app.get('*', (req: Request, res: Response) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
@@ -1977,6 +2114,10 @@ if (process.env.NODE_ENV === 'production') {
         // Double check it's not and api path
         if (req.url.startsWith('/api')) {
           return next();
+        }
+        if (req.params?.[0] && !req.params[0].includes('/')) {
+          req.params.propertySlug = req.params[0];
+          if (sendPropertyMetaHtml(req, res, path.join(process.cwd(), 'index.html'))) return;
         }
         const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
         res.status(200).set({ 'Content-Type': 'text/html' }).end(indexHtml);

@@ -44,6 +44,7 @@ import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatM
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
+import PropertyShareActions from './components/PropertyShareActions';
 import {
   analyzeCustomer,
   createCustomer,
@@ -96,6 +97,7 @@ const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: s
 
 const createEmptyPropertyForm = () => ({
   title: '', transaction_type: 'Bán', type: 'Đất nền', location: '', area: '100', floor_area: '', price: '4.5',
+  map_latitude: '', map_longitude: '',
   legal_status: 'Sổ hồng', direction: 'Đông Nam', road_width: '7.5',
   floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
   description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
@@ -549,6 +551,8 @@ export default function App() {
       transaction_type: property.transaction_type || 'Bán',
       type: property.type,
       location: property.location,
+      map_latitude: property.map_latitude != null ? String(property.map_latitude) : '',
+      map_longitude: property.map_longitude != null ? String(property.map_longitude) : '',
       area: String(property.area),
       floor_area: property.floor_area ? String(property.floor_area) : '',
       price: String(property.price),
@@ -645,6 +649,9 @@ export default function App() {
     `Pháp lý: ${prop.legal_status}`,
     `Hướng: ${prop.direction}`,
     `Đường: ${prop.road_width} m`,
+    Number.isFinite(prop.map_latitude) && Number.isFinite(prop.map_longitude)
+      ? `Google Map: https://www.google.com/maps/search/?api=1&query=${prop.map_latitude},${prop.map_longitude}`
+      : '',
     prop.floors ? `Số tầng: ${prop.floors}` : '',
     prop.bedrooms ? `Phòng ngủ: ${prop.bedrooms}` : '',
     prop.bathrooms ? `Phòng tắm: ${prop.bathrooms}` : '',
@@ -750,6 +757,8 @@ export default function App() {
         ...newPropertyForm,
         area: Number(newPropertyForm.area),
         floor_area: newPropertyForm.floor_area ? Number(newPropertyForm.floor_area) : undefined,
+        map_latitude: newPropertyForm.map_latitude.trim() ? Number(newPropertyForm.map_latitude) : null,
+        map_longitude: newPropertyForm.map_longitude.trim() ? Number(newPropertyForm.map_longitude) : null,
         price: Number(newPropertyForm.price),
         road_width: Number(newPropertyForm.road_width),
         floors: newPropertyForm.floors ? Number(newPropertyForm.floors) : undefined,
@@ -1900,6 +1909,12 @@ export default function App() {
                             <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
                               📍 {prop.location}
                             </p>
+                            {Number.isFinite(prop.map_latitude) && Number.isFinite(prop.map_longitude) && (
+                              <span className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-950/40 px-2 py-1 text-2xs font-bold text-blue-300">
+                                <MapPin className="h-3 w-3" />
+                                Có Google Map
+                              </span>
+                            )}
                             <MarkdownContent
                               content={prop.rich_description || prop.description}
                               compact
@@ -1992,6 +2007,16 @@ export default function App() {
                                 <Copy className="w-3.5 h-3.5" />
                                 <span>Copy mô tả</span>
                               </button>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-900 bg-slate-950/50 p-2.5">
+                              <div className="mb-2 text-2xs font-bold uppercase tracking-wide text-slate-500">Share nhanh link public</div>
+                              <PropertyShareActions
+                                property={prop}
+                                buttonClassName="h-8 px-2.5 border-slate-800 bg-slate-950 text-slate-300 hover:border-rose-500/40 hover:bg-rose-950 hover:text-rose-300"
+                                onCopied={() => showToast('Da copy link/caption share.', 'success')}
+                                onError={() => showToast('Khong the share san pham.', 'error')}
+                              />
                             </div>
 
                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3635,6 +3660,30 @@ export default function App() {
                     value={newPropertyForm.location}
                     onChange={(e) => setNewPropertyForm({ ...newPropertyForm, location: e.target.value })}
                     placeholder="Võ Chí Công, Hải Châu, Đà Nẵng"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Google Map latitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={newPropertyForm.map_latitude}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, map_latitude: e.target.value })}
+                    placeholder="16.047079"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Google Map longitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={newPropertyForm.map_longitude}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, map_longitude: e.target.value })}
+                    placeholder="108.206230"
                     className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200"
                   />
                 </div>
