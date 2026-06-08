@@ -33,7 +33,8 @@ const defaultSettings: AppSettings = {
   ollama_endpoint: process.env.OLLAMA_ENDPOINT || "http://localhost:11434",
   ollama_model: process.env.OLLAMA_MODEL || "qwen3:8b",
   openai_model: process.env.OPENAI_MODEL || "gpt-5-mini",
-  agent_tone: process.env.AGENT_TONE || "sang trong va chuyen nghiep"
+  agent_tone: process.env.AGENT_TONE || "sang trọng và chuyên nghiệp",
+  site_view_count: 0
 };
 
 let sqlite: Database.Database | null = null;

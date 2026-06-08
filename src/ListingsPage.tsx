@@ -1,4 +1,5 @@
 import React, { FormEvent, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
   Bot,
@@ -7,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  Eye,
   Facebook,
   Home,
   Mail,
@@ -22,6 +24,8 @@ import {
 } from 'lucide-react';
 import { Property } from './types';
 import MarkdownContent from './components/MarkdownContent';
+import PropertyShareActions from './components/PropertyShareActions';
+import { getPublicPropertySlug } from './utils/propertyShare';
 
 interface ListingsPageProps {
   properties: Property[];
@@ -46,6 +50,15 @@ const phoneNumber = '0905 777 594';
 const heroImageUrl = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=2200&q=90';
 const publicListingsPath = '/';
 const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
+const DEFAULT_SEO_KEYWORDS = [
+  'bất động sản sun group đà nẵng',
+  'căn hộ cao cấp đà nẵng',
+  'bất động sản nam đà nẵng',
+  'shophouse kinh doanh đà nẵng',
+  'giá đất đà nẵng 2026'
+];
+const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
+const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
 const PRICE_RANGES = [
   { value: 'all', label: 'Tất cả mức giá' },
   { value: 'under3', label: 'Dưới 3 tỷ' },
@@ -68,12 +81,28 @@ function getTransactionType(property: Property) {
   return String(property.transaction_type || 'Bán').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán';
 }
 
+function getPropertyViewCount(property: Property) {
+  return Number(property.public_view_count || 0);
+}
+
 function getImage(property?: Property) {
   if (!property) {
     return 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
   }
 
   return property.gallery_images?.[0] || property.images || 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
+}
+
+function hasGoogleMap(property: Property) {
+  return Number.isFinite(property.map_latitude) && Number.isFinite(property.map_longitude);
+}
+
+function getGoogleMapUrl(property: Property) {
+  return `https://maps.google.com/maps?q=${property.map_latitude},${property.map_longitude}&z=16&output=embed`;
+}
+
+function getGoogleMapLink(property: Property) {
+  return `https://www.google.com/maps/search/?api=1&query=${property.map_latitude},${property.map_longitude}`;
 }
 
 function slugify(value: string) {
@@ -88,11 +117,23 @@ function slugify(value: string) {
 }
 
 function getPropertySlug(property: Property) {
-  return `${slugify(property.title)}-${property.id}`;
+  return getPublicPropertySlug(property);
 }
 
 function getPropertyPath(property: Property) {
   return `/${encodeURIComponent(getPropertySlug(property))}`;
+}
+
+function getPropertySlugFromPath(pathname: string) {
+  const segment = pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
+  if (!segment || segment === 'admin' || segment === 'listings' || segment === 'bds-da-nang') {
+    return '';
+  }
+  try {
+    return decodeURIComponent(segment).toLowerCase();
+  } catch {
+    return segment.toLowerCase();
+  }
 }
 
 function toPlainText(value: string) {
@@ -108,6 +149,21 @@ function truncateText(value: string, maxLength = 155) {
   return cleanValue.length > maxLength
     ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
     : cleanValue;
+}
+
+function limitSeoTitle(value: string) {
+  return value.length <= 60 ? value : `${value.slice(0, 57).trim()}...`;
+}
+
+function getPropertySeoTitle(property: Property) {
+  const type = String(property.type || '').toLowerCase();
+  if (type.includes('căn') || type.includes('can')) {
+    return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
+  }
+  if (type.includes('shophouse')) {
+    return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
+  }
+  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
 }
 
 async function readJsonResponse(response: Response) {
@@ -126,12 +182,14 @@ async function readJsonResponse(response: Response) {
 interface PropertyCardProps {
   property: Property;
   onSelect: (property: Property) => void;
+  viewCount: number;
   large?: boolean;
 }
 
 const PropertyCard: React.FC<PropertyCardProps> = ({
   property,
   onSelect,
+  viewCount,
   large = false
 }) => {
   const transactionType = getTransactionType(property);
@@ -160,6 +218,10 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         <div className="absolute right-3 top-3 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
           {formatPrice(property.price)}
         </div>
+        <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-md bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+          <Eye className="h-3.5 w-3.5" />
+          {viewCount.toLocaleString('vi-VN')} lượt xem
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col space-y-3 p-4">
@@ -168,6 +230,10 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
           <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
             <MapPin className="h-4 w-4 text-rose-600" />
             {property.location}
+          </p>
+          <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+            <Eye className="h-3.5 w-3.5" />
+            {viewCount.toLocaleString('vi-VN')} lượt xem
           </p>
         </div>
 
@@ -205,6 +271,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
 };
 
 export default function ListingsPage({ properties, propertySlug }: ListingsPageProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
   const [chatSessionId] = useState(() => {
     const existing = localStorage.getItem(PUBLIC_CHAT_SESSION_KEY);
@@ -244,6 +312,60 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const [contactStatus, setContactStatus] = useState('');
   const [visibleProjectCount, setVisibleProjectCount] = useState(6);
   const [visibleListingCount, setVisibleListingCount] = useState(6);
+  const [localProperties, setLocalProperties] = useState<Property[]>(properties);
+
+  React.useEffect(() => {
+    setLocalProperties(properties);
+  }, [properties]);
+
+  const applyPropertyViewUpdate = (update: { id: string; public_view_count?: number; last_public_view_at?: string }) => {
+    if (!update?.id) return;
+    setLocalProperties(prev => prev.map(property =>
+      property.id === update.id
+        ? { ...property, public_view_count: Number(update.public_view_count || 0), last_public_view_at: update.last_public_view_at }
+        : property
+    ));
+    setSelectedProperty(prev =>
+      prev?.id === update.id
+        ? { ...prev, public_view_count: Number(update.public_view_count || 0), last_public_view_at: update.last_public_view_at }
+        : prev
+    );
+  };
+
+  const trackPropertyView = React.useCallback((property: Property) => {
+    const timestamp = new Date().toISOString();
+    setLocalProperties(prev => prev.map(item => {
+      if (item.id !== property.id) return item;
+      return {
+        ...item,
+        public_view_count: Number(item.public_view_count || 0) + 1,
+        last_public_view_at: timestamp
+      };
+    }));
+    setSelectedProperty(prev => {
+      if (prev?.id !== property.id) return prev;
+      return {
+        ...prev,
+        public_view_count: Number(prev.public_view_count || 0) + 1,
+        last_public_view_at: timestamp
+      };
+    });
+
+    fetch('/api/public/track-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'property', propertyId: property.id })
+    })
+      .then(async (response) => {
+        const text = await response.text();
+        if (!response.ok || !text.trim()) return;
+        const json = JSON.parse(text) as { data?: { property?: { id: string; public_view_count?: number; last_public_view_at?: string } } };
+        if (json.data?.property) {
+          applyPropertyViewUpdate(json.data.property);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   React.useEffect(() => {
     if (!guestProfile) return;
@@ -286,35 +408,56 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     return () => window.clearTimeout(timer);
   }, [chatMessages, chatLoading, chatOpen]);
 
+  React.useEffect(() => {
+    const trackingKey = 'real_estate_site_view_tracked';
+    if (sessionStorage.getItem(trackingKey)) return;
+    sessionStorage.setItem(trackingKey, '1');
+    fetch('/api/public/track-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'site' })
+    }).catch(() => undefined);
+  }, []);
+
   const activeProperties = useMemo(
-    () => properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
-    [properties]
+    () => localProperties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
+    [localProperties]
   );
 
   React.useEffect(() => {
-    const syncPropertyFromUrl = () => {
-      const propertyId = new URLSearchParams(window.location.search).get('property');
-      const normalizedSlug = decodeURIComponent(propertySlug || '').toLowerCase();
-      if (!propertyId && !normalizedSlug) {
-        setSelectedProperty(null);
-        return;
-      }
-      const property = activeProperties.find(item =>
-        item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug
-      );
-      if (property) {
-        setSelectedProperty(property);
-        setGalleryIndex(0);
-      }
-    };
+    const propertyId = new URLSearchParams(location.search).get('property');
+    const normalizedSlug = getPropertySlugFromPath(location.pathname)
+      || decodeURIComponent(propertySlug || '').toLowerCase();
+    if (!propertyId && !normalizedSlug) {
+      setSelectedProperty(null);
+      return;
+    }
+    const property = activeProperties.find(item =>
+      item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug
+    );
+    if (property) {
+      setSelectedProperty(property);
+      setGalleryIndex(0);
+    }
+  }, [activeProperties, location.pathname, location.search, propertySlug]);
 
-    syncPropertyFromUrl();
-    window.addEventListener('popstate', syncPropertyFromUrl);
-    return () => window.removeEventListener('popstate', syncPropertyFromUrl);
-  }, [activeProperties, propertySlug]);
+  React.useEffect(() => {
+    if (!selectedProperty) return;
+    let cancelled = false;
+    const property = selectedProperty;
+    const frame = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        trackPropertyView(property);
+      }
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [selectedProperty?.id, trackPropertyView]);
 
   const featuredProperties = useMemo(
-    () => activeProperties.slice().sort((a, b) => b.price - a.price).slice(0, 3),
+    () => activeProperties.filter(property => property.is_featured).slice(0, 6),
     [activeProperties]
   );
 
@@ -369,13 +512,17 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     ? `${siteOrigin}${getPropertyPath(selectedProperty)}`
     : siteOrigin;
   const seoTitle = selectedProperty
-    ? selectedProperty.ai_posts?.seo?.title || `${selectedProperty.title} tại ${selectedProperty.location} | Estoria`
-    : 'Bất động sản Đà Nẵng bán/cho thuê, pháp lý rõ ràng | Estoria';
+    ? limitSeoTitle(selectedProperty.ai_posts?.seo?.title || getPropertySeoTitle(selectedProperty))
+    : DEFAULT_SEO_TITLE;
   const seoDescription = selectedProperty
     ? selectedProperty.ai_posts?.seo?.meta_description || truncateText(
         `${selectedProperty.title} tại ${selectedProperty.location}, diện tích ${selectedProperty.area} m2, giá ${formatPrice(selectedProperty.price)}, pháp lý ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
       )
-    : `Khám phá ${activeProperties.length} bất động sản Đà Nẵng đang bán/cho thuê: căn hộ, nhà phố, đất và shophouse có thông tin giá, diện tích, pháp lý rõ ràng.`;
+    : DEFAULT_SEO_DESCRIPTION;
+  const seoKeywords = Array.from(new Set([
+    ...DEFAULT_SEO_KEYWORDS,
+    ...(selectedProperty?.ai_posts?.seo?.keywords || [])
+  ])).join(', ');
   const seoImage = selectedProperty ? getImage(selectedProperty) : getImage(featuredProperties[0]);
 
   const structuredData = useMemo(() => {
@@ -557,12 +704,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const openProperty = (property: Property) => {
     setSelectedProperty(property);
     setGalleryIndex(0);
-    window.history.pushState({}, '', getPropertyPath(property));
+    navigate(getPropertyPath(property));
   };
 
   const closeProperty = () => {
     setSelectedProperty(null);
-    window.history.pushState({}, '', publicListingsPath);
+    navigate(publicListingsPath);
   };
 
   const quickFilterResults = filteredProperties.slice(0, 6);
@@ -581,17 +728,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <html lang="vi" />
         <title>{seoTitle}</title>
         <meta name="description" content={seoDescription} />
-        {selectedProperty?.ai_posts?.seo?.keywords?.length && (
-          <meta name="keywords" content={selectedProperty.ai_posts.seo.keywords.join(', ')} />
-        )}
+        <meta name="keywords" content={seoKeywords} />
         <meta name="robots" content="index, follow, max-image-preview:large" />
+        <meta name="googlebot" content="index, follow, max-image-preview:large" />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:locale" content="vi_VN" />
         <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
         <meta property="og:site_name" content="Estoria" />
+        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={seoDescription} />
-        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={seoImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={seoTitle} />
@@ -776,7 +922,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {featuredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} large />
+              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} large />
             ))}
           </div>
         </section>
@@ -880,7 +1026,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {visibleFilteredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} />
+              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} />
             ))}
           </div>
 
@@ -1149,6 +1295,10 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                   <span className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white">{getTransactionType(selectedProperty)}</span>
                   <span className="rounded-md bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700">{selectedProperty.type}</span>
                   <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{selectedProperty.legal_status}</span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                    <Eye className="h-3.5 w-3.5" />
+                    {getPropertyViewCount(selectedProperty).toLocaleString('vi-VN')} lượt xem
+                  </span>
                 </div>
                 <h2 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">{selectedProperty.title}</h2>
                 <p className="mt-3 flex items-center gap-2 text-slate-600">
@@ -1172,6 +1322,13 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-rose-600">{formatPrice(selectedProperty.price)}</div>
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
+                  <PropertyShareActions
+                    property={selectedProperty}
+                    buttonClassName="h-9 px-3 border-slate-200 bg-slate-50 text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  />
+                </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Diện tích</div>
@@ -1197,6 +1354,35 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </div>
               </aside>
             </div>
+
+            {hasGoogleMap(selectedProperty) && (
+              <div className="border-t border-slate-200 p-4 sm:p-6">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Google Map</p>
+                    <h3 className="mt-1 text-xl font-extrabold text-slate-950">Vị trí bất động sản</h3>
+                    <p className="mt-1 text-sm text-slate-600">{selectedProperty.location}</p>
+                  </div>
+                  <a
+                    href={getGoogleMapLink(selectedProperty)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    Mở Google Map
+                  </a>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                  <iframe
+                    title={`Google Map ${selectedProperty.title}`}
+                    src={getGoogleMapUrl(selectedProperty)}
+                    className="h-[320px] w-full border-0 sm:h-[420px]"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

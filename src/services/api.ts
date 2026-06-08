@@ -40,6 +40,15 @@ export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
+export interface DashboardTrafficItem {
+  id: string;
+  title: string;
+  views: number;
+  lastViewAt?: string;
+  platform?: string;
+  url?: string;
+}
+
 export interface DashboardData {
   stats: {
     totalCustomers: number;
@@ -52,6 +61,9 @@ export interface DashboardData {
     totalPosts: number;
     pendingInbox: number;
     todayTasksCount: number;
+    siteViews?: number;
+    propertyViews?: number;
+    postViews?: number;
   };
   metrics: Array<{
     platform: string;
@@ -59,6 +71,11 @@ export interface DashboardData {
     engagement: number;
     leads: number;
   }>;
+  traffic?: {
+    lastSiteViewAt?: string;
+    topProperties: DashboardTrafficItem[];
+    topPosts: DashboardTrafficItem[];
+  };
 }
 
 export interface InitialAppData {
@@ -140,6 +157,14 @@ export async function getInitialAppData(): Promise<InitialAppData> {
     settings,
     channels
   };
+}
+
+export async function refreshTrafficData() {
+  const [properties, settings] = await Promise.all([
+    apiRequest<Property[]>('/api/properties'),
+    apiRequest<AppSettings>('/api/settings')
+  ]);
+  return { properties, settings };
 }
 
 export function analyzeCustomer(customerId: string) {

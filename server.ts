@@ -28,7 +28,7 @@ import {
   generateText,
   getAIProviderStatus
 } from './server/aiService';
-import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User } from './src/types';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -476,6 +476,51 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 app.get('/api/public/properties', (req: Request, res: Response) => {
   const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
   res.json({ status: 'success', data: publicProperties });
+});
+
+// ----------------------------------------------------
+// Public traffic tracking (register early, before static/vite fallbacks)
+// ----------------------------------------------------
+app.post('/api/public/track-view', (req: Request, res: Response) => {
+  const now = new Date().toISOString();
+  const propertyId = String(req.body?.propertyId || '').trim();
+  const trackingType = String(req.body?.type || '').trim();
+
+  let settings = getSettings();
+  let property: Property | undefined;
+
+  if (trackingType === 'site' || !propertyId) {
+    settings = updateSettings({
+      site_view_count: Number(settings.site_view_count || 0) + 1,
+      last_site_view_at: now
+    } as AppSettings);
+  }
+
+  if (propertyId) {
+    const current = getProperties().find((item: Property) => item.id === propertyId);
+    if (current) {
+      property = updateProperty(propertyId, {
+        public_view_count: Number(current.public_view_count || 0) + 1,
+        last_public_view_at: now
+      }) as Property;
+    }
+  }
+
+  res.json({
+    status: 'success',
+    data: {
+      tracked: true,
+      siteViews: Number(settings.site_view_count || 0),
+      lastSiteViewAt: settings.last_site_view_at,
+      property: property
+        ? {
+            id: property.id,
+            public_view_count: Number(property.public_view_count || 0),
+            last_public_view_at: property.last_public_view_at
+          }
+        : null
+    }
+  });
 });
 
 app.get('/api/public/chat/history', (req: Request, res: Response) => {
@@ -1040,7 +1085,30 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
   const totalProperties = properties.filter(p => !['sold', 'hidden'].includes(p.sale_status || 'available')).length;
   const totalPosts = posts.length;
   const pendingInbox = inbox.filter(i => i.status === 'pending').length;
-  
+  const propertyViews = properties.reduce((sum, property: Property) => sum + Number(property.public_view_count || 0), 0);
+  const siteViews = Number((db.settings as any).site_view_count || 0);
+  const postViews = posts.reduce((sum, post: Post) => sum + Number(post.engagement?.views || 0), 0);
+  const topProperties = properties
+    .filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'))
+    .sort((a: Property, b: Property) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
+    .slice(0, 10)
+    .map((property: Property) => ({
+      id: property.id,
+      title: property.title,
+      views: Number(property.public_view_count || 0),
+      lastViewAt: property.last_public_view_at
+    }));
+  const topPosts = posts
+    .slice()
+    .sort((a: Post, b: Post) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0))
+    .slice(0, 10)
+    .map((post: Post) => ({
+      id: post.id,
+      title: post.title,
+      platform: post.platform,
+      views: Number(post.engagement?.views || 0)
+    }));
+
   const metrics = ['facebook', 'zalo', 'tiktok', 'website'].map(platform => {
     const platformPosts = posts.filter(post => post.platform === platform);
     return {
@@ -1066,9 +1134,17 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
         totalProperties,
         totalPosts,
         pendingInbox,
+        siteViews,
+        propertyViews,
+        postViews,
         todayTasksCount: customers.filter(c => c.lead_score > 80 && c.status === 'hot').length,
       },
-      metrics
+      metrics,
+      traffic: {
+        lastSiteViewAt: (db.settings as any).last_site_view_at,
+        topProperties,
+        topPosts
+      }
     }
   });
 });
@@ -1232,6 +1308,7 @@ app.post('/api/properties', (req: Request, res: Response) => {
     internal_notes: propData.internal_notes || '',
     sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
     is_featured: Boolean(propData.is_featured),
+    public_view_count: Number(propData.public_view_count || 0),
     images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
     gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
     selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
@@ -1279,7 +1356,9 @@ app.put('/api/properties/:id', (req: Request, res: Response) => {
 
   db.properties[index] = {
     ...db.properties[index],
-    ...req.body
+    ...req.body,
+    public_view_count: req.body.public_view_count ?? db.properties[index].public_view_count ?? 0,
+    last_public_view_at: req.body.last_public_view_at ?? db.properties[index].last_public_view_at
   };
 
   writeDatabase(db);
@@ -1881,6 +1960,16 @@ app.put('/api/settings', (req: Request, res: Response) => {
 // ----------------------------------------------------
 // Web Front-end Asset serving
 // ----------------------------------------------------
+const DEFAULT_SEO_KEYWORDS = [
+  'bất động sản sun group đà nẵng',
+  'căn hộ cao cấp đà nẵng',
+  'bất động sản nam đà nẵng',
+  'shophouse kinh doanh đà nẵng',
+  'giá đất đà nẵng 2026'
+];
+const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
+const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
+
 function getPublicOrigin(req: Request) {
   const configuredOrigin = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
   if (/^https?:\/\//i.test(configuredOrigin)) return configuredOrigin;
@@ -1894,6 +1983,191 @@ function escapeXml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function escapeHtml(value: unknown) {
+  return escapeXml(String(value || ''));
+}
+
+function stripHtml(value: unknown) {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[#*_`[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateMeta(value: string, maxLength = 180) {
+  const cleanValue = stripHtml(value);
+  return cleanValue.length > maxLength
+    ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
+    : cleanValue;
+}
+
+function limitSeoTitle(value: string) {
+  return value.length <= 60 ? value : `${value.slice(0, 57).trim()}...`;
+}
+
+function getServerPropertySeoTitle(property: Property) {
+  const type = String(property.type || '').toLowerCase();
+  if (type.includes('căn') || type.includes('can')) return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
+  if (type.includes('shophouse')) return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
+  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
+}
+
+function absoluteUrl(value: string, origin: string) {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('//')) return `${origin.split(':')[0]}:${value}`;
+  if (value.startsWith('/')) return `${origin}${value}`;
+  return value;
+}
+
+function getPropertyImageValue(property: Property, index = 0) {
+  return property.gallery_images?.[index] || property.images || '';
+}
+
+function getPropertyPublicImageUrl(property: Property, origin: string, index = 0) {
+  const image = getPropertyImageValue(property, index);
+  if (!image) return '';
+  if (image.startsWith('data:image/')) return `${origin}/property-images/${encodeURIComponent(property.id)}/${index}.jpg`;
+  return absoluteUrl(image, origin);
+}
+
+function getPropertyShareMeta(property: Property, origin: string) {
+  const url = `${origin}${getPropertyPath(property)}`;
+  const image = getPropertyPublicImageUrl(property, origin);
+  const sellingPoints = (property.selling_points || []).filter(Boolean).slice(0, 4).join(' • ');
+  const baseDescription = [
+    `${property.title} tại ${property.location}`,
+    `${property.area} m2`,
+    `${property.price} tỷ`,
+    property.legal_status,
+    sellingPoints,
+    property.rich_description || property.description
+  ].filter(Boolean).join('. ');
+  const title = limitSeoTitle(property.ai_posts?.seo?.title || getServerPropertySeoTitle(property));
+  const description = property.ai_posts?.seo?.meta_description || truncateMeta(baseDescription);
+  const keywords = Array.from(new Set([
+    ...DEFAULT_SEO_KEYWORDS,
+    ...(property.ai_posts?.seo?.keywords || [])
+  ])).join(', ');
+
+  return { title, description, image, url, keywords };
+}
+
+function renderIndexWithMeta(indexHtml: string, meta: { title: string; description: string; image: string; url: string; keywords: string }) {
+  const tags = [
+    `<title>${escapeHtml(meta.title)}</title>`,
+    `<meta name="description" content="${escapeHtml(meta.description)}" />`,
+    `<meta name="keywords" content="${escapeHtml(meta.keywords)}" />`,
+    '<meta name="robots" content="index, follow, max-image-preview:large" />',
+    '<meta name="googlebot" content="index, follow, max-image-preview:large" />',
+    '<meta property="og:locale" content="vi_VN" />',
+    '<meta property="og:type" content="product" />',
+    '<meta property="og:site_name" content="Estoria" />',
+    `<meta property="og:url" content="${escapeHtml(meta.url)}" />`,
+    `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
+    `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
+    meta.image ? `<meta property="og:image" content="${escapeHtml(meta.image)}" />` : '',
+    meta.image ? '<meta property="og:image:secure_url" content="' + escapeHtml(meta.image) + '" />' : '',
+    meta.image ? '<meta property="og:image:type" content="image/jpeg" />' : '',
+    meta.image ? '<meta property="og:image:alt" content="' + escapeHtml(meta.title) + '" />' : '',
+    '<meta name="twitter:card" content="summary_large_image" />',
+    `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
+    meta.image ? `<meta name="twitter:image" content="${escapeHtml(meta.image)}" />` : '',
+    `<link rel="canonical" href="${escapeHtml(meta.url)}" />`
+  ].filter(Boolean).join('\n    ');
+
+  return indexHtml
+    .replace(/<title>.*?<\/title>/i, '')
+    .replace(/<meta name="description"[^>]*>/gi, '')
+    .replace(/<meta name="keywords"[^>]*>/gi, '')
+    .replace(/<meta name="robots"[^>]*>/gi, '')
+    .replace(/<meta name="googlebot"[^>]*>/gi, '')
+    .replace(/<meta property="og:[^"]+"[^>]*>/gi, '')
+    .replace(/<meta name="twitter:[^"]+"[^>]*>/gi, '')
+    .replace(/<link rel="canonical"[^>]*>/gi, '')
+    .replace('</head>', `    ${tags}\n  </head>`);
+}
+
+function findPublicPropertyBySlug(propertySlug: string) {
+  const decodedSlug = decodeURIComponent(propertySlug || '').toLowerCase();
+  return getProperties().find((property: Property) => {
+    if (['sold', 'hidden'].includes(property.sale_status || 'available')) return false;
+    return property.id === decodedSlug || getPropertySlug(property).toLowerCase() === decodedSlug;
+  }) as Property | undefined;
+}
+
+app.get('/property-images/:propertyId/:imageIndex.jpg', (req: Request, res: Response) => {
+  const property = getProperties().find((item: Property) => item.id === req.params.propertyId) as Property | undefined;
+  if (!property || ['sold', 'hidden'].includes(property.sale_status || 'available')) {
+    res.status(404).send('Image not found');
+    return;
+  }
+
+  const imageIndex = Number.parseInt(req.params.imageIndex, 10) || 0;
+  const image = getPropertyImageValue(property, imageIndex);
+  const dataUrlMatch = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+
+  if (!dataUrlMatch) {
+    res.redirect(getPropertyPublicImageUrl(property, getPublicOrigin(req), imageIndex));
+    return;
+  }
+
+  const imageBuffer = Buffer.from(dataUrlMatch[2], 'base64');
+  res
+    .status(200)
+    .set({
+      'Content-Type': dataUrlMatch[1],
+      'Content-Length': String(imageBuffer.length),
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    })
+    .send(imageBuffer);
+});
+
+function getIndexHtmlTemplate() {
+  const distIndex = path.join(process.cwd(), 'dist', 'index.html');
+  if (process.env.NODE_ENV === 'production' && fs.existsSync(distIndex)) {
+    return fs.readFileSync(distIndex, 'utf-8');
+  }
+  return fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+}
+
+function getDefaultShareMeta(origin: string) {
+  return {
+    title: DEFAULT_SEO_TITLE,
+    description: DEFAULT_SEO_DESCRIPTION,
+    image: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90',
+    url: `${origin}${publicListingsPath}`,
+    keywords: DEFAULT_SEO_KEYWORDS.join(', ')
+  };
+}
+
+function sendPublicIndex(req: Request, res: Response) {
+  const origin = getPublicOrigin(req);
+  const indexHtml = getIndexHtmlTemplate();
+  const pathSlug = decodeURIComponent(String(req.path || '').replace(/^\//, ''));
+
+  if (!pathSlug) {
+    res
+      .status(200)
+      .set({ 'Content-Type': 'text/html; charset=utf-8' })
+      .send(renderIndexWithMeta(indexHtml, getDefaultShareMeta(origin)));
+    return;
+  }
+
+  const property = findPublicPropertyBySlug(pathSlug);
+  if (property) {
+    res
+      .status(200)
+      .set({ 'Content-Type': 'text/html; charset=utf-8' })
+      .send(renderIndexWithMeta(indexHtml, getPropertyShareMeta(property, origin)));
+    return;
+  }
+
+  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
 }
 
 app.get('/robots.txt', (req: Request, res: Response) => {
@@ -1957,7 +2231,11 @@ const distPath = path.join(process.cwd(), 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
   app.get('*', (req: Request, res: Response) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+    if (req.path.startsWith('/api')) {
+      res.status(404).json({ status: 'error', message: 'Not found' });
+      return;
+    }
+    sendPublicIndex(req, res);
   });
 } else {
   // Setup programmatic Vite server in developmental mode
@@ -1974,12 +2252,10 @@ if (process.env.NODE_ENV === 'production') {
     }).then((viteServer) => {
       app.use(viteServer.middlewares);
       app.get('*', (req: Request, res: Response, next: NextFunction) => {
-        // Double check it's not and api path
         if (req.url.startsWith('/api')) {
           return next();
         }
-        const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(indexHtml);
+        sendPublicIndex(req, res);
       });
     }).catch(err => {
       console.error("Vite server fails construction:", err);

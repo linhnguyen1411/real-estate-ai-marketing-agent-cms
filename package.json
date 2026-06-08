@@ -11,6 +11,8 @@
     "start": "node scripts/start-production.cjs",
     "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "seed": "node scripts/seed-database.cjs",
+    "seed:posts": "node scripts/seed-posts.cjs",
+    "migrate:views": "node scripts/migrate-view-counts.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",

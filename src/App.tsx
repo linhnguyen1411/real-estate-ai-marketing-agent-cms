@@ -36,6 +36,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Eye,
+  Globe,
   ShieldCheck,
   UserPlus,
   Menu
@@ -44,6 +46,7 @@ import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatM
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
+import { getPublicPropertyUrl } from './utils/propertyShare';
 import {
   analyzeCustomer,
   createCustomer,
@@ -63,6 +66,7 @@ import {
   getUsers,
   login,
   logout,
+  refreshTrafficData,
   runDemoAutomations,
   saveSettings,
   sendAssistantMessage,
@@ -185,6 +189,29 @@ export default function App() {
 
   const dashboardData = useMemo<DashboardData>(() => {
     const platforms: Post['platform'][] = ['facebook', 'zalo', 'tiktok', 'website'];
+    const postViews = posts.reduce((sum, post) => sum + Number(post.engagement?.views || 0), 0);
+    const topProperties = properties
+      .filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available'))
+      .slice()
+      .sort((a, b) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
+      .slice(0, 10)
+      .map(property => ({
+        id: property.id,
+        title: property.title,
+        views: Number(property.public_view_count || 0),
+        lastViewAt: property.last_public_view_at,
+        url: getPublicPropertyUrl(property)
+      }));
+    const topPosts = posts
+      .slice()
+      .sort((a, b) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0))
+      .slice(0, 10)
+      .map(post => ({
+        id: post.id,
+        title: post.title,
+        platform: post.platform,
+        views: Number(post.engagement?.views || 0)
+      }));
 
     return {
       stats: {
@@ -197,6 +224,9 @@ export default function App() {
         totalProperties: properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')).length,
         totalPosts: posts.length,
         pendingInbox: inbox.filter(message => message.status === 'pending').length,
+        siteViews: Number(settings.site_view_count || 0),
+        propertyViews: properties.reduce((sum, property) => sum + Number(property.public_view_count || 0), 0),
+        postViews,
         todayTasksCount: customers.filter(customer => customer.status === 'hot' && customer.lead_score > 80).length
       },
       metrics: platforms.map(platform => {
@@ -213,9 +243,31 @@ export default function App() {
           ),
           leads: customers.filter(customer => customer.source === platform).length
         };
-      })
+      }),
+      traffic: {
+        lastSiteViewAt: settings.last_site_view_at,
+        topProperties,
+        topPosts
+      }
     };
-  }, [customers, properties, posts, inbox]);
+  }, [customers, properties, posts, inbox, settings.site_view_count, settings.last_site_view_at]);
+
+  React.useEffect(() => {
+    if (!currentUser || !['dashboard', 'properties'].includes(activeTab)) return;
+
+    const syncTraffic = () => {
+      refreshTrafficData()
+        .then(({ properties: nextProperties, settings: nextSettings }) => {
+          setProperties(nextProperties);
+          setSettings(nextSettings);
+        })
+        .catch(() => undefined);
+    };
+
+    syncTraffic();
+    const timer = window.setInterval(syncTraffic, 15000);
+    return () => window.clearInterval(timer);
+  }, [activeTab, currentUser]);
 
   const maxDashboardReach = Math.max(1, ...dashboardData.metrics.map(metric => metric.reach));
   const topDashboardMetric = dashboardData.metrics.reduce(
@@ -1313,13 +1365,16 @@ export default function App() {
                   </div>
 
                   {/* Summary Metric Cards */}
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-8 gap-4">
                     {[
                       { label: 'Tổng số khách hàng CRM', value: dashboardData.stats.totalCustomers, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
                       { label: 'Lead Hot tiềm năng', value: dashboardData.stats.leads.hot, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
                       { label: 'Bất động sản mở bán', value: dashboardData.stats.totalProperties, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
                       { label: 'Bài quảng cáo đã tạo', value: dashboardData.stats.totalPosts, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
                       { label: 'Inbox chưa trả lời', value: dashboardData.stats.pendingInbox, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
+                      { label: 'Lượt truy cập trang', value: dashboardData.stats.siteViews || 0, icon: Globe, color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' },
+                      { label: 'Lượt xem BĐS', value: dashboardData.stats.propertyViews || 0, icon: Eye, color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+                      { label: 'Lượt xem bài viết', value: dashboardData.stats.postViews || 0, icon: TrendingUp, color: 'text-teal-400 bg-teal-500/10 border-teal-500/20' },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
                       return (
@@ -1337,6 +1392,97 @@ export default function App() {
                         </div>
                       );
                     })}
+                  </div>
+
+                  <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-5">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-white tracking-wide">Thống kê truy cập website</h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Lần truy cập gần nhất:{' '}
+                          {dashboardData.traffic?.lastSiteViewAt
+                            ? new Date(dashboardData.traffic.lastSiteViewAt).toLocaleString('vi-VN')
+                            : 'Chưa có dữ liệu'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 font-semibold text-sky-300">
+                          Trang: {(dashboardData.stats.siteViews || 0).toLocaleString('vi-VN')}
+                        </span>
+                        <span className="rounded-xl border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 font-semibold text-violet-300">
+                          BĐS: {(dashboardData.stats.propertyViews || 0).toLocaleString('vi-VN')}
+                        </span>
+                        <span className="rounded-xl border border-teal-500/20 bg-teal-500/10 px-3 py-1.5 font-semibold text-teal-300">
+                          Bài viết: {(dashboardData.stats.postViews || 0).toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-violet-300">Top BĐS được xem nhiều</h4>
+                        {(dashboardData.traffic?.topProperties || []).length > 0 ? (
+                          <div className="space-y-2">
+                            {(dashboardData.traffic?.topProperties || []).map((item, index) => (
+                              <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-200">
+                                    #{index + 1}{' '}
+                                    {item.url ? (
+                                      <a
+                                        href={item.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hover:text-violet-300 hover:underline"
+                                      >
+                                        {item.title}
+                                      </a>
+                                    ) : (
+                                      item.title
+                                    )}
+                                  </div>
+                                  {item.lastViewAt && (
+                                    <div className="mt-0.5 text-2xs text-slate-500">
+                                      Xem gần nhất: {new Date(item.lastViewAt).toLocaleString('vi-VN')}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="shrink-0 inline-flex items-center gap-1 font-bold text-violet-300">
+                                  <Eye className="h-3.5 w-3.5" />
+                                  {item.views.toLocaleString('vi-VN')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">Chưa có lượt xem BĐS nào được ghi nhận.</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-teal-300">Top bài viết / quảng cáo</h4>
+                        {(dashboardData.traffic?.topPosts || []).length > 0 ? (
+                          <div className="space-y-2">
+                            {(dashboardData.traffic?.topPosts || []).map((item, index) => (
+                              <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-200">#{index + 1} {item.title}</div>
+                                  {item.platform && (
+                                    <div className="mt-0.5 text-2xs uppercase text-slate-500">{item.platform}</div>
+                                  )}
+                                </div>
+                                <div className="shrink-0 inline-flex items-center gap-1 font-bold text-teal-300">
+                                  <TrendingUp className="h-3.5 w-3.5" />
+                                  {item.views.toLocaleString('vi-VN')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">Chưa có dữ liệu lượt xem bài viết.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Charts and Lists */}
@@ -1900,6 +2046,16 @@ export default function App() {
                             <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
                               📍 {prop.location}
                             </p>
+                            {Number.isFinite(prop.map_latitude) && Number.isFinite(prop.map_longitude) && (
+                              <span className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-950/40 px-2 py-1 text-2xs font-bold text-blue-300">
+                                <MapPin className="h-3 w-3" />
+                                Có Google Map
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-2xs font-bold text-slate-400">
+                              <TrendingUp className="h-3 w-3" />
+                              {prop.public_view_count || 0} lượt xem
+                            </span>
                             <MarkdownContent
                               content={prop.rich_description || prop.description}
                               compact
@@ -3589,6 +3745,22 @@ export default function App() {
 
             <form onSubmit={handleSaveProperty} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {editingProperty && (
+                  <div className="md:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-xs text-violet-200">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="inline-flex items-center gap-1 font-bold">
+                        <Eye className="h-3.5 w-3.5" />
+                        {Number(editingProperty.public_view_count || 0).toLocaleString('vi-VN')} lượt xem trang công khai
+                      </span>
+                      {editingProperty.last_public_view_at && (
+                        <span className="text-violet-300/80">
+                          Xem gần nhất: {new Date(editingProperty.last_public_view_at).toLocaleString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1">
                   <label className="block text-2xs font-semibold text-slate-400">Tiêu đề bất động sản</label>
                   <input

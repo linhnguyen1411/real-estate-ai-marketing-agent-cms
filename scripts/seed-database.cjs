@@ -426,7 +426,8 @@ const database = {
     ollama_endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
     ollama_model: process.env.OLLAMA_MODEL || 'qwen3:8b',
     openai_model: process.env.OPENAI_MODEL || 'gpt-5-mini',
-    agent_tone: 'sang trọng và chuyên nghiệp'
+    agent_tone: 'sang trọng và chuyên nghiệp',
+    site_view_count: 0
   }
 };
 
@@ -475,6 +476,7 @@ function attachAccess(collectionName, companyId = 'comp-da-nang') {
       rich_description: record.rich_description || record.description,
       internal_notes: record.internal_notes || 'Dữ liệu bổ sung cho AI: ưu tiên khách có nhu cầu rõ, có thể dùng để tìm kiếm nội bộ và gợi ý content.',
       sale_status: record.sale_status || 'available',
+      public_view_count: Number(record.public_view_count || 0),
       gallery_images: record.gallery_images || (record.images ? [record.images] : [])
     } : {}),
     company_id: companyId,
