@@ -78,6 +78,8 @@ export interface Property {
   last_public_view_at?: string;
   images: string; // Image placeholder URL or string
   gallery_images?: string[];
+  map_latitude?: number;
+  map_longitude?: number;
   selling_points: string[]; // Key selling highligts
   ai_posts?: {
     strategy?: {

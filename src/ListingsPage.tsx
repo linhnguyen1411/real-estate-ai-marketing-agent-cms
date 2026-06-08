@@ -1,4 +1,5 @@
-﻿import React, { FormEvent, useMemo, useState } from 'react';
+import React, { FormEvent, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
   Bot,
@@ -7,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  Eye,
   Facebook,
   Home,
   Mail,
@@ -22,6 +24,8 @@ import {
 } from 'lucide-react';
 import { Property } from './types';
 import MarkdownContent from './components/MarkdownContent';
+import PropertyShareActions from './components/PropertyShareActions';
+import { getPublicPropertySlug } from './utils/propertyShare';
 
 interface ListingsPageProps {
   properties: Property[];
@@ -45,7 +49,7 @@ const facebookUrl = 'https://www.facebook.com/estoria.dn';
 const phoneNumber = '0905 777 594';
 const heroImageUrl = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=2200&q=90';
 const publicListingsPath = '/';
-const TRANSACTION_TYPES = ['BÃ¡n', 'Cho thuÃª'];
+const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
 const DEFAULT_SEO_KEYWORDS = [
   'bất động sản sun group đà nẵng',
   'căn hộ cao cấp đà nẵng',
@@ -56,25 +60,29 @@ const DEFAULT_SEO_KEYWORDS = [
 const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
 const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
 const PRICE_RANGES = [
-  { value: 'all', label: 'Táº¥t cáº£ má»©c giÃ¡' },
-  { value: 'under3', label: 'DÆ°á»›i 3 tá»·' },
-  { value: '3to5', label: '3 - 5 tá»·' },
-  { value: '5to10', label: '5 - 10 tá»·' },
-  { value: 'over10', label: 'TrÃªn 10 tá»·' }
+  { value: 'all', label: 'Tất cả mức giá' },
+  { value: 'under3', label: 'Dưới 3 tỷ' },
+  { value: '3to5', label: '3 - 5 tỷ' },
+  { value: '5to10', label: '5 - 10 tỷ' },
+  { value: 'over10', label: 'Trên 10 tỷ' }
 ];
 const AREA_RANGES = [
-  { value: 'all', label: 'Táº¥t cáº£ diá»‡n tÃ­ch' },
-  { value: 'under80', label: 'DÆ°á»›i 80 mÂ²' },
-  { value: '80to150', label: '80 - 150 mÂ²' },
-  { value: 'over150', label: 'TrÃªn 150 mÂ²' }
+  { value: 'all', label: 'Tất cả diện tích' },
+  { value: 'under80', label: 'Dưới 80 m²' },
+  { value: '80to150', label: '80 - 150 m²' },
+  { value: 'over150', label: 'Trên 150 m²' }
 ];
 
 function formatPrice(price: number) {
-  return `${price.toLocaleString('vi-VN')} tá»·`;
+  return `${price.toLocaleString('vi-VN')} tỷ`;
 }
 
 function getTransactionType(property: Property) {
-  return String(property.transaction_type || 'BÃ¡n').toLowerCase() === 'cho thuÃª' ? 'Cho thuÃª' : 'BÃ¡n';
+  return String(property.transaction_type || 'Bán').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán';
+}
+
+function getPropertyViewCount(property: Property) {
+  return Number(property.public_view_count || 0);
 }
 
 function getImage(property?: Property) {
@@ -85,23 +93,47 @@ function getImage(property?: Property) {
   return property.gallery_images?.[0] || property.images || 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
 }
 
+function hasGoogleMap(property: Property) {
+  return Number.isFinite(property.map_latitude) && Number.isFinite(property.map_longitude);
+}
+
+function getGoogleMapUrl(property: Property) {
+  return `https://maps.google.com/maps?q=${property.map_latitude},${property.map_longitude}&z=16&output=embed`;
+}
+
+function getGoogleMapLink(property: Property) {
+  return `https://www.google.com/maps/search/?api=1&query=${property.map_latitude},${property.map_longitude}`;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/Ä‘/g, 'd')
+    .replace(/đ/g, 'd')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120);
 }
 
 function getPropertySlug(property: Property) {
-  return `${slugify(property.title)}-${property.id}`;
+  return getPublicPropertySlug(property);
 }
 
 function getPropertyPath(property: Property) {
   return `/${encodeURIComponent(getPropertySlug(property))}`;
+}
+
+function getPropertySlugFromPath(pathname: string) {
+  const segment = pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
+  if (!segment || segment === 'admin' || segment === 'listings' || segment === 'bds-da-nang') {
+    return '';
+  }
+  try {
+    return decodeURIComponent(segment).toLowerCase();
+  } catch {
+    return segment.toLowerCase();
+  }
 }
 
 function toPlainText(value: string) {
@@ -125,13 +157,13 @@ function limitSeoTitle(value: string) {
 
 function getPropertySeoTitle(property: Property) {
   const type = String(property.type || '').toLowerCase();
-  if (type.includes('cÄƒn') || type.includes('can')) {
-    return limitSeoTitle(`${property.title} | CÄƒn Há»™ ÄÃ  Náºµng GiÃ¡ 2026`);
+  if (type.includes('căn') || type.includes('can')) {
+    return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
   }
   if (type.includes('shophouse')) {
-    return limitSeoTitle(`${property.title} | Shophouse ÄÃ  Náºµng Kinh Doanh`);
+    return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
   }
-  return limitSeoTitle(`${property.title} | BÄS Sun Group ÄÃ  Náºµng`);
+  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
 }
 
 async function readJsonResponse(response: Response) {
@@ -142,7 +174,7 @@ async function readJsonResponse(response: Response) {
   } catch {
     return {
       status: 'error',
-      message: response.ok ? 'Pháº£n há»“i server khÃ´ng Ä‘Ãºng Ä‘á»‹nh dáº¡ng JSON.' : `Server tráº£ lá»—i ${response.status}.`
+      message: response.ok ? 'Phản hồi server không đúng định dạng JSON.' : `Server trả lỗi ${response.status}.`
     };
   }
 }
@@ -150,12 +182,14 @@ async function readJsonResponse(response: Response) {
 interface PropertyCardProps {
   property: Property;
   onSelect: (property: Property) => void;
+  viewCount: number;
   large?: boolean;
 }
 
 const PropertyCard: React.FC<PropertyCardProps> = ({
   property,
   onSelect,
+  viewCount,
   large = false
 }) => {
   const transactionType = getTransactionType(property);
@@ -168,7 +202,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         onSelect(property);
       }}
       className="group flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white text-left transition-all hover:border-slate-300 hover:shadow-xl"
-      aria-label={`Xem chi tiáº¿t ${property.title} táº¡i ${property.location}`}
+      aria-label={`Xem chi tiết ${property.title} tại ${property.location}`}
     >
       <div className={`relative shrink-0 overflow-hidden bg-slate-100 ${large ? 'aspect-square' : 'aspect-[4/3]'}`}>
         <img
@@ -179,10 +213,14 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
           className="block h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute left-3 top-3 rounded-md bg-white/95 px-2.5 py-1 text-xs font-bold text-slate-900 shadow-sm">
-          {transactionType} â€¢ {property.type}
+          {transactionType} • {property.type}
         </div>
         <div className="absolute right-3 top-3 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
           {formatPrice(property.price)}
+        </div>
+        <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-md bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+          <Eye className="h-3.5 w-3.5" />
+          {viewCount.toLocaleString('vi-VN')} lượt xem
         </div>
       </div>
 
@@ -192,6 +230,10 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
           <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
             <MapPin className="h-4 w-4 text-rose-600" />
             {property.location}
+          </p>
+          <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+            <Eye className="h-3.5 w-3.5" />
+            {viewCount.toLocaleString('vi-VN')} lượt xem
           </p>
         </div>
 
@@ -229,6 +271,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
 };
 
 export default function ListingsPage({ properties, propertySlug }: ListingsPageProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
   const [chatSessionId] = useState(() => {
     const existing = localStorage.getItem(PUBLIC_CHAT_SESSION_KEY);
@@ -262,12 +306,66 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const [chatMessages, setChatMessages] = useState<PublicChatMessage[]>([
     {
       role: 'model',
-      content: 'ChÃ o anh/chá»‹, em lÃ  Lily AI tÆ° váº¥n BÄS. Anh/chá»‹ Ä‘ang tÃ¬m Ä‘áº¥t ná»n, nhÃ  phá»‘ hay cÄƒn há»™?'
+      content: 'Chào anh/chị, em là Lily AI tư vấn BĐS. Anh/chị đang tìm đất nền, nhà phố hay căn hộ?'
     }
   ]);
   const [contactStatus, setContactStatus] = useState('');
   const [visibleProjectCount, setVisibleProjectCount] = useState(6);
   const [visibleListingCount, setVisibleListingCount] = useState(6);
+  const [localProperties, setLocalProperties] = useState<Property[]>(properties);
+
+  React.useEffect(() => {
+    setLocalProperties(properties);
+  }, [properties]);
+
+  const applyPropertyViewUpdate = (update: { id: string; public_view_count?: number; last_public_view_at?: string }) => {
+    if (!update?.id) return;
+    setLocalProperties(prev => prev.map(property =>
+      property.id === update.id
+        ? { ...property, public_view_count: Number(update.public_view_count || 0), last_public_view_at: update.last_public_view_at }
+        : property
+    ));
+    setSelectedProperty(prev =>
+      prev?.id === update.id
+        ? { ...prev, public_view_count: Number(update.public_view_count || 0), last_public_view_at: update.last_public_view_at }
+        : prev
+    );
+  };
+
+  const trackPropertyView = React.useCallback((property: Property) => {
+    const timestamp = new Date().toISOString();
+    setLocalProperties(prev => prev.map(item => {
+      if (item.id !== property.id) return item;
+      return {
+        ...item,
+        public_view_count: Number(item.public_view_count || 0) + 1,
+        last_public_view_at: timestamp
+      };
+    }));
+    setSelectedProperty(prev => {
+      if (prev?.id !== property.id) return prev;
+      return {
+        ...prev,
+        public_view_count: Number(prev.public_view_count || 0) + 1,
+        last_public_view_at: timestamp
+      };
+    });
+
+    fetch('/api/public/track-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'property', propertyId: property.id })
+    })
+      .then(async (response) => {
+        const text = await response.text();
+        if (!response.ok || !text.trim()) return;
+        const json = JSON.parse(text) as { data?: { property?: { id: string; public_view_count?: number; last_public_view_at?: string } } };
+        if (json.data?.property) {
+          applyPropertyViewUpdate(json.data.property);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   React.useEffect(() => {
     if (!guestProfile) return;
@@ -281,7 +379,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           })));
         }
       })
-      .catch(error => console.error('KhÃ´ng thá»ƒ táº£i lá»‹ch sá»­ chat public:', error));
+      .catch(error => console.error('Không thể tải lịch sử chat public:', error));
   }, [chatSessionId, guestProfile]);
 
   React.useEffect(() => {
@@ -322,34 +420,44 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   }, []);
 
   const activeProperties = useMemo(
-    () => properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
-    [properties]
+    () => localProperties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
+    [localProperties]
   );
 
   React.useEffect(() => {
-    const syncPropertyFromUrl = () => {
-      const propertyId = new URLSearchParams(window.location.search).get('property');
-      const normalizedSlug = decodeURIComponent(propertySlug || '').toLowerCase();
-      if (!propertyId && !normalizedSlug) {
-        setSelectedProperty(null);
-        return;
-      }
-      const property = activeProperties.find(item =>
-        item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug
-      );
-      if (property) {
-        setSelectedProperty(property);
-        setGalleryIndex(0);
-      }
-    };
+    const propertyId = new URLSearchParams(location.search).get('property');
+    const normalizedSlug = getPropertySlugFromPath(location.pathname)
+      || decodeURIComponent(propertySlug || '').toLowerCase();
+    if (!propertyId && !normalizedSlug) {
+      setSelectedProperty(null);
+      return;
+    }
+    const property = activeProperties.find(item =>
+      item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug
+    );
+    if (property) {
+      setSelectedProperty(property);
+      setGalleryIndex(0);
+    }
+  }, [activeProperties, location.pathname, location.search, propertySlug]);
 
-    syncPropertyFromUrl();
-    window.addEventListener('popstate', syncPropertyFromUrl);
-    return () => window.removeEventListener('popstate', syncPropertyFromUrl);
-  }, [activeProperties, propertySlug]);
+  React.useEffect(() => {
+    if (!selectedProperty) return;
+    let cancelled = false;
+    const property = selectedProperty;
+    const frame = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        trackPropertyView(property);
+      }
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [selectedProperty?.id, trackPropertyView]);
 
   const featuredProperties = useMemo(
-    () => activeProperties.slice().sort((a, b) => b.price - a.price).slice(0, 3),
+    () => activeProperties.filter(property => property.is_featured).slice(0, 6),
     [activeProperties]
   );
 
@@ -398,18 +506,6 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     setVisibleListingCount(6);
   }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType]);
 
-  React.useEffect(() => {
-    if (!selectedProperty) return;
-    const trackingKey = `real_estate_property_view_tracked_${selectedProperty.id}`;
-    if (sessionStorage.getItem(trackingKey)) return;
-    sessionStorage.setItem(trackingKey, '1');
-    fetch('/api/public/track-view', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'property', propertyId: selectedProperty.id })
-    }).catch(() => undefined);
-  }, [selectedProperty]);
-
   const propertyTypes = Array.from(new Set(activeProperties.map(property => property.type)));
   const siteOrigin = window.location.origin;
   const canonicalUrl = selectedProperty
@@ -420,7 +516,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     : DEFAULT_SEO_TITLE;
   const seoDescription = selectedProperty
     ? selectedProperty.ai_posts?.seo?.meta_description || truncateText(
-        `${selectedProperty.title} táº¡i ${selectedProperty.location}, diá»‡n tÃ­ch ${selectedProperty.area} m2, giÃ¡ ${formatPrice(selectedProperty.price)}, phÃ¡p lÃ½ ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
+        `${selectedProperty.title} tại ${selectedProperty.location}, diện tích ${selectedProperty.area} m2, giá ${formatPrice(selectedProperty.price)}, pháp lý ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
       )
     : DEFAULT_SEO_DESCRIPTION;
   const seoKeywords = Array.from(new Set([
@@ -443,13 +539,13 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         name: 'Estoria',
         url: siteOrigin,
         telephone: '+84905777594',
-        areaServed: { '@type': 'City', name: 'ÄÃ  Náºµng' },
+        areaServed: { '@type': 'City', name: 'Đà Nẵng' },
         sameAs: [zaloUrl, facebookUrl]
       },
       {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
-        name: 'Danh sÃ¡ch báº¥t Ä‘á»™ng sáº£n ÄÃ  Náºµng bÃ¡n/cho thuÃª',
+        name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
         description: seoDescription,
         url: siteOrigin,
         mainEntity: {
@@ -464,18 +560,18 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         mainEntity: [
           {
             '@type': 'Question',
-            name: 'LÃ m sao Ä‘á»ƒ xem chi tiáº¿t vÃ  Ä‘áº·t lá»‹ch xem báº¥t Ä‘á»™ng sáº£n?',
+            name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Chá»n má»™t sáº£n pháº©m trong danh sÃ¡ch Ä‘á»ƒ xem giÃ¡, diá»‡n tÃ­ch, phÃ¡p lÃ½ vÃ  hÃ¬nh áº£nh. Sau Ä‘Ã³ liÃªn há»‡ Estoria qua Ä‘iá»‡n thoáº¡i, Zalo hoáº·c Messenger Ä‘á»ƒ Ä‘áº·t lá»‹ch xem thá»±c táº¿.'
+              text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ Estoria qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
             }
           },
           {
             '@type': 'Question',
-            name: 'Estoria cÃ³ há»— trá»£ lá»c báº¥t Ä‘á»™ng sáº£n theo ngÃ¢n sÃ¡ch khÃ´ng?',
+            name: 'Estoria có hỗ trợ lọc bất động sản theo ngân sách không?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'CÃ³. KhÃ¡ch hÃ ng cÃ³ thá»ƒ gá»­i khoáº£ng ngÃ¢n sÃ¡ch, khu vá»±c vÃ  loáº¡i hÃ¬nh mong muá»‘n Ä‘á»ƒ Ä‘Æ°á»£c lá»c danh sÃ¡ch BÄS phÃ¹ há»£p.'
+              text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
             }
           }
         ]
@@ -499,9 +595,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           availability: 'https://schema.org/InStock'
         },
         additionalProperty: [
-          { '@type': 'PropertyValue', name: 'Vá»‹ trÃ­', value: selectedProperty.location },
-          { '@type': 'PropertyValue', name: 'Diá»‡n tÃ­ch', value: `${selectedProperty.area} m2` },
-          { '@type': 'PropertyValue', name: 'PhÃ¡p lÃ½', value: selectedProperty.legal_status }
+          { '@type': 'PropertyValue', name: 'Vị trí', value: selectedProperty.location },
+          { '@type': 'PropertyValue', name: 'Diện tích', value: `${selectedProperty.area} m2` },
+          { '@type': 'PropertyValue', name: 'Pháp lý', value: selectedProperty.legal_status }
         ]
       });
     }
@@ -520,7 +616,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     const note = String(formData.get('note') || '').trim();
 
     if (!name || !phone) {
-      setContactStatus('Vui lÃ²ng nháº­p tÃªn vÃ  sá»‘ Ä‘iá»‡n thoáº¡i.');
+      setContactStatus('Vui lòng nhập tên và số điện thoại.');
       return;
     }
 
@@ -533,12 +629,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       const json = await readJsonResponse(response);
       if (!json.data) json.message = '';
       if (!response.ok) {
-        throw new Error(json.message || 'KhÃ´ng thá»ƒ gá»­i thÃ´ng tin liÃªn há»‡.');
+        throw new Error(json.message || 'Không thể gửi thông tin liên hệ.');
       }
-      setContactStatus('ÄÃ£ nháº­n thÃ´ng tin. TÆ° váº¥n viÃªn sáº½ liÃªn há»‡ láº¡i ngay.');
+      setContactStatus('Đã nhận thông tin. Tư vấn viên sẽ liên hệ lại ngay.');
       form.reset();
     } catch (error) {
-      setContactStatus(error instanceof Error ? error.message : 'KhÃ´ng thá»ƒ gá»­i thÃ´ng tin liÃªn há»‡. Anh/chá»‹ vui lÃ²ng gá»i hotline hoáº·c Zalo.');
+      setContactStatus(error instanceof Error ? error.message : 'Không thể gửi thông tin liên hệ. Anh/chị vui lòng gọi hotline hoặc Zalo.');
     }
   };
 
@@ -547,7 +643,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     const name = guestName.trim();
     const phone = guestPhone.trim();
     if (!name || !phone) {
-      setGuestError('Vui lÃ²ng nháº­p há» tÃªn vÃ  sá»‘ Ä‘iá»‡n thoáº¡i Ä‘á»ƒ báº¯t Ä‘áº§u chat.');
+      setGuestError('Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
       return;
     }
 
@@ -558,20 +654,20 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         body: JSON.stringify({ sessionId: chatSessionId, name, phone })
       });
       const json = await readJsonResponse(response);
-      if (!response.ok) throw new Error(json.message || 'KhÃ´ng thá»ƒ báº¯t Ä‘áº§u chat.');
+      if (!response.ok) throw new Error(json.message || 'Không thể bắt đầu chat.');
       const profile = { name, phone };
       localStorage.setItem(PUBLIC_CHAT_GUEST_KEY, JSON.stringify(profile));
       setGuestProfile(profile);
       setGuestError('');
     } catch (error) {
-      setGuestError(error instanceof Error ? error.message : 'KhÃ´ng thá»ƒ báº¯t Ä‘áº§u chat.');
+      setGuestError(error instanceof Error ? error.message : 'Không thể bắt đầu chat.');
     }
   };
 
   const handleChatSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!guestProfile) {
-      setGuestError('Vui lÃ²ng nháº­p há» tÃªn vÃ  sá»‘ Ä‘iá»‡n thoáº¡i Ä‘á»ƒ báº¯t Ä‘áº§u chat.');
+      setGuestError('Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
       return;
     }
     const message = chatInput.trim();
@@ -591,14 +687,14 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       if (json.aiPaused) {
         return;
       }
-      const answer = json.data || json.message || 'Em chÆ°a tráº£ lá»i Ä‘Æ°á»£c cÃ¢u nÃ y, anh/chá»‹ Ä‘á»ƒ láº¡i sá»‘ Ä‘iá»‡n thoáº¡i Ä‘á»ƒ tÆ° váº¥n viÃªn há»— trá»£.';
+      const answer = json.data || json.message || 'Em chưa trả lời được câu này, anh/chị để lại số điện thoại để tư vấn viên hỗ trợ.';
       if (answer) {
         setChatMessages(prev => [...prev, { role: 'model', content: answer }]);
       }
     } catch (error) {
       setChatMessages(prev => [...prev, {
         role: 'model',
-        content: 'Káº¿t ná»‘i AI Ä‘ang báº­n. Anh/chá»‹ cÃ³ thá»ƒ báº¥m Zalo/Facebook Ä‘á»ƒ Ä‘Æ°á»£c tÆ° váº¥n ngay.'
+        content: 'Kết nối AI đang bận. Anh/chị có thể bấm Zalo/Facebook để được tư vấn ngay.'
       }]);
     } finally {
       setChatLoading(false);
@@ -608,12 +704,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const openProperty = (property: Property) => {
     setSelectedProperty(property);
     setGalleryIndex(0);
-    window.history.pushState({}, '', getPropertyPath(property));
+    navigate(getPropertyPath(property));
   };
 
   const closeProperty = () => {
     setSelectedProperty(null);
-    window.history.pushState({}, '', publicListingsPath);
+    navigate(publicListingsPath);
   };
 
   const quickFilterResults = filteredProperties.slice(0, 6);
@@ -639,9 +735,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <meta property="og:locale" content="vi_VN" />
         <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
         <meta property="og:site_name" content="Estoria" />
+        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={seoDescription} />
-        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={seoImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={seoTitle} />
@@ -660,15 +756,15 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           </a>
 
           <nav className="hidden items-center gap-7 text-sm font-semibold text-slate-300 md:flex">
-            <a href="#featured" className="hover:text-white">BÄS ná»•i báº­t</a>
-            <a href="#projects" className="hover:text-white">Dá»± Ã¡n</a>
-            <a href="#listings" className="hover:text-white">BÄS bÃ¡n/thuÃª</a>
-            <a href="#contact" className="hover:text-white">LiÃªn há»‡</a>
+            <a href="#featured" className="hover:text-white">BĐS nổi bật</a>
+            <a href="#projects" className="hover:text-white">Dự án</a>
+            <a href="#listings" className="hover:text-white">BĐS bán/thuê</a>
+            <a href="#contact" className="hover:text-white">Liên hệ</a>
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
             <a href={`tel:${phoneNumber}`} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950">
-              Gá»i tÆ° váº¥n
+              Gọi tư vấn
             </a>
             <a href={zaloUrl} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">
               Zalo
@@ -679,7 +775,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="rounded-lg border border-slate-700 p-2 md:hidden"
-            aria-label="Má»Ÿ menu"
+            aria-label="Mở menu"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -688,10 +784,10 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         {mobileMenuOpen && (
           <div className="border-t border-slate-800 px-4 py-3 md:hidden">
             <div className="grid gap-3 text-sm font-semibold text-slate-300">
-              <a href="#featured" onClick={() => setMobileMenuOpen(false)}>BÄS ná»•i báº­t</a>
-              <a href="#projects" onClick={() => setMobileMenuOpen(false)}>Dá»± Ã¡n</a>
-              <a href="#listings" onClick={() => setMobileMenuOpen(false)}>BÄS bÃ¡n/thuÃª</a>
-              <a href="#contact" onClick={() => setMobileMenuOpen(false)}>LiÃªn há»‡</a>
+              <a href="#featured" onClick={() => setMobileMenuOpen(false)}>BĐS nổi bật</a>
+              <a href="#projects" onClick={() => setMobileMenuOpen(false)}>Dự án</a>
+              <a href="#listings" onClick={() => setMobileMenuOpen(false)}>BĐS bán/thuê</a>
+              <a href="#contact" onClick={() => setMobileMenuOpen(false)}>Liên hệ</a>
             </div>
           </div>
         )}
@@ -701,7 +797,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section className="relative min-h-[560px] overflow-hidden bg-slate-950 text-white md:min-h-[720px]">
           <img
             src={heroImageUrl}
-            alt="KhÃ´ng gian báº¥t Ä‘á»™ng sáº£n cao cáº¥p táº¡i ÄÃ  Náºµng"
+            alt="Không gian bất động sản cao cấp tại Đà Nẵng"
             fetchPriority="high"
             decoding="async"
             className="absolute inset-0 h-full w-full object-cover"
@@ -711,20 +807,20 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div className="max-w-3xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide" style={ { color: '#f6f871' } }>
                 <Sparkles className="h-4 w-4" />
-                Danh sÃ¡ch Báº¥t Ä‘á»™ng sáº£n bÃ¡n/cho thuÃª
+                Danh sách Bất động sản bán/cho thuê
               </div>
               <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl lg:text-6xl">
-                NhÃ  Ä‘áº¥t chá»n lá»c táº¡i ÄÃ  Náºµng, tÆ° váº¥n nhanh báº±ng AI
+                Nhà đất chọn lọc tại Đà Nẵng, tư vấn nhanh bằng AI
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-8 text-slate-200">
-                Cáº­p nháº­t danh sÃ¡ch BÄS má»›i, phÃ¡p lÃ½ rÃµ, hÃ¬nh áº£nh Ä‘áº§y Ä‘á»§ vÃ  kÃªnh tÆ° váº¥n trá»±c tiáº¿p qua Zalo, Facebook hoáº·c AI chat.
+                Cập nhật danh sách BĐS mới, pháp lý rõ, hình ảnh đầy đủ và kênh tư vấn trực tiếp qua Zalo, Facebook hoặc AI chat.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#listings" className="rounded-lg bg-rose-600 px-5 py-3 text-sm font-bold text-white hover:bg-rose-500">
-                  Danh sÃ¡ch Báº¥t Ä‘á»™ng sáº£n
+                  Danh sách Bất động sản
                 </a>
                 <a href="#contact" className="rounded-lg bg-white px-5 py-3 text-sm font-bold text-slate-950 hover:bg-slate-100">
-                  Nháº­n tÆ° váº¥n
+                  Nhận tư vấn
                 </a>
               </div>
             </div>
@@ -736,45 +832,45 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           <div className="mx-auto max-w-7xl px-4 py-5">
             <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_180px_180px_auto] lg:items-end">
               <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">TÃ¬m nhanh sáº£n pháº©m</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Tìm nhanh sản phẩm</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                   <input
                     value={searchQuery}
                     onChange={event => setSearchQuery(event.target.value)}
-                    placeholder="Nháº­p khu vá»±c, tÃªn dá»± Ã¡n, loáº¡i hÃ¬nh..."
+                    placeholder="Nhập khu vực, tên dự án, loại hình..."
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"
                   />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">HÃ¬nh thá»©c</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Hình thức</label>
                 <select
                   value={selectedTransactionType}
                   onChange={event => setSelectedTransactionType(event.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
                 >
-                  <option value="all">BÃ¡n / Cho thuÃª</option>
+                  <option value="all">Bán / Cho thuê</option>
                   {TRANSACTION_TYPES.map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Loáº¡i hÃ¬nh</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Loại hình</label>
                 <select
                   value={selectedType}
                   onChange={event => setSelectedType(event.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-rose-400 focus:bg-white"
                 >
-                  <option value="all">Táº¥t cáº£ loáº¡i hÃ¬nh</option>
+                  <option value="all">Tất cả loại hình</option>
                   {propertyTypes.map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Khoáº£ng giÃ¡</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Khoảng giá</label>
                 <select
                   value={selectedPriceRange}
                   onChange={event => setSelectedPriceRange(event.target.value)}
@@ -786,7 +882,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Diá»‡n tÃ­ch</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Diện tích</label>
                 <select
                   value={selectedAreaRange}
                   onChange={event => setSelectedAreaRange(event.target.value)}
@@ -799,14 +895,14 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </div>
               <div className="flex gap-2 lg:justify-end">
                 <a href="#listings" className="inline-flex flex-1 items-center justify-center rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500 lg:flex-none">
-                  Xem {filteredProperties.length} BÄS
+                  Xem {filteredProperties.length} BĐS
                 </a>
                 <button
                   type="button"
                   onClick={resetFilters}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:border-slate-300"
                 >
-                  XÃ³a
+                  Xóa
                 </button>
               </div>
             </div>
@@ -816,17 +912,17 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section id="featured" className="mx-auto max-w-7xl px-4 py-16">
           <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">ÄÆ°á»£c Ä‘á» xuáº¥t</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Báº¥t Ä‘á»™ng sáº£n Ä‘Æ°á»£c Ä‘á» xuáº¥t</h2>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Được đề xuất</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Bất động sản được đề xuất</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">
-              CÃ¡c sáº£n pháº©m giÃ¡ trá»‹ cao, vá»‹ trÃ­ tá»‘t vÃ  cÃ³ Ä‘á»§ thÃ´ng tin Ä‘á»ƒ khÃ¡ch ra quyáº¿t Ä‘á»‹nh nhanh.
+              Các sản phẩm giá trị cao, vị trí tốt và có đủ thông tin để khách ra quyết định nhanh.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {featuredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} large />
+              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} large />
             ))}
           </div>
         </section>
@@ -834,8 +930,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section id="projects" className="bg-white py-16">
           <div className="mx-auto max-w-7xl px-4">
             <div className="mb-8">
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">ChuyÃªn dá»± Ã¡n</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sÃ¡ch dá»± Ã¡n theo khu vá»±c</h2>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Chuyên dự án</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sách dự án theo khu vực</h2>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -849,8 +945,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                     <Building2 className="h-5 w-5" />
                   </div>
                   <h3 className="font-bold text-slate-950">{name}</h3>
-                  <p className="mt-2 text-sm text-slate-600">{group.length} sáº£n pháº©m Ä‘ang hiá»ƒn thá»‹</p>
-                  <p className="mt-4 text-xs font-bold text-rose-700">Xem BÄS bÃ¡n/thuÃª</p>
+                  <p className="mt-2 text-sm text-slate-600">{group.length} sản phẩm đang hiển thị</p>
+                  <p className="mt-4 text-xs font-bold text-rose-700">Xem BĐS bán/thuê</p>
                 </a>
               ))}
             </div>
@@ -862,7 +958,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                   onClick={() => setVisibleProjectCount(count => Math.min(count + 6, projectGroups.length))}
                   className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
                 >
-                  Xem thÃªm
+                  Xem thêm
                 </button>
               </div>
             )}
@@ -872,9 +968,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section id="listings" className="mx-auto max-w-7xl px-4 py-16">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Báº¥t Ä‘á»™ng Ä‘ang giao dá»‹ch</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Bất động đang giao dịch</p>
               <h2 className="mt-2 text-3xl font-extrabold text-slate-950">
-                Báº¥t Ä‘á»™ng sáº£n Ä‘ang bÃ¡n/cho thuÃª
+                Bất động sản đang bán/cho thuê
               </h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[920px] lg:grid-cols-[1.4fr_150px_150px_150px_150px]">
@@ -883,7 +979,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <input
                   value={searchQuery}
                   onChange={event => setSearchQuery(event.target.value)}
-                  placeholder="TÃ¬m theo vá»‹ trÃ­, tiÃªu Ä‘á», mÃ´ táº£..."
+                  placeholder="Tìm theo vị trí, tiêu đề, mô tả..."
                   className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-rose-400"
                 />
               </div>
@@ -892,7 +988,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 onChange={event => setSelectedTransactionType(event.target.value)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
               >
-                <option value="all">BÃ¡n / Cho thuÃª</option>
+                <option value="all">Bán / Cho thuê</option>
                 {TRANSACTION_TYPES.map(type => (
                   <option key={type} value={type}>{type}</option>
                 ))}
@@ -902,7 +998,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 onChange={event => setSelectedType(event.target.value)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-rose-400"
               >
-                <option value="all">Táº¥t cáº£ loáº¡i hÃ¬nh</option>
+                <option value="all">Tất cả loại hình</option>
                 {propertyTypes.map(type => (
                   <option key={type} value={type}>{type}</option>
                 ))}
@@ -930,7 +1026,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {visibleFilteredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} />
+              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} />
             ))}
           </div>
 
@@ -941,14 +1037,14 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 onClick={() => setVisibleListingCount(count => Math.min(count + 6, filteredProperties.length))}
                 className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
               >
-                Xem thÃªm
+                Xem thêm
               </button>
             </div>
           )}
 
           {filteredProperties.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
-              ChÆ°a cÃ³ sáº£n pháº©m phÃ¹ há»£p vá»›i bá»™ lá»c hiá»‡n táº¡i.
+              Chưa có sản phẩm phù hợp với bộ lọc hiện tại.
             </div>
           )}
         </section>
@@ -956,36 +1052,36 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <section className="border-y border-slate-200 bg-white py-16" aria-labelledby="seo-guide-heading">
           <div className="mx-auto grid max-w-7xl gap-10 px-4 lg:grid-cols-[1.1fr_0.9fr]">
             <article>
-              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Kinh nghiá»‡m tÃ¬m nhÃ  Ä‘áº¥t</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Kinh nghiệm tìm nhà đất</p>
               <h2 id="seo-guide-heading" className="mt-2 text-3xl font-extrabold text-slate-950">
-                TÃ¬m báº¥t Ä‘á»™ng sáº£n phÃ¹ há»£p táº¡i ÄÃ  Náºµng
+                Tìm bất động sản phù hợp tại Đà Nẵng
               </h2>
               <p className="mt-5 leading-7 text-slate-600">
-                Danh sÃ¡ch BÄS Estoria táº­p trung cÃ¡c loáº¡i hÃ¬nh cÄƒn há»™, nhÃ  phá»‘, Ä‘áº¥t vÃ  shophouse táº¡i ÄÃ  Náºµng.
-                Má»—i sáº£n pháº©m Ä‘Æ°á»£c trÃ¬nh bÃ y rÃµ vá»‹ trÃ­, má»©c giÃ¡, diá»‡n tÃ­ch vÃ  tÃ¬nh tráº¡ng phÃ¡p lÃ½ Ä‘á»ƒ ngÆ°á»i mua
-                dá»… so sÃ¡nh trÆ°á»›c khi Ä‘áº·t lá»‹ch xem thá»±c táº¿.
+                Danh sách BĐS Estoria tập trung các loại hình căn hộ, nhà phố, đất và shophouse tại Đà Nẵng.
+                Mỗi sản phẩm được trình bày rõ vị trí, mức giá, diện tích và tình trạng pháp lý để người mua
+                dễ so sánh trước khi đặt lịch xem thực tế.
               </p>
               <p className="mt-4 leading-7 text-slate-600">
-                Khi chá»n báº¥t Ä‘á»™ng sáº£n, nÃªn xÃ¡c Ä‘á»‹nh trÆ°á»›c ngÃ¢n sÃ¡ch, má»¥c tiÃªu á»Ÿ hay Ä‘áº§u tÆ°, khu vá»±c Æ°u tiÃªn
-                vÃ  yÃªu cáº§u phÃ¡p lÃ½. Äá»™i ngÅ© tÆ° váº¥n sáº½ dá»±a trÃªn cÃ¡c tiÃªu chÃ­ nÃ y Ä‘á»ƒ lá»c danh sÃ¡ch sÃ¡t nhu cáº§u,
-                háº¡n cháº¿ máº¥t thá»i gian xem nhá»¯ng sáº£n pháº©m khÃ´ng phÃ¹ há»£p.
+                Khi chọn bất động sản, nên xác định trước ngân sách, mục tiêu ở hay đầu tư, khu vực ưu tiên
+                và yêu cầu pháp lý. Đội ngũ tư vấn sẽ dựa trên các tiêu chí này để lọc danh sách sát nhu cầu,
+                hạn chế mất thời gian xem những sản phẩm không phù hợp.
               </p>
             </article>
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-950">CÃ¢u há»i thÆ°á»ng gáº·p</h2>
+              <h2 className="text-2xl font-extrabold text-slate-950">Câu hỏi thường gặp</h2>
               <div className="mt-5 space-y-4">
                 <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer font-bold text-slate-950">LÃ m sao Ä‘á»ƒ xem chi tiáº¿t vÃ  Ä‘áº·t lá»‹ch xem?</summary>
+                  <summary className="cursor-pointer font-bold text-slate-950">Làm sao để xem chi tiết và đặt lịch xem?</summary>
                   <p className="mt-3 text-sm leading-6 text-slate-600">
-                    Chá»n sáº£n pháº©m Ä‘á»ƒ xem giÃ¡, diá»‡n tÃ­ch, phÃ¡p lÃ½ vÃ  hÃ¬nh áº£nh; sau Ä‘Ã³ liÃªn há»‡ qua Ä‘iá»‡n thoáº¡i,
-                    Zalo hoáº·c Messenger Ä‘á»ƒ Ä‘áº·t lá»‹ch xem thá»±c táº¿.
+                    Chọn sản phẩm để xem giá, diện tích, pháp lý và hình ảnh; sau đó liên hệ qua điện thoại,
+                    Zalo hoặc Messenger để đặt lịch xem thực tế.
                   </p>
                 </details>
                 <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer font-bold text-slate-950">CÃ³ thá»ƒ lá»c theo ngÃ¢n sÃ¡ch vÃ  khu vá»±c khÃ´ng?</summary>
+                  <summary className="cursor-pointer font-bold text-slate-950">Có thể lọc theo ngân sách và khu vực không?</summary>
                   <p className="mt-3 text-sm leading-6 text-slate-600">
-                    CÃ³. HÃ£y gá»­i ngÃ¢n sÃ¡ch, khu vá»±c vÃ  loáº¡i hÃ¬nh mong muá»‘n qua form hoáº·c AI chat Ä‘á»ƒ nháº­n danh
-                    sÃ¡ch phÃ¹ há»£p hÆ¡n.
+                    Có. Hãy gửi ngân sách, khu vực và loại hình mong muốn qua form hoặc AI chat để nhận danh
+                    sách phù hợp hơn.
                   </p>
                 </details>
               </div>
@@ -997,9 +1093,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 lg:grid-cols-[0.9fr_1.1fr]">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-rose-300">Contact</p>
-              <h2 className="mt-2 text-3xl font-extrabold">Cáº§n tÆ° váº¥n sáº£n pháº©m phÃ¹ há»£p?</h2>
+              <h2 className="mt-2 text-3xl font-extrabold">Cần tư vấn sản phẩm phù hợp?</h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300">
-                Äá»ƒ láº¡i nhu cáº§u, ngÃ¢n sÃ¡ch vÃ  khu vá»±c quan tÃ¢m. TÆ° váº¥n viÃªn sáº½ gá»­i danh sÃ¡ch phÃ¹ há»£p vÃ  lá»‹ch xem thá»±c táº¿.
+                Để lại nhu cầu, ngân sách và khu vực quan tâm. Tư vấn viên sẽ gửi danh sách phù hợp và lịch xem thực tế.
               </p>
               <div className="mt-8 grid gap-3 text-sm">
                 <a href={`tel:${phoneNumber}`} className="flex items-center gap-3 text-slate-200">
@@ -1008,7 +1104,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </a>
                 <a href={zaloUrl} className="flex items-center gap-3 text-slate-200">
                   <MessageCircle className="h-5 w-5 text-blue-400" />
-                  Zalo tÆ° váº¥n nhanh
+                  Zalo tư vấn nhanh
                 </a>
                 <a href={facebookUrl} className="flex items-center gap-3 text-slate-200">
                   <Facebook className="h-5 w-5 text-sky-400" />
@@ -1019,11 +1115,11 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
             <form onSubmit={handleContactSubmit} className="rounded-lg border border-slate-800 bg-slate-900 p-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <input name="name" placeholder="Há» tÃªn" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
-                <input name="phone" placeholder="Sá»‘ Ä‘iá»‡n thoáº¡i" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
-                <input name="budget" placeholder="NgÃ¢n sÃ¡ch dá»± kiáº¿n" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
-                <input name="area" placeholder="Khu vá»±c quan tÃ¢m" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
-                <textarea name="note" placeholder="Nhu cáº§u chi tiáº¿t" rows={4} className="md:col-span-2 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
+                <input name="name" placeholder="Họ tên" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
+                <input name="phone" placeholder="Số điện thoại" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
+                <input name="budget" placeholder="Ngân sách dự kiến" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
+                <input name="area" placeholder="Khu vực quan tâm" className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
+                <textarea name="note" placeholder="Nhu cầu chi tiết" rows={4} className="md:col-span-2 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-rose-500" />
               </div>
               {contactStatus && (
                 <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
@@ -1032,7 +1128,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               )}
               <button type="submit" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-3 text-sm font-bold text-white hover:bg-rose-500">
                 <Send className="h-4 w-4" />
-                Gá»­i nhu cáº§u
+                Gửi nhu cầu
               </button>
             </form>
           </div>
@@ -1046,9 +1142,9 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <p className="mt-1 text-sm">Where the asset tell their story.</p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
-            <a href="#featured" className="hover:text-white">BÄS ná»•i báº­t</a>
-            <a href="#projects" className="hover:text-white">Dá»± Ã¡n</a>
-            <a href="#contact" className="hover:text-white">LiÃªn há»‡</a>
+            <a href="#featured" className="hover:text-white">BĐS nổi bật</a>
+            <a href="#projects" className="hover:text-white">Dự án</a>
+            <a href="#contact" className="hover:text-white">Liên hệ</a>
           </div>
         </div>
       </footer>
@@ -1060,7 +1156,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         <a href={facebookUrl} className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg" aria-label="Chat Facebook">
           <Facebook className="h-5 w-5" />
         </a>
-        <a href={`tel:${phoneNumber}`} className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg" aria-label="Gá»i Ä‘iá»‡n">
+        <a href={`tel:${phoneNumber}`} className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg" aria-label="Gọi điện">
           <Phone className="h-5 w-5" />
         </a>
       </div>
@@ -1072,8 +1168,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <div className="flex items-center gap-2">
                 <Bot className="h-5 w-5 text-rose-300" />
                 <div>
-                  <div className="text-sm font-bold">Lily AI tÆ° váº¥n bÃ¡n hÃ ng</div>
-                  <div className="text-xs text-slate-400">Tráº£ lá»i theo danh sÃ¡ch BÄS bÃ¡n/cho thuÃª</div>
+                  <div className="text-sm font-bold">Lily AI tư vấn bán hàng</div>
+                  <div className="text-xs text-slate-400">Trả lời theo danh sách BĐS bán/cho thuê</div>
                 </div>
               </div>
               <button type="button" onClick={() => setChatOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -1083,24 +1179,24 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             {!guestProfile ? (
               <form onSubmit={handleGuestSubmit} className="space-y-3 bg-slate-50 p-4">
                 <div>
-                  <div className="text-sm font-bold text-slate-950">ThÃ´ng tin nhanh trÆ°á»›c khi chat</div>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">Anh/chá»‹ nháº­p há» tÃªn vÃ  sá»‘ Ä‘iá»‡n thoáº¡i Ä‘á»ƒ bÃªn em lÆ°u láº¡i nhu cáº§u vÃ  há»— trá»£ xuyÃªn suá»‘t.</p>
+                  <div className="text-sm font-bold text-slate-950">Thông tin nhanh trước khi chat</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Anh/chị nhập họ tên và số điện thoại để bên em lưu lại nhu cầu và hỗ trợ xuyên suốt.</p>
                 </div>
                 <input
                   value={guestName}
                   onChange={event => setGuestName(event.target.value)}
-                  placeholder="Há» tÃªn"
+                  placeholder="Họ tên"
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400"
                 />
                 <input
                   value={guestPhone}
                   onChange={event => setGuestPhone(event.target.value)}
-                  placeholder="Sá»‘ Ä‘iá»‡n thoáº¡i / Zalo"
+                  placeholder="Số điện thoại / Zalo"
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400"
                 />
                 {guestError && <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{guestError}</div>}
                 <button type="submit" className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500">
-                  Báº¯t Ä‘áº§u chat
+                  Bắt đầu chat
                 </button>
               </form>
             ) : (
@@ -1124,7 +1220,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               {chatLoading && (
                 <div className="flex justify-start">
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
-                    Lily Ä‘ang tráº£ lá»i...
+                    Lily đang trả lời...
                   </div>
                 </div>
               )}
@@ -1134,7 +1230,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <input
                 value={chatInput}
                 onChange={event => setChatInput(event.target.value)}
-                placeholder="Há»i giÃ¡, vá»‹ trÃ­, phÃ¡p lÃ½..."
+                placeholder="Hỏi giá, vị trí, pháp lý..."
                 className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400"
               />
               <button type="submit" disabled={chatLoading} className="rounded-lg bg-rose-600 px-3 py-2 text-white disabled:opacity-50">
@@ -1151,7 +1247,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             className="ml-auto flex items-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-xl"
           >
             <Bot className="h-5 w-5 text-rose-300" />
-            TÆ° váº¥n bÃ¡n hÃ ng
+            Tư vấn bán hàng
           </button>
         )}
       </div>
@@ -1199,6 +1295,10 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                   <span className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white">{getTransactionType(selectedProperty)}</span>
                   <span className="rounded-md bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700">{selectedProperty.type}</span>
                   <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{selectedProperty.legal_status}</span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                    <Eye className="h-3.5 w-3.5" />
+                    {getPropertyViewCount(selectedProperty).toLocaleString('vi-VN')} lượt xem
+                  </span>
                 </div>
                 <h2 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">{selectedProperty.title}</h2>
                 <p className="mt-3 flex items-center gap-2 text-slate-600">
@@ -1220,52 +1320,47 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </div>
 
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-                <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuÃª' ? 'GiÃ¡ thuÃª' : 'GiÃ¡ bÃ¡n'}</div>
+                <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-rose-600">{formatPrice(selectedProperty.price)}</div>
-<<<<<<< Updated upstream
-=======
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sáº» nhanh</div>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
                   <PropertyShareActions
                     property={selectedProperty}
                     buttonClassName="h-9 px-3 border-slate-200 bg-slate-50 text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
                   />
                 </div>
->>>>>>> Stashed changes
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">
-                    <div className="text-slate-500">Diá»‡n tÃ­ch</div>
+                    <div className="text-slate-500">Diện tích</div>
                     <div className="font-bold text-slate-950">{selectedProperty.area} m2</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
-                    <div className="text-slate-500">HÆ°á»›ng</div>
+                    <div className="text-slate-500">Hướng</div>
                     <div className="font-bold text-slate-950">{selectedProperty.direction}</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
-                    <div className="text-slate-500">ÄÆ°á»ng</div>
+                    <div className="text-slate-500">Đường</div>
                     <div className="font-bold text-slate-950">{selectedProperty.road_width} m</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
-                    <div className="text-slate-500">PhÃ¡p lÃ½</div>
+                    <div className="text-slate-500">Pháp lý</div>
                     <div className="font-bold text-slate-950">{selectedProperty.legal_status}</div>
                   </div>
                 </div>
                 <div className="mt-5 grid gap-2">
                   <a href={zaloUrl} className="rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white">Chat Zalo</a>
                   <a href={facebookUrl} className="rounded-lg bg-sky-600 px-4 py-3 text-center text-sm font-bold text-white">Messenger</a>
-                  <a href={`tel:${phoneNumber}`} className="rounded-lg bg-slate-950 px-4 py-3 text-center text-sm font-bold text-white">Gá»i ngay</a>
+                  <a href={`tel:${phoneNumber}`} className="rounded-lg bg-slate-950 px-4 py-3 text-center text-sm font-bold text-white">Gọi ngay</a>
                 </div>
               </aside>
             </div>
-<<<<<<< Updated upstream
-=======
 
             {hasGoogleMap(selectedProperty) && (
               <div className="border-t border-slate-200 p-4 sm:p-6">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Google Map</p>
-                    <h3 className="mt-1 text-xl font-extrabold text-slate-950">Vá»‹ trÃ­ báº¥t Ä‘á»™ng sáº£n</h3>
+                    <h3 className="mt-1 text-xl font-extrabold text-slate-950">Vị trí bất động sản</h3>
                     <p className="mt-1 text-sm text-slate-600">{selectedProperty.location}</p>
                   </div>
                   <a
@@ -1274,7 +1369,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                     rel="noreferrer"
                     className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
                   >
-                    Má»Ÿ Google Map
+                    Mở Google Map
                   </a>
                 </div>
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
@@ -1288,7 +1383,6 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </div>
               </div>
             )}
->>>>>>> Stashed changes
           </div>
         </div>
       )}

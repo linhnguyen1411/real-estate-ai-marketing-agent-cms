@@ -28,7 +28,7 @@ import {
   generateText,
   getAIProviderStatus
 } from './server/aiService';
-import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User } from './src/types';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -478,33 +478,49 @@ app.get('/api/public/properties', (req: Request, res: Response) => {
   res.json({ status: 'success', data: publicProperties });
 });
 
+// ----------------------------------------------------
+// Public traffic tracking (register early, before static/vite fallbacks)
+// ----------------------------------------------------
 app.post('/api/public/track-view', (req: Request, res: Response) => {
-  const db = readDatabase();
   const now = new Date().toISOString();
   const propertyId = String(req.body?.propertyId || '').trim();
   const trackingType = String(req.body?.type || '').trim();
 
+  let settings = getSettings();
+  let property: Property | undefined;
+
   if (trackingType === 'site' || !propertyId) {
-    db.settings = {
-      ...db.settings,
-      site_view_count: Number((db.settings as any).site_view_count || 0) + 1,
+    settings = updateSettings({
+      site_view_count: Number(settings.site_view_count || 0) + 1,
       last_site_view_at: now
-    } as any;
+    } as AppSettings);
   }
 
   if (propertyId) {
-    db.properties = db.properties.map((property: Property) => property.id === propertyId
-      ? {
-          ...property,
-          public_view_count: Number(property.public_view_count || 0) + 1,
-          last_public_view_at: now
-        }
-      : property
-    );
+    const current = getProperties().find((item: Property) => item.id === propertyId);
+    if (current) {
+      property = updateProperty(propertyId, {
+        public_view_count: Number(current.public_view_count || 0) + 1,
+        last_public_view_at: now
+      }) as Property;
+    }
   }
 
-  writeDatabase(db);
-  res.json({ status: 'success', data: { tracked: true } });
+  res.json({
+    status: 'success',
+    data: {
+      tracked: true,
+      siteViews: Number(settings.site_view_count || 0),
+      lastSiteViewAt: settings.last_site_view_at,
+      property: property
+        ? {
+            id: property.id,
+            public_view_count: Number(property.public_view_count || 0),
+            last_public_view_at: property.last_public_view_at
+          }
+        : null
+    }
+  });
 });
 
 app.get('/api/public/chat/history', (req: Request, res: Response) => {
@@ -1071,7 +1087,28 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
   const pendingInbox = inbox.filter(i => i.status === 'pending').length;
   const propertyViews = properties.reduce((sum, property: Property) => sum + Number(property.public_view_count || 0), 0);
   const siteViews = Number((db.settings as any).site_view_count || 0);
-  
+  const postViews = posts.reduce((sum, post: Post) => sum + Number(post.engagement?.views || 0), 0);
+  const topProperties = properties
+    .filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'))
+    .sort((a: Property, b: Property) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
+    .slice(0, 10)
+    .map((property: Property) => ({
+      id: property.id,
+      title: property.title,
+      views: Number(property.public_view_count || 0),
+      lastViewAt: property.last_public_view_at
+    }));
+  const topPosts = posts
+    .slice()
+    .sort((a: Post, b: Post) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0))
+    .slice(0, 10)
+    .map((post: Post) => ({
+      id: post.id,
+      title: post.title,
+      platform: post.platform,
+      views: Number(post.engagement?.views || 0)
+    }));
+
   const metrics = ['facebook', 'zalo', 'tiktok', 'website'].map(platform => {
     const platformPosts = posts.filter(post => post.platform === platform);
     return {
@@ -1099,9 +1136,15 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
         pendingInbox,
         siteViews,
         propertyViews,
+        postViews,
         todayTasksCount: customers.filter(c => c.lead_score > 80 && c.status === 'hot').length,
       },
-      metrics
+      metrics,
+      traffic: {
+        lastSiteViewAt: (db.settings as any).last_site_view_at,
+        topProperties,
+        topPosts
+      }
     }
   });
 });
@@ -1313,7 +1356,9 @@ app.put('/api/properties/:id', (req: Request, res: Response) => {
 
   db.properties[index] = {
     ...db.properties[index],
-    ...req.body
+    ...req.body,
+    public_view_count: req.body.public_view_count ?? db.properties[index].public_view_count ?? 0,
+    last_public_view_at: req.body.last_public_view_at ?? db.properties[index].last_public_view_at
   };
 
   writeDatabase(db);
@@ -1940,8 +1985,6 @@ function escapeXml(value: string) {
     .replace(/'/g, '&apos;');
 }
 
-<<<<<<< Updated upstream
-=======
 function escapeHtml(value: unknown) {
   return escapeXml(String(value || ''));
 }
@@ -2084,7 +2127,49 @@ app.get('/property-images/:propertyId/:imageIndex.jpg', (req: Request, res: Resp
     .send(imageBuffer);
 });
 
->>>>>>> Stashed changes
+function getIndexHtmlTemplate() {
+  const distIndex = path.join(process.cwd(), 'dist', 'index.html');
+  if (process.env.NODE_ENV === 'production' && fs.existsSync(distIndex)) {
+    return fs.readFileSync(distIndex, 'utf-8');
+  }
+  return fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+}
+
+function getDefaultShareMeta(origin: string) {
+  return {
+    title: DEFAULT_SEO_TITLE,
+    description: DEFAULT_SEO_DESCRIPTION,
+    image: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90',
+    url: `${origin}${publicListingsPath}`,
+    keywords: DEFAULT_SEO_KEYWORDS.join(', ')
+  };
+}
+
+function sendPublicIndex(req: Request, res: Response) {
+  const origin = getPublicOrigin(req);
+  const indexHtml = getIndexHtmlTemplate();
+  const pathSlug = decodeURIComponent(String(req.path || '').replace(/^\//, ''));
+
+  if (!pathSlug) {
+    res
+      .status(200)
+      .set({ 'Content-Type': 'text/html; charset=utf-8' })
+      .send(renderIndexWithMeta(indexHtml, getDefaultShareMeta(origin)));
+    return;
+  }
+
+  const property = findPublicPropertyBySlug(pathSlug);
+  if (property) {
+    res
+      .status(200)
+      .set({ 'Content-Type': 'text/html; charset=utf-8' })
+      .send(renderIndexWithMeta(indexHtml, getPropertyShareMeta(property, origin)));
+    return;
+  }
+
+  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
+}
+
 app.get('/robots.txt', (req: Request, res: Response) => {
   const origin = getPublicOrigin(req);
   res
@@ -2146,7 +2231,11 @@ const distPath = path.join(process.cwd(), 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
   app.get('*', (req: Request, res: Response) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+    if (req.path.startsWith('/api')) {
+      res.status(404).json({ status: 'error', message: 'Not found' });
+      return;
+    }
+    sendPublicIndex(req, res);
   });
 } else {
   // Setup programmatic Vite server in developmental mode
@@ -2163,12 +2252,10 @@ if (process.env.NODE_ENV === 'production') {
     }).then((viteServer) => {
       app.use(viteServer.middlewares);
       app.get('*', (req: Request, res: Response, next: NextFunction) => {
-        // Double check it's not and api path
         if (req.url.startsWith('/api')) {
           return next();
         }
-        const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(indexHtml);
+        sendPublicIndex(req, res);
       });
     }).catch(err => {
       console.error("Vite server fails construction:", err);
