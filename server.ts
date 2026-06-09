@@ -29,6 +29,7 @@ import {
   getAIProviderStatus
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
+import { mergePostHashtags, mergeKeywordLists, hashtagsToKeywords, getPropertyContentForHashtags, collectSiteSeoKeywords as buildSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './src/utils/hashtags';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -476,6 +477,15 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 app.get('/api/public/properties', (req: Request, res: Response) => {
   const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
   res.json({ status: 'success', data: publicProperties });
+});
+
+app.get('/api/public/seo', (req: Request, res: Response) => {
+  const keywords = buildSiteSeoKeywords(
+    getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available')),
+    DEFAULT_SEO_KEYWORDS
+  );
+  updateSettings({ seo_keywords: keywords });
+  res.json({ status: 'success', data: { keywords } });
 });
 
 // ----------------------------------------------------
@@ -958,6 +968,31 @@ function scopeUsers(users: User[], req: Request): User[] {
   return [];
 }
 
+function countActiveOwners(users: User[]): number {
+  return users.filter(item => item.role === 'owner' && item.status === 'active').length;
+}
+
+function assertCanUpdateUser(authUser: AuthUser, target: User, res: Response): boolean {
+  const isSelf = authUser.id === target.id;
+
+  if (authUser.role === 'owner') return true;
+
+  if (authUser.role === 'company') {
+    if (target.company_id !== authUser.company_id) {
+      res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật user này.' });
+      return false;
+    }
+    if (!isSelf && target.role !== 'member') {
+      res.status(403).json({ status: 'error', message: 'Company admin chỉ được cập nhật member trong company.' });
+      return false;
+    }
+    return true;
+  }
+
+  res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật user.' });
+  return false;
+}
+
 app.get('/api/users', (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
   const db = readDatabase();
@@ -1026,23 +1061,69 @@ app.put('/api/users/:id', (req: Request, res: Response) => {
   }
 
   const target = db.users[index] as User;
-  if (authUser.role === 'company' && (target.company_id !== authUser.company_id || target.role === 'owner')) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật user này.' });
+  if (!assertCanUpdateUser(authUser, target, res)) return;
+
+  const body = req.body || {};
+  const isSelf = authUser.id === target.id;
+  const nextName = body.name !== undefined ? String(body.name).trim() : target.name;
+  const nextEmail = body.email !== undefined ? String(body.email).trim().toLowerCase() : target.email;
+
+  if (!nextName || !nextEmail) {
+    res.status(400).json({ status: 'error', message: 'Tên và email là bắt buộc.' });
     return;
   }
 
-  const body = req.body || {};
-  const nextRole = authUser.role === 'owner' ? (body.role || target.role) : target.role;
-  const nextCompanyId = authUser.role === 'owner' ? body.company_id : target.company_id;
+  if (db.users.some((user: User) => user.id !== target.id && user.email.toLowerCase() === nextEmail)) {
+    res.status(409).json({ status: 'error', message: 'Email đã tồn tại.' });
+    return;
+  }
+
+  let nextRole = target.role;
+  if (authUser.role === 'owner' && body.role !== undefined) {
+    if (!['owner', 'company', 'member'].includes(body.role)) {
+      res.status(400).json({ status: 'error', message: 'Role không hợp lệ.' });
+      return;
+    }
+    nextRole = body.role;
+  }
+
+  let nextCompanyId = target.company_id;
+  if (authUser.role === 'owner' && body.company_id !== undefined) {
+    nextCompanyId = body.company_id ? String(body.company_id).trim() : undefined;
+  }
+  if (nextRole === 'owner') {
+    nextCompanyId = undefined;
+  }
+
+  let nextStatus = target.status;
+  if (body.status === 'inactive' || body.status === 'active') {
+    if (isSelf && body.status === 'inactive') {
+      res.status(400).json({ status: 'error', message: 'Bạn không thể tự vô hiệu hóa tài khoản của mình.' });
+      return;
+    }
+    if (authUser.role === 'owner' || (authUser.role === 'company' && target.role === 'member')) {
+      nextStatus = body.status;
+    }
+  }
+
+  if (target.role === 'owner' && nextRole !== 'owner' && countActiveOwners(db.users) <= 1) {
+    res.status(400).json({ status: 'error', message: 'Không thể hạ quyền owner cuối cùng.' });
+    return;
+  }
+
+  if (target.role === 'owner' && nextStatus === 'inactive' && countActiveOwners(db.users) <= 1) {
+    res.status(400).json({ status: 'error', message: 'Không thể vô hiệu hóa owner cuối cùng.' });
+    return;
+  }
 
   db.users[index] = {
     ...target,
-    name: body.name !== undefined ? String(body.name).trim() : target.name,
-    email: body.email !== undefined ? String(body.email).trim().toLowerCase() : target.email,
+    name: nextName,
+    email: nextEmail,
     password: body.password ? String(body.password) : target.password,
     role: nextRole,
     company_id: nextCompanyId,
-    status: body.status === 'inactive' ? 'inactive' : body.status === 'active' ? 'active' : target.status
+    status: nextStatus
   };
 
   writeDatabase(db);
@@ -1319,25 +1400,13 @@ app.post('/api/properties', (req: Request, res: Response) => {
   
   // Trigger automation: Khi thêm mới bất động sản
   triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${newProperty.title}`, db);
-  
-  // Create static empty placeholders to prompt the user
-  newProperty.ai_posts = {
-    seo: {
-      title: '',
-      meta_description: '',
-      keywords: [],
-      hashtags: []
-    },
-    facebook: "",
-    zalo: "",
-    tiktok: "",
-    website: "",
-    image_prompt: "",
-    video_prompt: ""
-  };
+
+  const indexedProperty = db.properties.length - 1;
+  db.properties[indexedProperty] = applyPropertyHashtagSeo(db.properties[indexedProperty]);
+  syncSiteSeoKeywords(db);
 
   writeDatabase(db);
-  res.json({ status: 'success', data: newProperty });
+  res.json({ status: 'success', data: db.properties[indexedProperty] });
 });
 
 app.put('/api/properties/:id', (req: Request, res: Response) => {
@@ -1354,13 +1423,14 @@ app.put('/api/properties/:id', (req: Request, res: Response) => {
     return;
   }
 
-  db.properties[index] = {
+  db.properties[index] = applyPropertyHashtagSeo({
     ...db.properties[index],
     ...req.body,
     public_view_count: req.body.public_view_count ?? db.properties[index].public_view_count ?? 0,
     last_public_view_at: req.body.last_public_view_at ?? db.properties[index].last_public_view_at
-  };
+  });
 
+  syncSiteSeoKeywords(db);
   writeDatabase(db);
   res.json({ status: 'success', data: db.properties[index] });
 });
@@ -1967,6 +2037,48 @@ const DEFAULT_SEO_KEYWORDS = [
   'shophouse kinh doanh đà nẵng',
   'giá đất đà nẵng 2026'
 ];
+
+function syncSiteSeoKeywords(db: { properties?: Property[]; settings?: AppSettings }) {
+  const seoKeywords = buildSiteSeoKeywords(db.properties || [], DEFAULT_SEO_KEYWORDS);
+  db.settings = {
+    ...(db.settings || {}),
+    seo_keywords: seoKeywords
+  } as AppSettings;
+  return seoKeywords;
+}
+
+function applyPropertyHashtagSeo(property: Property): Property {
+  const contentText = getPropertyContentForHashtags(property);
+  const { hashtags, keywords: parsedKeywords } = mergePostHashtags(contentText);
+  const baseSeo = buildPropertySeo(property);
+  const existingSeo = property.ai_posts?.seo;
+
+  const seo = {
+    title: existingSeo?.title || baseSeo.title,
+    meta_description: existingSeo?.meta_description || baseSeo.meta_description,
+    keywords: parsedKeywords.length
+      ? mergeKeywordLists(parsedKeywords, existingSeo?.keywords || baseSeo.keywords)
+      : (existingSeo?.keywords || baseSeo.keywords),
+    hashtags: hashtags.length
+      ? hashtags
+      : (existingSeo?.hashtags || baseSeo.hashtags)
+  };
+
+  return {
+    ...property,
+    ai_posts: {
+      facebook: property.ai_posts?.facebook || '',
+      zalo: property.ai_posts?.zalo || '',
+      tiktok: property.ai_posts?.tiktok || '',
+      website: property.ai_posts?.website || '',
+      image_prompt: property.ai_posts?.image_prompt || '',
+      video_prompt: property.ai_posts?.video_prompt || '',
+      strategy: property.ai_posts?.strategy,
+      image_prompts: property.ai_posts?.image_prompts,
+      seo
+    }
+  };
+}
 const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
 const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
 
@@ -2048,10 +2160,8 @@ function getPropertyShareMeta(property: Property, origin: string) {
   ].filter(Boolean).join('. ');
   const title = limitSeoTitle(property.ai_posts?.seo?.title || getServerPropertySeoTitle(property));
   const description = property.ai_posts?.seo?.meta_description || truncateMeta(baseDescription);
-  const keywords = Array.from(new Set([
-    ...DEFAULT_SEO_KEYWORDS,
-    ...(property.ai_posts?.seo?.keywords || [])
-  ])).join(', ');
+  const keywordList = getPropertySeoKeywordsFromContent(property, DEFAULT_SEO_KEYWORDS);
+  const keywords = keywordList.join(', ');
 
   return { title, description, image, url, keywords };
 }
@@ -2136,12 +2246,13 @@ function getIndexHtmlTemplate() {
 }
 
 function getDefaultShareMeta(origin: string) {
+  const keywordList = buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
   return {
     title: DEFAULT_SEO_TITLE,
     description: DEFAULT_SEO_DESCRIPTION,
     image: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90',
     url: `${origin}${publicListingsPath}`,
-    keywords: DEFAULT_SEO_KEYWORDS.join(', ')
+    keywords: keywordList.join(', ')
   };
 }
 
@@ -2264,6 +2375,14 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Start backend
+try {
+  const db = readDatabase();
+  syncSiteSeoKeywords(db);
+  writeDatabase(db);
+} catch (error) {
+  console.warn('[SEO] Could not sync site keywords on startup:', error);
+}
+
 app.listen(PORT, HOST, () => {
   console.log(`====================================================`);
   console.log(`🚀 Real Estate AI CMS is listening on port ${PORT}!`);
