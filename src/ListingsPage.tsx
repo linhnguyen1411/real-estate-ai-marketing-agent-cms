@@ -26,6 +26,7 @@ import { Property } from './types';
 import MarkdownContent from './components/MarkdownContent';
 import PropertyShareActions from './components/PropertyShareActions';
 import { getPublicPropertySlug } from './utils/propertyShare';
+import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
 
 interface ListingsPageProps {
   properties: Property[];
@@ -519,10 +520,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         `${selectedProperty.title} tại ${selectedProperty.location}, diện tích ${selectedProperty.area} m2, giá ${formatPrice(selectedProperty.price)}, pháp lý ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
       )
     : DEFAULT_SEO_DESCRIPTION;
-  const seoKeywords = Array.from(new Set([
-    ...DEFAULT_SEO_KEYWORDS,
-    ...(selectedProperty?.ai_posts?.seo?.keywords || [])
-  ])).join(', ');
+  const seoKeywords = useMemo(() => {
+    const keywords = selectedProperty
+      ? getPropertySeoKeywordsFromContent(selectedProperty, DEFAULT_SEO_KEYWORDS)
+      : collectSiteSeoKeywords(activeProperties, DEFAULT_SEO_KEYWORDS);
+    return keywords.join(', ');
+  }, [activeProperties, selectedProperty]);
   const seoImage = selectedProperty ? getImage(selectedProperty) : getImage(featuredProperties[0]);
 
   const structuredData = useMemo(() => {
@@ -1323,6 +1326,31 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-rose-600">{formatPrice(selectedProperty.price)}</div>
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Hotline</div>
+                  <div className="space-y-2">
+                    <a
+                      href="tel:0905777594"
+                      className="flex items-center justify-between gap-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-slate-800 transition hover:bg-rose-100"
+                    >
+                      <span className="inline-flex items-center gap-2 font-semibold">
+                        <Phone className="h-4 w-4 text-rose-600" />
+                        Mr Linh
+                      </span>
+                      <span className="font-bold text-rose-700">0905 777 594</span>
+                    </a>
+                    <a
+                      href="tel:0984755258"
+                      className="flex items-center justify-between gap-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-slate-800 transition hover:bg-rose-100"
+                    >
+                      <span className="inline-flex items-center gap-2 font-semibold">
+                        <Phone className="h-4 w-4 text-rose-600" />
+                        Ms Hằng
+                      </span>
+                      <span className="font-bold text-rose-700">0984 755 258</span>
+                    </a>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
                   <PropertyShareActions
                     property={selectedProperty}

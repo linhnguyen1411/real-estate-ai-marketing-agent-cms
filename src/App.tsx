@@ -40,13 +40,15 @@ import {
   Globe,
   ShieldCheck,
   UserPlus,
-  Menu
+  Menu,
+  GripVertical
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
 import { getPublicPropertyUrl } from './utils/propertyShare';
+import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
 import {
   analyzeCustomer,
   createCustomer,
@@ -171,6 +173,7 @@ export default function App() {
   const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
+  const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
 
   const [selectedPropertyForAI, setSelectedPropertyForAI] = useState<Property | null>(null);
   const [aiGeneratingTone, setAiGeneratingTone] = useState<string>('sang trọng và chuyên nghiệp');
@@ -186,6 +189,20 @@ export default function App() {
     company_id: 'comp-da-nang',
     status: 'active'
   });
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editUserForm, setEditUserForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'member',
+    company_id: '',
+    status: 'active' as 'active' | 'inactive'
+  });
+
+  const detectedPropertyHashtags = useMemo(
+    () => extractHashtagsFromText(`${newPropertyForm.rich_description}\n${newPropertyForm.selling_points}`),
+    [newPropertyForm.rich_description, newPropertyForm.selling_points]
+  );
 
   const dashboardData = useMemo<DashboardData>(() => {
     const platforms: Post['platform'][] = ['facebook', 'zalo', 'tiktok', 'website'];
@@ -519,6 +536,90 @@ export default function App() {
     }
   };
 
+  const canEditTargetUser = (target: User) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'owner') return true;
+    if (currentUser.role === 'company') {
+      if (target.id === currentUser.id) return true;
+      return target.company_id === currentUser.company_id && target.role === 'member';
+    }
+    return false;
+  };
+
+  const canToggleUserStatus = (target: User) => {
+    if (!currentUser || target.id === currentUser.id) return false;
+    if (currentUser.role === 'owner') return true;
+    if (currentUser.role === 'company') {
+      return target.company_id === currentUser.company_id && target.role === 'member';
+    }
+    return false;
+  };
+
+  const openEditUserModal = (user: User) => {
+    setEditingUser(user);
+    setEditUserForm({
+      name: user.name,
+      email: user.email,
+      password: '',
+      role: user.role,
+      company_id: user.company_id || '',
+      status: user.status
+    });
+  };
+
+  const closeEditUserModal = () => {
+    setEditingUser(null);
+    setEditUserForm({
+      name: '',
+      email: '',
+      password: '',
+      role: 'member',
+      company_id: '',
+      status: 'active'
+    });
+  };
+
+  const handleUpdateUser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || !currentUser) return;
+
+    setActionLoading(`edit-user-${editingUser.id}`);
+    try {
+      const payload: Record<string, unknown> = {
+        name: editUserForm.name.trim(),
+        email: editUserForm.email.trim()
+      };
+
+      if (editUserForm.password.trim()) {
+        payload.password = editUserForm.password;
+      }
+
+      if (currentUser.role === 'owner') {
+        payload.role = editUserForm.role;
+        payload.company_id = editUserForm.role === 'owner' ? undefined : editUserForm.company_id;
+        if (editingUser.id !== currentUser.id) {
+          payload.status = editUserForm.status;
+        }
+      } else if (currentUser.role === 'company' && editingUser.id !== currentUser.id) {
+        payload.status = editUserForm.status;
+      }
+
+      const updated = await updateUser(editingUser.id, payload);
+      setManagedUsers(prev => prev.map(item => item.id === updated.id ? updated : item));
+
+      if (updated.id === currentUser.id) {
+        setCurrentUser(await getCurrentUser());
+      }
+
+      closeEditUserModal();
+      showToast('Da cap nhat user.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Khong the cap nhat user.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleToggleMemberAssignment = async (
     collection: 'customers' | 'properties' | 'posts',
     resource: Customer | Property | Post,
@@ -627,7 +728,22 @@ export default function App() {
   const closePropertyModal = () => {
     setShowAddPropertyModal(false);
     setEditingProperty(null);
+    setDraggedGalleryIndex(null);
     setNewPropertyForm(createEmptyPropertyForm());
+  };
+
+  const reorderGalleryImages = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setNewPropertyForm(prev => {
+      const gallery = [...prev.gallery_images];
+      const [moved] = gallery.splice(fromIndex, 1);
+      gallery.splice(toIndex, 0, moved);
+      return {
+        ...prev,
+        gallery_images: gallery,
+        images: gallery[0] || ''
+      };
+    });
   };
 
   const handlePropertyImageUpload = async (prop: Property, files: FileList | null) => {
@@ -826,6 +942,8 @@ export default function App() {
         showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
       }
 
+      const refreshed = await refreshTrafficData();
+      setSettings(refreshed.settings);
       closePropertyModal();
     } catch (e: any) {
       showToast(e.message || "Không thể lưu bất động sản.", "error");
@@ -3207,7 +3325,7 @@ export default function App() {
                       User & Permission
                     </h2>
                     <p className="text-slate-400 text-sm">
-                      Owner quản lý toàn bộ user. Company admin chỉ tạo member và cấp quyền trong company/team của mình.
+                      Owner quản lý toàn bộ user. Company admin chỉ tạo/sửa member và cấp quyền trong company/team của mình.
                     </p>
                   </div>
 
@@ -3324,14 +3442,29 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td className="px-5 py-4 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleUserStatus(user)}
-                                    disabled={user.id === currentUser.id || actionLoading === `user-status-${user.id}`}
-                                    className="text-xs font-bold text-rose-400 hover:text-rose-300 disabled:opacity-40"
-                                  >
-                                    {user.status === 'active' ? 'Disable' : 'Enable'}
-                                  </button>
+                                  <div className="flex items-center justify-end gap-3">
+                                    {canEditTargetUser(user) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditUserModal(user)}
+                                        disabled={actionLoading === `edit-user-${user.id}`}
+                                        className="inline-flex items-center gap-1 text-xs font-bold text-sky-400 hover:text-sky-300 disabled:opacity-40"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                        Sửa
+                                      </button>
+                                    )}
+                                    {canToggleUserStatus(user) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleUserStatus(user)}
+                                        disabled={actionLoading === `user-status-${user.id}`}
+                                        className="text-xs font-bold text-rose-400 hover:text-rose-300 disabled:opacity-40"
+                                      >
+                                        {user.status === 'active' ? 'Disable' : 'Enable'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -3729,6 +3862,150 @@ export default function App() {
         </div>
       )}
 
+      {/* Modal Edit User */}
+      {editingUser && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 max-w-lg w-full rounded-2xl shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
+                <Edit className="w-5 h-5 text-rose-500" />
+                Cập nhật user
+              </h3>
+              <button type="button" onClick={closeEditUserModal} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateUser} className="space-y-4">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-xs text-slate-400">
+                {editingUser.id === currentUser.id
+                  ? 'Bạn đang chỉnh sửa tài khoản của mình.'
+                  : currentUser.role === 'company'
+                    ? 'Company admin chỉ được sửa thông tin member trong company.'
+                    : 'Owner có thể thay đổi role, company và trạng thái user.'}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400">Tên</label>
+                <input
+                  required
+                  value={editUserForm.name}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={editUserForm.email}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400">Password mới</label>
+                <input
+                  type="password"
+                  value={editUserForm.password}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                  placeholder="Để trống nếu không đổi"
+                />
+              </div>
+
+              {currentUser.role === 'owner' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-400">Role</label>
+                    <select
+                      value={editUserForm.role}
+                      disabled={editingUser.id === currentUser.id}
+                      onChange={(e) => setEditUserForm({
+                        ...editUserForm,
+                        role: e.target.value,
+                        company_id: e.target.value === 'owner' ? '' : (editUserForm.company_id || currentUser.company_id || 'comp-da-nang')
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500 disabled:opacity-50"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="company">Company Admin</option>
+                      <option value="member">Member</option>
+                    </select>
+                  </div>
+
+                  {editUserForm.role !== 'owner' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-slate-400">Company</label>
+                      <input
+                        value={editUserForm.company_id}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, company_id: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {currentUser.role === 'company' && editingUser.id !== currentUser.id && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-400">Role</label>
+                    <input
+                      value="member"
+                      disabled
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-400">Company</label>
+                    <input
+                      value={editingUser.company_id || ''}
+                      disabled
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none opacity-50"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingUser.id !== currentUser.id && (currentUser.role === 'owner' || (currentUser.role === 'company' && editingUser.role === 'member')) && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-400">Trạng thái</label>
+                  <select
+                    value={editUserForm.status}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, status: e.target.value as 'active' | 'inactive' })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditUserModal}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-200 px-4 py-2.5"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading === `edit-user-${editingUser.id}`}
+                  className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all"
+                >
+                  {actionLoading === `edit-user-${editingUser.id}` ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Add Property */}
       {showAddPropertyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -3952,7 +4229,9 @@ export default function App() {
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <label className="block text-2xs font-semibold text-slate-400">Mô tả Markdown để copy nhanh</label>
-                    <p className="mt-1 text-2xs text-slate-500">Dùng toolbar để định dạng và chèn icon. Nội dung copy giữ nguyên icon và Markdown.</p>
+                    <p className="mt-1 text-2xs text-slate-500">
+                      Gõ hashtag bằng thẻ <span className="font-mono text-emerald-300">#</span> trong mô tả hoặc điểm nhấn — hệ thống tự nhận diện và đưa vào meta SEO website khi lưu BĐS.
+                    </p>
                   </div>
                 </div>
                 <MarkdownEditor
@@ -3961,37 +4240,92 @@ export default function App() {
                 />
               </div>
 
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
+                <div className="text-xs font-bold text-emerald-300">Hashtag nhận diện tự động</div>
+                {detectedPropertyHashtags.length > 0 ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {detectedPropertyHashtags.map(tag => (
+                        <span key={tag} className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-2xs font-semibold text-emerald-300">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-2xs text-slate-400">
+                      Keyword SEO sau lưu: {hashtagsToKeywords(detectedPropertyHashtags).join(', ')}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-2xs text-slate-500">Thêm hashtag vào mô tả hoặc điểm nhấn, ví dụ: #Shophouse #HoaXuan #BatDongSanDaNang</p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="block text-2xs font-semibold text-slate-400">Upload ảnh lưu trữ</label>
-                  <p className="text-2xs text-slate-500">Ảnh sẽ được tự động resize tối đa 1280px và nén trước khi lưu.</p>
+                  <p className="text-2xs text-slate-500">Ảnh tự resize tối đa 1280px. Kéo thả để sắp xếp — ảnh đầu tiên là ảnh chính.</p>
                   <input
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={async (e) => {
                       const uploaded = await readImageFiles(e.target.files);
-                      setNewPropertyForm({
-                        ...newPropertyForm,
-                        images: uploaded[0] || newPropertyForm.images,
-                        gallery_images: [...newPropertyForm.gallery_images, ...uploaded].slice(0, 8)
+                      setNewPropertyForm(prev => {
+                        const gallery = [...prev.gallery_images, ...uploaded].slice(0, 8);
+                        return {
+                          ...prev,
+                          gallery_images: gallery,
+                          images: gallery[0] || ''
+                        };
                       });
+                      e.target.value = '';
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200"
                   />
                   {newPropertyForm.gallery_images.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto pt-2">
+                    <div className="flex gap-2 overflow-x-auto pt-2 pb-1">
                       {newPropertyForm.gallery_images.map((img, idx) => (
-                        <div key={idx} className="relative shrink-0">
-                          <img src={img} alt={`Upload ${idx + 1}`} className="w-14 h-14 rounded-lg object-cover border border-slate-800" />
+                        <div
+                          key={`${idx}-${img.slice(0, 48)}`}
+                          draggable
+                          onDragStart={() => setDraggedGalleryIndex(idx)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            if (draggedGalleryIndex !== null) {
+                              reorderGalleryImages(draggedGalleryIndex, idx);
+                            }
+                            setDraggedGalleryIndex(null);
+                          }}
+                          onDragEnd={() => setDraggedGalleryIndex(null)}
+                          className={`relative shrink-0 rounded-lg transition-all ${
+                            draggedGalleryIndex === idx ? 'opacity-40 scale-95' : ''
+                          } ${idx === 0 ? 'ring-2 ring-rose-500 ring-offset-2 ring-offset-slate-950' : ''}`}
+                        >
+                          <img
+                            src={img}
+                            alt={`Ảnh ${idx + 1}`}
+                            draggable={false}
+                            className="h-16 w-16 rounded-lg object-cover border border-slate-800 pointer-events-none"
+                          />
+                          <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded bg-slate-950/85 px-1 py-0.5 text-[10px] font-bold text-slate-200">
+                            <GripVertical className="h-3 w-3" />
+                            {idx + 1}
+                          </span>
+                          {idx === 0 && (
+                            <span className="absolute bottom-1 left-1 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                              Ảnh chính
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
-                              const galleryImages = newPropertyForm.gallery_images.filter((_, imageIndex) => imageIndex !== idx);
-                              setNewPropertyForm({
-                                ...newPropertyForm,
-                                gallery_images: galleryImages,
-                                images: galleryImages[0] || ''
+                              setNewPropertyForm(prev => {
+                                const galleryImages = prev.gallery_images.filter((_, imageIndex) => imageIndex !== idx);
+                                return {
+                                  ...prev,
+                                  gallery_images: galleryImages,
+                                  images: galleryImages[0] || ''
+                                };
                               });
                             }}
                             className="absolute -right-1 -top-1 rounded-full bg-rose-600 p-1 text-white shadow"
@@ -4035,7 +4369,7 @@ export default function App() {
                   rows={2}
                   value={newPropertyForm.selling_points}
                   onChange={(e) => setNewPropertyForm({ ...newPropertyForm, selling_points: e.target.value })}
-                  placeholder="View trực diện bờ sông\nHạ tầng điện ngầm đồng bộ\nĐầu tư sinh lời cao..."
+                  placeholder="View trực diện bờ sông\nHạ tầng điện ngầm đồng bộ\n#Shophouse #HoaXuan"
                   className="w-full bg-slate-950 border border-slate-800 text-xs rounded-xl p-3"
                 />
               </div>

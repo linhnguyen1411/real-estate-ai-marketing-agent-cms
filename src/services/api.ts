@@ -236,6 +236,13 @@ export function updatePost(postId: string, post: Record<string, unknown>) {
   });
 }
 
+export async function fetchPublicSeoKeywords() {
+  const response = await fetch('/api/public/seo');
+  if (!response.ok) return [] as string[];
+  const json = await response.json();
+  return Array.isArray(json.data?.keywords) ? json.data.keywords as string[] : [];
+}
+
 export function toggleAutomation(id: string) {
   return apiRequest<AutomationTask>(`/api/automations/${id}/toggle`, {
     method: 'POST'

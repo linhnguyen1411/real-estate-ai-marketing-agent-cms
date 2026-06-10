@@ -196,6 +196,7 @@ export interface AppSettings {
   agent_tone: string;
   site_view_count?: number;
   last_site_view_at?: string;
+  seo_keywords?: string[];
 }
 
 export interface ChatHistoryRecord {
