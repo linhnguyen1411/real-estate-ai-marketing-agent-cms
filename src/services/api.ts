@@ -89,6 +89,26 @@ export interface InitialAppData {
   channels: MarketingChannel[];
 }
 
+async function parseJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    return {
+      status: 'error' as const,
+      message: `Server trả về rỗng (${response.status}).`
+    };
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      status: 'error' as const,
+      message: response.ok
+        ? 'Phản hồi server không đúng định dạng JSON.'
+        : `Server trả lỗi ${response.status}.`
+    };
+  }
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(path, {
@@ -100,7 +120,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
   });
 
-  const json = await response.json() as ApiResponse<T>;
+  const json = await parseJsonResponse(response) as ApiResponse<T>;
 
   if (!response.ok || json.status !== 'success') {
     throw new Error(json.message || `API request failed: ${response.status} ${response.statusText}`);
@@ -239,7 +259,7 @@ export function updatePost(postId: string, post: Record<string, unknown>) {
 export async function fetchPublicSeoKeywords() {
   const response = await fetch('/api/public/seo');
   if (!response.ok) return [] as string[];
-  const json = await response.json();
+  const json = await parseJsonResponse(response);
   return Array.isArray(json.data?.keywords) ? json.data.keywords as string[] : [];
 }
 
@@ -296,6 +316,13 @@ export function sendPublicChatGuestMessage(sessionId: string, message: string) {
     method: 'POST',
     body: JSON.stringify({ message })
   });
+}
+
+export function deleteChatSession(sessionUserId: string) {
+  return apiRequest<{ sessionUserId: string; deletedMessages: number; guestDeleted: boolean }>(
+    `/api/chat/sessions/${encodeURIComponent(sessionUserId)}/delete`,
+    { method: 'POST' }
+  );
 }
 
 export function getGeneratedContents(params?: { channel?: string; status?: string }) {

@@ -76,6 +76,7 @@ import {
   sendInboxReply,
   toggleAutomation,
   updatePublicChatGuestAi,
+  deleteChatSession,
   updateCustomer,
   updatePost,
   updateProperty,
@@ -137,7 +138,7 @@ export default function App() {
   const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
   const [managedUsers, setManagedUsers] = useState<User[]>([]);
   const [chatHistoryRecords, setChatHistoryRecords] = useState<ChatHistoryRecord[]>([]);
-  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState('');
+  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState<string | undefined>(undefined);
   const [publicChatGuests, setPublicChatGuests] = useState<PublicChatGuest[]>([]);
   const [selectedChatGuestId, setSelectedChatGuestId] = useState<string>('');
   const [selectedGuestChatHistory, setSelectedGuestChatHistory] = useState<ChatHistoryRecord[]>([]);
@@ -396,7 +397,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!currentUser || !['chatbot', 'chat-history'].includes(activeTab)) return;
+    if (!currentUser || !['website-chat', 'chat-history'].includes(activeTab)) return;
     refreshPublicGuestChats(selectedChatGuestId);
     refreshChatHistoryRecords();
     const timer = window.setInterval(() => {
@@ -1049,6 +1050,77 @@ export default function App() {
     }
   };
 
+  const canDeleteChatSession = (sessionUserId: string) => {
+    if (!currentUser) return false;
+    if (sessionUserId.startsWith('public-')) {
+      return currentUser.role === 'owner' || currentUser.role === 'company';
+    }
+    if (currentUser.role === 'owner') return true;
+    if (currentUser.role === 'company') {
+      if (sessionUserId === currentUser.id) return true;
+      const sessionRecords = chatHistoryRecords.filter(record => record.user_id === sessionUserId);
+      const companyId = sessionRecords[0]?.company_id;
+      return !companyId || companyId === currentUser.company_id;
+    }
+    return sessionUserId === currentUser.id;
+  };
+
+  const applyDeletedChatSession = (sessionUserId: string) => {
+    setChatHistoryRecords(prev => prev.filter(record => record.user_id !== sessionUserId));
+
+    if (selectedChatHistorySessionId === sessionUserId) {
+      setSelectedChatHistorySessionId('');
+    }
+
+    if (sessionUserId.startsWith('public-')) {
+      const sessionId = sessionUserId.slice('public-'.length);
+      setPublicChatGuests(prev => prev.filter(guest => guest.session_id !== sessionId));
+      if (selectedChatGuestId === sessionId) {
+        setSelectedChatGuestId('');
+        setSelectedGuestChatHistory([]);
+      }
+    }
+
+    if (sessionUserId === currentUser?.id) {
+      setChatMessages([ASSISTANT_WELCOME_MESSAGE]);
+    }
+  };
+
+  const handleDeleteChatSession = async (sessionUserId: string, label = 'hội thoại này') => {
+    if (!canDeleteChatSession(sessionUserId)) {
+      showToast('Bạn không có quyền xóa lịch sử chat này.', 'error');
+      return;
+    }
+
+    if (!window.confirm(`Xóa toàn bộ lịch sử của ${label}? Thao tác này không thể hoàn tác.`)) {
+      return;
+    }
+
+    setActionLoading(`delete-chat-${sessionUserId}`);
+    try {
+      const result = await deleteChatSession(sessionUserId);
+      applyDeletedChatSession(sessionUserId);
+      await refreshChatHistoryRecords();
+      await refreshPublicGuestChats(selectedChatGuestId);
+      showToast(
+        result.deletedMessages > 0 || result.guestDeleted
+          ? 'Đã xóa lịch sử chat.'
+          : 'Không còn tin nhắn để xóa trong phiên này.',
+        'success'
+      );
+    } catch (error: any) {
+      const message = error.message || 'Không thể xóa lịch sử chat.';
+      showToast(
+        message.includes('404') || message.includes('rỗng')
+          ? 'API xóa chat chưa sẵn sàng. Hãy restart dev server: npm run dev'
+          : message,
+        'error'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleSoftDeleteProperty = async (prop: Property) => {
     setActionLoading(`hide-prop-${prop.id}`);
     try {
@@ -1156,6 +1228,7 @@ export default function App() {
     .filter(item => priorityPlatforms.includes(item.channel))
     .slice(0, 8);
   const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
+  const canManageWebsiteChat = canManageCmsUsers;
   const managedMembers = managedUsers.filter(user => user.role === 'member' && user.status === 'active');
   const selectedPermissionMember = managedUsers.find(user => user.id === selectedPermissionMemberId);
   const filteredChatHistoryRecords = chatHistoryRecords.filter(record => {
@@ -1177,7 +1250,7 @@ export default function App() {
     lastMessageAt: records.reduce((latest, record) => Math.max(latest, new Date(record.created_at).getTime()), 0)
   })).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   const selectedChatHistorySession = chatHistorySessions.find(session => session.sessionId === selectedChatHistorySessionId)
-    || chatHistorySessions[0];
+    ?? (selectedChatHistorySessionId === undefined && chatHistorySessions[0] ? chatHistorySessions[0] : undefined);
   const selectedHistoryGuest = selectedChatHistorySession?.sessionId.startsWith('public-')
     ? publicChatGuests.find(guest => `public-${guest.session_id}` === selectedChatHistorySession.sessionId)
     : undefined;
@@ -1347,6 +1420,7 @@ export default function App() {
               { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
               { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
+              ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
               { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
               ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
@@ -2819,7 +2893,104 @@ export default function App() {
                     <div>
                       <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <Bot className="w-5 h-5 text-rose-500" />
-                        Chatbot khách website
+                        Trợ lý AI nội bộ
+                      </h2>
+                      <p className="text-slate-400 text-sm">
+                        Hỏi đáp trực tiếp với AI nắm dữ liệu CRM, bất động sản và nội dung marketing trong hệ thống.
+                      </p>
+                    </div>
+                    {currentUser && canDeleteChatSession(currentUser.id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChatSession(currentUser.id, 'trợ lý AI nội bộ')}
+                        disabled={actionLoading === `delete-chat-${currentUser.id}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Xóa lịch sử AI
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[620px] overflow-hidden justify-between">
+                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Bot className="w-5 h-5 text-rose-500" />
+                        <div>
+                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
+                          <span className="text-2xs text-emerald-400">
+                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="hidden lg:flex gap-2">
+                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUserChatInput(hint)}
+                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
+                          >
+                            {hint}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 p-5 overflow-y-auto space-y-4 app-scroll">
+                      {chatMessages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
+                            msg.role === 'user'
+                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none'
+                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
+                          }`}>
+                            <p>{msg.content}</p>
+                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {actionLoading === 'chatbot-chat' && (
+                        <div className="flex justify-start">
+                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
+                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={userChatInput}
+                        onChange={(e) => setUserChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
+                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      />
+                      <button
+                        onClick={handleSendChatbotMessage}
+                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
+                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'website-chat' && canManageWebsiteChat && (
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-rose-500" />
+                        Chat khách website
                       </h2>
                       <p className="text-slate-400 text-sm">
                         Chọn từng khách đã nhập họ tên/số điện thoại để theo dõi hội thoại. Bỏ tick AI để admin tự chat trực tiếp với khách.
@@ -2897,15 +3068,28 @@ export default function App() {
                                   <div className="text-xs text-slate-500">{selectedGuest?.phone} · {selectedChatGuestId}</div>
                                 </div>
                                 {selectedGuest && (
-                                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedGuest.ai_enabled)}
-                                      onChange={() => handleToggleGuestAi(selectedGuest)}
-                                      className="h-4 w-4 accent-emerald-500"
-                                    />
-                                    AI tự trả lời
-                                  </label>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(selectedGuest.ai_enabled)}
+                                        onChange={() => handleToggleGuestAi(selectedGuest)}
+                                        className="h-4 w-4 accent-emerald-500"
+                                      />
+                                      AI tự trả lời
+                                    </label>
+                                    {canDeleteChatSession(`public-${selectedChatGuestId}`) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteChatSession(`public-${selectedChatGuestId}`, `khách ${selectedGuest.name}`)}
+                                        disabled={actionLoading === `delete-chat-public-${selectedChatGuestId}`}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Xóa hội thoại
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             );
@@ -2952,90 +3136,6 @@ export default function App() {
                         </div>
                       )}
                     </section>
-                  </div>
-                </div>
-              )}
-
-              {false && activeTab === 'chatbot' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Trợ lý ảo AI Chatbot (Nội bộ doanh nghiệp)
-                    </h2>
-                    <p className="text-slate-400 text-sm">Hỏi đáp trực tiếp hệ thống AI nắm giữ toàn bộ cơ sở dữ liệu khách hàng CRM, rổ bất động sản và tự phát bài truyền thông.</p>
-                  </div>
-
-                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[550px] overflow-hidden justify-between">
-                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Bot className="w-5 h-5 text-rose-500" />
-                        <div>
-                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
-                          <span className="text-2xs text-emerald-400">
-                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setUserChatInput(hint)}
-                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
-                          >
-                            {hint}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Dialog Container */}
-                    <div className="flex-1 p-5 overflow-y-auto space-y-4 max-h-[400px]">
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
-                            msg.role === 'user' 
-                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none' 
-                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
-                          }`}>
-                            <p>{msg.content}</p>
-                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {actionLoading === 'chatbot-chat' && (
-                        <div className="flex justify-start">
-                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
-                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Sender Console */}
-                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={userChatInput}
-                        onChange={(e) => setUserChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
-                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                      />
-                      <button
-                        onClick={handleSendChatbotMessage}
-                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
-                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-
                   </div>
                 </div>
               )}
@@ -3117,8 +3217,24 @@ export default function App() {
                               </div>
                               <div className="truncate text-xs font-mono text-slate-500">{selectedChatHistorySession.sessionId}</div>
                             </div>
-                            <div className="text-xs text-slate-500">
-                              {selectedChatHistorySession.records.length} tin nhắn
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-xs text-slate-500">
+                                {selectedChatHistorySession.records.length} tin nhắn
+                              </div>
+                              {canDeleteChatSession(selectedChatHistorySession.sessionId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteChatSession(
+                                    selectedChatHistorySession.sessionId,
+                                    selectedChatHistorySession.sessionId.startsWith('public-') ? 'hội thoại khách website' : 'hội thoại CMS nội bộ'
+                                  )}
+                                  disabled={actionLoading === `delete-chat-${selectedChatHistorySession.sessionId}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Xóa hội thoại
+                                </button>
+                              )}
                             </div>
                           </div>
 

@@ -370,6 +370,26 @@ export function updatePublicChatGuestAi(sessionId: string, aiEnabled: boolean) {
   return getPublicChatGuest(sessionId);
 }
 
+export function deleteChatHistoryByUserId(userId: string) {
+  const result = getSqlite()
+    .prepare("DELETE FROM chat_history WHERE user_id = ?")
+    .run(userId);
+  return result.changes;
+}
+
+export function deletePublicChatGuest(sessionId: string) {
+  const result = getSqlite()
+    .prepare("DELETE FROM public_chat_guests WHERE session_id = ?")
+    .run(sessionId);
+  return result.changes;
+}
+
+export function getChatHistorySessionMeta(userId: string) {
+  return getSqlite()
+    .prepare("SELECT company_id FROM chat_history WHERE user_id = ? LIMIT 1")
+    .get(userId) as { company_id?: string | null } | undefined;
+}
+
 export function searchCmsRecords(
   collection: CmsCollection,
   tokens: string[],
