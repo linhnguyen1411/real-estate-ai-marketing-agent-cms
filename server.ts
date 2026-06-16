@@ -16,7 +16,10 @@ import {
   getPublicChatGuest,
   getPublicChatGuests,
   updatePublicChatGuestAi,
-  upsertPublicChatGuest
+  upsertPublicChatGuest,
+  deleteChatHistoryByUserId,
+  deletePublicChatGuest,
+  getChatHistorySessionMeta
 } from './server/dbHelper';
 import { 
   analyzeCustomerWithAI, 
@@ -543,8 +546,19 @@ app.get('/api/public/chat/history', (req: Request, res: Response) => {
   const history = getChatHistoryByUser(`public-${sessionId}`, 50)
     .slice(0, 50)
     .reverse();
+  const guest = getPublicChatGuest(sessionId);
 
-  res.json({ status: 'success', data: history });
+  res.json({
+    status: 'success',
+    data: history,
+    guest: guest
+      ? {
+          session_id: guest.session_id,
+          name: guest.name,
+          phone: guest.phone
+        }
+      : null
+  });
 });
 
 app.post('/api/public/chat/guest', (req: Request, res: Response) => {
@@ -1821,6 +1835,67 @@ app.get('/api/chat/history', (req: Request, res: Response) => {
 
   res.json({ status: 'success', data: history });
 });
+
+function deleteChatSessionHandler(req: Request, res: Response) {
+  const sessionUserId = decodeURIComponent(String(req.params.sessionUserId || '').trim());
+  if (!sessionUserId) {
+    res.status(400).json({ status: 'error', message: 'Thiếu mã phiên trò chuyện.' });
+    return;
+  }
+
+  if (!assertCanManageChatSession(req, res, sessionUserId)) return;
+
+  const deletedCount = deleteChatHistoryByUserId(sessionUserId);
+  let guestDeleted = false;
+
+  if (sessionUserId.startsWith('public-')) {
+    const sessionId = sessionUserId.slice('public-'.length);
+    guestDeleted = deletePublicChatGuest(sessionId) > 0;
+  }
+
+  res.json({
+    status: 'success',
+    data: {
+      sessionUserId,
+      deletedMessages: deletedCount,
+      guestDeleted
+    }
+  });
+}
+
+app.delete('/api/chat/sessions/:sessionUserId', deleteChatSessionHandler);
+app.post('/api/chat/sessions/:sessionUserId/delete', deleteChatSessionHandler);
+
+function assertCanManageChatSession(req: Request, res: Response, sessionUserId: string): boolean {
+  const authUser = getAuthUser(req);
+
+  if (sessionUserId.startsWith('public-')) {
+    if (authUser.role === 'member') {
+      res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa lịch sử khách chat.' });
+      return false;
+    }
+    return true;
+  }
+
+  if (authUser.role === 'owner') return true;
+
+  if (authUser.role === 'company') {
+    if (sessionUserId === authUser.id) return true;
+    const meta = getChatHistorySessionMeta(sessionUserId);
+    if (meta?.company_id && meta.company_id !== authUser.company_id) {
+      res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa lịch sử chat này.' });
+      return false;
+    }
+    return true;
+  }
+
+  if (sessionUserId !== authUser.id) {
+    res.status(403).json({ status: 'error', message: 'Bạn chỉ được xóa lịch sử chat của chính mình.' });
+    return false;
+  }
+
+  return true;
+}
 
 app.get('/api/chat/guests', (req: Request, res: Response) => {
   const user = getAuthUser(req);

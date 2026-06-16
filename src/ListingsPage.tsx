@@ -39,12 +39,27 @@ interface PublicChatMessage {
 }
 
 interface PublicChatGuestProfile {
+  sessionId: string;
   name: string;
   phone: string;
 }
 
 const PUBLIC_CHAT_SESSION_KEY = 'real_estate_public_chat_session';
 const PUBLIC_CHAT_GUEST_KEY = 'real_estate_public_chat_guest';
+const PUBLIC_CHAT_WELCOME = 'Chào anh/chị, em là Lily AI tư vấn BĐS. Anh/chị đang tìm đất nền, nhà phố hay căn hộ?';
+
+function readStoredGuestProfile(sessionId: string): PublicChatGuestProfile | null {
+  try {
+    const saved = localStorage.getItem(PUBLIC_CHAT_GUEST_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as Partial<PublicChatGuestProfile>;
+    if (!parsed.name || !parsed.phone) return null;
+    if (parsed.sessionId && parsed.sessionId !== sessionId) return null;
+    return { sessionId, name: parsed.name, phone: parsed.phone };
+  } catch {
+    return null;
+  }
+}
 const zaloUrl = 'https://zalo.me/0905777594';
 const facebookUrl = 'https://www.facebook.com/estoria.dn';
 const phoneNumber = '0905 777 594';
@@ -169,12 +184,16 @@ function getPropertySeoTitle(property: Property) {
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
-  if (!text.trim()) return {};
+  if (!text.trim()) {
+    return { status: 'error', data: [], guest: null };
+  }
   try {
     return JSON.parse(text);
   } catch {
     return {
       status: 'error',
+      data: [],
+      guest: null,
       message: response.ok ? 'Phản hồi server không đúng định dạng JSON.' : `Server trả lỗi ${response.status}.`
     };
   }
@@ -293,21 +312,15 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const [chatOpen, setChatOpen] = useState(true);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [guestProfile, setGuestProfile] = useState<PublicChatGuestProfile | null>(() => {
-    try {
-      const saved = localStorage.getItem(PUBLIC_CHAT_GUEST_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [guestName, setGuestName] = useState(() => guestProfile?.name || '');
-  const [guestPhone, setGuestPhone] = useState(() => guestProfile?.phone || '');
+  const [guestProfileReady, setGuestProfileReady] = useState(false);
+  const [guestProfile, setGuestProfile] = useState<PublicChatGuestProfile | null>(null);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
   const [guestError, setGuestError] = useState('');
   const [chatMessages, setChatMessages] = useState<PublicChatMessage[]>([
     {
       role: 'model',
-      content: 'Chào anh/chị, em là Lily AI tư vấn BĐS. Anh/chị đang tìm đất nền, nhà phố hay căn hộ?'
+      content: PUBLIC_CHAT_WELCOME
     }
   ]);
   const [contactStatus, setContactStatus] = useState('');
@@ -368,11 +381,44 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       .catch(() => undefined);
   }, []);
 
+  const resetGuestProfile = React.useCallback(() => {
+    localStorage.removeItem(PUBLIC_CHAT_GUEST_KEY);
+    setGuestProfile(null);
+    setGuestError('');
+    setChatMessages([{ role: 'model', content: PUBLIC_CHAT_WELCOME }]);
+  }, []);
+
   React.useEffect(() => {
-    if (!guestProfile) return;
+    let cancelled = false;
+    const stored = readStoredGuestProfile(chatSessionId);
+    if (stored) {
+      setGuestName(stored.name);
+      setGuestPhone(stored.phone);
+    }
+
     fetch(`/api/public/chat/history?sessionId=${encodeURIComponent(chatSessionId)}`)
-      .then(response => response.json())
+      .then(readJsonResponse)
       .then(json => {
+        if (cancelled) return;
+
+        const profile = json.status === 'success' && json.guest?.name && json.guest?.phone
+          ? {
+              sessionId: chatSessionId,
+              name: String(json.guest.name),
+              phone: String(json.guest.phone)
+            }
+          : null;
+
+        if (profile) {
+          localStorage.setItem(PUBLIC_CHAT_GUEST_KEY, JSON.stringify(profile));
+          setGuestProfile(profile);
+          setGuestName(profile.name);
+          setGuestPhone(profile.phone);
+        } else {
+          localStorage.removeItem(PUBLIC_CHAT_GUEST_KEY);
+          setGuestProfile(null);
+        }
+
         if (Array.isArray(json.data) && json.data.length > 0) {
           setChatMessages(json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
             role: item.role,
@@ -380,14 +426,25 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           })));
         }
       })
-      .catch(error => console.error('Không thể tải lịch sử chat public:', error));
-  }, [chatSessionId, guestProfile]);
+      .catch(() => {
+        if (!cancelled && stored) {
+          setGuestProfile(stored);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGuestProfileReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatSessionId]);
 
   React.useEffect(() => {
     if (!guestProfile) return;
     const timer = window.setInterval(() => {
       fetch(`/api/public/chat/history?sessionId=${encodeURIComponent(chatSessionId)}`)
-        .then(response => response.json())
+        .then(readJsonResponse)
         .then(json => {
           if (Array.isArray(json.data)) {
             setChatMessages(json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
@@ -658,7 +715,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
       });
       const json = await readJsonResponse(response);
       if (!response.ok) throw new Error(json.message || 'Không thể bắt đầu chat.');
-      const profile = { name, phone };
+      const profile = { sessionId: chatSessionId, name, phone };
       localStorage.setItem(PUBLIC_CHAT_GUEST_KEY, JSON.stringify(profile));
       setGuestProfile(profile);
       setGuestError('');
@@ -687,6 +744,14 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         body: JSON.stringify({ message, sessionId: chatSessionId })
       });
       const json = await readJsonResponse(response);
+      if (!response.ok) {
+        if (response.status === 403) {
+          resetGuestProfile();
+          setGuestError(json.message || 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
+          return;
+        }
+        throw new Error(json.message || 'Không thể gửi tin nhắn.');
+      }
       if (json.aiPaused) {
         return;
       }
@@ -1179,7 +1244,11 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <X className="h-4 w-4" />
               </button>
             </div>
-            {!guestProfile ? (
+            {!guestProfileReady ? (
+              <div className="space-y-3 bg-slate-50 p-4 text-center text-sm text-slate-500">
+                Đang tải thông tin chat...
+              </div>
+            ) : !guestProfile ? (
               <form onSubmit={handleGuestSubmit} className="space-y-3 bg-slate-50 p-4">
                 <div>
                   <div className="text-sm font-bold text-slate-950">Thông tin nhanh trước khi chat</div>
@@ -1204,6 +1273,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </form>
             ) : (
             <>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+              <span className="truncate">{guestProfile.name} · {guestProfile.phone}</span>
+              <button
+                type="button"
+                onClick={resetGuestProfile}
+                className="shrink-0 font-semibold text-rose-600 hover:text-rose-500"
+              >
+                Đổi thông tin
+              </button>
+            </div>
             <div className="h-[50vh] max-h-80 min-h-64 space-y-3 overflow-y-auto bg-slate-50 p-4 app-scroll">
               {chatMessages.map((message, index) => (
                 <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
