@@ -5,6 +5,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'rea
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import ListingsPage from './ListingsPage.tsx';
+import CrawlerJobsPage from './CrawlerJobsPage.tsx';
+import CrawlerHealthPage from './CrawlerHealthPage.tsx';
+import LeadImportPage from './LeadImportPage.tsx';
 import './index.css';
 
 // Fetch properties data for public listings
@@ -55,6 +58,9 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/admin/login" element={<App />} />
           <Route path="/admin/dashboard" element={<App />} />
+          <Route path="/admin/crawler-jobs" element={<CrawlerJobsPage />} />
+          <Route path="/admin/crawler-health" element={<CrawlerHealthPage />} />
+          <Route path="/admin/lead-import" element={<LeadImportPage />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to="/" replace />} />

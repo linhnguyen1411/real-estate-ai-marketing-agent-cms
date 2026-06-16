@@ -1,0 +1,32 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Estoria Lead Collector",
+  "description": "Semi-auto + Auto Scroll: quet feed Facebook Group, luu lead co SDT ve CRM.",
+  "version": "3.1.4",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://bdsdanang.site/*",
+    "https://*.facebook.com/*",
+    "https://*.chotot.com/*",
+    "https://*.batdongsan.com.vn/*",
+    "https://*.alonhadat.com.vn/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "action": {
+    "default_title": "Luu lead ve CRM",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

@@ -158,3 +158,34 @@ Kênh uu tiên hi?n t?i:
 - Zalo
 
 Các kênh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? phòng và có th? tri?n khai sâu hon sau.
+
+---
+
+## Crawler MVP (Public Sources)
+
+Module crawler ch?y ngay trong MVP ? ch? ngu?n public, không bypass ??ng nh?p/captcha/tài kho?n cá nhân.
+
+### Ngu?n h? tr?
+- Google Search theo keyword (n?u b? ch?n ? ghi log, không bypass)
+- Website HTML public (`start_url`)
+- RSS/Atom feed
+- Liên k?t public t? trang g?c
+
+### C?u hình job
+`source_name`, `start_url`, `keyword`, `run_interval_minutes`, `status` (`active`/`paused`/`disabled`)
+
+### API
+- `GET/POST/PUT/DELETE /api/crawler-jobs`
+- `POST /api/crawler-jobs/:id/run`
+- `POST /api/crawler-jobs/run-all`
+- `GET /api/crawler-results`
+- `GET /api/crawler-logs`
+
+### Frontend
+`/admin/crawler-jobs` ? qu?n lý job, nút "Ch?y ngay", b?ng k?t qu? và log.
+
+### Scheduler
+Express + **node-cron** ? t? ch?y job `active` theo interval.
+
+### Lead extractor
+Phân lo?i intent: `buy` | `sell` | `rent` | `lease` | `unknown` ? l?u CRM (`source: crawler`), ch?ng trùng theo `phone + source_url`.

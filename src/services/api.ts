@@ -2,6 +2,15 @@ import {
   AppSettings,
   AuthUser,
   AutomationTask,
+  CrawlerJob,
+  CrawlerLog,
+  CrawlerResult,
+  CrawlerRunSummary,
+  CrawlerTestPreview,
+  CrawlerHealthData,
+  LeadExtractResult,
+  LeadSaveResult,
+  AutoCollectStats,
   Customer,
   ChatHistoryRecord,
   GeneratedContentRecord,
@@ -64,6 +73,7 @@ export interface DashboardData {
     siteViews?: number;
     propertyViews?: number;
     postViews?: number;
+    autoCollect?: AutoCollectStats;
   };
   metrics: Array<{
     platform: string;
@@ -229,6 +239,12 @@ export function updateCustomer(customerId: string, customer: Record<string, unkn
   });
 }
 
+export function deleteCustomer(customerId: string) {
+  return apiRequest<{ message: string }>(`/api/customers/${customerId}`, {
+    method: 'DELETE'
+  });
+}
+
 export function createProperty(property: Record<string, unknown>) {
   return apiRequest<Property>('/api/properties', {
     method: 'POST',
@@ -362,5 +378,130 @@ export function saveSettings(settings: AppSettings) {
   return apiRequest<AppSettings>('/api/settings', {
     method: 'PUT',
     body: JSON.stringify(settings)
+  });
+}
+
+export function getCrawlerJobs() {
+  return apiRequest<CrawlerJob[]>('/api/crawler-jobs');
+}
+
+export function createCrawlerJob(job: Partial<CrawlerJob>) {
+  return apiRequest<CrawlerJob>('/api/crawler-jobs', {
+    method: 'POST',
+    body: JSON.stringify(job)
+  });
+}
+
+export function updateCrawlerJob(jobId: string, job: Partial<CrawlerJob>) {
+  return apiRequest<CrawlerJob>(`/api/crawler-jobs/${jobId}`, {
+    method: 'PUT',
+    body: JSON.stringify(job)
+  });
+}
+
+export function deleteCrawlerJob(jobId: string) {
+  return apiRequest<{ id: string }>(`/api/crawler-jobs/${jobId}`, {
+    method: 'DELETE'
+  });
+}
+
+export function runCrawlerJob(jobId: string) {
+  return apiRequest<CrawlerRunSummary>(`/api/crawler-jobs/${jobId}/run`, {
+    method: 'POST'
+  });
+}
+
+export function testCrawlerJob(jobId: string) {
+  return apiRequest<CrawlerTestPreview>(`/api/crawler-jobs/${jobId}/test`, {
+    method: 'POST'
+  });
+}
+
+export function getCrawlerHealth() {
+  return apiRequest<CrawlerHealthData>('/api/crawler-health');
+}
+
+export function runAllCrawlerJobs() {
+  return apiRequest<CrawlerRunSummary[]>('/api/crawler-jobs/run-all', {
+    method: 'POST'
+  });
+}
+
+export function getCrawlerResults(jobId?: string) {
+  const suffix = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+  return apiRequest<CrawlerResult[]>(`/api/crawler-results${suffix}`);
+}
+
+export function getCrawlerLogs(jobId?: string) {
+  const suffix = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+  return apiRequest<CrawlerLog[]>(`/api/crawler-logs${suffix}`);
+}
+
+export function extractLead(payload: {
+  title?: string;
+  url?: string;
+  raw_content?: string;
+  selected_text?: string;
+}) {
+  return apiRequest<LeadExtractResult & { is_duplicate?: boolean; duplicate_reason?: string }>(
+    '/api/leads/extract',
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+export function saveLead(payload: {
+  preview?: LeadExtractResult;
+  title?: string;
+  url?: string;
+  raw_content?: string;
+  selected_text?: string;
+  source?: 'extension' | 'manual_import';
+}) {
+  return apiRequest<Customer>('/api/leads', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function bulkExtractLeads(rawContent: string) {
+  return apiRequest<Array<LeadExtractResult & { index: number; is_duplicate?: boolean; duplicate_reason?: string }>>(
+    '/api/leads/bulk-extract',
+    { method: 'POST', body: JSON.stringify({ raw_content: rawContent }) }
+  );
+}
+
+export function bulkSaveLeads(previews: LeadExtractResult[], source: 'extension' | 'manual_import' = 'manual_import') {
+  return apiRequest<{
+    saved_count: number;
+    duplicate_count: number;
+    results: Array<{ saved: boolean; duplicate?: boolean; reason?: string; customer?: Customer }>;
+  }>('/api/leads/batch-save', {
+    method: 'POST',
+    body: JSON.stringify({ previews, source })
+  });
+}
+
+export function extractLeadBatch(items: Array<{ raw_content: string; source_url?: string; block_id?: string }>) {
+  return apiRequest<{
+    count: number;
+    with_phone: number;
+    items: Array<LeadExtractResult & { index: number; block_id?: string; is_duplicate?: boolean }>;
+  }>('/api/leads/extract-batch', {
+    method: 'POST',
+    body: JSON.stringify({ items })
+  });
+}
+
+export function batchSaveLeads(
+  leads: Array<Record<string, unknown>>,
+  source: 'extension' | 'facebook-feed-auto' | 'manual_import' = 'extension'
+) {
+  return apiRequest<{
+    saved_count: number;
+    duplicate_count: number;
+    results: Array<{ saved: boolean; duplicate?: boolean; reason?: string; customer?: Customer; block_id?: string }>;
+  }>('/api/leads/batch-save', {
+    method: 'POST',
+    body: JSON.stringify({ leads, source })
   });
 }

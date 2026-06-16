@@ -19,7 +19,15 @@ import {
   upsertPublicChatGuest,
   deleteChatHistoryByUserId,
   deletePublicChatGuest,
-  getChatHistorySessionMeta
+  getChatHistorySessionMeta,
+  getCrawlerJobs,
+  getCrawlerJob,
+  createCrawlerJob,
+  updateCrawlerJob,
+  deleteCrawlerJob,
+  getCrawlerResults,
+  getCrawlerLogs,
+  getCrawlerHealth
 } from './server/dbHelper';
 import { 
   analyzeCustomerWithAI, 
@@ -33,13 +41,28 @@ import {
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 import { mergePostHashtags, mergeKeywordLists, hashtagsToKeywords, getPropertyContentForHashtags, collectSiteSeoKeywords as buildSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './src/utils/hashtags';
-
+import { runCrawlerJob, runAllActiveCrawlerJobs, testCrawlerJob } from './server/crawler/crawlerService';
+import { reloadCrawlerScheduler, scheduleCrawlerJob, unscheduleCrawlerJob, initCrawlerScheduler } from './server/crawler/scheduler';
+import { registerLeadRoutes } from './server/leadCollector/leadRoutes';
+import { LEAD_API_VERSION, LEAD_ENDPOINTS } from './server/leadCollector/leadApi';
+import { getExtensionCollectStats } from './server/dbHelper';
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof SyntaxError && 'body' in err) {
@@ -947,8 +970,20 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/leads/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'success',
+    data: { api: 'lead-collector', version: LEAD_API_VERSION, endpoints: LEAD_ENDPOINTS }
+  });
+});
+
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  if (req.path === '/health' || req.path === '/auth/login' || req.path.startsWith('/public/')) return next();
+  if (
+    req.path === '/health' ||
+    req.path === '/leads/health' ||
+    req.path === '/auth/login' ||
+    req.path.startsWith('/public/')
+  ) return next();
 
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   const decoded = token ? verifyToken(token) : null;
@@ -1233,6 +1268,7 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
         propertyViews,
         postViews,
         todayTasksCount: customers.filter(c => c.lead_score > 80 && c.status === 'hot').length,
+        autoCollect: getExtensionCollectStats()
       },
       metrics,
       traffic: {
@@ -1319,9 +1355,8 @@ app.put('/api/customers/:id', (req: Request, res: Response) => {
 app.delete('/api/customers/:id', (req: Request, res: Response) => {
   const db = readDatabase();
   const target = db.customers.find(c => c.id === req.params.id);
-  const filtered = db.customers.filter(c => c.id !== req.params.id);
-  
-  if (filtered.length === db.customers.length) {
+
+  if (!target) {
     res.status(404).json({ status: 'error', message: 'Không tìm thấy khách hàng' });
     return;
   }
@@ -1331,8 +1366,7 @@ app.delete('/api/customers/:id', (req: Request, res: Response) => {
     return;
   }
 
-  db.customers = filtered;
-  writeDatabase(db);
+  deleteCustomer(req.params.id);
   res.json({ status: 'success', message: 'Đã xóa khách hàng thành công' });
 });
 
@@ -2103,6 +2137,150 @@ app.put('/api/settings', (req: Request, res: Response) => {
 
 
 // ----------------------------------------------------
+// Crawler Jobs (public sources only — no login bypass)
+// ----------------------------------------------------
+app.get('/api/crawler-jobs', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  const jobs = user.role === 'owner'
+    ? getCrawlerJobs()
+    : getCrawlerJobs(user.company_id);
+  res.json({ status: 'success', data: jobs });
+});
+
+app.post('/api/crawler-jobs', (req: Request, res: Response) => {
+  const body = req.body || {};
+  const defaults = accessDefaults(req, body);
+  const job = createCrawlerJob({
+    source_name: body.source_name || 'Nguồn public',
+    start_url: body.start_url || '',
+    keyword: body.keyword || '',
+    run_interval_minutes: Number(body.run_interval_minutes) || 60,
+    status: body.status || 'active',
+    company_id: defaults.company_id
+  });
+  scheduleCrawlerJob(job);
+  res.json({ status: 'success', data: job });
+});
+
+app.put('/api/crawler-jobs/:id', (req: Request, res: Response) => {
+  const existing = getCrawlerJob(req.params.id);
+  if (!existing) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy crawler job' });
+    return;
+  }
+  if (!canManageResource(existing, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật job này.' });
+    return;
+  }
+
+  const body = req.body || {};
+  const job = updateCrawlerJob(req.params.id, {
+    source_name: body.source_name ?? existing.source_name,
+    start_url: body.start_url ?? existing.start_url,
+    keyword: body.keyword ?? existing.keyword,
+    run_interval_minutes: Number(body.run_interval_minutes ?? existing.run_interval_minutes),
+    status: body.status ?? existing.status
+  });
+  scheduleCrawlerJob(job);
+  res.json({ status: 'success', data: job });
+});
+
+app.delete('/api/crawler-jobs/:id', (req: Request, res: Response) => {
+  const existing = getCrawlerJob(req.params.id);
+  if (!existing) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy crawler job' });
+    return;
+  }
+  if (!canManageResource(existing, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa job này.' });
+    return;
+  }
+  unscheduleCrawlerJob(req.params.id);
+  deleteCrawlerJob(req.params.id);
+  res.json({ status: 'success', data: { id: req.params.id } });
+});
+
+app.post('/api/crawler-jobs/:id/run', async (req: Request, res: Response) => {
+  const existing = getCrawlerJob(req.params.id);
+  if (!existing) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy crawler job' });
+    return;
+  }
+  if (!canManageResource(existing, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền chạy job này.' });
+    return;
+  }
+
+  try {
+    const summary = await runCrawlerJob(req.params.id);
+    res.json({ status: 'success', data: summary });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message || 'Crawler job thất bại' });
+  }
+});
+
+app.post('/api/crawler-jobs/:id/test', async (req: Request, res: Response) => {
+  const existing = getCrawlerJob(req.params.id);
+  if (!existing) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy crawler job' });
+    return;
+  }
+  if (!canManageResource(existing, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền test job này.' });
+    return;
+  }
+
+  try {
+    const preview = await testCrawlerJob(req.params.id);
+    res.json({ status: 'success', data: preview });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message || 'Test crawler job thất bại' });
+  }
+});
+
+app.post('/api/crawler-jobs/run-all', async (req: Request, res: Response) => {
+  if (!requireOwner(req, res)) return;
+
+  try {
+    const summaries = await runAllActiveCrawlerJobs();
+    reloadCrawlerScheduler();
+    res.json({ status: 'success', data: summaries });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message || 'Chạy tất cả crawler jobs thất bại' });
+  }
+});
+
+app.get('/api/crawler-results', (req: Request, res: Response) => {
+  const jobId = typeof req.query.job_id === 'string' ? req.query.job_id : undefined;
+  const limit = Number(req.query.limit) || 100;
+  let results = getCrawlerResults({ jobId, limit });
+  const user = getAuthUser(req);
+  if (user.role !== 'owner') {
+    results = results.filter(item => !item.company_id || item.company_id === user.company_id);
+  }
+  res.json({ status: 'success', data: results });
+});
+
+app.get('/api/crawler-logs', (req: Request, res: Response) => {
+  const jobId = typeof req.query.job_id === 'string' ? req.query.job_id : undefined;
+  const limit = Number(req.query.limit) || 50;
+  res.json({ status: 'success', data: getCrawlerLogs({ jobId, limit }) });
+});
+
+app.get('/api/crawler-health', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  const health = user.role === 'owner'
+    ? getCrawlerHealth()
+    : getCrawlerHealth(user.company_id);
+  res.json({ status: 'success', data: health });
+});
+
+
+// Lead Collector API — docs: docs/LEAD-API.md
+registerLeadRoutes(app, accessDefaults);
+
+
+// ----------------------------------------------------
 // Web Front-end Asset serving
 // ----------------------------------------------------
 const DEFAULT_SEO_KEYWORDS = [
@@ -2463,4 +2641,9 @@ app.listen(PORT, HOST, () => {
   console.log(`🚀 Real Estate AI CMS is listening on port ${PORT}!`);
   console.log(`🌍 Live Preview at: http://localhost:${PORT}`);
   console.log(`====================================================`);
+  try {
+    initCrawlerScheduler();
+  } catch (error) {
+    console.warn('[CRAWLER] Scheduler init failed:', error);
+  }
 });

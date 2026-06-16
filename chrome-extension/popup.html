@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Estoria Lead Collector</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { width: 420px; margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; font-size: 13px; }
+    .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; }
+    h1 { font-size: 14px; margin: 0; color: #fda4af; }
+    h2 { font-size: 12px; margin: 0; color: #38bdf8; text-transform: uppercase; letter-spacing: .04em; }
+    .sub { font-size: 11px; color: #94a3b8; line-height: 1.4; }
+    label { font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px; }
+    input[type="text"], input[type="email"], input[type="password"], input[type="number"] { width: 100%; background: #020617; border: 1px solid #1e293b; color: #f1f5f9; border-radius: 8px; padding: 8px; font-size: 12px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button { flex: 1; border: none; border-radius: 8px; padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: #e11d48; color: white; }
+    .btn-secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    .btn-success { background: #059669; color: white; }
+    .btn-warn { background: #d97706; color: white; }
+    .btn-danger { background: #7f1d1d; color: #fecaca; border: 1px solid #991b1b; }
+    .btn-sm { flex: 0; padding: 4px 8px; font-size: 10px; font-weight: 500; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .auto-box { background: #020617; border: 1px solid #1e293b; border-radius: 10px; padding: 10px; }
+    .status { font-size: 11px; min-height: 16px; }
+    .status.err { color: #fca5a5; }
+    .status.ok { color: #86efac; }
+    .login { display: flex; flex-direction: column; gap: 8px; }
+    .hidden { display: none !important; }
+    .site-hint { font-size: 11px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; border: 1px solid #1e293b; background: #020617; }
+    .site-hint.fb { border-color: #166534; background: #052e16; color: #bbf7d0; }
+    .site-hint.masked { border-color: #92400e; background: #451a03; color: #fde68a; }
+    .auto-note { font-size: 11px; color: #94a3b8; line-height: 1.4; margin: 0 0 6px; }
+    .debug-panel { font-size: 10px; color: #64748b; border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 4px; }
+    .debug-panel .kv span:first-child { min-width: 130px; }
+    .kv { display: flex; gap: 6px; font-size: 11px; }
+    .kv span:first-child { color: #64748b; }
+    .review-box { max-height: 240px; overflow-y: auto; background: #020617; border: 1px solid #1e293b; border-radius: 10px; padding: 8px; }
+    .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px; color: #94a3b8; }
+    .review-actions { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .review-actions button { flex: 1; min-width: 90px; }
+    .review-card { border: 1px solid #1e293b; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #0f172a; }
+    .review-card.dup { border-color: #92400e; }
+    .review-card-head { display: flex; gap: 8px; align-items: flex-start; }
+    .review-card-head input { margin-top: 2px; }
+    .review-phone { font-weight: 700; color: #f8fafc; font-size: 12px; }
+    .review-meta { font-size: 10px; color: #64748b; margin: 3px 0; }
+    .review-snippet { font-size: 10px; color: #94a3b8; line-height: 1.4; margin: 4px 0; }
+    .review-card-actions { display: flex; gap: 4px; margin-top: 6px; }
+    .review-empty { font-size: 11px; color: #64748b; text-align: center; padding: 12px 0; }
+    .tag { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px; background: #1e293b; color: #94a3b8; margin-right: 4px; }
+    .tag.warn { background: #451a03; color: #fde68a; }
+    .tag.skip { background: #450a0a; color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <h1>Estoria Lead Collector</h1>
+      <p class="sub">Post Block Scanner — quét từng bài trong viewport, không dùng body.innerText.</p>
+    </div>
+
+    <div id="loginPanel" class="login">
+      <label>API URL</label>
+      <input id="apiBase" value="http://localhost:3000" />
+      <label>Email CRM</label>
+      <input id="email" type="email" placeholder="owner@example.com" />
+      <label>Mật khẩu</label>
+      <input id="password" type="password" />
+      <button class="btn-primary" id="loginBtn">Đăng nhập</button>
+    </div>
+
+    <div id="mainPanel" class="hidden">
+      <div id="siteHint" class="site-hint">Mở tab Facebook Group hoặc trang chi tiết tin BDS.</div>
+
+      <h2>Scan</h2>
+      <div class="row">
+        <button class="btn-secondary" id="scanBtn">Quét block hiện tại</button>
+      </div>
+
+      <h2>Auto Scroll</h2>
+      <div class="auto-box">
+        <p id="autoSectionNote" class="auto-note">Mỗi vòng: scanVisibleBlocks → merge → scroll 70-90% viewport.</p>
+        <label>Số lead mục tiêu</label>
+        <input id="maxPosts" type="number" min="1" max="500" value="30" />
+        <div class="row" style="margin-top:8px">
+          <button class="btn-warn" id="autoScrollBtn">Start Auto Scroll</button>
+          <button class="btn-danger" id="stopBtn" disabled>Stop</button>
+        </div>
+      </div>
+
+      <h2>Review Leads</h2>
+      <div class="review-actions">
+        <button class="btn-success" id="saveSelectedBtn" disabled>Save Selected</button>
+        <button class="btn-success" id="saveAllBtn" disabled>Save All</button>
+        <button class="btn-secondary" id="clearBtn">Clear Results</button>
+      </div>
+      <div class="review-box">
+        <div class="review-header">
+          <span>Lead cards</span>
+          <span><strong id="reviewCount">0</strong> lead</span>
+        </div>
+        <div id="reviewList">
+          <div class="review-empty">Chưa có lead — Quét block hoặc Auto Scroll.</div>
+        </div>
+      </div>
+
+      <button class="btn-secondary" id="crmBtn" style="width:100%;margin-top:4px">Mở CRM</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="debugPanel" class="debug-panel">
+      <div class="kv"><span>Storage</span><span id="dbgStorage">—</span></div>
+      <div class="kv"><span>Content v</span><span id="dbgVersion">—</span></div>
+      <div class="kv"><span>FB feed</span><span id="dbgFeed">—</span></div>
+      <div class="kv"><span>Top frame</span><span id="dbgTopFrame">—</span></div>
+      <div class="kv"><span>loopCount</span><span id="dbgLoopCount">0</span></div>
+      <div class="kv"><span>visibleBlocksCount</span><span id="dbgVisibleBlocks">0</span></div>
+      <div class="kv"><span>scannedBlocksTotal</span><span id="dbgScannedBlocks">0</span></div>
+      <div class="kv"><span>phonesFoundTotal</span><span id="dbgPhonesFound">0</span></div>
+      <div class="kv"><span>leadsCreatedTotal</span><span id="dbgLeadsCreated">0</span></div>
+      <div class="kv"><span>dedupedCount</span><span id="dbgDeduped">0</span></div>
+      <div class="kv"><span>skippedNoiseCount</span><span id="dbgSkippedNoise">0</span></div>
+      <div class="kv"><span>skippedNoBdsContext</span><span id="dbgSkippedNoBds">0</span></div>
+      <div class="kv"><span>currentScrollY</span><span id="dbgCurrentScrollY">0</span></div>
+      <div class="kv"><span>stopReason</span><span id="dbgStopReason">—</span></div>
+    </div>
+  </div>
+  <script src="dist/popup.js"></script>
+</body>
+</html>

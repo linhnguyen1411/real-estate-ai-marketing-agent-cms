@@ -130,6 +130,46 @@ function ensureSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generated_company_channel ON generated_contents(company_id, channel);
     CREATE INDEX IF NOT EXISTS idx_generated_property ON generated_contents(property_id);
     CREATE INDEX IF NOT EXISTS idx_generated_status ON generated_contents(status);
+    CREATE TABLE IF NOT EXISTS crawler_jobs (
+      id TEXT PRIMARY KEY,
+      source_name TEXT NOT NULL,
+      start_url TEXT NOT NULL DEFAULT '',
+      keyword TEXT NOT NULL DEFAULT '',
+      run_interval_minutes INTEGER NOT NULL DEFAULT 60,
+      status TEXT NOT NULL DEFAULT 'active',
+      company_id TEXT,
+      last_run_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_crawler_jobs_status ON crawler_jobs(status);
+    CREATE TABLE IF NOT EXISTS crawler_results (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      source_name TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      phone TEXT,
+      source_url TEXT NOT NULL,
+      intent TEXT NOT NULL DEFAULT 'unknown',
+      lead_id TEXT,
+      company_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(phone, source_url)
+    );
+    CREATE INDEX IF NOT EXISTS idx_crawler_results_job ON crawler_results(job_id);
+    CREATE INDEX IF NOT EXISTS idx_crawler_results_created ON crawler_results(created_at);
+    CREATE TABLE IF NOT EXISTS crawler_logs (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      pages_scanned INTEGER NOT NULL DEFAULT 0,
+      new_leads INTEGER NOT NULL DEFAULT 0,
+      duplicates INTEGER NOT NULL DEFAULT 0,
+      errors TEXT NOT NULL DEFAULT '[]',
+      message TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_crawler_logs_job ON crawler_logs(job_id);
   `);
 
   const settings = db.prepare("SELECT key FROM settings WHERE key = 'app'").get();
@@ -169,6 +209,8 @@ function buildSearchText(record: any) {
     record.status,
     record.sale_status,
     record.phone,
+    ...(Array.isArray(record.phones) ? record.phones : []),
+    ...(Array.isArray(record.possible_phones) ? record.possible_phones : []),
     record.email,
     record.source,
     record.interested_area,
@@ -477,7 +519,11 @@ export function getCustomers() {
 }
 
 export function createCustomer(data: any) {
-  const record = { ...data, id: data.id || `c-${Date.now()}`, created_at: data.created_at || new Date().toISOString() };
+  const record = {
+    ...data,
+    id: data.id || `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    created_at: data.created_at || new Date().toISOString()
+  };
   upsertRecord("customers", record);
   return record;
 }
@@ -492,6 +538,7 @@ export function updateCustomer(id: string, data: any) {
 
 export function deleteCustomer(id: string) {
   getSqlite().prepare("DELETE FROM cms_records WHERE collection = 'customers' AND id = ?").run(id);
+  getSqlite().prepare("DELETE FROM cms_records_fts WHERE collection = 'customers' AND id = ?").run(id);
 }
 
 export function getProperties() {
@@ -609,5 +656,336 @@ export function getAllDataForContext() {
     properties: getProperties(),
     posts: getPosts(),
     settings: getSettings()
+  };
+}
+
+function parseCrawlerJobRow(row: any) {
+  return {
+    id: row.id,
+    source_name: row.source_name,
+    start_url: row.start_url,
+    keyword: row.keyword,
+    run_interval_minutes: row.run_interval_minutes,
+    status: row.status,
+    company_id: row.company_id || undefined,
+    last_run_at: row.last_run_at || undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+function parseCrawlerResultRow(row: any) {
+  return {
+    id: row.id,
+    job_id: row.job_id,
+    source_name: row.source_name,
+    title: row.title,
+    text: row.text,
+    phone: row.phone || undefined,
+    source_url: row.source_url,
+    intent: row.intent,
+    lead_id: row.lead_id || undefined,
+    company_id: row.company_id || undefined,
+    created_at: row.created_at
+  };
+}
+
+function parseCrawlerLogRow(row: any) {
+  return {
+    id: row.id,
+    job_id: row.job_id,
+    pages_scanned: row.pages_scanned,
+    new_leads: row.new_leads,
+    duplicates: row.duplicates,
+    errors: JSON.parse(row.errors || '[]'),
+    message: row.message,
+    created_at: row.created_at
+  };
+}
+
+export function getCrawlerJobs(companyId?: string) {
+  const rows = companyId
+    ? getSqlite().prepare("SELECT * FROM crawler_jobs WHERE company_id = ? OR company_id IS NULL ORDER BY created_at DESC").all(companyId)
+    : getSqlite().prepare("SELECT * FROM crawler_jobs ORDER BY created_at DESC").all();
+  return (rows as any[]).map(parseCrawlerJobRow);
+}
+
+export function getCrawlerJob(id: string) {
+  const row = getSqlite().prepare("SELECT * FROM crawler_jobs WHERE id = ?").get(id) as any;
+  return row ? parseCrawlerJobRow(row) : undefined;
+}
+
+export function getActiveCrawlerJobs() {
+  return (getSqlite().prepare("SELECT * FROM crawler_jobs WHERE status = 'active' ORDER BY created_at DESC").all() as any[])
+    .map(parseCrawlerJobRow);
+}
+
+export function createCrawlerJob(data: {
+  source_name: string;
+  start_url?: string;
+  keyword?: string;
+  run_interval_minutes?: number;
+  status?: string;
+  company_id?: string;
+}) {
+  const now = new Date().toISOString();
+  const id = `crawl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  getSqlite().prepare(`
+    INSERT INTO crawler_jobs (id, source_name, start_url, keyword, run_interval_minutes, status, company_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.source_name,
+    data.start_url || '',
+    data.keyword || '',
+    data.run_interval_minutes ?? 60,
+    data.status || 'active',
+    data.company_id || null,
+    now,
+    now
+  );
+  return getCrawlerJob(id)!;
+}
+
+export function updateCrawlerJob(id: string, data: Partial<{
+  source_name: string;
+  start_url: string;
+  keyword: string;
+  run_interval_minutes: number;
+  status: string;
+  last_run_at: string;
+}>) {
+  const current = getCrawlerJob(id);
+  if (!current) throw new Error('Crawler job not found');
+  const now = new Date().toISOString();
+  const updated = { ...current, ...data, updated_at: now };
+  getSqlite().prepare(`
+    UPDATE crawler_jobs SET
+      source_name = ?, start_url = ?, keyword = ?, run_interval_minutes = ?,
+      status = ?, last_run_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    updated.source_name,
+    updated.start_url,
+    updated.keyword,
+    updated.run_interval_minutes,
+    updated.status,
+    updated.last_run_at || null,
+    now,
+    id
+  );
+  return getCrawlerJob(id)!;
+}
+
+export function deleteCrawlerJob(id: string) {
+  getSqlite().prepare("DELETE FROM crawler_jobs WHERE id = ?").run(id);
+}
+
+export function getCrawlerResults(options?: { jobId?: string; limit?: number }) {
+  const limit = options?.limit ?? 100;
+  const rows = options?.jobId
+    ? getSqlite().prepare("SELECT * FROM crawler_results WHERE job_id = ? ORDER BY created_at DESC LIMIT ?").all(options.jobId, limit)
+    : getSqlite().prepare("SELECT * FROM crawler_results ORDER BY created_at DESC LIMIT ?").all(limit);
+  return (rows as any[]).map(parseCrawlerResultRow);
+}
+
+export function findCrawlerDuplicate(phone: string, sourceUrl: string) {
+  if (!phone) return undefined;
+  const row = getSqlite().prepare("SELECT * FROM crawler_results WHERE phone = ? AND source_url = ?").get(phone, sourceUrl) as any;
+  return row ? parseCrawlerResultRow(row) : undefined;
+}
+
+export function findCrawlerResultByUrl(sourceUrl: string) {
+  const row = getSqlite().prepare("SELECT * FROM crawler_results WHERE source_url = ?").get(sourceUrl) as any;
+  return row ? parseCrawlerResultRow(row) : undefined;
+}
+
+export function findCustomerByPhone(phone: string) {
+  if (!phone) return undefined;
+  const normalized = phone.replace(/\D/g, '');
+  const customers = getCustomers();
+  return customers.find(c => c.phone && c.phone.replace(/\D/g, '') === normalized);
+}
+
+export function createCrawlerResult(data: {
+  job_id: string;
+  source_name: string;
+  title: string;
+  text: string;
+  phone?: string;
+  source_url: string;
+  intent: string;
+  lead_id?: string;
+  company_id?: string;
+}) {
+  const id = `cres-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const now = new Date().toISOString();
+  getSqlite().prepare(`
+    INSERT INTO crawler_results (id, job_id, source_name, title, text, phone, source_url, intent, lead_id, company_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.job_id,
+    data.source_name,
+    data.title,
+    data.text,
+    data.phone || null,
+    data.source_url,
+    data.intent,
+    data.lead_id || null,
+    data.company_id || null,
+    now
+  );
+  return { id, ...data, created_at: now };
+}
+
+export function saveCrawlerLog(data: {
+  job_id: string;
+  pages_scanned: number;
+  new_leads: number;
+  duplicates: number;
+  errors: string[];
+  message: string;
+}) {
+  const id = `clog-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const now = new Date().toISOString();
+  getSqlite().prepare(`
+    INSERT INTO crawler_logs (id, job_id, pages_scanned, new_leads, duplicates, errors, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.job_id,
+    data.pages_scanned,
+    data.new_leads,
+    data.duplicates,
+    JSON.stringify(data.errors),
+    data.message,
+    now
+  );
+  return { id, ...data, created_at: now };
+}
+
+export function getCrawlerLogs(options?: { jobId?: string; limit?: number }) {
+  const limit = options?.limit ?? 50;
+  const rows = options?.jobId
+    ? getSqlite().prepare("SELECT * FROM crawler_logs WHERE job_id = ? ORDER BY created_at DESC LIMIT ?").all(options.jobId, limit)
+    : getSqlite().prepare("SELECT * FROM crawler_logs ORDER BY created_at DESC LIMIT ?").all(limit);
+  return (rows as any[]).map(parseCrawlerLogRow);
+}
+
+function getTodayStartIso() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function isBlockError(message: string) {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('captcha') ||
+    lower.includes('chặn') ||
+    lower.includes('chan') ||
+    lower.includes('blocked') ||
+    lower.includes('bị chặn') ||
+    lower.includes('google search') ||
+    lower.includes('unusual traffic') ||
+    lower.includes('403') ||
+    lower.includes('429')
+  );
+}
+
+export function getExtensionCollectStats() {
+  const rows = getSqlite().prepare(`
+    SELECT pages_scanned, new_leads, duplicates, message, created_at
+    FROM crawler_logs
+    WHERE job_id LIKE 'ext-auto-%'
+    ORDER BY created_at DESC
+  `).all() as any[];
+
+  let totalPosts = 0;
+  let totalNew = 0;
+  let totalDup = 0;
+  let totalFound = 0;
+
+  rows.forEach(row => {
+    totalPosts += Number(row.pages_scanned || 0);
+    totalNew += Number(row.new_leads || 0);
+    totalDup += Number(row.duplicates || 0);
+    try {
+      const meta = JSON.parse(row.message || '{}');
+      totalFound += Number(meta.leads_found || 0);
+    } catch {
+      // skip
+    }
+  });
+
+  const conversion = totalPosts > 0 ? Math.round((totalNew / totalPosts) * 1000) / 10 : 0;
+
+  return {
+    total_posts_scanned: totalPosts,
+    total_leads_found: totalFound,
+    total_new_leads: totalNew,
+    total_duplicates: totalDup,
+    conversion_rate: conversion,
+    sessions_count: rows.length,
+    last_session_at: rows[0]?.created_at
+  };
+}
+
+export function getCrawlerHealth(companyId?: string) {
+  const db = getSqlite();
+  const todayStart = getTodayStartIso();
+
+  const jobs = companyId
+    ? (db.prepare("SELECT * FROM crawler_jobs WHERE company_id = ? OR company_id IS NULL").all(companyId) as any[])
+    : (db.prepare("SELECT * FROM crawler_jobs").all() as any[]);
+
+  const activeJobs = jobs.filter(j => j.status === 'active').length;
+
+  const lastRunRow = db.prepare(`
+    SELECT MAX(last_run_at) AS last_run_at FROM crawler_jobs
+    ${companyId ? "WHERE company_id = ? OR company_id IS NULL" : ""}
+  `).get(...(companyId ? [companyId] : [])) as { last_run_at?: string };
+
+  const leadsTodayRow = db.prepare(`
+    SELECT COALESCE(SUM(new_leads), 0) AS total FROM crawler_logs WHERE created_at >= ?
+  `).get(todayStart) as { total: number };
+
+  const logsToday = db.prepare(`
+    SELECT job_id, errors FROM crawler_logs WHERE created_at >= ?
+  `).all(todayStart) as Array<{ job_id: string; errors: string }>;
+
+  let errorsToday = 0;
+  const blockCountByJob = new Map<string, { count: number; lastError?: string }>();
+
+  logsToday.forEach(log => {
+    const parsedErrors: string[] = JSON.parse(log.errors || '[]');
+    if (parsedErrors.length) errorsToday += parsedErrors.length;
+    parsedErrors.forEach(err => {
+      if (!isBlockError(err)) return;
+      const current = blockCountByJob.get(log.job_id) || { count: 0 };
+      current.count += 1;
+      current.lastError = err;
+      blockCountByJob.set(log.job_id, current);
+    });
+  });
+
+  const jobNameById = new Map(jobs.map(j => [j.id, j.source_name]));
+  const blockedJobs = Array.from(blockCountByJob.entries())
+    .map(([job_id, info]) => ({
+      job_id,
+      source_name: jobNameById.get(job_id) || job_id,
+      block_count: info.count,
+      last_error: info.lastError
+    }))
+    .sort((a, b) => b.block_count - a.block_count);
+
+  return {
+    active_jobs: activeJobs,
+    total_jobs: jobs.length,
+    last_run_at: lastRunRow?.last_run_at || undefined,
+    new_leads_today: Number(leadsTodayRow?.total || 0),
+    errors_today: errorsToday,
+    blocked_jobs: blockedJobs
   };
 }

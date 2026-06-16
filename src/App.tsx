@@ -38,6 +38,8 @@ import {
   Clock,
   Eye,
   Globe,
+  Activity,
+  ClipboardPaste,
   ShieldCheck,
   UserPlus,
   Menu,
@@ -52,6 +54,7 @@ import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
 import {
   analyzeCustomer,
   createCustomer,
+  deleteCustomer,
   createProperty,
   deleteProperty,
   createUser,
@@ -166,6 +169,7 @@ export default function App() {
 
   // Modals & form fields state
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(new Set());
   const [newCustomerForm, setNewCustomerForm] = useState({
     name: '', phone: '', email: '', source: 'facebook', budget: '5', 
     interested_area: 'Hòa Xuân, Cẩm Lệ', property_type: 'Đất nền', status: 'new', notes: ''
@@ -433,6 +437,7 @@ export default function App() {
     localStorage.removeItem('real_estate_ai_active_tab');
     setCurrentUser(null);
     setCustomers([]);
+    setSelectedCustomerIds(new Set());
     setProperties([]);
     setPosts([]);
     setInbox([]);
@@ -905,6 +910,82 @@ export default function App() {
       });
     } catch (e: any) {
       showToast(e.message || "Lỗi thêm khách.", "error");
+    }
+  };
+
+  const toggleCustomerSelection = (customerId: string) => {
+    setSelectedCustomerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(customerId)) next.delete(customerId);
+      else next.add(customerId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFilteredCustomers = (filtered: Customer[]) => {
+    const ids = filtered.map(c => c.id);
+    const allSelected = ids.length > 0 && ids.every(id => selectedCustomerIds.has(id));
+    setSelectedCustomerIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    const target = customers.find(c => c.id === customerId);
+    if (!target) return;
+    if (!window.confirm(`Xóa khách hàng "${target.name}" (${target.phone})?`)) return;
+
+    setActionLoading(`delete-cust-${customerId}`);
+    try {
+      await deleteCustomer(customerId);
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
+      setSelectedCustomerIds(prev => {
+        const next = new Set(prev);
+        next.delete(customerId);
+        return next;
+      });
+      showToast('Đã xóa khách hàng.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Không thể xóa khách hàng.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteSelectedCustomers = async (filtered: Customer[]) => {
+    const ids = Array.from(selectedCustomerIds).filter(id => filtered.some(c => c.id === id));
+    if (!ids.length) {
+      showToast('Chưa chọn khách hàng nào.', 'error');
+      return;
+    }
+    if (!window.confirm(`Xóa ${ids.length} khách hàng đã chọn? Thao tác không hoàn tác được.`)) return;
+
+    setActionLoading('delete-cust-bulk');
+    try {
+      const results = await Promise.allSettled(ids.map(id => deleteCustomer(id)));
+      const deletedIds = ids.filter((_, index) => results[index].status === 'fulfilled');
+      setCustomers(prev => prev.filter(c => !deletedIds.includes(c.id)));
+      setSelectedCustomerIds(prev => {
+        const next = new Set(prev);
+        deletedIds.forEach(id => next.delete(id));
+        return next;
+      });
+      const failed = ids.length - deletedIds.length;
+      if (deletedIds.length) {
+        showToast(
+          failed
+            ? `Đã xóa ${deletedIds.length} khách, ${failed} lỗi (quyền hoặc không tìm thấy).`
+            : `Đã xóa ${deletedIds.length} khách hàng.`,
+          failed ? 'error' : 'success'
+        );
+      } else {
+        showToast('Không xóa được khách hàng nào.', 'error');
+      }
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -1423,16 +1504,25 @@ export default function App() {
               ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
               { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
+              { id: 'lead-import-link', label: 'Import Lead (Semi-auto)', icon: ClipboardPaste, href: '/admin/lead-import' },
+              { id: 'crawler-jobs-link', label: 'Crawler public - experimental', icon: Globe, href: '/admin/crawler-jobs' },
+              { id: 'crawler-health-link', label: 'Crawler Health', icon: Activity, href: '/admin/crawler-health' },
               ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
               { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
               { id: 'settings', label: 'Cấu hình hệ thống', icon: SettingsIcon },
             ].map(item => {
               const IconComp = item.icon;
               const isSelected = activeTab === item.id;
+              const href = (item as { href?: string }).href;
               return (
                 <button
                   key={item.id}
                   onClick={() => {
+                    if (href) {
+                      navigate(href);
+                      setAdminMenuOpen(false);
+                      return;
+                    }
                     setActiveTab(item.id);
                     setSearchQuery('');
                     setAdminMenuOpen(false);
@@ -1585,6 +1675,37 @@ export default function App() {
                       );
                     })}
                   </div>
+
+                  {dashboardData.stats.autoCollect && (
+                    <div className="bg-slate-900/40 p-5 rounded-2xl border border-sky-500/20 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Auto Scroll & Collect (Extension)</h3>
+                        <p className="text-xs text-slate-400 mt-1">Nguồn CRM: facebook-feed-auto — chỉ bài có SĐT</p>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="text-xs text-slate-500">Bài đã quét</div>
+                          <div className="text-xl font-bold text-white">{dashboardData.stats.autoCollect.total_posts_scanned}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="text-xs text-slate-500">Lead tìm thấy</div>
+                          <div className="text-xl font-bold text-sky-300">{dashboardData.stats.autoCollect.total_leads_found}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="text-xs text-slate-500">Lead mới</div>
+                          <div className="text-xl font-bold text-emerald-300">{dashboardData.stats.autoCollect.total_new_leads}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="text-xs text-slate-500">Trùng</div>
+                          <div className="text-xl font-bold text-amber-300">{dashboardData.stats.autoCollect.total_duplicates}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="text-xs text-slate-500">Tỷ lệ chuyển đổi</div>
+                          <div className="text-xl font-bold text-rose-300">{dashboardData.stats.autoCollect.conversion_rate}%</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-5">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -1929,12 +2050,26 @@ export default function App() {
               {/* ==================================================== */}
               {activeTab === 'crm' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         Quản lý khách hàng CRM
                       </h2>
                       <p className="text-slate-400 text-sm">Quản lý vòng đời khách hàng bất động sản và kích hoạt AI Agent phân tích hành vi.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-400">
+                        Đã chọn: <span className="font-bold text-white">{selectedCustomerIds.size}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSelectedCustomers(filteredCustomers)}
+                        disabled={selectedCustomerIds.size === 0 || actionLoading === 'delete-cust-bulk'}
+                        className="text-xs bg-rose-700 hover:bg-rose-600 disabled:opacity-40 text-white font-bold px-3 py-2 rounded-xl flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {actionLoading === 'delete-cust-bulk' ? 'Đang xóa...' : 'Xóa đã chọn'}
+                      </button>
                     </div>
                   </div>
 
@@ -1944,6 +2079,24 @@ export default function App() {
                       <table className="w-full text-sm text-left">
                         <thead>
                           <tr className="border-b border-slate-900 text-xs uppercase tracking-wider text-slate-500">
+                            <th className="py-4 px-4 w-10">
+                              <input
+                                type="checkbox"
+                                className="accent-rose-600"
+                                checked={
+                                  filteredCustomers.length > 0 &&
+                                  filteredCustomers.every(c => selectedCustomerIds.has(c.id))
+                                }
+                                ref={(el) => {
+                                  if (!el) return;
+                                  const some = filteredCustomers.some(c => selectedCustomerIds.has(c.id));
+                                  const all = filteredCustomers.length > 0 && filteredCustomers.every(c => selectedCustomerIds.has(c.id));
+                                  el.indeterminate = some && !all;
+                                }}
+                                onChange={() => toggleSelectAllFilteredCustomers(filteredCustomers)}
+                                title="Chọn tất cả (theo bộ lọc hiện tại)"
+                              />
+                            </th>
                             <th className="py-4 px-5">Tên khách hàng</th>
                             <th className="py-4 px-5">Liên hệ</th>
                             <th className="py-4 px-5">Nguồn</th>
@@ -1955,7 +2108,20 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-900">
                           {filteredCustomers.map((cust) => (
-                            <tr key={cust.id} className="hover:bg-slate-900/20 transition-all even:bg-slate-900/10">
+                            <tr
+                              key={cust.id}
+                              className={`hover:bg-slate-900/20 transition-all even:bg-slate-900/10 ${
+                                selectedCustomerIds.has(cust.id) ? 'bg-rose-500/5' : ''
+                              }`}
+                            >
+                              <td className="py-4 px-4">
+                                <input
+                                  type="checkbox"
+                                  className="accent-rose-600"
+                                  checked={selectedCustomerIds.has(cust.id)}
+                                  onChange={() => toggleCustomerSelection(cust.id)}
+                                />
+                              </td>
                               <td className="py-4 px-5">
                                 <div className="font-bold text-white">{cust.name}</div>
                                 <span className="text-xs text-slate-500 font-mono">ID: {cust.id}</span>
@@ -2028,6 +2194,14 @@ export default function App() {
                                     className="text-2xs text-slate-400 hover:text-rose-400 underline"
                                   >
                                     Tạo bài gửi khách
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteCustomer(cust.id)}
+                                    disabled={actionLoading === `delete-cust-${cust.id}`}
+                                    className="text-2xs text-slate-500 hover:text-rose-400 flex items-center gap-1 justify-end w-full"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    {actionLoading === `delete-cust-${cust.id}` ? 'Đang xóa...' : 'Xóa'}
                                   </button>
                                 </div>
                               </td>
