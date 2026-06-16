@@ -6,6 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
-data/*.sqlite
-data/*.sqlite-*
+!.env.postgres.example
+!.env.example
+data/prod-dump.sql
+data/*.dump
 data/*.bak

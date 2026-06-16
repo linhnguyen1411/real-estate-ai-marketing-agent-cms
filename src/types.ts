@@ -81,6 +81,8 @@ export interface Property {
   map_latitude?: number;
   map_longitude?: number;
   selling_points: string[]; // Key selling highligts
+  project_name?: string;
+  market_zone?: string;
   ai_posts?: {
     strategy?: {
       target_customer: string;
@@ -136,6 +138,54 @@ export interface Post {
   company_id?: string;
   owner_user_id?: string;
   assigned_member_ids?: string[];
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  hubPath: string;
+}
+
+export interface BlogAuthor {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogFaq {
+  id?: string;
+  question: string;
+  answer: string;
+  sortOrder?: number;
+}
+
+export interface BlogArticle {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content?: string;
+  metaTitle: string;
+  metaDescription: string;
+  coverImage?: string | null;
+  status: 'draft' | 'published';
+  categoryId: string;
+  authorId: string;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  category?: BlogCategory;
+  author?: BlogAuthor;
+  tags?: BlogTag[];
+  faqs?: BlogFaq[];
 }
 
 export interface InboxMessage {

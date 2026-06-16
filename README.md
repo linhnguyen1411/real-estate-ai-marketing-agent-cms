@@ -1,160 +1,162 @@
 # Real Estate AI Marketing Agent CMS
 
-Hệ thống quản trị nội dung (CMS), quản lý khách hàng (CRM) và Tự động hóa tiếp thị tích hợp **AI Agent chuyên sâu cho Marketing Bất động sản** tại Việt Nam.
+H? th?ng qu?n tr? n?i dung (CMS), qu?n l� kh�ch h�ng (CRM) v� T? ??ng h�a ti?p th? t�ch h?p **AI Agent chuy�n s�u cho Marketing B?t ??ng s?n** t?i Vi?t Nam.
 
-Ứng dụng hỗ trợ các nhà phát triển bất động sản và đại lý môi giới tự động hóa toàn bộ quy trình từ khâu thu thập thông tin nhà đất, tạo vô vàn kịch bản quảng cáo đa kênh, phân loại ý định inbox của khách hàng, cho đến chấm điểm tiềm năng và tư vấn thông minh.
-
----
-
-## 🚀 Tính năng nổi bật (Features)
-
-1. **Dashboard Tổng Quan**: Trực quan hóa số lượng khách hàng, cơ cấu rổ hàng, tỷ lệ hiệu suất phễu marketing đa nền tảng (Facebook, Zalo, Tiktok, Website) và nhật ký vận hành live-system.
-2. **Quản lý khách hàng CRM**: Lưu trữ thông tin chi tiết khách, ngân sách tài chính, ghi chú hành vi và nút kích hoạt **AI phân tích tâm lý, tự động tóm lược và chấm điểm tiềm năng (lead score)**.
-3. **Quản lý Bất động sản**: Lưu trữ rổ thông tin nhà phố, đất nền sông biển, shophouse cực trực quan và tính năng **AI sinh nội dung kịch bản marketing 4 kênh** (Zalo, Facebook, TikTok, Blog SEO) kèm Prompt nhiếp ảnh & cinematic video.
-4. **AI Content Generator**: Trung tâm đầu não tùy ý chọn mức độ văn phong (Sang trọng, Viral tấu hài, Thuyết phục khẩn trương) để Agent sáng tạo bài đăng tùy biến.
-5. **CMS đăng bài**: Bản nháp lưu trữ tự động, giả lập thống kê số liệu tiếp cận thực tế của dự án.
-6. **Inbox Đa Kênh**: Giao diện tập trung hóa tin nhắn đa nền tảng, **AI phân loại ý đồ** (hỏi vị trí, hỏi giá, thương lượng) và đề xuất kịch bản phản hồi khách cực kỳ nhạy bén.
-7. **Chatbot AI nội bộ**: Người dùng có thể hỏi trực tiếp hệ thống bằng ngôn ngữ tự nhiên về tình trạng giỏ hàng ("Căn nào ở cầu Rồng?"), tóm tắt thông tin khách hoặc đề xuất chiến dịch trong tuần.
-8. **Siêu tự động hóa (Automation Center)**: Mô phỏng workflow tự động (thêm BĐS mới tự tạo 3 bài viết; chấm khách đạt score > 80 tự chuyển thành lead vàng và giao việc cho sale).
+?ng d?ng h? tr? c�c nh� ph�t tri?n b?t ??ng s?n v� ??i l� m�i gi?i t? ??ng h�a to�n b? quy tr�nh t? kh�u thu th?p th�ng tin nh� ??t, t?o v� v�n k?ch b?n qu?ng c�o ?a k�nh, ph�n lo?i � ??nh inbox c?a kh�ch h�ng, cho ??n ch?m ?i?m ti?m n?ng v� t? v?n th�ng minh.
 
 ---
 
-## 📂 Cấu trúc mã nguồn (Project Architecture)
+## ?? T�nh n?ng n?i b?t (Features)
+
+1. **Dashboard T?ng Quan**: Tr?c quan h�a s? l??ng kh�ch h�ng, c? c?u r? h�ng, t? l? hi?u su?t ph?u marketing ?a n?n t?ng (Facebook, Zalo, Tiktok, Website) v� nh?t k� v?n h�nh live-system.
+2. **Qu?n l� kh�ch h�ng CRM**: L?u tr? th�ng tin chi ti?t kh�ch, ng�n s�ch t�i ch�nh, ghi ch� h�nh vi v� n�t k�ch ho?t **AI ph�n t�ch t�m l�, t? ??ng t�m l??c v� ch?m ?i?m ti?m n?ng (lead score)**.
+3. **Qu?n l� B?t ??ng s?n**: L?u tr? r? th�ng tin nh� ph?, ??t n?n s�ng bi?n, shophouse c?c tr?c quan v� t�nh n?ng **AI sinh n?i dung k?ch b?n marketing 4 k�nh** (Zalo, Facebook, TikTok, Blog SEO) k�m Prompt nhi?p ?nh & cinematic video.
+4. **AI Content Generator**: Trung t�m ??u n�o t�y � ch?n m?c ?? v?n phong (Sang tr?ng, Viral t?u h�i, Thuy?t ph?c kh?n tr??ng) ?? Agent s�ng t?o b�i ??ng t�y bi?n.
+5. **CMS ??ng b�i**: B?n nh�p l?u tr? t? ??ng, gi? l?p th?ng k� s? li?u ti?p c?n th?c t? c?a d? �n.
+6. **Inbox ?a K�nh**: Giao di?n t?p trung h�a tin nh?n ?a n?n t?ng, **AI ph�n lo?i � ??** (h?i v? tr�, h?i gi�, th??ng l??ng) v� ?? xu?t k?ch b?n ph?n h?i kh�ch c?c k? nh?y b�n.
+7. **Chatbot AI n?i b?**: Ng??i d�ng c� th? h?i tr?c ti?p h? th?ng b?ng ng�n ng? t? nhi�n v? t�nh tr?ng gi? h�ng ("C?n n�o ? c?u R?ng?"), t�m t?t th�ng tin kh�ch ho?c ?? xu?t chi?n d?ch trong tu?n.
+8. **Si�u t? ??ng h�a (Automation Center)**: M� ph?ng workflow t? ??ng (th�m B?S m?i t? t?o 3 b�i vi?t; ch?m kh�ch ??t score > 80 t? chuy?n th�nh lead v�ng v� giao vi?c cho sale).
+
+---
+
+## ?? C?u tr�c m� ngu?n (Project Architecture)
 
 ```text
-├── /backend            # Mã nguồn backend tham khảo đa ngôn ngữ
-│   ├── app.rb          # Sinatra API chính (Ruby)
-│   └── app.py          # FastAPI API chính (Python)
-├── /server             # Mã nguồn Backend Node.js phục vụ API ở AI Studio (TypeScript)
-│   ├── aiService.ts    # Service tích hợp Gemini API / Ollama API
-│   └── dbHelper.ts     # Trình quản lý đọc ghi SQLite/JSON database an toàn
-├── /src                # Mã nguồn Frontend React
-│   ├── App.tsx         # Dashboard UI chính vô cùng hiện đại, trực quan
-│   ├── types.ts        # Các kiểu dữ liệu Typescript chặt chẽ
-│   └── index.css       # Import Tailwind CSS
-├── db.json             # Cơ sở dữ liệu mẫu chuẩn hóa với 10 khách hàng, 8 BĐS lớn, 15 Inbox
-├── server.ts           # Unified static server khởi chạy Vite middleware trực tuyến
-├── package.json        # Định chuẩn khởi chạy và dependencies phiên bản mới nhất
-└── tsconfig.json       # Phân giải Typescript bundler
+??? /backend            # M� ngu?n backend tham kh?o ?a ng�n ng?
+?   ??? app.rb          # Sinatra API ch�nh (Ruby)
+?   ??? app.py          # FastAPI API ch�nh (Python)
+??? /server             # M� ngu?n Backend Node.js ph?c v? API ? AI Studio (TypeScript)
+?   ??? aiService.ts    # Service t�ch h?p Gemini API / Ollama API
+?   ??? dbHelper.ts     # Tr�nh qu?n l� ??c ghi PostgreSQL (Prisma) an to�n
+??? /src                # M� ngu?n Frontend React
+?   ??? App.tsx         # Dashboard UI ch�nh v� c�ng hi?n ??i, tr?c quan
+?   ??? types.ts        # C�c ki?u d? li?u Typescript ch?t ch?
+?   ??? index.css       # Import Tailwind CSS
+??? db.json             # C? s? d? li?u m?u chu?n h�a v?i 10 kh�ch h�ng, 8 B?S l?n, 15 Inbox
+??? server.ts           # Unified static server kh?i ch?y Vite middleware tr?c tuy?n
+??? package.json        # ??nh chu?n kh?i ch?y v� dependencies phi�n b?n m?i nh?t
+??? tsconfig.json       # Ph�n gi?i Typescript bundler
 ```
 
 ---
 
-## 🛠️ Hướng dẫn cài đặt & khởi chạy (Quickstart Guide)
+## ??? H??ng d?n c�i ??t & kh?i ch?y (Quickstart Guide)
 
-### 1. Chuẩn bị môi trường & cài đặt Ollama
-Để sử dụng mô hình trí tuệ nhân tạo chạy cục bộ miễn phí, hãy tải công cụ **Ollama**:
-1. Truy cập [Ollama Official Website](https://ollama.com/) và tải phiên bản phù hợp cho hệ điều hành của bạn (Windows / macOS / Linux).
-2. Hãy cài đặt và mở terminal lên để tải mô hình mặc định bằng câu lệnh:
+### 1. Chu?n b? m�i tr??ng & c�i ??t Ollama
+?? s? d?ng m� h�nh tr� tu? nh�n t?o ch?y c?c b? mi?n ph�, h�y t?i c�ng c? **Ollama**:
+1. Truy c?p [Ollama Official Website](https://ollama.com/) v� t?i phi�n b?n ph� h?p cho h? ?i?u h�nh c?a b?n (Windows / macOS / Linux).
+2. H�y c�i ??t v� m? terminal l�n ?? t?i m� h�nh m?c ??nh b?ng c�u l?nh:
    ```bash
    ollama pull qwen2.5
-   # Bạn cũng có thể dùng llama3.1
+   # B?n c?ng c� th? d�ng llama3.1
    ollama pull llama3.1
    ```
-3. Khởi động dịch vụ Ollama cục bộ:
+3. Kh?i ??ng d?ch v? Ollama c?c b?:
    ```bash
    ollama serve
    ```
-*Mặc định Ollama sẽ lắng nghe tại cổng `http://localhost:11434`.*
+*M?c ??nh Ollama s? l?ng nghe t?i c?ng `http://localhost:11434`.*
 
 ---
 
-### 2. Chạy ứng dụng Web (Node.js Unified Client + Server)
-Để chạy demo nhanh chóng trên máy tính cá nhân của bạn, hãy sử dụng cổng Express + Vite thống nhất được setup sẵn:
+### 2. Ch?y ?ng d?ng Web (Node.js Unified Client + Server)
+?? ch?y demo nhanh ch�ng tr�n m�y t�nh c� nh�n c?a b?n, h�y s? d?ng c?ng Express + Vite th?ng nh?t ???c setup s?n:
 
-**Cài đặt các gói phụ thuộc:**
+**C�i ??t c�c g�i ph? thu?c:**
 ```bash
 npm install
 ```
 
-**Khởi chạy máy chủ phát triển (Development):**
+**Kh?i ch?y m�y ch? ph�t tri?n (Development):**
 ```bash
 npm run dev
 ```
-*Giao diện của bạn sẽ xuất hiện lung linh tại địa chỉ `http://localhost:3000`.*
+*Giao di?n c?a b?n s? xu?t hi?n lung linh t?i ??a ch? `http://localhost:3000`.*
 
-**Biên dịch bản sản xuất (Production Build & Start):**
+**Bi�n d?ch b?n s?n xu?t (Production Build & Start):**
 ```bash
 npm run build
 npm run start
 ```
-**Cấu hình chạy thực tế:**
+**C?u h�nh ch?y th?c t?:**
 ```bash
 cp .env.example .env
-# cập nhật GEMINI_API_KEY nếu dùng Gemini, hoặc chọn Ollama trong Settings
+# c?p nh?t GEMINI_API_KEY n?u d�ng Gemini, ho?c ch?n Ollama trong Settings
 ```
 
-- Server Node/Express và frontend Vite được chạy chung qua `server.ts` ở môi trường development.
-- Production build tạo `dist/server.cjs`; lệnh `npm run start` sẽ serve API và frontend đã build.
+- Server Node/Express v� frontend Vite ???c ch?y chung qua `server.ts` ? m�i tr??ng development.
+- Production build t?o `dist/server.cjs`; l?nh `npm run start` s? serve API v� frontend ?� build.
 - Health check backend: `http://localhost:3000/api/health`.
-- AI Assistant trong tab Chatbot AI gọi backend `/api/ai/chat`, dùng Gemini qua `GEMINI_API_KEY` hoặc Ollama local qua Settings.
+- AI Assistant trong tab Chatbot AI g?i backend `/api/ai/chat`, d�ng Gemini qua `GEMINI_API_KEY` ho?c Ollama local qua Settings.
 
 ---
 
-### 3. Chạy Backend bằng Python (FastAPI tham khảo)
-Nếu bạn mong muốn vận hành ứng dụng qua máy chủ **Python FastAPI** mạnh mẽ & bảo mật:
+### 3. Ch?y Backend b?ng Python (FastAPI tham kh?o)
+N?u b?n mong mu?n v?n h�nh ?ng d?ng qua m�y ch? **Python FastAPI** m?nh m? & b?o m?t:
 
-1. Di chuyển vào thư mục backend:
+1. Di chuy?n v�o th? m?c backend:
    ```bash
    cd backend
    ```
-2. Cài đặt các thư viện cần thiết:
+2. C�i ??t c�c th? vi?n c?n thi?t:
    ```bash
    pip install fastapi uvicorn httpx pydantic
    ```
-3. Khởi chạy ứng dụng FastAPI:
+3. Kh?i ch?y ?ng d?ng FastAPI:
    ```bash
    python app.py
    ```
-Máy chủ Python FastAPI của bạn sẽ hoạt động hoàn hảo tại cổng `http://localhost:8000`.
+M�y ch? Python FastAPI c?a b?n s? ho?t ??ng ho�n h?o t?i c?ng `http://localhost:8000`.
 
 ---
 
-### 4. Chạy Backend bằng Ruby (Sinatra API tham khảo)
-Nếu bạn mong muốn vận hành ứng dụng thông qua cụm máy chủ **Ruby** chuyên biệt:
+### 4. Ch?y Backend b?ng Ruby (Sinatra API tham kh?o)
+N?u b?n mong mu?n v?n h�nh ?ng d?ng th�ng qua c?m m�y ch? **Ruby** chuy�n bi?t:
 
-1. Di chuyển vào thư mục backend:
+1. Di chuy?n v�o th? m?c backend:
    ```bash
    cd backend
    ```
-2. Cài đặt các thư viện cần thiết:
+2. C�i ??t c�c th? vi?n c?n thi?t:
    ```bash
    gem install sinatra json net-http
    ```
-3. Chạy ứng dụng Sinatra:
+3. Ch?y ?ng d?ng Sinatra:
    ```bash
    ruby app.rb
    ```
-Máy chủ backend Ruby của bạn sẽ tự động khởi động tại địa chỉ `http://localhost:4567`. Bạn có thể tinh chỉnh API fetch của frontend sang cổng `4567` hoặc `8000` này trong mã nguồn khi triển khai.
+M�y ch? backend Ruby c?a b?n s? t? ??ng kh?i ??ng t?i ??a ch? `http://localhost:4567`. B?n c� th? tinh ch?nh API fetch c?a frontend sang c?ng `4567` ho?c `8000` n�y trong m� ngu?n khi tri?n khai.
 
 ---
 
-## 💡 Cách trải nghiệm & Test tính năng AI Agent
+## ?? C�ch tr?i nghi?m & Test t�nh n?ng AI Agent
 
-1. **Cách chuyển chế độ AI:** Chuyển qua tab **Cấu hình hệ thống (Settings)** trên thanh điều hướng bên trái. Bạn có thể chọn giữa **Gemini API** (mặc định mượt mà ngoài khâu đăng ký) hoặc **Ollama cục bộ của bạn** (truy xuất nhanh qua endpoint đã chỉ định).
-2. **Kiểm thử AI Phân Tích CRM:** Ở tab **Khách hàng CRM**, hãy nhấn nút **"Phân tích AI"** tại một khách hàng bất kỳ. AI Agent sẽ đọc dữ liệu nhu cầu thực tế của khách, tóm gọn các bước tiếp cận thông thái và bổ sung điểm tiềm năng cho chuyên viên.
-3. **Thử nghiệm AI Tạo Tin Tức:** Tại tab **Giỏ hàng Bất động sản**, bấm chọn **"Sinh Content Marketing"** trên một tấm card. Bạn có thể điều chỉnh tone giọng và thưởng thức bài viết kịch bản 4 kênh khác biệt cùng Prompt sinh ảnh siêu thực.
-4. **Hỏi đáp AI Chatbot:** Ở mục **Chatbot AI**, hãy gõ các câu lệnh bằng tiếng Việt như: *"Khách nào đang nóng nhất?"*, *"Viết bài bán lô đất Hòa Xuân 4.6 tỷ"* để AI Agent lục lọi database thời gian thực và đàm thoại đắc lực.
+1. **C�ch chuy?n ch? ?? AI:** Chuy?n qua tab **C?u h�nh h? th?ng (Settings)** tr�n thanh ?i?u h??ng b�n tr�i. B?n c� th? ch?n gi?a **Gemini API** (m?c ??nh m??t m� ngo�i kh�u ??ng k�) ho?c **Ollama c?c b? c?a b?n** (truy xu?t nhanh qua endpoint ?� ch? ??nh).
+2. **Ki?m th? AI Ph�n T�ch CRM:** ? tab **Kh�ch h�ng CRM**, h�y nh?n n�t **"Ph�n t�ch AI"** t?i m?t kh�ch h�ng b?t k?. AI Agent s? ??c d? li?u nhu c?u th?c t? c?a kh�ch, t�m g?n c�c b??c ti?p c?n th�ng th�i v� b? sung ?i?m ti?m n?ng cho chuy�n vi�n.
+3. **Th? nghi?m AI T?o Tin T?c:** T?i tab **Gi? h�ng B?t ??ng s?n**, b?m ch?n **"Sinh Content Marketing"** tr�n m?t t?m card. B?n c� th? ?i?u ch?nh tone gi?ng v� th??ng th?c b�i vi?t k?ch b?n 4 k�nh kh�c bi?t c�ng Prompt sinh ?nh si�u th?c.
+4. **H?i ?�p AI Chatbot:** ? m?c **Chatbot AI**, h�y g� c�c c�u l?nh b?ng ti?ng Vi?t nh?: *"Kh�ch n�o ?ang n�ng nh?t?"*, *"Vi?t b�i b�n l� ??t H�a Xu�n 4.6 t?"* ?? AI Agent l?c l?i database th?i gian th?c v� ?�m tho?i ??c l?c.
 
 ---
 
-## Local Database
+## Local Database (PostgreSQL)
 
-D? �n hi?n d�ng SQLite local t?i `data/cms.sqlite` d? luu d? li?u CMS th?t trong qu� tr�nh ch?y local/dev.
+App d?ng **PostgreSQL** qua Prisma (`DATABASE_URL` trong `.env`).
 
-C�c nh�m d? li?u ch�nh:
-- `cms_records`: gi? h�ng b?t d?ng s?n, kh�ch h�ng, b�i post, inbox, automation.
-- `chat_history`: l?ch s? chat v?i AI assistant/chatbox.
-- `generated_contents`: content AI d� sinh raw, content verified d�ng l�m d? li?u training/d�nh gi�.
-- `companies`, `users`, `settings`: company/team, ph�n quy?n, c?u h�nh h? th?ng.
-
-Seed database:
 ```bash
-npm run seed
+cp .env.example .env
+npm run prisma:push
+npm run dev
 ```
 
-K�nh uu ti�n hi?n t?i:
+??ng b? DB production v? local ?? test:
+```bash
+npm run db:pull-and-sync
+```
+
+C?c nh?m d? li?u ch?nh: `cms_records`, `chat_history`, `generated_contents`, `leads`, `companies`, `users`, `settings`.
+
+K?nh uu ti?n hi?n t?i:
 - Facebook
 - Zalo
 
-C�c k�nh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? ph�ng v� c� th? tri?n khai s�u hon sau.
+C?c k?nh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? ph?ng v? c? th? tri?n khai s?u hon sau.

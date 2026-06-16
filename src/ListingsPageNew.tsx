@@ -368,7 +368,7 @@ export default function ListingsPage({ properties, onBack }: ListingsPageProps) 
           <div className="space-y-8">
             <div className="space-y-3">
               <h3 className="text-4xl font-bold text-white">Liên Hệ Với Chúng Tôi</h3>
-              <p className="text-slate-400 text-lg">Để lại thông tin để nhận tư vấn miễn phí từ đội ngũ chuyên gia</p>
+              <p className="text-slate-400 text-lg">Để lại thông tin để nhận tư vấn miễn phí từ đội ngũ Estoria</p>
             </div>
 
             <div className="space-y-4">

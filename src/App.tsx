@@ -41,12 +41,14 @@ import {
   ShieldCheck,
   UserPlus,
   Menu,
-  GripVertical
+  GripVertical,
+  Newspaper
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
+import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
 import { getPublicPropertyUrl } from './utils/propertyShare';
 import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
 import {
@@ -76,12 +78,15 @@ import {
   sendInboxReply,
   toggleAutomation,
   updatePublicChatGuestAi,
+  deleteChatSession,
   updateCustomer,
   updatePost,
   updateProperty,
   updateUser,
   verifyContent
 } from './services/api';
+import SeoContentAdmin from './components/admin/SeoContentAdmin';
+import { MARKET_ZONE_OPTIONS, PROPERTY_PROJECT_GROUPS } from './seo/propertyCatalog';
 
 const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
 const TRANSACTION_TYPE_OPTIONS = ['Bán', 'Cho thuê'];
@@ -105,7 +110,8 @@ const createEmptyPropertyForm = () => ({
   legal_status: 'Sổ hồng', direction: 'Đông Nam', road_width: '7.5',
   floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
   description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
-  sale_status: 'available', is_featured: false, selling_points: ''
+  sale_status: 'available', is_featured: false, selling_points: '',
+  market_zone: '', project_name: '',
 });
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
@@ -137,7 +143,7 @@ export default function App() {
   const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
   const [managedUsers, setManagedUsers] = useState<User[]>([]);
   const [chatHistoryRecords, setChatHistoryRecords] = useState<ChatHistoryRecord[]>([]);
-  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState('');
+  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState<string | undefined>(undefined);
   const [publicChatGuests, setPublicChatGuests] = useState<PublicChatGuest[]>([]);
   const [selectedChatGuestId, setSelectedChatGuestId] = useState<string>('');
   const [selectedGuestChatHistory, setSelectedGuestChatHistory] = useState<ChatHistoryRecord[]>([]);
@@ -173,6 +179,7 @@ export default function App() {
   const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
+  const [customProjectMode, setCustomProjectMode] = useState(false);
   const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
 
   const [selectedPropertyForAI, setSelectedPropertyForAI] = useState<Property | null>(null);
@@ -396,7 +403,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!currentUser || !['chatbot', 'chat-history'].includes(activeTab)) return;
+    if (!currentUser || !['website-chat', 'chat-history'].includes(activeTab)) return;
     refreshPublicGuestChats(selectedChatGuestId);
     refreshChatHistoryRecords();
     const timer = window.setInterval(() => {
@@ -692,11 +699,15 @@ export default function App() {
   const openAddPropertyModal = () => {
     setEditingProperty(null);
     setNewPropertyForm(createEmptyPropertyForm());
+    setCustomProjectMode(false);
     setShowAddPropertyModal(true);
   };
 
   const openEditPropertyModal = (property: Property) => {
     setEditingProperty(property);
+    const knownProjects = PROPERTY_PROJECT_GROUPS.flatMap(group => group.projects);
+    const hasKnownProject = property.project_name ? knownProjects.includes(property.project_name) : false;
+    setCustomProjectMode(Boolean(property.project_name && !hasKnownProject));
     setNewPropertyForm({
       title: property.title,
       transaction_type: property.transaction_type || 'Bán',
@@ -720,7 +731,9 @@ export default function App() {
       gallery_images: [...(property.gallery_images || [])],
       sale_status: property.sale_status || 'available',
       is_featured: Boolean(property.is_featured),
-      selling_points: (property.selling_points || []).join('\n')
+      selling_points: (property.selling_points || []).join('\n'),
+      market_zone: property.market_zone || '',
+      project_name: property.project_name || '',
     });
     setShowAddPropertyModal(true);
   };
@@ -729,6 +742,7 @@ export default function App() {
     setShowAddPropertyModal(false);
     setEditingProperty(null);
     setDraggedGalleryIndex(null);
+    setCustomProjectMode(false);
     setNewPropertyForm(createEmptyPropertyForm());
   };
 
@@ -927,7 +941,9 @@ export default function App() {
         pool: Boolean(newPropertyForm.pool),
         description: fallbackDescription,
         rich_description: newPropertyForm.rich_description || fallbackDescription,
-        selling_points: sellingPoints
+        selling_points: sellingPoints,
+        market_zone: newPropertyForm.market_zone || undefined,
+        project_name: newPropertyForm.project_name?.trim() || undefined,
       };
 
       if (editingProperty) {
@@ -1049,6 +1065,77 @@ export default function App() {
     }
   };
 
+  const canDeleteChatSession = (sessionUserId: string) => {
+    if (!currentUser) return false;
+    if (sessionUserId.startsWith('public-')) {
+      return currentUser.role === 'owner' || currentUser.role === 'company';
+    }
+    if (currentUser.role === 'owner') return true;
+    if (currentUser.role === 'company') {
+      if (sessionUserId === currentUser.id) return true;
+      const sessionRecords = chatHistoryRecords.filter(record => record.user_id === sessionUserId);
+      const companyId = sessionRecords[0]?.company_id;
+      return !companyId || companyId === currentUser.company_id;
+    }
+    return sessionUserId === currentUser.id;
+  };
+
+  const applyDeletedChatSession = (sessionUserId: string) => {
+    setChatHistoryRecords(prev => prev.filter(record => record.user_id !== sessionUserId));
+
+    if (selectedChatHistorySessionId === sessionUserId) {
+      setSelectedChatHistorySessionId('');
+    }
+
+    if (sessionUserId.startsWith('public-')) {
+      const sessionId = sessionUserId.slice('public-'.length);
+      setPublicChatGuests(prev => prev.filter(guest => guest.session_id !== sessionId));
+      if (selectedChatGuestId === sessionId) {
+        setSelectedChatGuestId('');
+        setSelectedGuestChatHistory([]);
+      }
+    }
+
+    if (sessionUserId === currentUser?.id) {
+      setChatMessages([ASSISTANT_WELCOME_MESSAGE]);
+    }
+  };
+
+  const handleDeleteChatSession = async (sessionUserId: string, label = 'hội thoại này') => {
+    if (!canDeleteChatSession(sessionUserId)) {
+      showToast('Bạn không có quyền xóa lịch sử chat này.', 'error');
+      return;
+    }
+
+    if (!window.confirm(`Xóa toàn bộ lịch sử của ${label}? Thao tác này không thể hoàn tác.`)) {
+      return;
+    }
+
+    setActionLoading(`delete-chat-${sessionUserId}`);
+    try {
+      const result = await deleteChatSession(sessionUserId);
+      applyDeletedChatSession(sessionUserId);
+      await refreshChatHistoryRecords();
+      await refreshPublicGuestChats(selectedChatGuestId);
+      showToast(
+        result.deletedMessages > 0 || result.guestDeleted
+          ? 'Đã xóa lịch sử chat.'
+          : 'Không còn tin nhắn để xóa trong phiên này.',
+        'success'
+      );
+    } catch (error: any) {
+      const message = error.message || 'Không thể xóa lịch sử chat.';
+      showToast(
+        message.includes('404') || message.includes('rỗng')
+          ? 'API xóa chat chưa sẵn sàng. Hãy restart dev server: npm run dev'
+          : message,
+        'error'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleSoftDeleteProperty = async (prop: Property) => {
     setActionLoading(`hide-prop-${prop.id}`);
     try {
@@ -1156,6 +1243,7 @@ export default function App() {
     .filter(item => priorityPlatforms.includes(item.channel))
     .slice(0, 8);
   const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
+  const canManageWebsiteChat = canManageCmsUsers;
   const managedMembers = managedUsers.filter(user => user.role === 'member' && user.status === 'active');
   const selectedPermissionMember = managedUsers.find(user => user.id === selectedPermissionMemberId);
   const filteredChatHistoryRecords = chatHistoryRecords.filter(record => {
@@ -1177,7 +1265,7 @@ export default function App() {
     lastMessageAt: records.reduce((latest, record) => Math.max(latest, new Date(record.created_at).getTime()), 0)
   })).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   const selectedChatHistorySession = chatHistorySessions.find(session => session.sessionId === selectedChatHistorySessionId)
-    || chatHistorySessions[0];
+    ?? (selectedChatHistorySessionId === undefined && chatHistorySessions[0] ? chatHistorySessions[0] : undefined);
   const selectedHistoryGuest = selectedChatHistorySession?.sessionId.startsWith('public-')
     ? publicChatGuests.find(guest => `public-${guest.session_id}` === selectedChatHistorySession.sessionId)
     : undefined;
@@ -1342,11 +1430,14 @@ export default function App() {
             {[
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
+              { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
               { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: properties.length },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
               { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
+              { id: 'seo-content', label: 'Nội dung SEO', icon: Newspaper },
               { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
+              ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
               { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
               ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
@@ -1963,6 +2054,12 @@ export default function App() {
                       </table>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === 'investor-leads' && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <InvestorLeadsPanel />
                 </div>
               )}
 
@@ -2668,6 +2765,10 @@ export default function App() {
                 </div>
               )}
 
+              {activeTab === 'seo-content' && getAuthToken() && (
+                <SeoContentAdmin token={getAuthToken()!} />
+              )}
+
               {/* ==================================================== */}
               {/* TAB 6: INBOX MULTICHANNEL */}
               {/* ==================================================== */}
@@ -2819,7 +2920,104 @@ export default function App() {
                     <div>
                       <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <Bot className="w-5 h-5 text-rose-500" />
-                        Chatbot khách website
+                        Trợ lý AI nội bộ
+                      </h2>
+                      <p className="text-slate-400 text-sm">
+                        Hỏi đáp trực tiếp với AI nắm dữ liệu CRM, bất động sản và nội dung marketing trong hệ thống.
+                      </p>
+                    </div>
+                    {currentUser && canDeleteChatSession(currentUser.id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChatSession(currentUser.id, 'trợ lý AI nội bộ')}
+                        disabled={actionLoading === `delete-chat-${currentUser.id}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Xóa lịch sử AI
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[620px] overflow-hidden justify-between">
+                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <Bot className="w-5 h-5 text-rose-500" />
+                        <div>
+                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
+                          <span className="text-2xs text-emerald-400">
+                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="hidden lg:flex gap-2">
+                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUserChatInput(hint)}
+                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
+                          >
+                            {hint}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 p-5 overflow-y-auto space-y-4 app-scroll">
+                      {chatMessages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
+                            msg.role === 'user'
+                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none'
+                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
+                          }`}>
+                            <p>{msg.content}</p>
+                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {actionLoading === 'chatbot-chat' && (
+                        <div className="flex justify-start">
+                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
+                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={userChatInput}
+                        onChange={(e) => setUserChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
+                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      />
+                      <button
+                        onClick={handleSendChatbotMessage}
+                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
+                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'website-chat' && canManageWebsiteChat && (
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-rose-500" />
+                        Chat khách website
                       </h2>
                       <p className="text-slate-400 text-sm">
                         Chọn từng khách đã nhập họ tên/số điện thoại để theo dõi hội thoại. Bỏ tick AI để admin tự chat trực tiếp với khách.
@@ -2897,15 +3095,28 @@ export default function App() {
                                   <div className="text-xs text-slate-500">{selectedGuest?.phone} · {selectedChatGuestId}</div>
                                 </div>
                                 {selectedGuest && (
-                                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedGuest.ai_enabled)}
-                                      onChange={() => handleToggleGuestAi(selectedGuest)}
-                                      className="h-4 w-4 accent-emerald-500"
-                                    />
-                                    AI tự trả lời
-                                  </label>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(selectedGuest.ai_enabled)}
+                                        onChange={() => handleToggleGuestAi(selectedGuest)}
+                                        className="h-4 w-4 accent-emerald-500"
+                                      />
+                                      AI tự trả lời
+                                    </label>
+                                    {canDeleteChatSession(`public-${selectedChatGuestId}`) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteChatSession(`public-${selectedChatGuestId}`, `khách ${selectedGuest.name}`)}
+                                        disabled={actionLoading === `delete-chat-public-${selectedChatGuestId}`}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Xóa hội thoại
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             );
@@ -2952,90 +3163,6 @@ export default function App() {
                         </div>
                       )}
                     </section>
-                  </div>
-                </div>
-              )}
-
-              {false && activeTab === 'chatbot' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Trợ lý ảo AI Chatbot (Nội bộ doanh nghiệp)
-                    </h2>
-                    <p className="text-slate-400 text-sm">Hỏi đáp trực tiếp hệ thống AI nắm giữ toàn bộ cơ sở dữ liệu khách hàng CRM, rổ bất động sản và tự phát bài truyền thông.</p>
-                  </div>
-
-                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[550px] overflow-hidden justify-between">
-                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Bot className="w-5 h-5 text-rose-500" />
-                        <div>
-                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
-                          <span className="text-2xs text-emerald-400">
-                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setUserChatInput(hint)}
-                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
-                          >
-                            {hint}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Dialog Container */}
-                    <div className="flex-1 p-5 overflow-y-auto space-y-4 max-h-[400px]">
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
-                            msg.role === 'user' 
-                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none' 
-                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
-                          }`}>
-                            <p>{msg.content}</p>
-                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {actionLoading === 'chatbot-chat' && (
-                        <div className="flex justify-start">
-                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
-                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Sender Console */}
-                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={userChatInput}
-                        onChange={(e) => setUserChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
-                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                      />
-                      <button
-                        onClick={handleSendChatbotMessage}
-                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
-                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-
                   </div>
                 </div>
               )}
@@ -3117,8 +3244,24 @@ export default function App() {
                               </div>
                               <div className="truncate text-xs font-mono text-slate-500">{selectedChatHistorySession.sessionId}</div>
                             </div>
-                            <div className="text-xs text-slate-500">
-                              {selectedChatHistorySession.records.length} tin nhắn
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-xs text-slate-500">
+                                {selectedChatHistorySession.records.length} tin nhắn
+                              </div>
+                              {canDeleteChatSession(selectedChatHistorySession.sessionId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteChatSession(
+                                    selectedChatHistorySession.sessionId,
+                                    selectedChatHistorySession.sessionId.startsWith('public-') ? 'hội thoại khách website' : 'hội thoại CMS nội bộ'
+                                  )}
+                                  disabled={actionLoading === `delete-chat-${selectedChatHistorySession.sessionId}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Xóa hội thoại
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -4008,9 +4151,9 @@ export default function App() {
 
       {/* Modal Add Property */}
       {showAddPropertyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh] space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6">
+          <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-6 py-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
                 {editingProperty ? <Edit className="w-5 h-5 text-rose-500" /> : <Home className="w-5 h-5 text-rose-500" />}
                 {editingProperty ? 'Chỉnh sửa bất động sản' : 'Thêm bất động sản mới lên kệ'}
@@ -4020,7 +4163,7 @@ export default function App() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProperty} className="space-y-4">
+            <form onSubmit={handleSaveProperty} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 app-scroll">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {editingProperty && (
                   <div className="md:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-xs text-violet-200">
@@ -4074,6 +4217,67 @@ export default function App() {
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Khu vực thị trường</label>
+                  <select
+                    value={newPropertyForm.market_zone}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, market_zone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    {MARKET_ZONE_OPTIONS.map(option => (
+                      <option key={option.value || 'none'} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <label className="block text-2xs font-semibold text-slate-400">Dự án / phân khu</label>
+                  {!customProjectMode ? (
+                    <select
+                      value={newPropertyForm.project_name}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom__') {
+                          setCustomProjectMode(true);
+                          setNewPropertyForm({ ...newPropertyForm, project_name: '' });
+                          return;
+                        }
+                        setNewPropertyForm({ ...newPropertyForm, project_name: e.target.value });
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                    >
+                      <option value="">— Chọn dự án —</option>
+                      {PROPERTY_PROJECT_GROUPS.map(group => (
+                        <optgroup key={group.zone} label={group.label}>
+                          {group.projects.map(project => (
+                            <option key={`${group.zone}-${project}`} value={project}>{project}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                      <option value="__custom__">+ Thêm dự án mới...</option>
+                    </select>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newPropertyForm.project_name}
+                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, project_name: e.target.value })}
+                        placeholder="Nhập tên dự án / phân khu mới"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomProjectMode(false);
+                          setNewPropertyForm({ ...newPropertyForm, project_name: '' });
+                        }}
+                        className="shrink-0 rounded-xl border border-slate-700 px-3 text-xs text-slate-300"
+                      >
+                        Chọn lại
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">

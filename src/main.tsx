@@ -1,13 +1,45 @@
-import React from 'react';
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import React, { Suspense } from 'react';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  Outlet,
+} from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import ListingsPage from './ListingsPage.tsx';
+import PublicSiteLayout from './components/layout/PublicSiteLayout.tsx';
+import type { Property } from './types.ts';
+import LeadGenProvider from './components/leadGen/LeadGenProvider.tsx';
+import { isPropertySlugCandidate } from './seo/routes.ts';
 import './index.css';
 
-// Fetch properties data for public listings
+const AboutPage = React.lazy(() => import('./pages/AboutPage.tsx'));
+const ContactPage = React.lazy(() => import('./pages/ContactPage.tsx'));
+const LegalPage = React.lazy(() => import('./pages/LegalPage.tsx'));
+const LandingPageView = React.lazy(() => import('./pages/LandingPageView.tsx'));
+const ProjectPage = React.lazy(() => import('./pages/ProjectPage.tsx'));
+const ContentHubPage = React.lazy(() => import('./pages/ContentHubPage.tsx'));
+const CategoryListingsPage = React.lazy(() => import('./pages/CategoryListingsPage.tsx'));
+const AuthorPage = React.lazy(() => import('./pages/AuthorPage.tsx'));
+const LeadMagnetsHubPage = React.lazy(() => import('./pages/LeadMagnetsPage.tsx').then(m => ({ default: m.LeadMagnetsHubPage })));
+const LeadMagnetDetailPage = React.lazy(() => import('./pages/LeadMagnetsPage.tsx').then(m => ({ default: m.LeadMagnetDetailPage })));
+const BlogListPage = React.lazy(() => import('./pages/BlogListPage.tsx'));
+const BlogPostPage = React.lazy(() => import('./pages/BlogPostPage.tsx'));
+const InvestorDashboardPage = React.lazy(() => import('./pages/InvestorDashboardPage.tsx'));
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-invest-blue/20 border-t-invest-blue" />
+    </div>
+  );
+}
+
 async function fetchPublicProperties() {
   try {
     const response = await fetch('/api/public/properties');
@@ -20,27 +52,50 @@ async function fetchPublicProperties() {
   }
 }
 
-function PublicListingsWrapper() {
+let cachedPublicProperties: Property[] | null = null;
+let publicPropertiesPromise: Promise<Property[]> | null = null;
+
+function loadPublicProperties(): Promise<Property[]> {
+  if (cachedPublicProperties) return Promise.resolve(cachedPublicProperties);
+  if (!publicPropertiesPromise) {
+    publicPropertiesPromise = fetchPublicProperties().then(data => {
+      cachedPublicProperties = data;
+      return data;
+    });
+  }
+  return publicPropertiesPromise;
+}
+
+function PublicListingsShell() {
   const { propertySlug } = useParams();
-  const [properties, setProperties] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
+  const [properties, setProperties] = React.useState<Property[]>(cachedPublicProperties ?? []);
+  const [loading, setLoading] = React.useState(!cachedPublicProperties);
 
   React.useEffect(() => {
-    fetchPublicProperties().then(data => {
+    loadPublicProperties().then(data => {
       setProperties(data);
       setLoading(false);
     });
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-      </div>
-    );
+  if (loading && properties.length === 0) {
+    return <PageLoader />;
   }
 
-  return <ListingsPage properties={properties} propertySlug={propertySlug} />;
+  return (
+    <>
+      <ListingsPage properties={properties} propertySlug={propertySlug} />
+      <Outlet />
+    </>
+  );
+}
+
+function PropertySlugOutlet() {
+  const { propertySlug } = useParams();
+  if (propertySlug && !isPropertySlugCandidate(propertySlug)) {
+    return <Navigate to="/" replace />;
+  }
+  return null;
 }
 
 function LegacyPropertyRedirect() {
@@ -48,8 +103,13 @@ function LegacyPropertyRedirect() {
   return <Navigate to={propertySlug ? `/${propertySlug}` : '/'} replace />;
 }
 
+function SuspensePage({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <LeadGenProvider>
     <Router>
       <HelmetProvider>
         <Routes>
@@ -58,10 +118,177 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to="/" replace />} />
-          <Route path="/" element={<PublicListingsWrapper />} />
-          <Route path="/:propertySlug" element={<PublicListingsWrapper />} />
+
+          <Route element={<PublicSiteLayout />}>
+            <Route
+              path="/tin-tuc"
+              element={<SuspensePage><BlogListPage /></SuspensePage>}
+            />
+            <Route
+              path="/tin-tuc/:slug"
+              element={<SuspensePage><BlogPostPage /></SuspensePage>}
+            />
+            <Route
+              path="/gioi-thieu"
+              element={<SuspensePage><AboutPage /></SuspensePage>}
+            />
+            <Route
+              path="/lien-he"
+              element={<SuspensePage><ContactPage /></SuspensePage>}
+            />
+            <Route
+              path="/chinh-sach-bao-mat"
+              element={<SuspensePage><LegalPage /></SuspensePage>}
+            />
+            <Route
+              path="/dieu-khoan-su-dung"
+              element={<SuspensePage><LegalPage /></SuspensePage>}
+            />
+            <Route
+              path="/chinh-sach-cookie"
+              element={<SuspensePage><LegalPage /></SuspensePage>}
+            />
+            <Route
+              path="/mien-tru-trach-nhiem"
+              element={<SuspensePage><LegalPage /></SuspensePage>}
+            />
+            <Route
+              path="/tac-gia/nguyen-phan-hoang-linh"
+              element={<SuspensePage><AuthorPage /></SuspensePage>}
+            />
+            <Route
+              path="/bat-dong-san"
+              element={
+                <SuspensePage>
+                  <CategoryListingsPage categoryPath="/bat-dong-san" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/can-ho"
+              element={
+                <SuspensePage>
+                  <CategoryListingsPage categoryPath="/can-ho" filterType="căn" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/dat-nen"
+              element={
+                <SuspensePage>
+                  <CategoryListingsPage categoryPath="/dat-nen" filterType="đất" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/nha-pho"
+              element={
+                <SuspensePage>
+                  <CategoryListingsPage categoryPath="/nha-pho" filterType="nhà" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/nam-da-nang"
+              element={
+                <SuspensePage>
+                  <CategoryListingsPage categoryPath="/nam-da-nang" filterLocation="nam" filterMarketZone="nam-da-nang" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/du-an"
+              element={
+                <SuspensePage>
+                  <ContentHubPage hubPath="/du-an" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/du-an/:projectSlug"
+              element={<SuspensePage><ProjectPage /></SuspensePage>}
+            />
+            <Route
+              path="/kien-thuc-dau-tu"
+              element={
+                <SuspensePage>
+                  <ContentHubPage hubPath="/kien-thuc-dau-tu" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/tin-thi-truong"
+              element={
+                <SuspensePage>
+                  <ContentHubPage hubPath="/tin-thi-truong" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/phan-tich"
+              element={
+                <SuspensePage>
+                  <ContentHubPage hubPath="/phan-tich" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/review-khu-vuc"
+              element={
+                <SuspensePage>
+                  <ContentHubPage hubPath="/review-khu-vuc" />
+                </SuspensePage>
+              }
+            />
+            <Route
+              path="/nha-dau-tu"
+              element={<SuspensePage><InvestorDashboardPage /></SuspensePage>}
+            />
+            <Route
+              path="/dau-tu-da-nang"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/dau-tu-nam-da-nang"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/dau-tu-fpt-city"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/can-ho-da-nang-cho-thue"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/can-ho-dau-tu-da-nang"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/dat-nen-nam-da-nang"
+              element={<SuspensePage><LandingPageView /></SuspensePage>}
+            />
+            <Route
+              path="/tai-lieu-dau-tu"
+              element={<SuspensePage><LeadMagnetsHubPage /></SuspensePage>}
+            />
+            <Route
+              path="/tai-lieu-dau-tu/:magnetSlug"
+              element={<SuspensePage><LeadMagnetDetailPage /></SuspensePage>}
+            />
+          </Route>
+
+          <Route path="/" element={<PublicListingsShell />}>
+            <Route index element={null} />
+            <Route path=":propertySlug" element={<PropertySlugOutlet />} />
+          </Route>
         </Routes>
       </HelmetProvider>
     </Router>
+    </LeadGenProvider>
   </StrictMode>,
 );
