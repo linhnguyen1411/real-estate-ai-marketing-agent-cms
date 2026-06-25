@@ -16,7 +16,7 @@ const INTERESTS: { id: LeadInterestType; label: string }[] = [
 
   { id: 'nha-pho', label: 'Nhà phố' },
 
-  { id: 'du-an', label: 'Dự án' },
+  { id: 'du-an', label: 'Danh mục BĐS' },
 
 ];
 
@@ -42,6 +42,8 @@ interface MultiStepInvestorFormProps {
 
   magnetSlug?: string;
 
+  submitLabel?: string;
+
   onSuccess?: (result: { access_token: string; investor_score: number }) => void;
 
   compact?: boolean;
@@ -55,6 +57,8 @@ export default function MultiStepInvestorForm({
   source = 'multi_step',
 
   magnetSlug,
+
+  submitLabel = 'Nhận danh sách cơ hội đầu tư',
 
   onSuccess,
 
@@ -304,7 +308,7 @@ export default function MultiStepInvestorForm({
 
           <h3 className="font-extrabold text-slate-950">Nhận danh sách cơ hội đầu tư</h3>
 
-          <p className="mt-1 text-sm text-slate-500">Điền thông tin để nhận báo cáo & danh sách TOP 20.</p>
+          <p className="mt-1 text-sm text-slate-500">Điền thông tin để nhận báo cáo & khung phân tích đầu tư.</p>
 
           <div className="mt-4 space-y-3">
 
@@ -340,7 +344,7 @@ export default function MultiStepInvestorForm({
 
               <Send className="h-4 w-4 shrink-0" />
 
-              <span className="text-center leading-tight">{status === 'loading' ? 'Đang gửi...' : 'Nhận danh sách cơ hội đầu tư'}</span>
+              <span className="text-center leading-tight">{status === 'loading' ? 'Đang gửi...' : submitLabel}</span>
 
             </button>
 

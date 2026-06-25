@@ -9,7 +9,7 @@ export interface NavItem {
 export const MAIN_NAV: NavItem[] = [
   { label: 'Trang chủ', href: '/' },
   { label: 'Bất động sản', href: '/bat-dong-san' },
-  { label: 'Dự án', href: '/du-an' },
+  { label: 'Danh mục', href: '/du-an' },
   {
     label: 'Kiến thức đầu tư',
     href: '/kien-thuc-dau-tu',
@@ -42,7 +42,7 @@ export const SEO_LANDING_SLUGS = [
   'dat-nen-nam-da-nang',
 ] as const;
 
-export const PROJECT_SLUGS = ['fpt-city', 'sun-cosmo', 'sun-symphony', 'mai-dang-chon'] as const;
+export { PROJECT_SLUGS } from './portfolioHub';
 
 export function isReservedSlug(slug: string) {
   return RESERVED_SLUGS.has(slug.toLowerCase());

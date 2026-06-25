@@ -11,3 +11,7 @@ coverage/
 data/prod-dump.sql
 data/*.dump
 data/*.bak
+public/blog-covers/*
+!public/blog-covers/.gitkeep
+public/content-images/*
+!public/content-images/.gitkeep

@@ -247,6 +247,34 @@ body {
   margin-bottom: 1.25rem;
 }
 
+.blog-cover-image,
+.blog-content-image {
+  display: block;
+  margin-inline: auto;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(72vh, 640px);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.article-prose img,
+.prose img {
+  display: block;
+  margin-inline: auto;
+  width: auto !important;
+  max-width: 100%;
+  height: auto !important;
+  max-height: min(72vh, 640px);
+  object-fit: contain !important;
+  object-position: center;
+}
+
 /* Scrollbar (admin + modals) */
 .app-scroll {
   scrollbar-gutter: stable;

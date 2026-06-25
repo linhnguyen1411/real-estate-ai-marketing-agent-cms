@@ -34,7 +34,7 @@ export default function LandingPageView() {
 
   const breadcrumbs = [
     { name: 'Trang chủ', path: '/' },
-    { name: data.h1.slice(0, 40), path },
+    { name: data.breadcrumbLabel ?? data.h1, path },
   ];
 
   const schemas = [

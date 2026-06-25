@@ -319,7 +319,7 @@ export async function writeDatabase(dbData: CmsDatabase) {
       create: { key: "app", data: { ...defaultSettings, ...dbData.settings } as any },
       update: { data: { ...defaultSettings, ...dbData.settings } as any },
     });
-  });
+  }, { timeout: 120_000, maxWait: 30_000 });
 }
 
 export async function saveChatMessage(input: {

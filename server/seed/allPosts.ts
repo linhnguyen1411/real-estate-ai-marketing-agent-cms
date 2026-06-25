@@ -1,4 +1,9 @@
+/**
+ * @deprecated LEGACY — Phase 28. Do not use for public content.
+ * Use Admin CMS or npm run migrate:legacy-posts to import into DB.
+ */
 import { buildArticleContent, SeoPostSeed, DEFAULT_COVER } from './contentBuilder';
+import { getPostArticle } from './postArticles';
 import {
   getClusterRelatedSlugs,
   getLeadMagnetLinkForSlug,
@@ -22,8 +27,8 @@ interface PostBlueprint {
   linkGroup: LinkGroup;
 }
 
-const FPT_CITY_LINKS = [{ label: 'Dự án FPT City', href: '/du-an/fpt-city' }];
-const MAI_DANG_CHON_LINKS = [{ label: 'Dự án Mai Đăng Chơn', href: '/du-an/mai-dang-chon' }];
+const FPT_CITY_LINKS = [{ label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' }];
+const MAI_DANG_CHON_LINKS = [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' }];
 
 const fitText = (text: string, max: number) => {
   if (text.length <= max) {
@@ -41,56 +46,6 @@ const pickLinks = (group: LinkGroup) => {
   }
   return undefined;
 };
-
-const buildIntro = (post: PostBlueprint) =>
-  `Bài viết "${post.title}" được xây dựng cho nhà đầu tư đang theo dõi thị trường Đà Nẵng năm 2026 với kỳ vọng rõ ràng và kỷ luật vốn. Thay vì đuổi theo câu chuyện tăng nóng, trọng tâm của phân tích là nhận diện tiềm năng theo khu vực, kiểm tra dữ liệu thực địa và đánh giá xem chiến lược có phù hợp khẩu vị rủi ro hay không. Mỗi luận điểm đều đi kèm góc nhìn thẩm định: pháp lý, thanh khoản, nhịp hấp thụ và khả năng khai thác dòng tiền. Đây không phải cam kết lợi nhuận; đây là khung ra quyết định để nhà đầu tư đi từ cảm tính sang hành động có kiểm soát, đặc biệt khi đầu tư từ xa vào các tài sản cần quan sát dài hạn.`;
-
-const buildSections = (post: PostBlueprint) => {
-  const headings = [
-    `Bối cảnh thị trường liên quan đến ${post.focus}`,
-    `Động lực tăng trưởng và giới hạn cần thẩm định`,
-    `Khả năng khai thác dòng tiền trong kịch bản thực tế`,
-    `Khung lựa chọn sản phẩm phù hợp khẩu vị vốn`,
-    `Rủi ro vận hành khi đầu tư từ xa vào Đà Nẵng`,
-    `Checklist hành động 90 ngày trước khi xuống tiền`,
-  ];
-
-  return headings.map((heading, index) => ({
-    heading,
-    paragraphs: [
-      `Trong chủ đề "${heading}", nhà đầu tư nên bắt đầu từ dữ liệu giao dịch 12 đến 18 tháng thay vì chỉ nhìn giá rao bán. Với ${post.focus}, yếu tố đáng theo dõi là ${post.marketAngle}, bởi đây là phần phản ánh chất lượng nhu cầu thật và độ sâu của thị trường. Một khu vực có tiềm năng không đồng nghĩa chắc chắn sinh lời trong ngắn hạn, vì tốc độ tăng giá còn phụ thuộc tiến độ hạ tầng, năng lực khai thác thương mại và sức mua tại chỗ. Khi lập phương án, nhà đầu tư trung và dài hạn cần so sánh biên độ giá giữa tài sản tương đồng, kiểm tra pháp lý từng lô và đánh dấu các điều kiện tiên quyết trước khi giải ngân từng đợt để tránh trả giá cho sự vội vàng.`,
-      `Ở góc độ triển khai, phần quan trọng nhất là biến kỳ vọng thành chỉ số kiểm chứng được: thời gian bán lại dự kiến, tỉ lệ trống cho thuê, chi phí hoàn thiện và biên an toàn dòng tiền. Nhiều kế hoạch nhìn trên giấy rất đẹp nhưng đổ vỡ khi bỏ qua chi phí cơ hội, thuế phí, thời gian xoay vòng vốn và mức giảm giá cần thiết để thoát hàng nhanh. Vì vậy, với mỗi quyết định liên quan đến ${post.focus}, nhà đầu tư nên xây ba kịch bản: cơ sở, thận trọng và phòng thủ. Mục tiêu là tìm thương vụ phù hợp khẩu vị rủi ro, ưu tiên tài sản minh bạch, và chấp nhận rằng lợi nhuận bền vững luôn đến từ quá trình thẩm định kỷ luật thay vì kỳ vọng chắc thắng.`,
-    ],
-  }));
-};
-
-const buildFaqs = (post: PostBlueprint) => [
-  {
-    question: `Nhà đầu tư mới nên bắt đầu từ đâu với chủ đề ${post.focus}?`,
-    answer:
-      'Nên bắt đầu bằng việc chốt mục tiêu nắm giữ, khả năng chịu rủi ro và nguồn vốn rảnh tối thiểu 24 tháng. Sau đó đối chiếu dữ liệu giao dịch thực tế, đi khảo sát khu vực và chỉ chọn tài sản có hồ sơ pháp lý rõ ràng trước khi đặt cọc.',
-  },
-  {
-    question: 'Có nên dùng đòn bẩy cao để tối đa hóa lợi nhuận kỳ vọng không?',
-    answer:
-      'Đòn bẩy cao chỉ phù hợp khi dòng tiền ổn định và biên an toàn lớn. Với thị trường có độ trễ thanh khoản như bất động sản Đà Nẵng, nên giữ tỉ lệ vay ở mức vừa phải, có quỹ dự phòng lãi vay và kịch bản thoát hàng trong điều kiện kém thuận lợi.',
-  },
-  {
-    question: 'Nên ưu tiên tăng giá vốn hay dòng tiền cho thuê?',
-    answer:
-      'Điều này phụ thuộc khẩu vị đầu tư. Nếu ưu tiên an toàn, nên chọn tài sản có khả năng khai thác dòng tiền sớm để giảm áp lực nắm giữ. Nếu ưu tiên tăng vốn, cần chấp nhận chu kỳ dài hơn và kiểm soát rủi ro pháp lý, quy hoạch thật chặt.',
-  },
-  {
-    question: 'Làm sao kiểm tra một khu vực có tiềm năng thật hay chỉ là hiệu ứng truyền thông?',
-    answer:
-      'Hãy so sánh tỉ lệ lấp đầy, mật độ dân cư mới, hoạt động kinh doanh vận hành thực tế và số lượng giao dịch có công chứng. Khi dữ liệu thực địa đi cùng câu chuyện hạ tầng, tiềm năng mới đáng để nghiên cứu sâu hơn trước khi xuống tiền.',
-  },
-  {
-    question: 'Khi đầu tư từ xa, nên thuê ai để hỗ trợ thẩm định?',
-    answer:
-      'Nên làm việc với môi giới địa phương có dữ liệu giao dịch, luật sư hoặc đơn vị pháp lý độc lập, và một đội khảo sát hiện trạng. Cách làm này giúp giảm thiên lệch thông tin, tăng chất lượng quyết định và bảo vệ vốn trong các thương vụ lớn.',
-  },
-];
 
 const POSTS: PostBlueprint[] = [
   {
@@ -458,24 +413,22 @@ export const SEO_POSTS: SeoPostSeed[] = POSTS.map((post) => {
     if (uniqueLinks.length >= 5) break;
   }
 
-  const intro = buildIntro(post);
-  const sections = buildSections(post);
-  const faqs = buildFaqs(post);
+  const article = getPostArticle(post.slug);
+  const intro = article.intro;
+  const sections = article.sections;
+  const faqs = article.faqs;
 
   return {
     title: post.title,
     slug: post.slug,
     excerpt: fitText(post.excerpt, 150),
-    metaTitle: fitText(`${post.title} | Góc nhìn đầu tư Đà Nẵng 2026`, 60),
-    metaDescription: fitText(
-      `${post.excerpt} Nội dung tập trung tiềm năng, điểm cần thẩm định và cách chọn tài sản phù hợp khẩu vị, không cam kết lợi nhuận.`,
-      155
-    ),
+    metaTitle: fitText(article.metaTitle, 60),
+    metaDescription: fitText(article.metaDescription, 155),
     categorySlug: post.categorySlug,
     tags: post.tags,
     coverImage: DEFAULT_COVER,
     faqs,
     extraLinks: uniqueLinks,
-    content: buildArticleContent(intro, sections, uniqueLinks)
+    content: buildArticleContent(intro, sections, uniqueLinks, article.cta),
   };
 });

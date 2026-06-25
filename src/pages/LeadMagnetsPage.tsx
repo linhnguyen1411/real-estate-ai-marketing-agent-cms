@@ -17,8 +17,8 @@ export function LeadMagnetsHubPage() {
   return (
     <>
       <SeoHead
-        title="Tài Liệu Đầu Tư Nam Đà Nẵng | Báo Cáo & Danh Sách Cơ Hội"
-        description="Tải báo cáo thị trường 2026, TOP 20 cơ hội đầu tư và bản đồ Nam Đà Nẵng — miễn phí cho nhà đầu tư."
+        title="Tài Liệu Đầu Tư Nam Đà Nẵng | Báo Cáo & Khung Phân Tích"
+        description="Tải báo cáo thị trường 2026, khung 20 nhóm cơ hội đầu tư và bản đồ Nam Đà Nẵng — miễn phí cho nhà đầu tư."
         path="/tai-lieu-dau-tu"
         schemas={[
           ...buildDefaultPageSchemas(breadcrumbs, origin),
@@ -29,7 +29,7 @@ export function LeadMagnetsHubPage() {
         <Breadcrumbs items={breadcrumbs} className="mb-6" />
         <h1 className="text-3xl font-extrabold text-slate-950">Trung tâm tài liệu đầu tư</h1>
         <p className="mt-3 text-lg text-slate-600">
-          Nhận báo cáo, danh sách và bản đồ — đổi lấy thông tin liên hệ. Không spam.
+          Nhận báo cáo, khung phân tích và bản đồ định hướng — đổi lấy thông tin liên hệ. Không spam.
         </p>
         <div className="mt-10 grid gap-6 sm:grid-cols-3">
           {LEAD_MAGNETS.map(magnet => (

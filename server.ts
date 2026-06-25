@@ -38,14 +38,16 @@ import { mergePostHashtags, mergeKeywordLists, hashtagsToKeywords, getPropertyCo
 import { getPageMetaByPath } from './src/seo/pageMeta';
 import { buildSitemapEntries, entriesToXml, sitemapIndexXml } from './src/seo/sitemap';
 import {
+  buildArticleSchema,
   buildBreadcrumbSchema,
   buildDefaultPageSchemas,
+  buildFaqSchema,
   buildPropertySchemas,
 } from './src/seo/schemas';
 import { isReservedSlug } from './src/seo/routes';
 import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from './server/investorLeadRoutes';
 import { registerBlogAdminRoutes, registerBlogPublicRoutes } from './server/blogRoutes';
-import { getPublishedBlogPostsForSitemap } from './server/blogDb';
+import { getBlogPostBySlug, getPublishedBlogPostsForSitemap } from './server/blogDb';
 import { processLeadCapture } from './server/investorLeadService';
 
 const app = express();
@@ -54,6 +56,12 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+
+const publicAssetsPath = path.join(process.cwd(), 'public');
+app.get('/favicon.ico', (_req: Request, res: Response) => {
+  res.sendFile(path.join(publicAssetsPath, 'logo.jpg'));
+});
+app.use(express.static(publicAssetsPath));
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof SyntaxError && 'body' in err) {
@@ -2353,7 +2361,7 @@ function getIndexHtmlTemplate() {
 
 function getDefaultShareMeta(origin: string) {
   const keywordList = buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
-  const defaultImage = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90&fm=webp';
+  const defaultImage = `${origin}/logo.jpg`;
   return {
     title: DEFAULT_SEO_TITLE,
     description: DEFAULT_SEO_DESCRIPTION,
@@ -2368,7 +2376,7 @@ function getStaticPageShareMeta(origin: string, pathname: string) {
   const pageMeta = getPageMetaByPath(pathname);
   if (!pageMeta) return null;
   const keywordList = pageMeta.keywords?.length ? pageMeta.keywords : buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
-  const defaultImage = 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90&fm=webp';
+  const defaultImage = `${origin}/logo.jpg`;
   return {
     title: pageMeta.title,
     description: pageMeta.description,
@@ -2379,7 +2387,7 @@ function getStaticPageShareMeta(origin: string, pathname: string) {
   };
 }
 
-function sendPublicIndex(req: Request, res: Response) {
+async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
   const origin = getPublicOrigin(req);
   const indexHtml = getIndexHtmlTemplate();
   const pathSlug = decodeURIComponent(String(req.path || '').replace(/^\//, ''));
@@ -2387,11 +2395,8 @@ function sendPublicIndex(req: Request, res: Response) {
   if (!pathSlug) {
     const meta = getDefaultShareMeta(origin);
     const schemas = buildDefaultPageSchemas([{ name: 'Trang chủ', path: '/' }], origin);
-    res
-      .status(200)
-      .set({ 'Content-Type': 'text/html; charset=utf-8' })
-      .send(renderIndexWithMeta(indexHtml, meta, schemas));
-    return;
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, meta, schemas));
+    return true;
   }
 
   const staticMeta = getStaticPageShareMeta(origin, `/${pathSlug}`);
@@ -2404,16 +2409,61 @@ function sendPublicIndex(req: Request, res: Response) {
       ...buildDefaultPageSchemas(breadcrumbs, origin),
       buildBreadcrumbSchema(breadcrumbs, origin),
     ];
-    res
-      .status(200)
-      .set({ 'Content-Type': 'text/html; charset=utf-8' })
-      .send(renderIndexWithMeta(indexHtml, staticMeta, schemas));
-    return;
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, staticMeta, schemas));
+    return true;
+  }
+
+  if (pathSlug.startsWith('tin-tuc/')) {
+    const blogSlug = pathSlug.slice('tin-tuc/'.length);
+    if (blogSlug && !blogSlug.includes('/')) {
+      try {
+        const post = await getBlogPostBySlug(blogSlug, true);
+        if (post) {
+          const postPath = `/tin-tuc/${post.slug}`;
+          const keywords = (post.tags || []).map((tag: { name: string }) => tag.name).join(', ');
+          const description = post.metaDescription || post.excerpt;
+          const meta = {
+            title: post.metaTitle || post.title,
+            description,
+            image: post.coverImage ? absoluteUrl(post.coverImage, origin) : `${origin}/logo.jpg`,
+            url: `${origin}${postPath}`,
+            keywords,
+            ogType: 'article',
+          };
+          const breadcrumbs = [
+            { name: 'Trang chủ', path: '/' },
+            { name: 'Tin tức', path: '/tin-tuc' },
+            ...(post.category
+              ? [{ name: post.category.name, path: post.category.hubPath }]
+              : []),
+            { name: post.title, path: postPath },
+          ];
+          const schemas = [
+            ...buildDefaultPageSchemas(breadcrumbs, origin),
+            buildBreadcrumbSchema(breadcrumbs, origin),
+            buildArticleSchema({
+              title: post.title,
+              description,
+              path: postPath,
+              publishedAt: post.publishedAt || undefined,
+              updatedAt: post.updatedAt,
+              image: meta.image,
+              origin,
+            }),
+            ...(post.faqs?.length ? [buildFaqSchema(post.faqs)] : []),
+          ];
+          await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, meta, schemas));
+          return true;
+        }
+      } catch (error) {
+        console.error('[SSR] blog post meta error:', error);
+      }
+    }
   }
 
   if (isReservedSlug(pathSlug)) {
-    res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
-    return;
+    await sendIndexHtml(req, res, indexHtml);
+    return true;
   }
 
   const property = findPublicPropertyBySlug(pathSlug);
@@ -2429,14 +2479,29 @@ function sendPublicIndex(req: Request, res: Response) {
       buildBreadcrumbSchema(breadcrumbs, origin),
       ...buildPropertySchemas(property, origin),
     ];
-    res
-      .status(200)
-      .set({ 'Content-Type': 'text/html; charset=utf-8' })
-      .send(renderIndexWithMeta(indexHtml, { ...shareMeta, ogType: 'product' }, schemas));
-    return;
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, { ...shareMeta, ogType: 'product' }, schemas));
+    return true;
   }
 
-  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
+  return false;
+}
+
+function shouldAttemptPublicIndex(req: Request) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const requestPath = String(req.path || '');
+  if (requestPath.startsWith('/api')) return false;
+  if (/\.[a-z0-9]+$/i.test(requestPath)) return false;
+  return true;
+}
+
+async function handlePublicIndex(req: Request, res: Response, next: NextFunction) {
+  if (!shouldAttemptPublicIndex(req)) {
+    next();
+    return;
+  }
+  const handled = await sendPublicIndex(req, res);
+  if (handled) return;
+  next();
 }
 
 app.get('/bds-da-nang', (req: Request, res: Response) => {
@@ -2525,59 +2590,111 @@ app.get('/sitemap-posts.xml', async (req: Request, res: Response) => {
 });
 
 const distPath = path.join(process.cwd(), 'dist');
+let viteDevServer: import('vite').ViteDevServer | null = null;
+
+async function finalizeIndexHtml(req: Request, html: string): Promise<string> {
+  if (process.env.NODE_ENV === 'production' || !viteDevServer) return html;
+  return viteDevServer.transformIndexHtml(req.originalUrl, html);
+}
+
+async function sendIndexHtml(req: Request, res: Response, html: string) {
+  const finalHtml = await finalizeIndexHtml(req, html);
+  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(finalHtml);
+}
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
+  app.use(handlePublicIndex);
   app.get('*', (req: Request, res: Response) => {
     if (req.path.startsWith('/api')) {
       res.status(404).json({ status: 'error', message: 'Not found' });
       return;
     }
-    sendPublicIndex(req, res);
-  });
-} else {
-  // Setup programmatic Vite server in developmental mode
-  // so everything runs seamlessly under standard port 3000
-  import('vite').then(({ createServer }) => {
-    createServer({
-      server: {
-        middlewareMode: true,
-        watch: {
-          ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log']
-        }
-      },
-      appType: 'spa',
-    }).then((viteServer) => {
-      app.use(viteServer.middlewares);
-      app.get('*', (req: Request, res: Response, next: NextFunction) => {
-        if (req.url.startsWith('/api')) {
-          return next();
-        }
-        sendPublicIndex(req, res);
-      });
-    }).catch(err => {
-      console.error("Vite server fails construction:", err);
-    });
+    const indexHtml = getIndexHtmlTemplate();
+    res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
   });
 }
 
-async function bootstrap() {
-  try {
-    await ensureDatabaseReady();
-    const db = readDatabase();
-    syncSiteSeoKeywords(db);
-    await writeDatabase(db);
-  } catch (error) {
-    console.error('[DB] Không kết nối được PostgreSQL:', error);
-    process.exit(1);
-  }
+async function setupViteDevServer() {
+  const { createServer } = await import('vite');
+  const viteServer = await createServer({
+    configFile: path.join(process.cwd(), 'vite.config.ts'),
+    server: {
+      middlewareMode: true,
+      watch: {
+        ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log'],
+      },
+    },
+    appType: 'spa',
+  });
+  viteDevServer = viteServer;
+  app.use(handlePublicIndex);
+  app.use(viteServer.middlewares);
+  app.get('*', async (req: Request, res: Response, next: NextFunction) => {
+    if (req.url.startsWith('/api')) {
+      return next();
+    }
+    await sendIndexHtml(req, res, getIndexHtmlTemplate());
+  });
+}
 
-  app.listen(PORT, HOST, () => {
+function startHttpServer() {
+  const server = app.listen(PORT, HOST, () => {
     console.log('====================================================');
     console.log(`Real Estate AI CMS is listening on port ${PORT} (PostgreSQL)`);
     console.log(`Live Preview at: http://localhost:${PORT}`);
     console.log('====================================================');
   });
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(
+        `[Server] Port ${PORT} đang được dùng. Chạy: npm run dev:restart`,
+      );
+    } else {
+      console.error('[Server] Không khởi động được HTTP:', error);
+    }
+    process.exit(1);
+  });
 }
 
-void bootstrap();
+async function bootstrap(): Promise<boolean> {
+  try {
+    await ensureDatabaseReady();
+  } catch (error) {
+    console.error('[DB] Không kết nối được PostgreSQL:', error);
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+    console.warn('[DB] Dev mode: tiếp tục chạy UI — bật Postgres: npm run db:pg-start');
+    return false;
+  }
+
+  try {
+    const keywords = syncSiteSeoKeywords(readDatabase());
+    await updateSettings({ seo_keywords: keywords });
+  } catch (error) {
+    console.warn('[DB] Bỏ qua sync seo_keywords lúc khởi động:', error);
+  }
+
+  console.log('[DB] PostgreSQL sẵn sàng');
+  return true;
+}
+
+async function main() {
+  await bootstrap();
+
+  if (process.env.NODE_ENV === 'production') {
+    startHttpServer();
+    return;
+  }
+
+  try {
+    await setupViteDevServer();
+    startHttpServer();
+  } catch (error) {
+    console.error('Vite server fails construction:', error);
+    process.exit(1);
+  }
+}
+
+void main();

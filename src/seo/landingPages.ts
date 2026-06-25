@@ -7,6 +7,8 @@ export interface LandingSection {
 export interface LandingPageData {
   slug: string;
   h1: string;
+  /** Nhãn ngắn cho breadcrumb — tránh cắt giữa từ khi H1 dài */
+  breadcrumbLabel?: string;
   heroSubtitle: string;
   sections: LandingSection[];
   benefits: { title: string; description: string }[];
@@ -163,7 +165,8 @@ export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {
   'dau-tu-fpt-city': {
     slug: 'dau-tu-fpt-city',
     h1: 'Đầu Tư FPT City Đà Nẵng — Chiến Lược & Checklist',
-    heroSubtitle: 'Đất nền, shophouse và căn hộ trong hệ sinh thái FPT',
+    breadcrumbLabel: 'Đầu tư FPT City',
+    heroSubtitle: 'Đất nền, shophouse và căn hộ trong hệ sinh thái FPT — khung phân tích, không phải bảng chào bán',
     marketPoints: [
       { label: 'Chủ đầu tư', value: 'FPT / đối tác' },
       { label: 'Vị trí', value: 'Nam Đà Nẵng' },
@@ -181,8 +184,28 @@ export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {
         id: 'about',
         title: 'FPT City là gì?',
         content: [
-          'FPT City là khu đô thị phức hợp phía Nam Đà Nẵng, gắn với thương hiệu FPT và hệ sinh thái đô thị thông minh. Khu vực hút nhà đầu tư thích quy hoạch rõ, hạ tầng đồng bộ và cộng đồng cư dân có thu nhập ổn định.',
-          'Khi đầu tư tại đây, cần phân biệt từng phân khu (đất nền, nhà phố, căn hộ) vì mức độ thanh khoản và chi phí sở hữu khác nhau đáng kể.',
+          'FPT City là khu đô thị phức hợp phía Nam Đà Nẵng, gắn với thương hiệu FPT, Khu CNC và Làng Đại học Hòa Quý. Khu vực hút nhà đầu tư thích quy hoạch rõ, hạ tầng đồng bộ và cộng đồng lao động tri thức có thu nhập ổn định.',
+          'Cần phân biệt từng phân khu (đất nền, nhà phố, căn hộ, shophouse) vì thanh khoản, chi phí sở hữu và mô hình khai thác khác nhau đáng kể — không gom chung cả dự án vào một nhãn “đã xong hạ tầng”.',
+        ],
+      },
+      {
+        id: 'strategy',
+        title: 'Chiến lược đầu tư theo mục tiêu',
+        content: [
+          '**Tích lũy 3–5 năm:** Ưu tiên đất nền ven trục đã có đường nội bộ, so sánh tiến độ từng block bằng ảnh vệ tinh theo quý. Chấp nhận thanh khoản chậm trong giai đoạn chờ hạ tầng.',
+          '**Dòng tiền trung hạn:** Căn hộ 1–2PN đã bàn giao quanh FPT City hoặc Khu CNC — lấy giá thuê thực tế từ 3 căn tương đương, trừ phí quản lý và thời gian trống phòng.',
+          '**Kinh doanh / shophouse:** Chỉ vào khi có dự toán lấp đầy thuê kinh doanh và cư dân đã về ổn định — shophouse giai đoạn đầu có thể trống 18–24 tháng.',
+        ],
+      },
+      {
+        id: 'checklist',
+        title: 'Checklist trước khi xuống tiền tại FPT City',
+        content: [
+          'Xác định mục tiêu (tích lũy / dòng tiền / kinh doanh) và trần ngân sách all-in (mua + thuế + sửa + dự phòng 12 tháng).',
+          'So sánh 5 giao dịch tương đương cùng loại tài sản — lấy từ tin thật, không chỉ brochure.',
+          'Kiểm tra tiến độ đường nội bộ phân khu, ranh giới quy hoạch đất ở và CNC trên bản đồ sử dụng đất.',
+          'Tra cứu thế chấp, công chứng và mục đích sử dụng đất trên sổ trước đặt cọc.',
+          'Khảo sát trực tiếp tối thiểu 1–2 ngày tại Nam Đà Nẵng — hoặc video walkthrough có timestamp.',
         ],
       },
     ],

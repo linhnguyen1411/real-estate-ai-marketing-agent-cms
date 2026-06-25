@@ -30,6 +30,8 @@ const LeadMagnetsHubPage = React.lazy(() => import('./pages/LeadMagnetsPage.tsx'
 const LeadMagnetDetailPage = React.lazy(() => import('./pages/LeadMagnetsPage.tsx').then(m => ({ default: m.LeadMagnetDetailPage })));
 const BlogListPage = React.lazy(() => import('./pages/BlogListPage.tsx'));
 const BlogPostPage = React.lazy(() => import('./pages/BlogPostPage.tsx'));
+const BlogCategoryPage = React.lazy(() => import('./pages/BlogCategoryPage.tsx'));
+const BlogTagPage = React.lazy(() => import('./pages/BlogTagPage.tsx'));
 const InvestorDashboardPage = React.lazy(() => import('./pages/InvestorDashboardPage.tsx'));
 
 function PageLoader() {
@@ -115,6 +117,11 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/admin/login" element={<App />} />
           <Route path="/admin/dashboard" element={<App />} />
+          <Route path="/admin/ai-content" element={<Navigate to="/admin/seo/posts" replace />} />
+          <Route path="/admin/seo/posts" element={<App />} />
+          <Route path="/admin/seo/categories" element={<App />} />
+          <Route path="/admin/seo/tags" element={<App />} />
+          <Route path="/admin/seo/audit" element={<App />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to="/" replace />} />
@@ -125,8 +132,16 @@ createRoot(document.getElementById('root')!).render(
               element={<SuspensePage><BlogListPage /></SuspensePage>}
             />
             <Route
+              path="/tin-tuc/chuyen-muc/:categorySlug"
+              element={<SuspensePage><BlogCategoryPage /></SuspensePage>}
+            />
+            <Route
               path="/tin-tuc/:slug"
               element={<SuspensePage><BlogPostPage /></SuspensePage>}
+            />
+            <Route
+              path="/tag/:tagSlug"
+              element={<SuspensePage><BlogTagPage /></SuspensePage>}
             />
             <Route
               path="/gioi-thieu"
@@ -208,38 +223,10 @@ createRoot(document.getElementById('root')!).render(
               path="/du-an/:projectSlug"
               element={<SuspensePage><ProjectPage /></SuspensePage>}
             />
-            <Route
-              path="/kien-thuc-dau-tu"
-              element={
-                <SuspensePage>
-                  <ContentHubPage hubPath="/kien-thuc-dau-tu" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/tin-thi-truong"
-              element={
-                <SuspensePage>
-                  <ContentHubPage hubPath="/tin-thi-truong" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/phan-tich"
-              element={
-                <SuspensePage>
-                  <ContentHubPage hubPath="/phan-tich" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/review-khu-vuc"
-              element={
-                <SuspensePage>
-                  <ContentHubPage hubPath="/review-khu-vuc" />
-                </SuspensePage>
-              }
-            />
+            <Route path="/kien-thuc-dau-tu" element={<Navigate to="/tin-tuc/chuyen-muc/kien-thuc-dau-tu" replace />} />
+            <Route path="/tin-thi-truong" element={<Navigate to="/tin-tuc/chuyen-muc/tin-thi-truong" replace />} />
+            <Route path="/phan-tich" element={<Navigate to="/tin-tuc/chuyen-muc/phan-tich-du-an" replace />} />
+            <Route path="/review-khu-vuc" element={<Navigate to="/tin-tuc/chuyen-muc/review-khu-vuc" replace />} />
             <Route
               path="/nha-dau-tu"
               element={<SuspensePage><InvestorDashboardPage /></SuspensePage>}

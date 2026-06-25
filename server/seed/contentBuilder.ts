@@ -1,3 +1,6 @@
+/**
+ * @deprecated LEGACY — Phase 28. Template builder removed from public pipeline.
+ */
 export function slugifyTag(name: string) {
   return name
     .toLowerCase()
@@ -24,17 +27,14 @@ const BASE_LINKS = [
 export function buildArticleContent(
   intro: string,
   sections: { heading: string; paragraphs: string[] }[],
-  extraLinks: { label: string; href: string }[] = []
+  extraLinks: { label: string; href: string }[] = [],
+  cta?: string
 ) {
   const mergedLinks = [...BASE_LINKS, ...extraLinks].slice(0, 7);
   const body = sections
-    .map((section, index) => {
+    .map(section => {
       const heading = `## ${section.heading}`;
-      const inlineLink = index < 2 ? mergedLinks[index] : null;
-      const inlineNote = inlineLink
-        ? `Nhà đầu tư quan tâm chủ đề này có thể tham khảo thêm [${inlineLink.label}](${inlineLink.href}) để mở rộng góc nhìn thẩm định.`
-        : '';
-      const text = [...section.paragraphs, inlineNote].filter(Boolean).join('\n\n');
+      const text = section.paragraphs.join('\n\n');
       return `${heading}\n\n${text}`;
     })
     .join('\n\n');
@@ -43,7 +43,9 @@ export function buildArticleContent(
     .map(link => `- [${link.label}](${link.href})`)
     .join('\n');
 
-  return `${intro}\n\n${body}\n\n## Liên kết hữu ích\n\n${links}`;
+  const ctaBlock = cta ? `\n\n## Liên hệ thẩm định\n\n${cta}` : '';
+
+  return `${intro}\n\n${body}\n\n## Liên kết hữu ích\n\n${links}${ctaBlock}`;
 }
 
 export interface SeoPostSeed {

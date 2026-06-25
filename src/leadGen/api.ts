@@ -1,5 +1,8 @@
 import type { LeadCapturePayload } from '../types/investorLead';
 import { getLeadSessionId, getUtmParams, inferChannel, trackGa4Event } from './analytics';
+import { getLeadMagnet } from './leadMagnets';
+import { normalizeLeadMagnetContent } from './normalizeLeadMagnetContent';
+import type { LeadMagnetContent } from '../types/leadMagnetContent';
 
 export interface SubmitLeadResult {
   id: string;
@@ -39,4 +42,24 @@ export async function submitInvestorLead(
   });
 
   return json.data;
+}
+
+export async function fetchLeadMagnetContent(slug: string, token: string): Promise<LeadMagnetContent> {
+  const magnet = getLeadMagnet(slug);
+  if (!magnet) throw new Error('Không tìm thấy tài liệu');
+
+  const response = await fetch(
+    `/api/public/lead-magnets/${encodeURIComponent(slug)}/content?token=${encodeURIComponent(token)}`
+  );
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(json.message || 'Không tải được tài liệu');
+  }
+
+  const raw = json.data?.content ?? json.data;
+  const content = normalizeLeadMagnetContent(raw, magnet);
+  if (!content) {
+    throw new Error('Định dạng nội dung tài liệu không hợp lệ');
+  }
+  return content;
 }

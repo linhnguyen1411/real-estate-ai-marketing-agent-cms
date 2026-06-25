@@ -1,23 +1,25 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Facebook, MessageCircle, Phone } from 'lucide-react';
 import SeoHead from '../components/seo/SeoHead';
 import Breadcrumbs from '../components/seo/Breadcrumbs';
 import FaqSection from '../components/FaqSection';
-import LeadCaptureForm from '../components/LeadCaptureForm';
+import MultiStepInvestorForm from '../components/leadGen/MultiStepInvestorForm';
 import ArticleTableOfContents from '../components/blog/ArticleTableOfContents';
 import BlogArticleBody from '../components/blog/BlogArticleBody';
-import { fetchPublicBlogPost } from '../services/blogApi';
-import { fetchPublicBlogPosts } from '../services/blogApi';
+import ReadingProgressBar from '../components/blog/ReadingProgressBar';
+import { fetchPublicBlogPost, fetchPublicBlogPosts } from '../services/blogApi';
 import type { BlogArticle } from '../types';
+import { buildPostCta } from '../seo/buildPostCta';
 import {
   buildArticleSchema,
   buildBreadcrumbSchema,
   buildDefaultPageSchemas,
   buildFaqSchema,
 } from '../seo/schemas';
-import { getSiteOrigin } from '../seo/siteConfig';
+import { getSiteOrigin, CONTACT } from '../seo/siteConfig';
+import { trackMessengerClick, trackPhoneClick, trackZaloClick } from '../leadGen/analytics';
 import {
-  getClusterKeyFromSlug,
   getRelatedAreaLinksForSlug,
   getRelatedProjectLinksForSlug,
 } from '../seo/internalLinkGraph';
@@ -28,6 +30,7 @@ export default function BlogPostPage() {
   const [allPosts, setAllPosts] = useState<BlogArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [formFocused, setFormFocused] = useState(false);
   const origin = getSiteOrigin();
 
   useEffect(() => {
@@ -46,6 +49,16 @@ export default function BlogPostPage() {
     fetchPublicBlogPosts()
       .then(setAllPosts)
       .catch(() => setAllPosts([]));
+  }, []);
+
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement;
+      setFormFocused(Boolean(t?.closest('form, input, textarea, select')));
+    };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', () => setTimeout(() => setFormFocused(false), 100));
+    return () => document.removeEventListener('focusin', onFocusIn);
   }, []);
 
   if (loading) {
@@ -72,37 +85,42 @@ export default function BlogPostPage() {
   const breadcrumbs = [
     { name: 'Trang chủ', path: '/' },
     { name: 'Tin tức', path: '/tin-tuc' },
-    ...(post.category ? [{ name: post.category.name, path: post.category.hubPath }] : []),
+    ...(post.category
+      ? [{ name: post.category.name, path: `/tin-tuc/chuyen-muc/${post.category.slug}` }]
+      : []),
     { name: post.title, path },
   ];
   const faqs = post.faqs || [];
-  const postCluster = getClusterKeyFromSlug(post.slug);
-  const relatedPosts = allPosts
-    .filter(item => item.slug !== post.slug)
-    .map(item => {
-      let score = 0;
-      if (postCluster && getClusterKeyFromSlug(item.slug) === postCluster) score += 100;
-      if (post.category?.id && item.category?.id === post.category.id) score += 40;
-      const currentTags = new Set((post.tags || []).map(tag => tag.slug));
-      const overlapTags = (item.tags || []).filter(tag => currentTags.has(tag.slug)).length;
-      score += overlapTags * 10;
-      if (
-        (post.slug.includes('fpt-city') && item.slug.includes('fpt-city')) ||
-        (post.slug.includes('mai-dang-chon') && item.slug.includes('mai-dang-chon')) ||
-        (post.slug.includes('can-ho') && item.slug.includes('can-ho'))
-      ) {
-        score += 20;
-      }
-      return { item, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map(entry => entry.item);
+  const cta = buildPostCta({
+    title: post.title,
+    primaryKeyword: post.primaryKeyword,
+    tags: (post.tags || []).map(t => t.name),
+    categoryName: post.category?.name,
+    contentText: post.content || '',
+  });
+
+  const storedRelatedIds = post.relatedPostIds || [];
+  const relatedPosts =
+    storedRelatedIds.length > 0
+      ? allPosts.filter(p => storedRelatedIds.includes(p.id) && p.slug !== post.slug)
+      : allPosts.filter(p => p.slug !== post.slug).slice(0, 6);
+
   const relatedProjectLinks = getRelatedProjectLinksForSlug(post.slug);
   const relatedAreaLinks = getRelatedAreaLinksForSlug(post.slug);
 
+  const stickyCta = (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+      <h3 className="text-sm font-extrabold text-slate-950">{cta.title}</h3>
+      <p className="mt-2 text-xs text-slate-500">{cta.description}</p>
+      <a href="#lead-form" className="btn-cta mt-3 block w-full py-2.5 text-center text-xs">
+        {cta.buttonText}
+      </a>
+    </div>
+  );
+
   return (
     <>
+      <ReadingProgressBar />
       <SeoHead
         title={post.metaTitle}
         description={post.metaDescription}
@@ -139,26 +157,25 @@ export default function BlogPostPage() {
                 Xuất bản: {new Date(post.publishedAt).toLocaleDateString('vi-VN')}
               </time>
             )}
-            <time dateTime={post.updatedAt}>
-              Cập nhật: {new Date(post.updatedAt).toLocaleDateString('vi-VN')}
-            </time>
           </div>
           <h1 className="heading-page mt-4">{post.title}</h1>
           <p className="text-body-lg mt-4 text-invest-muted">{post.excerpt}</p>
         </header>
 
         {post.coverImage && (
-          <img
-            src={post.coverImage}
-            alt={post.title}
-            className="mt-8 aspect-[16/9] w-full rounded-xl object-cover"
-            loading="eager"
-          />
+          <figure className="mt-8 flex justify-center">
+            <img
+              src={post.coverImage}
+              alt={post.title}
+              className="blog-cover-image"
+              loading="eager"
+            />
+          </figure>
         )}
 
         <div className="mt-10 grid gap-10 lg:grid-cols-[240px_1fr]">
           <aside className="lg:sticky lg:top-24 lg:self-start">
-            <ArticleTableOfContents content={post.content || ''} />
+            <ArticleTableOfContents content={post.content || ''} stickyCta={stickyCta} />
           </aside>
           <div className="article-prose">
             {post.content && <BlogArticleBody content={post.content} />}
@@ -182,7 +199,6 @@ export default function BlogPostPage() {
                 </div>
               </div>
             )}
-
             {relatedProjectLinks.length > 0 && (
               <div>
                 <h3 className="text-lg font-bold text-invest-text">Dự án liên quan</h3>
@@ -195,7 +211,6 @@ export default function BlogPostPage() {
                 </div>
               </div>
             )}
-
             {relatedAreaLinks.length > 0 && (
               <div>
                 <h3 className="text-lg font-bold text-invest-text">Khu vực liên quan</h3>
@@ -211,22 +226,62 @@ export default function BlogPostPage() {
           </section>
         )}
 
-        <section className="mt-12 invest-card border-invest-gold/30 bg-invest-gold-muted/30 p-6 sm:p-8">
-          <h2 className="heading-section">
-            Bạn muốn nhận danh sách cơ hội đầu tư Nam Đà Nẵng đang được chọn lọc theo ngân sách?
-          </h2>
-          <p className="mt-3 text-slate-600">
-            Điền thông tin để nhận báo cáo và danh mục phù hợp.
-          </p>
-          <div className="mt-6">
-            <LeadCaptureForm
-              source={`blog-${post.slug}`}
-              defaultArea="Nam Đà Nẵng"
-              submitLabel="Nhận danh sách cơ hội đầu tư"
-            />
+        <section id="lead-form" className="section-alt mt-12 border-t border-invest-border py-16">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p className="label-section">Tư vấn theo nội dung bài</p>
+              <h2 className="heading-section mt-2">{cta.title}</h2>
+              <p className="text-body mt-4 max-w-xl text-invest-muted">{cta.description}</p>
+              <Link
+                to="/tai-lieu-dau-tu"
+                className="mt-4 inline-block text-sm font-bold text-invest-cta hover:underline"
+              >
+                Xem tài liệu đầu tư →
+              </Link>
+              <div className="mt-8 grid gap-3 text-sm">
+                <a
+                  href={`tel:${CONTACT.phone}`}
+                  onClick={() => trackPhoneClick('blog_post_cta')}
+                  className="flex items-center gap-3 text-invest-text"
+                >
+                  <Phone className="h-5 w-5 text-invest-blue" />
+                  {CONTACT.phoneDisplay}
+                </a>
+                <a
+                  href={CONTACT.zalo}
+                  onClick={() => trackZaloClick('blog_post_cta')}
+                  className="flex items-center gap-3 text-invest-text"
+                >
+                  <MessageCircle className="h-5 w-5 text-blue-600" />
+                  Zalo tư vấn nhanh
+                </a>
+                <a
+                  href={CONTACT.facebook}
+                  onClick={() => trackMessengerClick('blog_post_cta')}
+                  className="flex items-center gap-3 text-invest-text"
+                >
+                  <Facebook className="h-5 w-5 text-sky-600" />
+                  Facebook Messenger
+                </a>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <MultiStepInvestorForm
+                source={`blog-${post.slug}-${cta.leadIntent}`}
+                submitLabel={cta.buttonText}
+              />
+            </div>
           </div>
         </section>
       </article>
+
+      {!formFocused && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden">
+          <a href="#lead-form" className="btn-cta block w-full py-3 text-center text-sm">
+            {cta.buttonText}
+          </a>
+        </div>
+      )}
     </>
   );
 }

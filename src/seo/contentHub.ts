@@ -1,3 +1,4 @@
+
 export interface ContentCategory {
   slug: string;
   title: string;
@@ -37,22 +38,22 @@ export const CONTENT_HUB_CATEGORIES: ContentCategory[] = [
   },
   {
     slug: 'du-an',
-    title: 'Dự án',
-    description: 'FPT City, Sun Cosmo, Sun Symphony và hơn thế.',
+    title: 'Danh mục BĐS',
+    description: 'Sun Group Đà Nẵng, BĐS Nam Đà Nẵng và BĐS nổi bật — danh mục bất động sản Estoria tại Đà Nẵng.',
     path: '/du-an',
-    keywords: ['dự án bđs đà nẵng'],
+    keywords: ['danh mục bđs đà nẵng', 'sun group đà nẵng'],
   },
   {
     slug: 'can-ho',
     title: 'Căn hộ',
-    description: 'Căn hộ cao cấp, cho thuê và đầu tư.',
+    description: 'Căn hộ Sun Group ven sông Hàn và trung tâm.',
     path: '/can-ho',
-    keywords: ['căn hộ đà nẵng'],
+    keywords: ['căn hộ đà nẵng', 'căn hộ sun group'],
   },
   {
     slug: 'dat-nen',
     title: 'Đất nền',
-    description: 'Đất nền Nam Đà Nẵng và ven sông.',
+    description: 'Đất nền Nam Đà Nẵng và đất nền dự án Sun Group.',
     path: '/dat-nen',
     keywords: ['đất nền đà nẵng'],
   },
@@ -65,55 +66,5 @@ export const CONTENT_HUB_CATEGORIES: ContentCategory[] = [
   },
 ];
 
-export interface ProjectData {
-  slug: string;
-  name: string;
-  location: string;
-  summary: string;
-  highlights: string[];
-  faqs: { question: string; answer: string }[];
-}
-
-export const PROJECTS: Record<string, ProjectData> = {
-  'fpt-city': {
-    slug: 'fpt-city',
-    name: 'FPT City Đà Nẵng',
-    location: 'Nam Đà Nẵng',
-    summary: 'Khu đô thị phức hợp phía Nam với hạ tầng đồng bộ, đa sản phẩm từ đất nền đến căn hộ.',
-    highlights: ['Hạ tầng nội khu', 'Cộng đồng FPT', 'Đa phân khúc giá', 'Tiềm năng dài hạn'],
-    faqs: [
-      { question: 'FPT City có phù hợp nhà đầu tư Hà Nội?', answer: 'Phù hợp nếu mục tiêu tích lũy 3–5 năm và chấp nhận thanh khoản trung bình. Nên so sánh với đất nền Nam Đà Nẵng khác trước khi quyết định.' },
-      { question: 'Làm sao nhận danh sách sản phẩm FPT City?', answer: 'Điền form nhận danh sách cơ hội đầu tư Đà Nẵng — chúng tôi lọc sản phẩm FPT City theo ngân sách của anh/chị.' },
-    ],
-  },
-  'sun-cosmo': {
-    slug: 'sun-cosmo',
-    name: 'Sun Cosmo Đà Nẵng',
-    location: 'Đà Nẵng',
-    summary: 'Căn hộ cao cấp thương hiệu Sun Group, tiện ích resort, phù hợp đầu tư và nghỉ dưỡng.',
-    highlights: ['Thương hiệu Sun Group', 'Tiện ích cao cấp', 'Cho thuê ngắn hạn', 'Thanh khoản TT2'],
-    faqs: [
-      { question: 'Sun Cosmo cho thuê có ổn không?', answer: 'Tùy tầng, view và nội thất. Cần tính yield ròng sau phí quản lý và mùa thấp điểm.' },
-    ],
-  },
-  'sun-symphony': {
-    slug: 'sun-symphony',
-    name: 'Sun Symphony Đà Nẵng',
-    location: 'Đà Nẵng',
-    summary: 'Dự án nghỉ dưỡng cao cấp trong hệ sinh thái Sun, hướng tới khách hàng premium.',
-    highlights: ['Nghỉ dưỡng cao cấp', 'Sun Group', 'Thương hiệu quốc tế', 'Tiềm năng brand'],
-    faqs: [
-      { question: 'Sun Symphony khác Sun Cosmo thế nào?', answer: 'Symphony định vị nghỉ dưỡng cao cấp hơn; Cosmo đa dạng hơn về sản phẩm và giá. Cần xem mục tiêu đầu tư cụ thể.' },
-    ],
-  },
-  'mai-dang-chon': {
-    slug: 'mai-dang-chon',
-    name: 'Mai Đăng Chơn',
-    location: 'Nam Đà Nẵng',
-    summary: 'Khu đô thị mới Nam Đà Nẵng với quỹ đất và nhà phố tiềm năng.',
-    highlights: ['Khu đô thị mới', 'Nam Đà Nẵng', 'Đất + nhà phố', 'Giá vào hợp lý'],
-    faqs: [
-      { question: 'Mai Đăng Chơn có đáng đầu tư?', answer: 'Cần đánh giá tiến độ hạ tầng, pháp lý từng lô và so sánh với FPT City cùng khu vực.' },
-    ],
-  },
-};
+export { PROJECTS, getSunGroupProjects, getProjectBySlug } from './portfolioHub';
+export type { ProjectData } from './portfolioHub';

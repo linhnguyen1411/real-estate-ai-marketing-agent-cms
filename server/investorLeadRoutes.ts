@@ -16,19 +16,11 @@ import {
 
 } from './investorLeadDb';
 
+import { LEAD_MAGNETS, getLeadMagnet } from '../src/leadGen/leadMagnets';
 import {
-
-  LEAD_MAGNETS,
-
-  TOP_20_OPPORTUNITIES,
-
-  MARKET_REPORT_SECTIONS,
-
-  INVESTMENT_MAP_ZONES,
-
-  getLeadMagnet,
-
-} from '../src/leadGen/leadMagnets';
+  getLeadMagnetContent,
+  listLeadMagnetContentMeta,
+} from './services/leadMagnetContentService';
 
 import type { LeadCapturePayload } from '../src/types/investorLead';
 
@@ -214,19 +206,13 @@ export function createInvestorLeadPublicRouter() {
 
 
 
-    let content: unknown;
+    const content = getLeadMagnetContent(slug);
 
-    if (slug === 'bao-cao-nam-da-nang-2026') {
+    if (!content) {
 
-      content = { type: 'report', sections: MARKET_REPORT_SECTIONS };
+      res.status(404).json({ status: 'error', message: 'Nội dung tài liệu chưa sẵn sàng.' });
 
-    } else if (slug === 'top-20-co-hoi-dau-tu') {
-
-      content = { type: 'list', items: TOP_20_OPPORTUNITIES };
-
-    } else if (slug === 'ban-do-dau-tu-nam-da-nang') {
-
-      content = { type: 'map', zones: INVESTMENT_MAP_ZONES };
+      return;
 
     }
 
@@ -291,6 +277,14 @@ export function registerInvestorLeadAdminRoutes(app: import('express').Express) 
   app.get('/api/investor-leads/:id/events', async (req: Request, res: Response) => {
 
     res.json({ status: 'success', data: await getLeadEvents(req.params.id) });
+
+  });
+
+
+
+  app.get('/api/lead-magnet-content', async (_req: Request, res: Response) => {
+
+    res.json({ status: 'success', data: listLeadMagnetContentMeta() });
 
   });
 

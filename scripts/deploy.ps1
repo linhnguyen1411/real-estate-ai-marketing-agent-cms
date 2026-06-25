@@ -69,7 +69,7 @@ try {
   }
 
   Run-Step "Extract, build on VPS, restart PM2" {
-    $remoteCommand = "cd $RemoteDir && rm -rf dist && tar -xzf $remoteArchive && npx prisma db push --accept-data-loss && npm run build && pm2 restart $Pm2Name --update-env && rm -f $remoteArchive"
+    $remoteCommand = "cd $RemoteDir && rm -rf dist && tar -xzf $remoteArchive && npm install && npx prisma db push --accept-data-loss && npm run build && pm2 restart $Pm2Name --update-env && rm -f $remoteArchive"
     ssh $remote $remoteCommand
     if ($LASTEXITCODE -ne 0) { throw "Remote deploy failed (exit $LASTEXITCODE)" }
   }

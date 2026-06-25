@@ -27,8 +27,8 @@ export default function AboutPage() {
   return (
     <>
       <SeoHead
-        title="Giới Thiệu Estoria | Trung Tâm Thông Tin & Đầu Tư Nam Đà Nẵng"
-        description="Estoria cung cấp dữ liệu và phân tích bất động sản Đà Nẵng cho nhà đầu tư trung và dài hạn. Minh bạch pháp lý, dữ liệu thực tế."
+        title="Giới Thiệu Estoria | Tư Vấn BĐS Đà Nẵng"
+        description="Estoria — đội ngũ tư vấn bất động sản Đà Nẵng hỗ trợ nhà đầu tư bằng dữ liệu minh bạch và góc nhìn thẩm định thực tế."
         path="/gioi-thieu"
         ogType="article"
         schemas={schemas}
@@ -39,9 +39,8 @@ export default function AboutPage() {
           Giới thiệu {SITE.name}
         </h1>
         <p className="mt-4 text-lg leading-8 text-slate-600">
-          {SITE.name} ({SITE.brand}) là trung tâm thông tin và tư vấn bất động sản tại Đà Nẵng, chuyên hỗ trợ
-          nhà đầu tư trung và dài hạn tìm kiếm cơ hội tại Nam Đà Nẵng, FPT City, Sun Cosmo và các phân khúc
-          tài sản cho thuê.
+          {SITE.name} ({SITE.brand}) chuyên hỗ trợ nhà đầu tư trung và dài hạn tại Đà Nẵng.
+          Trọng tâm danh mục: đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn và BĐS nổi bật đa khu vực.
         </p>
 
         <section className="mt-10 space-y-4 text-slate-700 leading-7">

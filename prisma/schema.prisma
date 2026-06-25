@@ -203,14 +203,17 @@ model Author {
 }
 
 model Category {
-  id          String     @id
-  name        String
-  slug        String     @unique
-  description String?    @db.Text
-  hubPath     String     @map("hub_path")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  posts       BlogPost[]
+  id            String     @id
+  name          String
+  slug          String     @unique
+  description   String?    @db.Text
+  hubPath       String     @map("hub_path")
+  legacyHubPath String?    @map("legacy_hub_path")
+  sortOrder     Int        @default(0) @map("sort_order")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  posts         BlogPost[]
 
   @@map("categories")
 }
@@ -226,27 +229,49 @@ model Tag {
 }
 
 model BlogPost {
-  id              String        @id
-  title           String
-  slug            String        @unique
-  excerpt         String        @db.Text
-  content         String        @db.Text
-  metaTitle       String        @map("meta_title")
-  metaDescription String        @map("meta_description") @db.Text
-  coverImage      String?       @map("cover_image")
-  status          String        @default("draft")
-  categoryId      String        @map("category_id")
-  authorId        String        @map("author_id")
-  publishedAt     DateTime?     @map("published_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  author          Author        @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  tags            BlogPostTag[]
-  faqs            BlogPostFaq[]
+  id                  String               @id
+  title               String
+  slug                String               @unique
+  excerpt             String               @db.Text
+  content             String               @db.Text
+  contentMarkdown     String?              @map("content_markdown") @db.Text
+  contentHtml         String?              @map("content_html") @db.Text
+  metaTitle           String               @map("meta_title")
+  metaDescription     String               @map("meta_description") @db.Text
+  canonicalUrl        String?              @map("canonical_url")
+  coverImage          String?              @map("cover_image")
+  status              String               @default("draft")
+  categoryId          String               @map("category_id")
+  authorId            String               @map("author_id")
+  publishedAt         DateTime?            @map("published_at")
+  readingTime         Int?                 @map("reading_time")
+  wordCount           Int?                 @map("word_count")
+  seoScore            Int?                 @map("seo_score")
+  contentQualityScore Int?                 @map("content_quality_score")
+  sourceType          String               @default("manual") @map("source_type")
+  primaryKeyword      String?              @map("primary_keyword")
+  secondaryKeywords   Json?                @map("secondary_keywords")
+  targetIntent        String?              @map("target_intent")
+  cluster             String?
+  articleType         String?              @map("article_type")
+  isPillar            Boolean              @default(false) @map("is_pillar")
+  isIndexable         Boolean              @default(true) @map("is_indexable")
+  relatedSuggestions  Json?                @map("related_suggestions")
+  relatedPostIds      Json?                @map("related_post_ids")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author              Author               @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  tags                BlogPostTag[]
+  faqs                BlogPostFaq[]
+  internalLinks       BlogPostInternalLink[]
+  seoAudits           BlogPostSeoAudit[]
+  revisions           BlogPostRevision[]
+  aiDrafts            BlogPostAiDraft[]
 
   @@index([status, publishedAt])
   @@index([categoryId])
+  @@index([sourceType])
   @@map("blog_posts")
 }
 
@@ -270,4 +295,61 @@ model BlogPostFaq {
 
   @@index([postId])
   @@map("blog_post_faqs")
+}
+
+model BlogPostInternalLink {
+  id        String   @id
+  postId    String   @map("post_id")
+  label     String
+  href      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isAuto    Boolean  @default(false) @map("is_auto")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("blog_post_internal_links")
+}
+
+model BlogPostSeoAudit {
+  id        String   @id
+  postId    String   @map("post_id")
+  passed    Boolean  @default(false)
+  score     Int      @default(0)
+  results   Json
+  warnings  Json?
+  errors    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("blog_post_seo_audits")
+}
+
+model BlogPostRevision {
+  id          String   @id
+  postId      String   @map("post_id")
+  snapshot    Json
+  note        String?  @db.Text
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  post        BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("blog_post_revisions")
+}
+
+model BlogPostAiDraft {
+  id           String    @id
+  postId       String?   @map("post_id")
+  status       String    @default("pending")
+  input        Json
+  outputMarkdown String? @map("output_markdown") @db.Text
+  articleType  String?   @map("article_type")
+  errorMessage String?   @map("error_message") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  post         BlogPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("blog_post_ai_drafts")
 }

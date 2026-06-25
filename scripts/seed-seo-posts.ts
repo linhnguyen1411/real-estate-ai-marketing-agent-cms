@@ -37,7 +37,7 @@ const CATEGORIES = [
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL || '';
-  const isLocalDb = /:5434\b/.test(dbUrl) || dbUrl.includes('localhost:5434');
+  const isLocalDb = /:543[24]\b/.test(dbUrl) || dbUrl.includes('localhost:5432') || dbUrl.includes('localhost:5434');
 
   if (!process.env.ALLOW_SEO_SEED && !isLocalDb) {
     console.error(

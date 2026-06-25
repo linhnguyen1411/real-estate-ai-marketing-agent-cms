@@ -35,7 +35,15 @@ export default function MarkdownContent({ content, className = '', compact = fal
             >
               {children}
             </a>
-          )
+          ),
+          img: ({ src, alt }) => (
+            <img
+              src={src}
+              alt={alt || ''}
+              loading="lazy"
+              className="my-4 max-h-[520px] w-full rounded-xl border border-slate-800 object-cover"
+            />
+          ),
         }}
       >
         {content}

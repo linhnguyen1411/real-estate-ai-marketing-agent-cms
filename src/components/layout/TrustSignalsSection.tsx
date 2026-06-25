@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom';
 import { BarChart3, BookOpen, Building2, FileText, MapPin, TrendingUp } from 'lucide-react';
-import { AUTHOR, SITE } from '../../seo/siteConfig';
-
 const WHY_ITEMS = [
   {
     icon: TrendingUp,
@@ -16,7 +14,7 @@ const WHY_ITEMS = [
   {
     icon: Building2,
     title: 'Dự án quy hoạch rõ',
-    description: 'FPT City, Sun Group và các khu đô thị mới có master plan công khai, dễ thẩm định.',
+    description: 'Đất nền, nhà phố Nam Đăng Chơn và khu đô thị mới có quy hoạch công khai, dễ thẩm định pháp lý.',
   },
   {
     icon: BarChart3,
@@ -70,24 +68,6 @@ export default function TrustSignalsSection() {
             </Link>
           ))}
         </div>
-
-        <div className="mt-14 invest-card mx-auto max-w-3xl p-6 md:flex md:items-center md:gap-6 md:p-8">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-invest-blue text-xl font-extrabold text-white">
-            LN
-          </div>
-          <div className="mt-4 md:mt-0">
-            <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Biên tập & tư vấn</p>
-            <h3 className="mt-1 text-xl font-extrabold text-invest-text">{AUTHOR.name}</h3>
-            <p className="mt-1 font-medium text-invest-blue">{AUTHOR.title}</p>
-            <p className="mt-2 text-sm leading-relaxed text-invest-muted">
-              Nội dung và dữ liệu trên {SITE.brand} được biên soạn nhằm hỗ trợ nhà đầu tư đánh giá cơ hội tại Nam Đà Nẵng.
-            </p>
-            <Link to="/tac-gia/nguyen-phan-hoang-linh" className="mt-3 inline-block text-sm font-bold text-invest-cta hover:underline">
-              Xem hồ sơ tác giả →
-            </Link>
-          </div>
-        </div>
       </div>
-    </section>
-  );
+    </section>  );
 }

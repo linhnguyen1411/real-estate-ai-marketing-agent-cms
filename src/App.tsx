@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, FormEvent } from 'react';
+import React, { useState, useEffect, useMemo, useRef, FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { 
@@ -35,6 +35,7 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Clock,
   Eye,
   Globe,
@@ -42,13 +43,20 @@ import {
   UserPlus,
   Menu,
   GripVertical,
-  Newspaper
+  Newspaper,
+  FolderOpen,
+  Tags,
+  FileSearch
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
+import { SITE } from './seo/siteConfig';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
+import { uploadContentImage } from './services/blogApi';
+import { resizeImageFile } from './utils/resizeImageFile';
 import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
+import LeadMagnetContentAdmin from './components/admin/LeadMagnetContentAdmin';
 import { getPublicPropertyUrl } from './utils/propertyShare';
 import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
 import {
@@ -116,6 +124,24 @@ const createEmptyPropertyForm = () => ({
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
 
+const SEO_TAB_TO_PATH: Record<string, string> = {
+  'seo-posts': '/admin/seo/posts',
+  'seo-categories': '/admin/seo/categories',
+  'seo-tags': '/admin/seo/tags',
+  'seo-audit': '/admin/seo/audit',
+};
+
+const SEO_PATH_TO_TAB: Record<string, string> = Object.fromEntries(
+  Object.entries(SEO_TAB_TO_PATH).map(([tab, path]) => [path, tab])
+);
+
+const SEO_SUBMENU = [
+  { id: 'seo-posts', label: 'Bài viết', icon: Newspaper },
+  { id: 'seo-categories', label: 'Chuyên mục', icon: FolderOpen },
+  { id: 'seo-tags', label: 'Tags', icon: Tags },
+  { id: 'seo-audit', label: 'SEO Audit', icon: FileSearch },
+] as const;
+
 const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
   facebook: { label: 'Facebook 3:4' },
   zalo: { label: 'Zalo 1:1' },
@@ -126,6 +152,10 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('real_estate_ai_active_tab') || 'dashboard');
+  const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
+    const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
+    return tab.startsWith('seo-');
+  });
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [loginEmail, setLoginEmail] = useState<string>('');
@@ -149,7 +179,9 @@ export default function App() {
   const [selectedGuestChatHistory, setSelectedGuestChatHistory] = useState<ChatHistoryRecord[]>([]);
   const [guestReplyInput, setGuestReplyInput] = useState('');
   // Loading & interactive states
-  const [loading, setLoading] = useState<boolean>(true);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedCoreData = useRef(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [propertyFilters, setPropertyFilters] = useState({
@@ -337,9 +369,64 @@ export default function App() {
     }
   }, [authLoading, currentUser, location.pathname, navigate]);
 
-  // Read data from API server entry
+  useEffect(() => {
+    const seoTab = SEO_PATH_TO_TAB[location.pathname];
+    if (seoTab) {
+      setActiveTab(seoTab);
+      setSeoMenuOpen(true);
+    } else if (location.pathname === '/admin/ai-content') {
+      setActiveTab('seo-posts');
+      setSeoMenuOpen(true);
+      navigate('/admin/seo/posts', { replace: true });
+    } else if (activeTab === 'seo-content' || activeTab === 'seo-ai-studio') {
+      setActiveTab('seo-posts');
+      navigate('/admin/seo/posts', { replace: true });
+    }
+  }, [location.pathname]);
+
+  const loadSecondaryData = async () => {
+    const [chatHistoryRecords, guests, myChatHistory, generatedContents, users] = await Promise.all([
+      getChatHistory().catch(() => []),
+      getPublicChatGuests().catch(() => []),
+      getChatHistory('mine').catch(() => []),
+      getGeneratedContents().catch(() => []),
+      currentUser?.role === 'owner' || currentUser?.role === 'company'
+        ? getUsers().catch(() => [])
+        : Promise.resolve([] as AuthUser[]),
+    ]);
+
+    setChatHistoryRecords(chatHistoryRecords);
+    setPublicChatGuests(guests);
+    setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
+    if (myChatHistory.length > 0) {
+      setChatMessages(
+        myChatHistory
+          .slice()
+          .reverse()
+          .map(item => ({
+            role: item.role,
+            content: item.message,
+            timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }))
+      );
+    }
+    setGeneratedContents(generatedContents);
+    if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
+      setManagedUsers(users);
+      const firstMember = users.find(user => user.role === 'member');
+      setSelectedPermissionMemberId(prev => prev || firstMember?.id || '');
+    } else {
+      setManagedUsers([]);
+      setSelectedPermissionMemberId('');
+    }
+  };
+
+  // Core CRM data first (fast path); chat/history/users load in background
   const fetchAllData = async () => {
-    setLoading(true);
+    const isFirstLoad = !hasLoadedCoreData.current;
+    if (isFirstLoad) setInitialLoading(true);
+    else setRefreshing(true);
+
     try {
       const data = await getInitialAppData();
       setCustomers(data.customers);
@@ -349,35 +436,16 @@ export default function App() {
       setAutomations(data.automations);
       setSettings(data.settings);
       setChannels(data.channels);
-      setChatHistoryRecords(await getChatHistory().catch(() => []));
-      const guests = await getPublicChatGuests().catch(() => []);
-      setPublicChatGuests(guests);
-      setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
-      const chatHistory = await getChatHistory('mine').catch(() => []);
-      if (chatHistory.length > 0) {
-        setChatMessages(chatHistory.slice().reverse().map(item => ({
-          role: item.role,
-          content: item.message,
-          timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        })));
-      }
-      setGeneratedContents(await getGeneratedContents().catch(() => []));
-      if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
-        const users = await getUsers().catch(() => []);
-        setManagedUsers(users);
-        const firstMember = users.find(user => user.role === 'member');
-        setSelectedPermissionMemberId(prev => prev || firstMember?.id || '');
-      } else {
-        setManagedUsers([]);
-        setSelectedPermissionMemberId('');
-      }
-
+      hasLoadedCoreData.current = true;
     } catch (e: any) {
-      console.error("Connection to APIs failed, utilizing db.json directly if cached...", e);
-      showToast(e.message || "Lỗi kết nối API Server. Hãy kiểm tra logs backend hoặc reload trang.", "error");
+      console.error('Connection to APIs failed', e);
+      showToast(e.message || 'Lỗi kết nối API Server. Hãy kiểm tra logs backend hoặc reload trang.', 'error');
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
+
+    void loadSecondaryData().catch(() => undefined);
   };
 
   useEffect(() => {
@@ -1365,9 +1433,11 @@ export default function App() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="p-2 bg-gradient-to-tr from-rose-600 to-amber-500 rounded-xl">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
+          <img
+            src={SITE.logo}
+            alt={SITE.name}
+            className="h-9 w-auto max-w-[110px] rounded-lg object-contain bg-white/95 p-1"
+          />
           <div className="min-w-0">
             <h1 className="truncate text-sm sm:text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
               Real Estate AI Marketing Agent CMS
@@ -1397,9 +1467,9 @@ export default function App() {
           <button 
             onClick={fetchAllData}
             className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
-            disabled={loading}
+            disabled={refreshing}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
 
           <button
@@ -1431,10 +1501,87 @@ export default function App() {
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
               { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
+              { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
               { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: properties.length },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
               { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
-              { id: 'seo-content', label: 'Nội dung SEO', icon: Newspaper },
+            ].map(item => {
+              const IconComp = item.icon;
+              const isSelected = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setSearchQuery('');
+                    setAdminMenuOpen(false);
+                    navigate('/admin/dashboard');
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+                    isSelected 
+                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold' 
+                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <IconComp className={`w-4 h-4 transition-transform group-hover:scale-110 ${isSelected ? 'text-rose-500' : 'text-slate-500'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setSeoMenuOpen(prev => !prev)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab.startsWith('seo-')
+                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Newspaper className={`w-4 h-4 ${activeTab.startsWith('seo-') ? 'text-rose-500' : 'text-slate-500'}`} />
+                  <span>Nội dung SEO</span>
+                </div>
+                {seoMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {seoMenuOpen && (
+                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
+                  {SEO_SUBMENU.map(item => {
+                    const IconComp = item.icon;
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setSeoMenuOpen(true);
+                          setSearchQuery('');
+                          setAdminMenuOpen(false);
+                          navigate(SEO_TAB_TO_PATH[item.id] || '/admin/seo/posts');
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <IconComp className="w-3.5 h-3.5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {[
               { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
               ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
@@ -1453,6 +1600,7 @@ export default function App() {
                     setActiveTab(item.id);
                     setSearchQuery('');
                     setAdminMenuOpen(false);
+                    navigate('/admin/dashboard');
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
                     isSelected 
@@ -1545,15 +1693,15 @@ export default function App() {
           )}
 
           {/* Loading Indicator */}
-          {loading && (
+          {initialLoading && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4">
               <div className="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-              <p className="text-slate-400 text-sm font-mono animate-pulse">Đang nạp nhanh dữ liệu thời gian thực...</p>
+              <p className="text-slate-400 text-sm">Đang tải dữ liệu CRM...</p>
             </div>
           )}
 
           {/* Module Views */}
-          {!loading && (
+          {!initialLoading && (
             <>
               {/* ==================================================== */}
               {/* TAB 1: DASHBOARD OVERVIEW */}
@@ -2060,6 +2208,12 @@ export default function App() {
               {activeTab === 'investor-leads' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <InvestorLeadsPanel />
+                </div>
+              )}
+
+              {activeTab === 'lead-magnet-content' && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <LeadMagnetContentAdmin />
                 </div>
               )}
 
@@ -2765,8 +2919,16 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'seo-content' && getAuthToken() && (
-                <SeoContentAdmin token={getAuthToken()!} />
+              {activeTab.startsWith('seo-') && getAuthToken() && (
+                <SeoContentAdmin
+                  token={getAuthToken()!}
+                  section={
+                    activeTab === 'seo-categories' ? 'categories'
+                    : activeTab === 'seo-tags' ? 'tags'
+                    : activeTab === 'seo-audit' ? 'audit'
+                    : 'posts'
+                  }
+                />
               )}
 
               {/* ==================================================== */}
@@ -3182,10 +3344,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={fetchAllData}
-                      disabled={loading}
+                      disabled={refreshing}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-rose-500/60 disabled:opacity-50 sm:w-auto"
                     >
-                      <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                       Tải lại lịch sử
                     </button>
                   </div>
@@ -4441,6 +4603,13 @@ export default function App() {
                 <MarkdownEditor
                   value={newPropertyForm.rich_description}
                   onChange={(richDescription) => setNewPropertyForm({ ...newPropertyForm, rich_description: richDescription })}
+                  onUploadImage={async file => {
+                    const token = getAuthToken();
+                    if (!token) throw new Error('Cần đăng nhập để upload ảnh.');
+                    const dataUrl = await resizeImageFile(file);
+                    const { url } = await uploadContentImage(token, dataUrl, newPropertyForm.title || 'property');
+                    return url;
+                  }}
                 />
               </div>
 

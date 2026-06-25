@@ -12,10 +12,10 @@ interface ClusterConfig {
 }
 
 export const PILLAR_PAGES: LinkItem[] = [
-  { label: 'Đầu tư Nam Đà Nẵng', href: '/dau-tu-nam-da-nang' },
-  { label: 'Cẩm nang nhà đầu tư', href: '/nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang' },
-  { label: 'Dự án FPT City', href: '/du-an/fpt-city' },
-  { label: 'Dự án Mai Đăng Chơn', href: '/du-an/mai-dang-chon' },
+  { label: 'Danh mục BĐS', href: '/du-an' },
+  { label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
+  { label: 'BĐS nổi bật', href: '/du-an/bds-noi-bat' },
+  { label: 'Sun Symphony', href: '/du-an/sun-symphony' },
   { label: 'Review khu vực', href: '/review-khu-vuc' },
   { label: 'Tài liệu đầu tư', href: '/tai-lieu-dau-tu' },
 ];
@@ -48,7 +48,7 @@ const CLUSTERS: ClusterConfig[] = [
   },
   {
     key: 'fpt-city',
-    pillar: { label: 'Dự án FPT City', href: '/du-an/fpt-city' },
+    pillar: { label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' },
     slugs: [
       'fpt-city-da-nang-co-dang-dau-tu-2026',
       'tiem-nang-cho-thue-quanh-fpt-city',
@@ -60,7 +60,7 @@ const CLUSTERS: ClusterConfig[] = [
   },
   {
     key: 'mai-dang-chon',
-    pillar: { label: 'Dự án Mai Đăng Chơn', href: '/du-an/mai-dang-chon' },
+    pillar: { label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
     slugs: [
       'mai-dang-chon-co-gi-dac-biet-voi-nha-dau-tu',
       'quy-dat-mat-tien-mai-dang-chon-phu-hop-mo-hinh-kinh-doanh-nao',
@@ -121,8 +121,11 @@ export function getLeadMagnetLinkForSlug(slug: string): LinkItem {
 }
 
 export function getRelatedProjectLinksForSlug(slug: string): LinkItem[] {
-  if (slug.includes('fpt-city')) return [{ label: 'Dự án FPT City', href: '/du-an/fpt-city' }];
-  if (slug.includes('mai-dang-chon')) return [{ label: 'Dự án Mai Đăng Chơn', href: '/du-an/mai-dang-chon' }];
+  if (slug.includes('fpt-city')) return [{ label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' }];
+  if (slug.includes('mai-dang-chon')) return [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' }];
+  if (slug.includes('sun-symphony') || slug.includes('sun-cosmo')) {
+    return [{ label: 'Sun Group Đà Nẵng', href: '/du-an#sun-group' }];
+  }
   if (slug.includes('can-ho')) return [{ label: 'Danh mục căn hộ', href: '/can-ho' }];
   return [];
 }

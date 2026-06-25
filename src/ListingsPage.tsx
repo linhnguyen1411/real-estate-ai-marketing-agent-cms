@@ -10,7 +10,6 @@ import {
   Compass,
   Eye,
   Facebook,
-  Home,
   Mail,
   MapPin,
   Maximize2,
@@ -31,6 +30,8 @@ import SocialProof from './components/leadGen/SocialProof';
 import MultiStepInvestorForm from './components/leadGen/MultiStepInvestorForm';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from './leadGen/analytics';
 import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
+import SiteLogo from './components/layout/SiteLogo';
+import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
 import { getAllProjectNames, matchProjectName } from './seo/propertyCatalog';
 
@@ -82,7 +83,7 @@ const DEFAULT_SEO_KEYWORDS = [
   'giá đất đà nẵng 2026'
 ];
 const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
-const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
+const DEFAULT_SEO_DESCRIPTION = 'Đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn — pháp lý rõ, hình ảnh thật, giỏ ký gửi cập nhật 2026.';
 const PRICE_RANGES = [
   { value: 'all', label: 'Tất cả mức giá' },
   { value: 'under3', label: 'Dưới 3 tỷ' },
@@ -331,10 +332,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const [selectedPriceRange, setSelectedPriceRange] = useState('all');
   const [selectedAreaRange, setSelectedAreaRange] = useState('all');
   const [selectedProject, setSelectedProject] = useState('all');
-  const [selectedProperty, setSelectedProperty] = useState<Property | null>(() =>
-    findPropertyFromLocation(properties, location.pathname, location.search, propertySlug)
-  );
+  const initialRouteProperty = findPropertyFromLocation(properties, location.pathname, location.search, propertySlug);
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(() => initialRouteProperty);
+  const [detailViewCount, setDetailViewCount] = useState(() => Number(initialRouteProperty?.public_view_count || 0));
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const selectedPropertyIdRef = React.useRef<string | null>(initialRouteProperty?.id ?? null);
+  const localPropertiesRef = React.useRef(properties);
   const [chatOpen, setChatOpen] = useState(true);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -358,25 +361,39 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     setLocalProperties(properties);
   }, [properties]);
 
-  const applyPropertyViewUpdate = (update: { id: string; public_view_count?: number; last_public_view_at?: string }) => {
+  React.useEffect(() => {
+    localPropertiesRef.current = localProperties;
+  }, [localProperties]);
+
+  const applyPropertyViewUpdate = React.useCallback((update: { id: string; public_view_count?: number; last_public_view_at?: string }) => {
     if (!update?.id) return;
+    const nextCount = Number(update.public_view_count || 0);
     setLocalProperties(prev => prev.map(property =>
       property.id === update.id
-        ? { ...property, public_view_count: Number(update.public_view_count || 0), last_public_view_at: update.last_public_view_at }
+        ? { ...property, public_view_count: nextCount, last_public_view_at: update.last_public_view_at }
         : property
     ));
-  };
+    if (selectedPropertyIdRef.current === update.id) {
+      setDetailViewCount(nextCount);
+    }
+  }, []);
 
   const trackPropertyView = React.useCallback((property: Property) => {
     const timestamp = new Date().toISOString();
+    const optimisticCount = Number(property.public_view_count || 0) + 1;
+
     setLocalProperties(prev => prev.map(item => {
       if (item.id !== property.id) return item;
       return {
         ...item,
-        public_view_count: Number(item.public_view_count || 0) + 1,
+        public_view_count: optimisticCount,
         last_public_view_at: timestamp
       };
     }));
+
+    if (selectedPropertyIdRef.current === property.id) {
+      setDetailViewCount(optimisticCount);
+    }
 
     fetch('/api/public/track-view', {
       method: 'POST',
@@ -392,7 +409,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         }
       })
       .catch(() => undefined);
-  }, []);
+  }, [applyPropertyViewUpdate]);
 
   const resetGuestProfile = React.useCallback(() => {
     localStorage.removeItem(PUBLIC_CHAT_GUEST_KEY);
@@ -495,31 +512,30 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     [localProperties]
   );
 
-  const syncedPropertyIdRef = React.useRef<string | null>(null);
+  const propertiesReady = localProperties.length > 0;
 
   React.useEffect(() => {
     const propertyId = new URLSearchParams(location.search).get('property');
     const normalizedSlug = getPropertySlugFromPath(location.pathname)
       || decodeURIComponent(propertySlug || '').toLowerCase();
     if (!propertyId && !normalizedSlug) {
-      syncedPropertyIdRef.current = null;
+      selectedPropertyIdRef.current = null;
       setSelectedProperty(null);
       return;
     }
-    const property = findPropertyFromLocation(activeProperties, location.pathname, location.search, propertySlug);
-    if (property) {
-      setSelectedProperty(prev => (prev?.id === property.id ? prev : property));
-      if (syncedPropertyIdRef.current !== property.id) {
-        syncedPropertyIdRef.current = property.id;
-        setGalleryIndex(0);
-      }
-    }
-  }, [activeProperties, location.pathname, location.search, propertySlug]);
+    const property = findPropertyFromLocation(
+      localPropertiesRef.current,
+      location.pathname,
+      location.search,
+      propertySlug
+    );
+    if (!property || selectedPropertyIdRef.current === property.id) return;
 
-  const detailProperty = useMemo(() => {
-    if (!selectedProperty) return null;
-    return localProperties.find(property => property.id === selectedProperty.id) ?? selectedProperty;
-  }, [selectedProperty, localProperties]);
+    selectedPropertyIdRef.current = property.id;
+    setSelectedProperty(property);
+    setDetailViewCount(Number(property.public_view_count || 0));
+    setGalleryIndex(0);
+  }, [location.pathname, location.search, propertySlug, propertiesReady]);
 
   React.useEffect(() => {
     if (!selectedProperty) return;
@@ -792,15 +808,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   };
 
   const openProperty = (property: Property) => {
+    selectedPropertyIdRef.current = property.id;
     setSelectedProperty(property);
+    setDetailViewCount(Number(property.public_view_count || 0));
     setGalleryIndex(0);
-    syncedPropertyIdRef.current = property.id;
     navigate(getPropertyPath(property), { preventScrollReset: true });
   };
 
   const closeProperty = () => {
+    selectedPropertyIdRef.current = null;
     setSelectedProperty(null);
-    syncedPropertyIdRef.current = null;
     navigate(publicListingsPath, { preventScrollReset: true });
   };
 
@@ -853,12 +870,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
       <header className="public-header">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-          <Link to="/" className="flex shrink-0 items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-invest-cta text-white">
-              <Home className="h-5 w-5" />
-            </span>
-            <span className="text-sm font-extrabold tracking-wide text-invest-text">Estoria</span>
-          </Link>
+          <SiteLogo />
 
           <div className="hidden min-w-0 flex-1 justify-center lg:flex">
             <PublicNav />
@@ -1209,7 +1221,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <p className="label-section">Nhà đầu tư trung và dài hạn</p>
               <h2 className="heading-section mt-2">Nhận danh sách cơ hội đầu tư Nam Đà Nẵng</h2>
               <p className="text-body mt-4 max-w-xl text-invest-muted">
-                Báo cáo thị trường 2026, TOP 20 cơ hội và bản đồ đầu tư — miễn phí sau khi để lại thông tin.
+                Báo cáo thị trường 2026, khung 20 nhóm cơ hội và bản đồ đầu tư — miễn phí sau khi để lại thông tin.
               </p>
               <Link
                 to="/tai-lieu-dau-tu"
@@ -1240,32 +1252,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         </section>
       </main>
 
-      <footer className="border-t border-invest-border bg-invest-blue py-10 text-slate-300">
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="grid gap-8 md:grid-cols-3">
-            <div>
-              <div className="text-sm font-extrabold text-white">Estoria</div>
-              <p className="mt-1 text-sm">Trung tâm thông tin & đầu tư Nam Đà Nẵng.</p>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              <a href="/bat-dong-san" className="hover:text-white">Bất động sản</a>
-              <a href="/du-an" className="hover:text-white">Dự án</a>
-              <a href="/nha-dau-tu" className="hover:text-white">Dữ liệu thị trường</a>
-              <a href="/kien-thuc-dau-tu" className="hover:text-white">Kiến thức</a>
-              <a href="/lien-he" className="hover:text-white">Liên hệ</a>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              <a href="/chinh-sach-bao-mat" className="hover:text-white">Bảo mật</a>
-              <a href="/dieu-khoan-su-dung" className="hover:text-white">Điều khoản</a>
-              <a href="/chinh-sach-cookie" className="hover:text-white">Cookie</a>
-              <a href="/mien-tru-trach-nhiem" className="hover:text-white">Disclaimer</a>
-            </div>
-          </div>
-          <div className="mt-8 border-t border-white/10 pt-6 text-center text-xs">
-            © {new Date().getFullYear()} BDSDanang.site
-          </div>
-        </div>
-      </footer>
+      <PublicSiteFooter />
 
       <div className="pointer-events-none fixed right-3 top-1/2 z-[70] flex -translate-y-1/2 flex-col gap-2.5 lg:hidden" style={{ paddingRight: 'env(safe-area-inset-right)' }}>
         <a
@@ -1296,7 +1283,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         >
           <Facebook className="h-5 w-5" />
         </a>
-        {detailProperty && (
+        {selectedProperty && (
           <button
             type="button"
             onClick={openPropertyChat}
@@ -1413,13 +1400,13 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         )}
       </div>
 
-      {detailProperty && (
+      {selectedProperty && (
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/80 p-3 backdrop-blur-sm app-scroll sm:p-4">
-          <div className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white shadow-2xl sm:my-8">
+          <div key={selectedProperty.id} className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white shadow-2xl sm:my-8">
             <div className="relative flex h-[62vh] max-h-[680px] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:h-auto">
               <img
-                src={detailProperty.gallery_images?.[galleryIndex] || getImage(detailProperty)}
-                alt={detailProperty.title}
+                src={selectedProperty.gallery_images?.[galleryIndex] || getImage(selectedProperty)}
+                alt={selectedProperty.title}
                 decoding="async"
                 className="block h-full w-full object-contain"
               />
@@ -1430,18 +1417,18 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               >
                 <X className="h-5 w-5" />
               </button>
-              {(detailProperty.gallery_images || []).length > 1 && (
+              {(selectedProperty.gallery_images || []).length > 1 && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setGalleryIndex(index => index === 0 ? detailProperty.gallery_images!.length - 1 : index - 1)}
+                    onClick={() => setGalleryIndex(index => index === 0 ? selectedProperty.gallery_images!.length - 1 : index - 1)}
                     className="absolute left-4 top-1/2 -translate-y-1/2 rounded-lg bg-white/90 p-2 text-slate-900"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGalleryIndex(index => (index + 1) % detailProperty.gallery_images!.length)}
+                    onClick={() => setGalleryIndex(index => (index + 1) % selectedProperty.gallery_images!.length)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg bg-white/90 p-2 text-slate-900"
                   >
                     <ChevronRight className="h-5 w-5" />
@@ -1453,25 +1440,25 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1fr_320px] lg:gap-8">
               <div>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-invest-cta px-2.5 py-1 text-xs font-bold text-white">{getTransactionType(detailProperty)}</span>
-                  <span className="rounded-md bg-invest-gold-muted px-2.5 py-1 text-xs font-bold text-invest-blue">{detailProperty.type}</span>
-                  <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{detailProperty.legal_status}</span>
+                  <span className="rounded-md bg-invest-cta px-2.5 py-1 text-xs font-bold text-white">{getTransactionType(selectedProperty)}</span>
+                  <span className="rounded-md bg-invest-gold-muted px-2.5 py-1 text-xs font-bold text-invest-blue">{selectedProperty.type}</span>
+                  <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{selectedProperty.legal_status}</span>
                   <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
                     <Eye className="h-3.5 w-3.5" />
-                    {getPropertyViewCount(detailProperty).toLocaleString('vi-VN')} lượt xem
+                    {detailViewCount.toLocaleString('vi-VN')} lượt xem
                   </span>
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">{detailProperty.title}</h2>
+                <h2 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">{selectedProperty.title}</h2>
                 <p className="mt-3 flex items-center gap-2 text-slate-600">
                   <MapPin className="h-4 w-4 text-invest-gold" />
-                  {detailProperty.location}
+                  {selectedProperty.location}
                 </p>
                 <MarkdownContent
-                  content={detailProperty.rich_description || detailProperty.description}
+                  content={selectedProperty.rich_description || selectedProperty.description}
                   className="mt-5 text-base text-slate-700"
                 />
                 <div className="mt-6 flex flex-wrap gap-2">
-                  {(detailProperty.selling_points || []).map(point => (
+                  {(selectedProperty.selling_points || []).map(point => (
                     <span key={point} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700">
                       <CheckCircle2 className="h-4 w-4" />
                       {point}
@@ -1481,8 +1468,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </div>
 
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-                <div className="text-sm text-slate-500">{getTransactionType(detailProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
-                <div className="mt-1 text-3xl font-extrabold text-invest-gold">{formatPrice(detailProperty.price)}</div>
+                <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
+                <div className="mt-1 text-3xl font-extrabold text-invest-gold">{formatPrice(selectedProperty.price)}</div>
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Hotline</div>
                   <div className="space-y-2">
@@ -1511,26 +1498,26 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
                   <PropertyShareActions
-                    property={detailProperty}
+                    property={selectedProperty}
                     buttonClassName="h-9 px-3 border-slate-200 bg-slate-50 text-slate-700 hover:border-invest-gold/40 hover:bg-invest-gold-muted hover:text-invest-blue"
                   />
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Diện tích</div>
-                    <div className="font-bold text-slate-950">{detailProperty.area} m2</div>
+                    <div className="font-bold text-slate-950">{selectedProperty.area} m2</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Hướng</div>
-                    <div className="font-bold text-slate-950">{detailProperty.direction}</div>
+                    <div className="font-bold text-slate-950">{selectedProperty.direction}</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Đường</div>
-                    <div className="font-bold text-slate-950">{detailProperty.road_width} m</div>
+                    <div className="font-bold text-slate-950">{selectedProperty.road_width} m</div>
                   </div>
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Pháp lý</div>
-                    <div className="font-bold text-slate-950">{detailProperty.legal_status}</div>
+                    <div className="font-bold text-slate-950">{selectedProperty.legal_status}</div>
                   </div>
                 </div>
                 <div className="mt-5 grid gap-2">
@@ -1541,16 +1528,16 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               </aside>
             </div>
 
-            {hasGoogleMap(detailProperty) && (
+            {hasGoogleMap(selectedProperty) && (
               <div className="border-t border-slate-200 p-4 sm:p-6">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Google Map</p>
                     <h3 className="mt-1 text-xl font-extrabold text-slate-950">Vị trí bất động sản</h3>
-                    <p className="mt-1 text-sm text-slate-600">{detailProperty.location}</p>
+                    <p className="mt-1 text-sm text-slate-600">{selectedProperty.location}</p>
                   </div>
                   <a
-                    href={getGoogleMapLink(detailProperty)}
+                    href={getGoogleMapLink(selectedProperty)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-invest-gold/40 hover:bg-invest-gold-muted hover:text-invest-blue"
@@ -1560,8 +1547,8 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </div>
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                   <iframe
-                    title={`Google Map ${detailProperty.title}`}
-                    src={getGoogleMapUrl(detailProperty)}
+                    title={`Google Map ${selectedProperty.title}`}
+                    src={getGoogleMapUrl(selectedProperty)}
                     className="h-[320px] w-full border-0 sm:h-[420px]"
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"

@@ -1,48 +1,102 @@
 /** Central SEO & business config — single source of truth for public site */
 export const SITE = {
   name: 'Estoria',
-  brand: 'BDSDanang.site',
+  brand: 'bdsdanang.site',
   domain: 'bdsdanang.site',
   url: 'https://bdsdanang.site',
   locale: 'vi_VN',
   language: 'vi',
-  defaultTitle: 'BĐS Đà Nẵng | Dữ Liệu Căn Hộ & Đất Nền 2026',
+  defaultTitle: 'BĐS Đà Nẵng | Estoria',
+  /** Brand motto — footer only, not for SEO or header */
+  tagline: 'Where assets tell their story',
+  taglineVi: 'Nơi mỗi tài sản kể câu chuyện của mình',
   defaultDescription:
-    'Trung tâm thông tin và tư vấn bất động sản Đà Nẵng cho nhà đầu tư trung và dài hạn: FPT City, Sun Cosmo, Sun Symphony, Nam Đà Nẵng, căn hộ cho thuê và đất nền pháp lý rõ.',
+    'Tư vấn BĐS Đà Nẵng: Sun Group, Nam Đà Nẵng và BĐS nổi bật cho nhà đầu tư trung và dài hạn.',
   defaultKeywords: [
-    'bất động sản đà nẵng',
-    'đầu tư bđs đà nẵng',
-    'nhà đầu tư hà nội mua đà nẵng',
-    'căn hộ đà nẵng',
-    'đất nền nam đà nẵng',
-    'fpt city đà nẵng',
-    'sun cosmo đà nẵng',
-    'sun symphony đà nẵng',
-    'căn hộ cho thuê đà nẵng',
-    'mai đăng chơn'
-  ],
-  ogImage:
-    'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90&fm=webp',
+      'sun symphony đà nẵng',
+      'sun symphony residence',
+      'symphony 5',
+      'symphony s5',
+      'căn hộ symphony 5 đà nẵng',
+      'slight tower sun symphony',
+      'tòa slight sun symphony',
+      'căn hộ view sông hàn',
+      'căn hộ view pháo hoa',
+    
+      'giá đất nam hòa xuân',
+      'nhà đất nam đà nẵng',
+      'đất mai đăng chơn đà nẵng',
+      'có nên mua đất mai đăng chơn',
+    
+      'bđs dòng tiền đà nẵng',
+      'căn hộ cho thuê đà nẵng',
+      'mua đất xây căn hộ dịch vụ đà nẵng',
+      'đầu tư căn hộ biển đà nẵng dòng tiền'
+    ],
+  logo: '/logo.jpg',
+  ogImage: '/logo.jpg',
   foundingDate: '2020',
   areaServed: ['Đà Nẵng', 'Hội An', 'Quảng Nam', 'Việt Nam'],
 } as const;
 
+/** Phân khúc & định vị inventory — 3 trụ cột trọng tâm */
+export const BRAND_FOCUS = {
+  sunGroup: {
+    title: 'Sun Group Đà Nẵng',
+    summary:
+      'Căn hộ cao cấp ven sông Hàn, shophouse, nhà phố thương mại và đất nền dự án trong hệ sinh thái Sun Group.',
+    productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Nhà phố thương mại', 'Đất nền dự án'],
+  },
+  namDaNang: {
+    title: 'BĐS Nam Đà Nẵng',
+    summary:
+      'Mũi nhọn khu vực: đất nền, nhà phố, kho xưởng, căn hộ, khách sạn và tài sản đầu tư — Mai Đăng Chơn, Hòa Xuân, Hòa Quý…',
+    productTypes: ['Đất nền', 'Nhà ở', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
+  },
+  noiBat: {
+    title: 'BĐS nổi bật',
+    summary:
+      'Tài sản đáng chú ý từ nhiều khu vực — deal giá tốt, vị trí độc đáo, không gói trong một dự án hay một quận.',
+    productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
+  },
+  fptCityNote:
+    'FPT City chỉ xuất hiện trong bài phân tích thị trường Nam Đà Nẵng — không phải sản phẩm chủ lực.',
+  expansion: 'Mở rộng dần sang ven biển miền Trung và các tỉnh thành khi có nguồn hàng phù hợp.',
+  inventorySummary:
+    'Sun Group Đà Nẵng · BĐS Nam Đà Nẵng · BĐS nổi bật — ba trụ cột danh mục của chúng tôi.',
+} as const;
+
 export const CONTACT = {
-  companyName: 'Estoria — Tư vấn BĐS Đà Nẵng',
+  companyName: 'Estoria',
   representative: 'Linh Nguyễn',
-  title: 'Tư vấn BĐS Nam Đà Nẵng',
+  title: 'Tư vấn BĐS Đà Nẵng',
   phone: '0905777594',
   phoneDisplay: '0905 777 594',
-  phoneSecondary: '0984755258',
+  phoneSecondary: '0947924343',
+  phoneSecondaryDisplay: '0947 92 43 43',
   phoneTel: '+84905777594',
-  email: 'contact@bdsdanang.site',
-  website: SITE.url,
+  phoneSecondaryTel: '+84947924343',
+  /** Footer & liên hệ theo phân khúc */
+  hotlines: [
+    {
+      display: '0905 777 594',
+      tel: '+84905777594',
+      label: 'Tư vấn đất, nhà phố',
+    },
+    {
+      display: '0947 92 43 43',
+      tel: '+84947924343',
+      label: 'Tư vấn BĐS Sun Group, Căn hộ cao cấp',
+    },
+  ] as const,
+  email: 'linhnguyendn2305@gmail.com',
+  website: 'https://bdsdanang.site',
   facebook: 'https://www.facebook.com/estoria.dn',
   messenger: 'https://m.me/estoria.dn',
   zalo: 'https://zalo.me/0905777594',
   address: 'Đà Nẵng, Việt Nam',
   mapEmbed:
-    'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d61354.89327985758!2d108.2021667!3d16.0544068!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x314219c3cd6e8e79%3A0x8c8e8e8e8e8e8e8e!2zRMOgIE7hur5uZywgVmnhu4d0IE5hbQ!5e0!3m2!1svi!2s!4v1700000000000!5m2!1svi!2s',
+    'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2318.936374910494!2d108.22900863522636!3d16.08776098646841!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3142193732fedf65%3A0x9e332e0ce0c2fc5!2zQsSQUyBTdW4gR3JvdXAgxJDDoCBO4bq1bmc!5e1!3m2!1svi!2s!4v1782390629253!5m2!1svi!2s',
   mapLink: 'https://maps.google.com/?q=Da+Nang,+Vietnam',
   workingHours: '8:00 – 21:00 (T2–CN)',
 } as const;
@@ -50,16 +104,16 @@ export const CONTACT = {
 export const AUTHOR = {
   slug: 'nguyen-phan-hoang-linh',
   name: 'Linh Nguyễn',
-  title: 'Tư vấn BĐS Nam Đà Nẵng',
+  title: 'Tư vấn BĐS Đà Nẵng',
   expertise: [
-    'Đầu tư bất động sản Nam Đà Nẵng',
+    'Đất nền & nhà phố Nam Đà Nẵng',
+    'Căn hộ Sun Group ven sông Hàn',
+    'BĐS nổi bật',
     'Tư vấn nhà đầu tư trung và dài hạn',
-    'Căn hộ cao cấp Sun Group',
-    'Đất nền FPT City & khu vực ven sông',
-    'Pháp lý & dòng tiền cho thuê'
+    'Pháp lý & dòng tiền cho thuê',
   ],
   bio:
-    'Tư vấn bất động sản tại Đà Nẵng, hỗ trợ nhà đầu tư đánh giá cơ hội tại Nam Đà Nẵng, FPT City, Sun Cosmo và các dự án căn hộ cho thuê.',
+    'Tư vấn bất động sản tại Đà Nẵng: ưu tiên đất nền và nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn.',
   url: `${SITE.url}/tac-gia/nguyen-phan-hoang-linh`,
   image: `${SITE.url}/og-author.jpg`,
 } as const;
@@ -92,4 +146,15 @@ export function absoluteUrl(path: string, origin: string = SITE.url): string {
   if (/^https?:\/\//i.test(path)) return path;
   const base = origin.replace(/\/+$/, '');
   return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
+}
+
+/** Footer copyright line — includes brand motto */
+export function getFooterBrandLine(separator: string = ' — '): string {
+  return `${SITE.name}${separator}${SITE.tagline}`;
+}
+
+export function formatPageTitle(title: string): string {
+  const trimmed = title.trim();
+  if (/\|\s*Estoria\s*$/i.test(trimmed)) return trimmed;
+  return `${trimmed} | Estoria`;
 }

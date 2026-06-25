@@ -14,17 +14,17 @@ const breadcrumbs = [
 ];
 
 const TOP_AREAS = [
-  { name: 'Nam Đà Nẵng', href: '/nam-da-nang', note: 'Đất nền, nhà phố ven sông' },
-  { name: 'FPT City', href: '/du-an/fpt-city', note: 'Công nghệ & cho thuê' },
-  { name: 'Sun Cosmo', href: '/du-an/sun-cosmo', note: 'Căn hộ cao cấp' },
-  { name: 'Sun Symphony', href: '/du-an/sun-symphony', note: 'Phân khúc premium' },
+  { name: 'Nam Đà Nẵng', href: '/du-an/nam-da-nang', note: 'Đất, nhà, kho xưởng — mũi nhọn' },
+  { name: 'Sun Group', href: '/du-an#sun-group', note: 'Căn hộ ven sông Hàn' },
+  { name: 'BĐS nổi bật', href: '/du-an/bds-noi-bat', note: 'Deal đa khu vực' },
+  { name: 'Ven biển & miền Trung', href: '/review-khu-vuc', note: 'Đang mở rộng dần' },
 ];
 
 const TOP_PROJECTS = [
-  { name: 'FPT City', href: '/du-an/fpt-city' },
-  { name: 'Sun Cosmo', href: '/du-an/sun-cosmo' },
   { name: 'Sun Symphony', href: '/du-an/sun-symphony' },
-  { name: 'Mai Đăng Chơn', href: '/du-an/mai-dang-chon' },
+  { name: 'Sun Cosmo', href: '/du-an/sun-cosmo' },
+  { name: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
+  { name: 'BĐS nổi bật', href: '/du-an/bds-noi-bat' },
 ];
 
 export default function InvestorDashboardPage() {
@@ -61,7 +61,7 @@ export default function InvestorDashboardPage() {
         <div className="mx-auto max-w-7xl px-4 py-12 md:py-16">
           <Breadcrumbs items={breadcrumbs} className="mb-6" />
           <p className="label-section">Research dashboard</p>
-          <h1 className="heading-page mt-2">Dữ liệu & cơ hội đầu tư Nam Đà Nẵng</h1>
+          <h1 className="heading-page mt-2">Dữ liệu & cơ hội đầu tư BĐS Đà Nẵng</h1>
           <p className="text-body-lg mt-4 max-w-2xl text-invest-muted">
             Tổng hợp khu vực, dự án và bài phân tích — dành cho nhà đầu tư cần dữ liệu trước khi ra quyết định.
           </p>

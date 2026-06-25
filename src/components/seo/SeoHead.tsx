@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { SITE, absoluteUrl, getSiteOrigin } from '../../seo/siteConfig';
+import { SITE, absoluteUrl, getSiteOrigin, formatPageTitle } from '../../seo/siteConfig';
 
 export interface SeoHeadProps {
   title: string;
@@ -31,21 +31,23 @@ export default function SeoHead({
   return (
     <Helmet>
       <html lang={SITE.language} />
-      <title>{title}</title>
+      <title>{formatPageTitle(title)}</title>
       <meta name="description" content={description} />
       <meta name="keywords" content={keywordStr} />
       <meta name="robots" content={robots} />
       <meta name="googlebot" content={robots} />
       <link rel="canonical" href={canonical} />
+      <link rel="icon" type="image/jpeg" href={absoluteUrl(SITE.logo, origin)} />
+      <link rel="apple-touch-icon" href={absoluteUrl(SITE.logo, origin)} />
       <meta property="og:locale" content={SITE.locale} />
       <meta property="og:type" content={ogType} />
       <meta property="og:site_name" content={SITE.name} />
       <meta property="og:url" content={canonical} />
-      <meta property="og:title" content={title} />
+      <meta property="og:title" content={formatPageTitle(title)} />
       <meta property="og:description" content={description} />
       <meta property="og:image" content={img} />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={title} />
+      <meta name="twitter:title" content={formatPageTitle(title)} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={img} />
       {schemas.map((schema, index) => (

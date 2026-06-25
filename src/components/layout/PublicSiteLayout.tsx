@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Bot, Facebook, Home, Menu, MessageCircle, Phone, X } from 'lucide-react';
-import { CONTACT, PRIMARY_CTA, SITE } from '../../seo/siteConfig';
-import { FOOTER_LEGAL } from '../../seo/routes';
+import { Bot, Facebook, Menu, MessageCircle, Phone, X } from 'lucide-react';
+import { CONTACT, PRIMARY_CTA } from '../../seo/siteConfig';
 import PublicNav, { PublicNavMobile } from './PublicNav';
+import SiteLogo from './SiteLogo';
+import PublicSiteFooter from './PublicSiteFooter';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from '../../leadGen/analytics';
 
 export default function PublicSiteLayout({ children }: { children?: React.ReactNode }) {
@@ -13,12 +14,7 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
     <div className="public-shell min-h-screen">
       <header className="public-header">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-          <Link to="/" className="flex shrink-0 items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600 text-white">
-              <Home className="h-5 w-5" />
-            </span>
-            <span className="text-sm font-extrabold tracking-wide text-invest-text">{SITE.name}</span>
-          </Link>
+          <SiteLogo />
 
           <div className="hidden min-w-0 flex-1 justify-center lg:flex">
             <PublicNav />
@@ -62,69 +58,7 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
 
       <main>{children ?? <Outlet />}</main>
 
-      <footer className="mt-16 border-t border-invest-border bg-invest-blue py-12 text-slate-300">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 md:grid-cols-3">
-          <div>
-            <div className="text-sm font-extrabold text-white">{SITE.name}</div>
-            <p className="mt-2 text-sm leading-6">{SITE.defaultDescription.slice(0, 120)}...</p>
-            <p className="mt-3 text-sm">
-              <strong className="text-white">{CONTACT.representative}</strong>
-              <br />
-              {CONTACT.title}
-            </p>
-          </div>
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-invest-gold">Liên hệ</div>
-            <ul className="mt-3 space-y-2 text-sm">
-              <li>
-                <a href={`tel:${CONTACT.phoneTel}`} className="hover:text-white">
-                  Hotline: {CONTACT.phoneDisplay}
-                </a>
-              </li>
-              <li>
-                <a href={`mailto:${CONTACT.email}`} className="hover:text-white">
-                  {CONTACT.email}
-                </a>
-              </li>
-              <li>
-                <a href={CONTACT.facebook} target="_blank" rel="noreferrer" className="hover:text-white">
-                  Facebook
-                </a>
-              </li>
-              <li>
-                <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="hover:text-white">
-                  Zalo
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-invest-gold">Pháp lý</div>
-            <ul className="mt-3 space-y-2 text-sm">
-              {FOOTER_LEGAL.map(link => (
-                <li key={link.href}>
-                  <Link to={link.href} className="hover:text-white">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-              <li>
-                <Link to="/gioi-thieu" className="hover:text-white">
-                  Giới thiệu
-                </Link>
-              </li>
-              <li>
-                <Link to="/tac-gia/nguyen-phan-hoang-linh" className="hover:text-white">
-                  Tác giả
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <div className="mx-auto mt-8 max-w-7xl border-t border-white/10 px-4 pt-6 text-center text-xs">
-          © {new Date().getFullYear()} {SITE.brand}. Mọi quyền được bảo lưu.
-        </div>
-      </footer>
+      <PublicSiteFooter />
 
       <div
         className="pointer-events-none fixed right-3 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-2.5 lg:hidden"

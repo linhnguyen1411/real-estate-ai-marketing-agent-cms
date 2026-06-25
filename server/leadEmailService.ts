@@ -79,12 +79,12 @@ export async function sendLeadMagnetEmailSequence(lead: InvestorLead) {
 
   await sendEmail(
     lead.email,
-    'TOP 20 cơ hội đầu tư Nam Đà Nẵng',
+    '20 nhóm cơ hội đầu tư Nam Đà Nẵng',
     `
     <p>Xin chào <strong>${lead.name}</strong>,</p>
-    <p><strong>Email 2/3 — Danh sách cơ hội</strong></p>
-    <p>Danh sách được lọc theo tiềm năng và pháp lý:</p>
-    <p><a href="${links.top20}">Xem TOP 20 cơ hội đầu tư</a></p>
+    <p><strong>Email 2/3 — Khung phân tích cơ hội</strong></p>
+    <p>Tài liệu định hướng theo khu vực, loại tài sản và ngân sách (không phải danh sách sản phẩm chào bán):</p>
+    <p><a href="${links.top20}">Xem 20 nhóm cơ hội nên theo dõi</a></p>
     `
   );
 

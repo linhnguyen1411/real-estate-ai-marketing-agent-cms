@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { X, Download, Lock } from 'lucide-react';
+import { Download, Lock } from 'lucide-react';
 import { getLeadMagnet, type LeadMagnetDefinition } from '../../leadGen/leadMagnets';
 import { getMagnetAccess, storeMagnetAccess } from '../../leadGen/analytics';
-import { submitInvestorLead } from '../../leadGen/api';
-import {
-  TOP_20_OPPORTUNITIES,
-  MARKET_REPORT_SECTIONS,
-  INVESTMENT_MAP_ZONES,
-} from '../../leadGen/leadMagnets';
+import { fetchLeadMagnetContent, submitInvestorLead } from '../../leadGen/api';
+import type { LeadMagnetContent } from '../../types/leadMagnetContent';
+import { LEAD_MAGNET_DISCLAIMER } from '../../types/leadMagnetContent';
+import OpportunityGroupView from './OpportunityGroupView';
+import ReportSectionView from './ReportSectionView';
 
 interface LeadMagnetGateProps {
   magnet: LeadMagnetDefinition;
@@ -98,70 +97,131 @@ function MagnetForm({
   );
 }
 
-function MagnetContent({ magnet }: { magnet: LeadMagnetDefinition }) {
-  if (magnet.slug === 'bao-cao-nam-da-nang-2026') {
+function SourceLabel({ label }: { label: string }) {
+  return (
+    <div className="mt-8 space-y-3 border-t border-slate-200 pt-4">
+      <p className="text-xs leading-relaxed text-slate-500">
+        <span className="font-semibold text-slate-600">Nguồn dữ liệu:</span>{' '}
+        {label}
+      </p>
+      <p className="text-xs leading-relaxed text-slate-500">{LEAD_MAGNET_DISCLAIMER}</p>
+    </div>
+  );
+}
+
+function MagnetContentBody({ content }: { content: LeadMagnetContent }) {
+  if (content.type === 'report') {
+    const sections = content.sections ?? [];
     return (
-      <article className="prose prose-slate max-w-none">
-        {MARKET_REPORT_SECTIONS.map(section => (
-          <section key={section.title} className="mb-8">
-            <h2 className="text-xl font-bold text-slate-950">{section.title}</h2>
-            <p className="mt-2 leading-7 text-slate-700">{section.body}</p>
-          </section>
+      <article className="max-w-none">
+        {sections.map(section => (
+          <ReportSectionView key={section.id} section={section} />
         ))}
+        <SourceLabel label={content.sourceLabel} />
       </article>
     );
   }
 
-  if (magnet.slug === 'top-20-co-hoi-dau-tu') {
+  if (content.type === 'opportunity-framework') {
+    const groups = content.groups ?? [];
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="py-2 pr-2">#</th>
-              <th className="py-2 pr-2">Sản phẩm</th>
-              <th className="py-2 pr-2">Khu vực</th>
-              <th className="py-2 pr-2">Giá</th>
-              <th className="py-2 pr-2">Tiềm năng</th>
-              <th className="py-2">Đánh giá</th>
-            </tr>
-          </thead>
-          <tbody>
-            {TOP_20_OPPORTUNITIES.map(row => (
-              <tr key={row.rank} className="border-b border-slate-100">
-                <td className="py-2.5 font-bold text-rose-600">{row.rank}</td>
-                <td className="py-2.5 font-medium">{row.name}</td>
-                <td className="py-2.5 text-slate-600">{row.area}</td>
-                <td className="py-2.5">{row.price}</td>
-                <td className="py-2.5">{row.potential}</td>
-                <td className="py-2.5 font-bold">{row.rating}</td>
-              </tr>
+      <div>
+        <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Đây là <strong>khung phân tích định hướng đầu tư</strong> — không phải danh sách sản phẩm
+          đang chào bán. Liên hệ để nhận tư vấn và danh mục tài sản cập nhật từ hệ thống.
+        </p>
+        {groups.length === 0 ? (
+          <p className="text-sm text-slate-600">Chưa có dữ liệu nhóm cơ hội. Vui lòng tải lại trang.</p>
+        ) : (
+          <div className="space-y-5">
+            {groups.map(group => (
+              <OpportunityGroupView key={group.rank} group={group} />
             ))}
-          </tbody>
-        </table>
-        <p className="mt-4 text-xs text-slate-500">* Dữ liệu tham khảo — liên hệ để nhận bản cập nhật mới nhất.</p>
+          </div>
+        )}
+        <SourceLabel label={content.sourceLabel} />
       </div>
     );
   }
 
-  return (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
-      <svg viewBox="0 0 100 100" className="h-full w-full">
-        <rect width="100" height="100" fill="#0f172a" />
-        <text x="50" y="8" textAnchor="middle" fill="#94a3b8" fontSize="4">
-          BẢN ĐỒ ĐẦU TƯ NAM ĐÀ NẴNG
-        </text>
-        {INVESTMENT_MAP_ZONES.map(zone => (
-          <g key={zone.id}>
-            <circle cx={zone.x} cy={zone.y} r="6" fill={zone.color} opacity="0.85" />
-            <text x={zone.x} y={zone.y + 10} textAnchor="middle" fill="#e2e8f0" fontSize="3">
-              {zone.label}
-            </text>
-          </g>
+  if (content.type === 'map') {
+    const zones = content.zones ?? [];
+    return (
+    <div>
+      <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+        <svg viewBox="0 0 100 100" className="h-full w-full">
+          <rect width="100" height="100" fill="#0f172a" />
+          <text x="50" y="8" textAnchor="middle" fill="#94a3b8" fontSize="4">
+            BẢN ĐỒ ĐẦU TƯ NAM ĐÀ NẴNG
+          </text>
+          {zones.map(zone => (
+            <g key={zone.id}>
+              <circle cx={zone.x} cy={zone.y} r="6" fill={zone.color} opacity="0.85" />
+              <text x={zone.x} y={zone.y + 10} textAnchor="middle" fill="#e2e8f0" fontSize="3">
+                {zone.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+      <ul className="mt-4 space-y-2 text-sm text-slate-600">
+        {zones.map(zone => (
+          <li key={zone.id}>
+            <span className="font-semibold text-slate-800">{zone.label}:</span> {zone.note}
+          </li>
         ))}
-      </svg>
+      </ul>
+      <SourceLabel label={content.sourceLabel} />
+    </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+      Không nhận dạng được định dạng tài liệu. Vui lòng tải lại trang hoặc mở khóa lại.
     </div>
   );
+}
+
+function MagnetContent({ magnet, token }: { magnet: LeadMagnetDefinition; token: string }) {
+  const [content, setContent] = useState<LeadMagnetContent | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    fetchLeadMagnetContent(magnet.slug, token)
+      .then(data => {
+        if (!cancelled) setContent(data);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Không tải được nội dung');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [magnet.slug, token]);
+
+  if (loading) {
+    return <div className="py-10 text-center text-sm text-slate-500">Đang tải tài liệu...</div>;
+  }
+
+  if (error || !content) {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        {error || 'Không tải được nội dung tài liệu.'}
+      </div>
+    );
+  }
+
+  return <MagnetContentBody content={content} />;
 }
 
 export default function LeadMagnetGate({ magnet, token: initialToken, onUnlocked }: LeadMagnetGateProps) {
@@ -181,7 +241,7 @@ export default function LeadMagnetGate({ magnet, token: initialToken, onUnlocked
         <Download className="h-4 w-4" />
         Tài liệu đã mở khóa
       </div>
-      <MagnetContent magnet={magnet} />
+      <MagnetContent magnet={magnet} token={token} />
     </div>
   );
 }

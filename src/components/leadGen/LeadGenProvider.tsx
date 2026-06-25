@@ -70,7 +70,7 @@ export default function LeadGenProvider({ children }: { children: React.ReactNod
           <div className="rounded-xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white">
             <p className="text-xs font-bold uppercase tracking-widest text-rose-400">Đừng rời đi!</p>
             <h3 className="mt-2 text-xl font-extrabold leading-tight">
-              Nhận miễn phí TOP 20 cơ hội đầu tư Nam Đà Nẵng
+              Nhận miễn phí khung 20 nhóm cơ hội đầu tư BĐS Đà Nẵng
             </h3>
             <p className="mt-2 text-sm text-slate-300">Dành cho nhà đầu tư trung và dài hạn</p>
           </div>
