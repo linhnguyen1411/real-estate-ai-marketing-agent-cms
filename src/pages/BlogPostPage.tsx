@@ -7,6 +7,7 @@ import FaqSection from '../components/FaqSection';
 import MultiStepInvestorForm from '../components/leadGen/MultiStepInvestorForm';
 import ArticleTableOfContents from '../components/blog/ArticleTableOfContents';
 import BlogArticleBody from '../components/blog/BlogArticleBody';
+import BlogShareActions, { BlogShareButton } from '../components/blog/BlogShareActions';
 import ReadingProgressBar from '../components/blog/ReadingProgressBar';
 import { fetchPublicBlogPost, fetchPublicBlogPosts } from '../services/blogApi';
 import type { BlogArticle } from '../types';
@@ -23,6 +24,7 @@ import {
   getRelatedAreaLinksForSlug,
   getRelatedProjectLinksForSlug,
 } from '../seo/internalLinkGraph';
+import { resolveBlogShareImage } from '../seo/shareImage';
 
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -82,6 +84,12 @@ export default function BlogPostPage() {
   }
 
   const path = `/tin-tuc/${post.slug}`;
+  const shareImage = resolveBlogShareImage({
+    coverImage: post.coverImage,
+    content: post.content,
+    contentHtml: post.contentHtml,
+    origin,
+  });
   const breadcrumbs = [
     { name: 'Trang chủ', path: '/' },
     { name: 'Tin tức', path: '/tin-tuc' },
@@ -125,8 +133,9 @@ export default function BlogPostPage() {
         title={post.metaTitle}
         description={post.metaDescription}
         path={path}
-        image={post.coverImage || undefined}
+        image={shareImage}
         ogType="article"
+        publishedTime={post.publishedAt || undefined}
         schemas={[
           ...buildDefaultPageSchemas(breadcrumbs, origin),
           buildBreadcrumbSchema(breadcrumbs, origin),
@@ -136,13 +145,13 @@ export default function BlogPostPage() {
             path,
             publishedAt: post.publishedAt || undefined,
             updatedAt: post.updatedAt,
-            image: post.coverImage || undefined,
+            image: shareImage,
             origin,
           }),
           ...(faqs.length ? [buildFaqSchema(faqs)] : []),
         ]}
       />
-      <article className="mx-auto max-w-5xl px-4 py-10">
+      <article className="mx-auto max-w-5xl px-4 py-10 pb-24 lg:pb-10">
         <Breadcrumbs items={breadcrumbs} className="mb-6" />
         <header className="mx-auto max-w-3xl text-center lg:text-left">
           <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-invest-muted lg:justify-start">
@@ -160,6 +169,9 @@ export default function BlogPostPage() {
           </div>
           <h1 className="heading-page mt-4">{post.title}</h1>
           <p className="text-body-lg mt-4 text-invest-muted">{post.excerpt}</p>
+          <div className="mt-5 flex justify-center lg:justify-start">
+            <BlogShareActions slug={post.slug} title={post.title} />
+          </div>
         </header>
 
         {post.coverImage && (
@@ -276,10 +288,37 @@ export default function BlogPostPage() {
       </article>
 
       {!formFocused && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden">
-          <a href="#lead-form" className="btn-cta block w-full py-3 text-center text-sm">
-            {cta.buttonText}
-          </a>
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-4px_24px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="mx-auto grid max-w-5xl grid-cols-4 gap-2 px-3 pt-2">
+            <a
+              href={`tel:${CONTACT.phone}`}
+              onClick={() => trackPhoneClick('blog_mobile_bar')}
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-slate-950 px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              <Phone className="mb-0.5 h-4 w-4" />
+              Gọi
+            </a>
+            <a
+              href={CONTACT.zalo}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackZaloClick('blog_mobile_bar')}
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-blue-600 px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              <MessageCircle className="mb-0.5 h-4 w-4" />
+              Zalo
+            </a>
+            <a
+              href="#lead-form"
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-invest-cta px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              Tư vấn
+            </a>
+            <BlogShareButton slug={post.slug} title={post.title} compact />
+          </div>
         </div>
       )}
     </>

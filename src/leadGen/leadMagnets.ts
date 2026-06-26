@@ -23,22 +23,13 @@ export const LEAD_MAGNETS: LeadMagnetDefinition[] = [
   },
   {
     slug: 'top-20-co-hoi-dau-tu',
-    title: '20 NHÓM CƠ HỘI ĐẦU TƯ NÊN THEO DÕI TẠI NAM ĐÀ NẴNG',
-    subtitle: 'Khu vực · Loại tài sản · Ngân sách · Rủi ro',
+    title: 'BẢN ĐỒ CƠ HỘI ĐẦU TƯ BĐS ĐÀ NẴNG',
+    subtitle: 'Sổ tay đầu tư · Căn hộ · Đất · Nhà phố · Động lực thị trường',
     description:
-      'Khung phân tích định hướng đầu tư theo nhóm tài sản — không phải danh sách sản phẩm đang chào bán.',
-    cta: 'Nhận tài liệu phân tích',
+      'Sổ tay đầu tư theo chương: căn hộ Sun Group, đất nền Nam, nhà phố và động lực thị trường — không phải danh sách sản phẩm chào bán.',
+    cta: 'Nhận bản đồ cơ hội đầu tư',
     type: 'list',
     icon: '📋',
-  },
-  {
-    slug: 'ban-do-dau-tu-nam-da-nang',
-    title: 'BẢN ĐỒ ĐẦU TƯ NAM ĐÀ NẴNG',
-    subtitle: 'Sun Group · Mai Đăng Chơn · Đất nền Nam · Hành lang công nghệ',
-    description: 'Bản đồ tư duy khu vực — chỉ xem sau khi để lại thông tin liên hệ.',
-    cta: 'Nhận bản đồ đầu tư',
-    type: 'map',
-    icon: '🗺️',
   },
 ];
 

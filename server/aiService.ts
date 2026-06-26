@@ -12,10 +12,12 @@ interface AIProviderStatus {
   message: string;
 }
 
-interface GenerationOptions {
+export interface GenerationOptions {
   temperature?: number;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  /** editorial = blog/SEO content without CRM assistant wrapper */
+  promptContext?: 'default' | 'editorial';
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -47,7 +49,14 @@ function normalizeEndpoint(endpoint: string) {
   return endpoint.replace(/\/+$/, "");
 }
 
-function buildSystemInstruction(systemInstruction: string) {
+function buildSystemInstruction(systemInstruction: string, options: GenerationOptions = {}) {
+  if (options.promptContext === 'editorial') {
+    return [
+      'Viết tiếng Việt. Chỉ trả về nội dung được yêu cầu — không giải thích thêm, không chain-of-thought.',
+      'Không tự bịa số liệu, giá, pháp lý. Không cam kết lợi nhuận.',
+      systemInstruction,
+    ].join('\n\n');
+  }
   return [
     "Bạn là AI assistant cho hệ thống CRM/CMS marketing bất động sản Việt Nam.",
     "Luôn trả lời bằng tiếng Việt tự nhiên, rõ ràng, ngắn gọn, đúng nghiệp vụ.",
@@ -161,7 +170,7 @@ async function callOllama(systemInstruction: string, prompt: string, options: Ge
         model: settings.ollama_model,
         think: false,
         messages: [
-          { role: "system", content: buildSystemInstruction(systemInstruction) },
+          { role: "system", content: buildSystemInstruction(systemInstruction, options) },
           { role: "user", content: prompt }
         ],
         stream: false,
@@ -207,7 +216,7 @@ async function callOpenAI(systemInstruction: string, prompt: string, options: Ge
       body: JSON.stringify({
         model: settings.openai_model || process.env.OPENAI_MODEL || "gpt-5-mini",
         input: [
-          { role: "system", content: buildSystemInstruction(systemInstruction) },
+          { role: "system", content: buildSystemInstruction(systemInstruction, options) },
           { role: "user", content: prompt }
         ]
       })
@@ -256,7 +265,7 @@ async function callGemini(systemInstruction: string, prompt: string, options: Ge
     model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     contents: prompt,
     config: {
-      systemInstruction: buildSystemInstruction(systemInstruction),
+      systemInstruction: buildSystemInstruction(systemInstruction, options),
       temperature: options.temperature ?? 0.2,
       maxOutputTokens: options.maxOutputTokens
     }

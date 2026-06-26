@@ -1,10 +1,10 @@
-import {
-  INVESTMENT_MAP_ZONES,
-  MARKET_REPORT_SECTIONS,
-  OPPORTUNITY_GROUPS,
-} from './leadMagnetFramework';
-import type { OpportunityGroup, ReportSection } from '../types/leadMagnetContent';
-import { formatOpportunityGroupLabel } from '../types/leadMagnetContent';
+import { buildInvestmentPlaybook } from './buildInvestmentPlaybook';
+import { INVESTMENT_REPORT_2026 } from './investmentReport2026';
+import type {
+  PlaybookChapter,
+  PlaybookSubsection,
+  ReportChapterBlock,
+} from '../types/leadMagnetContent';
 
 export interface TextBlock {
   id: string;
@@ -47,81 +47,83 @@ export function jaccardSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-function flattenReportSection(section: ReportSection): TextBlock[] {
-  const base = { magnet: 'bao-cao-nam-da-nang-2026', section: section.title };
-  const blocks: TextBlock[] = [];
+function flattenReportBlock(block: ReportChapterBlock, chapterTitle: string): TextBlock[] {
+  const base = { magnet: 'bao-cao-nam-da-nang-2026', section: chapterTitle };
 
-  if (section.kind === 'market-insight') {
-    blocks.push(
-      { ...base, id: `${section.id}:summary`, text: section.summary },
+  if (block.kind === 'prose') {
+    return [
       {
         ...base,
-        id: `${section.id}:fit`,
-        text: [section.investorFit, ...section.keyDrivers, ...section.watchPoints, ...section.risks].join(' '),
-      }
-    );
-  } else {
-    blocks.push({ ...base, id: `${section.id}:intro`, text: section.intro });
+        id: block.id,
+        text: [block.heading, ...block.paragraphs].filter(Boolean).join(' '),
+      },
+    ];
   }
 
-  if (section.kind === 'budget-framework') {
-    section.tiers.forEach((tier, index) => {
-      blocks.push({
-        ...base,
-        id: `${section.id}:tier-${index}`,
-        text: [tier.range, ...tier.assetTypes, ...tier.advantages, ...tier.limitations].join(' '),
-      });
-    });
-  } else if (section.kind === 'remote-ops-risk') {
-    section.items.forEach((item, index) => {
-      blocks.push({
-        ...base,
-        id: `${section.id}:risk-${index}`,
-        text: [item.topic, item.description, item.mitigation].join(' '),
-      });
-    });
-  } else if (section.kind === 'pre-purchase-checklist') {
-    section.phases.forEach((phase, index) => {
-      blocks.push({
-        ...base,
-        id: `${section.id}:phase-${index}`,
-        text: [phase.label, ...phase.items].join(' '),
-      });
-    });
+  if (block.kind === 'zone-focus') {
+    return [{ ...base, id: block.id, text: [block.zone, ...block.paragraphs].join(' ') }];
   }
 
-  return blocks;
+  if (block.kind === 'product-segment') {
+    return [
+      {
+        ...base,
+        id: block.id,
+        text: [
+          block.name,
+          block.buyerProfile,
+          block.renterProfile,
+          block.liquidity,
+          block.strengths,
+          block.limitations,
+          block.strategyFit,
+        ].join(' '),
+      },
+    ];
+  }
+
+  if (block.kind === 'factor') {
+    return [{ ...base, id: block.id, text: `${block.factor} ${block.analysis}` }];
+  }
+
+  return [{ ...base, id: block.id, text: `${block.topic} ${block.guidance}` }];
 }
 
-function flattenOpportunityGroup(group: OpportunityGroup): TextBlock[] {
+function flattenPlaybookSubsection(chapter: PlaybookChapter, subsection: PlaybookSubsection): TextBlock[] {
   const base = {
     magnet: 'top-20-co-hoi-dau-tu',
-    section: formatOpportunityGroupLabel(group.rank),
+    section: `${chapter.title} · ${subsection.title}`,
   };
+
   return [
-    { ...base, id: `group-${group.rank}:why`, text: group.whyWatch },
-    { ...base, id: `group-${group.rank}:risk`, text: group.risks },
+    {
+      ...base,
+      id: `${chapter.id}:${subsection.id}:summary`,
+      text: [chapter.executiveSummary, ...subsection.analysis].join(' '),
+    },
+    {
+      ...base,
+      id: `${chapter.id}:${subsection.id}:insight`,
+      text: [subsection.keyInsight, subsection.whoFits, ...subsection.watchPoints].join(' '),
+    },
   ];
+}
+
+function flattenPlaybookChapter(chapter: PlaybookChapter): TextBlock[] {
+  return chapter.subsections.flatMap(subsection => flattenPlaybookSubsection(chapter, subsection));
 }
 
 export function collectLeadMagnetTextBlocks(): TextBlock[] {
   const blocks: TextBlock[] = [];
 
-  MARKET_REPORT_SECTIONS.forEach(section => {
-    blocks.push(...flattenReportSection(section));
-  });
-
-  OPPORTUNITY_GROUPS.forEach(group => {
-    blocks.push(...flattenOpportunityGroup(group));
-  });
-
-  INVESTMENT_MAP_ZONES.forEach(zone => {
-    blocks.push({
-      id: `map:${zone.id}`,
-      magnet: 'ban-do-dau-tu-nam-da-nang',
-      section: zone.label,
-      text: zone.note,
+  INVESTMENT_REPORT_2026.chapters.forEach(chapter => {
+    chapter.blocks.forEach(block => {
+      blocks.push(...flattenReportBlock(block, chapter.title));
     });
+  });
+
+  buildInvestmentPlaybook().chapters.forEach(chapter => {
+    blocks.push(...flattenPlaybookChapter(chapter));
   });
 
   return blocks;
@@ -190,47 +192,42 @@ function countSinglePattern(text: string, pattern: RegExp): number {
 export function collectLeadMagnetPlainText(): string {
   const parts: string[] = [];
 
-  OPPORTUNITY_GROUPS.forEach(group => {
-    parts.push(
-      group.name,
-      group.area,
-      group.assetType,
-      group.whyWatch,
-      group.risks,
-      group.suitableBudget
-    );
-  });
-
-  MARKET_REPORT_SECTIONS.forEach(section => {
-    if (section.kind === 'market-insight') {
+  buildInvestmentPlaybook().chapters.forEach(chapter => {
+    parts.push(chapter.title, chapter.executiveSummary);
+    chapter.subsections.forEach(subsection => {
       parts.push(
-        section.title,
-        section.summary,
-        ...section.keyDrivers,
-        ...section.watchPoints,
-        section.investorFit,
-        ...section.risks
+        subsection.title,
+        ...subsection.analysis,
+        subsection.keyInsight,
+        subsection.whoFits,
+        ...subsection.watchPoints
       );
-    } else if (section.kind === 'budget-framework') {
-      parts.push(section.title, section.intro);
-      section.tiers.forEach(tier => {
-        parts.push(tier.range, ...tier.assetTypes, ...tier.advantages, ...tier.limitations);
-      });
-    } else if (section.kind === 'remote-ops-risk') {
-      parts.push(section.title, section.intro);
-      section.items.forEach(item => {
-        parts.push(item.topic, item.description, item.mitigation);
-      });
-    } else if (section.kind === 'pre-purchase-checklist') {
-      parts.push(section.title, section.intro);
-      section.phases.forEach(phase => {
-        parts.push(phase.label, ...phase.items);
-      });
-    }
+    });
   });
 
-  INVESTMENT_MAP_ZONES.forEach(zone => {
-    parts.push(zone.label, zone.note);
+  INVESTMENT_REPORT_2026.chapters.forEach(chapter => {
+    parts.push(chapter.title);
+    chapter.blocks.forEach(block => {
+      if (block.kind === 'prose') {
+        parts.push(...block.paragraphs);
+      } else if (block.kind === 'zone-focus') {
+        parts.push(block.zone, ...block.paragraphs);
+      } else if (block.kind === 'product-segment') {
+        parts.push(
+          block.name,
+          block.buyerProfile,
+          block.renterProfile,
+          block.liquidity,
+          block.strengths,
+          block.limitations,
+          block.strategyFit
+        );
+      } else if (block.kind === 'factor') {
+        parts.push(block.factor, block.analysis);
+      } else {
+        parts.push(block.topic, block.guidance);
+      }
+    });
   });
 
   return parts.join('\n');

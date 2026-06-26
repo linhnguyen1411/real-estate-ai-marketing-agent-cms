@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Download, Lock } from 'lucide-react';
 import { getLeadMagnet, type LeadMagnetDefinition } from '../../leadGen/leadMagnets';
-import { getMagnetAccess, storeMagnetAccess } from '../../leadGen/analytics';
-import { fetchLeadMagnetContent, submitInvestorLead } from '../../leadGen/api';
+import { clearMagnetAccess, getMagnetAccess, storeMagnetAccess } from '../../leadGen/analytics';
+import { fetchLeadMagnetContent, LeadMagnetAccessError, submitInvestorLead } from '../../leadGen/api';
 import type { LeadMagnetContent } from '../../types/leadMagnetContent';
 import { LEAD_MAGNET_DISCLAIMER } from '../../types/leadMagnetContent';
-import OpportunityGroupView from './OpportunityGroupView';
+import InvestmentPlaybookView from './InvestmentPlaybookView';
+import InvestmentReportView from './InvestmentReportView';
 import ReportSectionView from './ReportSectionView';
 
 interface LeadMagnetGateProps {
@@ -17,9 +19,11 @@ interface LeadMagnetGateProps {
 function MagnetForm({
   magnet,
   onUnlocked,
+  sessionExpired,
 }: {
   magnet: LeadMagnetDefinition;
   onUnlocked: (token: string) => void;
+  sessionExpired?: boolean;
 }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -56,6 +60,11 @@ function MagnetForm({
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl border border-rose-200 bg-rose-50/50 p-6">
+      {sessionExpired && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Phiên truy cập không còn hiệu lực. Vui lòng điền lại thông tin để xem tài liệu.
+        </p>
+      )}
       <div className="mb-4 flex items-center gap-2 text-rose-700">
         <Lock className="h-5 w-5" />
         <span className="font-bold">Điền thông tin để tải tài liệu</span>
@@ -110,6 +119,23 @@ function SourceLabel({ label }: { label: string }) {
 }
 
 function MagnetContentBody({ content }: { content: LeadMagnetContent }) {
+  if (content.type === 'investment-playbook') {
+    return (
+      <article className="max-w-none">
+        <InvestmentPlaybookView content={content} />
+      </article>
+    );
+  }
+
+  if (content.type === 'investment-report') {
+    return (
+      <article className="max-w-none">
+        <InvestmentReportView content={content} />
+        <SourceLabel label={content.sourceLabel} />
+      </article>
+    );
+  }
+
   if (content.type === 'report') {
     const sections = content.sections ?? [];
     return (
@@ -123,23 +149,9 @@ function MagnetContentBody({ content }: { content: LeadMagnetContent }) {
   }
 
   if (content.type === 'opportunity-framework') {
-    const groups = content.groups ?? [];
     return (
-      <div>
-        <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Đây là <strong>khung phân tích định hướng đầu tư</strong> — không phải danh sách sản phẩm
-          đang chào bán. Liên hệ để nhận tư vấn và danh mục tài sản cập nhật từ hệ thống.
-        </p>
-        {groups.length === 0 ? (
-          <p className="text-sm text-slate-600">Chưa có dữ liệu nhóm cơ hội. Vui lòng tải lại trang.</p>
-        ) : (
-          <div className="space-y-5">
-            {groups.map(group => (
-              <OpportunityGroupView key={group.rank} group={group} />
-            ))}
-          </div>
-        )}
-        <SourceLabel label={content.sourceLabel} />
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        Nội dung playbook chưa tải được. Vui lòng tải lại trang.
       </div>
     );
   }
@@ -183,7 +195,15 @@ function MagnetContentBody({ content }: { content: LeadMagnetContent }) {
   );
 }
 
-function MagnetContent({ magnet, token }: { magnet: LeadMagnetDefinition; token: string }) {
+function MagnetContent({
+  magnet,
+  token,
+  onTokenInvalid,
+}: {
+  magnet: LeadMagnetDefinition;
+  token: string;
+  onTokenInvalid: () => void;
+}) {
   const [content, setContent] = useState<LeadMagnetContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -197,9 +217,12 @@ function MagnetContent({ magnet, token }: { magnet: LeadMagnetDefinition; token:
         if (!cancelled) setContent(data);
       })
       .catch(err => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Không tải được nội dung');
+        if (cancelled) return;
+        if (err instanceof LeadMagnetAccessError && err.requiresForm) {
+          onTokenInvalid();
+          return;
         }
+        setError(err instanceof Error ? err.message : 'Không tải được nội dung');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -207,7 +230,7 @@ function MagnetContent({ magnet, token }: { magnet: LeadMagnetDefinition; token:
     return () => {
       cancelled = true;
     };
-  }, [magnet.slug, token]);
+  }, [magnet.slug, token, onTokenInvalid]);
 
   if (loading) {
     return <div className="py-10 text-center text-sm text-slate-500">Đang tải tài liệu...</div>;
@@ -221,29 +244,48 @@ function MagnetContent({ magnet, token }: { magnet: LeadMagnetDefinition; token:
     );
   }
 
-  return <MagnetContentBody content={content} />;
+  return (
+    <>
+      <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
+        <Download className="h-4 w-4" />
+        Tài liệu đã mở khóa
+      </div>
+      <MagnetContentBody content={content} />
+    </>
+  );
 }
 
 export default function LeadMagnetGate({ magnet, token: initialToken, onUnlocked }: LeadMagnetGateProps) {
+  const navigate = useNavigate();
   const [token, setToken] = useState(initialToken || getMagnetAccess(magnet.slug));
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     if (initialToken) setToken(initialToken);
   }, [initialToken]);
 
+  const handleTokenInvalid = useCallback(() => {
+    clearMagnetAccess(magnet.slug);
+    setToken(null);
+    setSessionExpired(true);
+    navigate(window.location.pathname, { replace: true });
+  }, [magnet.slug, navigate]);
+
   if (!token) {
-    return <MagnetForm magnet={magnet} onUnlocked={t => { setToken(t); onUnlocked?.(t); }} />;
+    return (
+      <MagnetForm
+        magnet={magnet}
+        sessionExpired={sessionExpired}
+        onUnlocked={t => {
+          setSessionExpired(false);
+          setToken(t);
+          onUnlocked?.(t);
+        }}
+      />
+    );
   }
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
-        <Download className="h-4 w-4" />
-        Tài liệu đã mở khóa
-      </div>
-      <MagnetContent magnet={magnet} token={token} />
-    </div>
-  );
+  return <MagnetContent magnet={magnet} token={token} onTokenInvalid={handleTokenInvalid} />;
 }
 
 export function useLeadMagnet(slug: string) {

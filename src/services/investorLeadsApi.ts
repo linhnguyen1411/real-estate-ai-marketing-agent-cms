@@ -1,7 +1,8 @@
 import type { InvestorLead } from '../types/investorLead';
+import { getAuthToken } from './api';
 
 function authHeaders(): HeadersInit {
-  const token = localStorage.getItem('real_estate_ai_token');
+  const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

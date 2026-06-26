@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { SITE, absoluteUrl, getSiteOrigin, formatPageTitle } from '../../seo/siteConfig';
+import { resolveShareImageUrl, guessImageMimeType } from '../../seo/shareImage';
 
 export interface SeoHeadProps {
   title: string;
@@ -7,8 +8,11 @@ export interface SeoHeadProps {
   path?: string;
   keywords?: string[];
   image?: string;
+  imageWidth?: number;
+  imageHeight?: number;
   ogType?: 'website' | 'article' | 'product';
   noindex?: boolean;
+  publishedTime?: string;
   schemas?: Record<string, unknown>[];
 }
 
@@ -18,15 +22,19 @@ export default function SeoHead({
   path = '/',
   keywords = [],
   image = SITE.ogImage,
+  imageWidth = 1200,
+  imageHeight = 630,
   ogType = 'website',
   noindex = false,
+  publishedTime,
   schemas = [],
 }: SeoHeadProps) {
   const origin = getSiteOrigin();
   const canonical = absoluteUrl(path, origin);
   const keywordStr = keywords.length ? keywords.join(', ') : SITE.defaultKeywords.join(', ');
   const robots = noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
-  const img = absoluteUrl(image, origin);
+  const img = resolveShareImageUrl(image, origin, SITE.ogImage);
+  const imageType = guessImageMimeType(img);
 
   return (
     <Helmet>
@@ -46,6 +54,12 @@ export default function SeoHead({
       <meta property="og:title" content={formatPageTitle(title)} />
       <meta property="og:description" content={description} />
       <meta property="og:image" content={img} />
+      <meta property="og:image:secure_url" content={img} />
+      <meta property="og:image:type" content={imageType} />
+      <meta property="og:image:width" content={String(imageWidth)} />
+      <meta property="og:image:height" content={String(imageHeight)} />
+      <meta property="og:image:alt" content={formatPageTitle(title)} />
+      {publishedTime ? <meta property="article:published_time" content={publishedTime} /> : null}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={formatPageTitle(title)} />
       <meta name="twitter:description" content={description} />

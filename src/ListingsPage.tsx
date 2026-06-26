@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { Property } from './types';
 import MarkdownContent from './components/MarkdownContent';
-import PropertyShareActions from './components/PropertyShareActions';
+import { PropertyShareButton, PropertyShareCompactButton } from './components/PropertyShareModal';
+import LeadCaptureForm from './components/LeadCaptureForm';
 import { getPublicPropertySlug } from './utils/propertyShare';
 import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
 import SocialProof from './components/leadGen/SocialProof';
@@ -33,11 +34,13 @@ import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
 import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
-import { getAllProjectNames, matchProjectName } from './seo/propertyCatalog';
+import { compareProjectDisplayOrder, getPropertyProjectLabel, matchProjectName, sortProjectEntries } from './seo/propertyCatalog';
+import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
 
 interface ListingsPageProps {
   properties: Property[];
   propertySlug?: string;
+  projectDisplayOrder?: string[];
 }
 
 interface PublicChatMessage {
@@ -314,7 +317,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   );
 };
 
-export default function ListingsPage({ properties, propertySlug }: ListingsPageProps) {
+export default function ListingsPage({ properties, propertySlug, projectDisplayOrder }: ListingsPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
@@ -353,8 +356,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
     }
   ]);
   const [contactStatus, setContactStatus] = useState('');
-  const [visibleProjectCount, setVisibleProjectCount] = useState(6);
-  const [visibleListingCount, setVisibleListingCount] = useState(6);
+  const [listingPage, setListingPage] = useState(1);
   const [localProperties, setLocalProperties] = useState<Property[]>(properties);
 
   React.useEffect(() => {
@@ -583,24 +585,27 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
   const projectGroups = useMemo(() => {
     const groups = new Map<string, Property[]>();
     activeProperties.forEach(property => {
-      const key = property.project_name?.trim() || property.location.split(',')[0].trim() || property.type;
+      const key = getPropertyProjectLabel(property);
+      if (!key) return;
       groups.set(key, [...(groups.get(key) || []), property]);
     });
-    return Array.from(groups.entries());
-  }, [activeProperties]);
+    return sortProjectEntries(Array.from(groups.entries()), projectDisplayOrder);
+  }, [activeProperties, projectDisplayOrder]);
 
   const projectFilterOptions = useMemo(() => {
-    const fromData = Array.from(new Set(activeProperties.map(p => p.project_name).filter(Boolean))) as string[];
-    const catalog = getAllProjectNames();
-    return Array.from(new Set([...fromData, ...catalog])).sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [activeProperties]);
-
-  const visibleProjectGroups = projectGroups.slice(0, visibleProjectCount);
-  const visibleFilteredProperties = filteredProperties.slice(0, visibleListingCount);
+    const names = Array.from(
+      new Set(activeProperties.map(p => getPropertyProjectLabel(p)).filter(Boolean)),
+    ) as string[];
+    return names.sort((a, b) => compareProjectDisplayOrder(a, b, projectDisplayOrder));
+  }, [activeProperties, projectDisplayOrder]);
+  const paginatedFilteredProperties = useMemo(() => {
+    const start = (listingPage - 1) * DEFAULT_PAGE_SIZE;
+    return filteredProperties.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [filteredProperties, listingPage]);
 
   React.useEffect(() => {
-    setVisibleListingCount(6);
-  }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType]);
+    setListingPage(1);
+  }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType, selectedProject]);
 
   const propertyTypes = Array.from(new Set(activeProperties.map(property => property.type)));
   const siteOrigin = window.location.origin;
@@ -1042,11 +1047,11 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           <div className="mx-auto max-w-7xl px-4">
             <div className="mb-8">
               <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Chuyên dự án</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sách dự án theo khu vực</h2>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sách theo dự án</h2>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {visibleProjectGroups.map(([name, group]) => (
+              {projectGroups.map(([name, group]) => (
                 <button
                   key={name}
                   type="button"
@@ -1062,18 +1067,6 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                 </button>
               ))}
             </div>
-
-            {visibleProjectCount < projectGroups.length && (
-              <div className="mt-8 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setVisibleProjectCount(count => Math.min(count + 6, projectGroups.length))}
-                  className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-invest-gold/40 hover:bg-invest-gold-muted hover:text-invest-blue"
-                >
-                  Xem thêm
-                </button>
-              </div>
-            )}
           </div>
         </section>
 
@@ -1147,22 +1140,18 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {visibleFilteredProperties.map(property => (
+            {paginatedFilteredProperties.map(property => (
               <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} />
             ))}
           </div>
 
-          {visibleListingCount < filteredProperties.length && (
-            <div className="mt-8 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setVisibleListingCount(count => Math.min(count + 6, filteredProperties.length))}
-                className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-invest-gold/40 hover:bg-invest-gold-muted hover:text-invest-blue"
-              >
-                Xem thêm
-              </button>
-            </div>
-          )}
+          <PaginationBar
+            className="mt-8"
+            page={listingPage}
+            pageSize={DEFAULT_PAGE_SIZE}
+            totalItems={filteredProperties.length}
+            onPageChange={setListingPage}
+          />
 
           {filteredProperties.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
@@ -1254,7 +1243,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
 
       <PublicSiteFooter />
 
-      <div className="pointer-events-none fixed right-3 top-1/2 z-[70] flex -translate-y-1/2 flex-col gap-2.5 lg:hidden" style={{ paddingRight: 'env(safe-area-inset-right)' }}>
+      <div className={`pointer-events-none fixed right-3 top-1/2 z-[70] flex -translate-y-1/2 flex-col gap-2.5 lg:hidden ${selectedProperty ? 'hidden' : ''}`} style={{ paddingRight: 'env(safe-area-inset-right)' }}>
         <a
           href={`tel:${phoneTel}`}
           onClick={() => trackPhoneClick('listings_floating')}
@@ -1295,6 +1284,7 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
         )}
       </div>
 
+      {!selectedProperty && (
       <div className="fixed bottom-4 left-3 right-14 z-50 sm:bottom-5 sm:left-auto sm:right-5 sm:w-[min(380px,calc(100vw-24px))]">
         {chatOpen ? (
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
@@ -1399,10 +1389,12 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
           </button>
         )}
       </div>
+      )}
 
       {selectedProperty && (
+        <>
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/80 p-3 backdrop-blur-sm app-scroll sm:p-4">
-          <div key={selectedProperty.id} className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white shadow-2xl sm:my-8">
+          <div key={selectedProperty.id} className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white pb-24 shadow-2xl sm:my-8 lg:pb-0">
             <div className="relative flex h-[62vh] max-h-[680px] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:h-auto">
               <img
                 src={selectedProperty.gallery_images?.[galleryIndex] || getImage(selectedProperty)}
@@ -1470,38 +1462,54 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-invest-gold">{formatPrice(selectedProperty.price)}</div>
+
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Hotline</div>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Liên hệ nhanh</div>
                   <div className="space-y-2">
                     <a
                       href="tel:0905777594"
+                      onClick={() => trackPhoneClick('property_sidebar')}
                       className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
                     >
                       <span className="inline-flex items-center gap-2 font-semibold">
                         <Phone className="h-4 w-4 text-invest-gold" />
-                        Mr Linh
+                        Gọi Mr Linh
                       </span>
                       <span className="font-bold text-invest-blue">0905 777 594</span>
                     </a>
                     <a
                       href="tel:0984755258"
+                      onClick={() => trackPhoneClick('property_sidebar')}
                       className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
                     >
                       <span className="inline-flex items-center gap-2 font-semibold">
                         <Phone className="h-4 w-4 text-invest-gold" />
-                        Ms Hằng
+                        Gọi Ms Hằng
                       </span>
                       <span className="font-bold text-invest-blue">0984 755 258</span>
                     </a>
+                    <a
+                      href={zaloUrl}
+                      onClick={() => trackZaloClick('property_sidebar')}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Nhắn Zalo
+                    </a>
                   </div>
                 </div>
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Chia sẻ nhanh</div>
-                  <PropertyShareActions
-                    property={selectedProperty}
-                    buttonClassName="h-9 px-3 border-slate-200 bg-slate-50 text-slate-700 hover:border-invest-gold/40 hover:bg-invest-gold-muted hover:text-invest-blue"
-                  />
+
+                <a
+                  href="#property-lead-form"
+                  className="btn-cta mt-4 block w-full py-3 text-center text-sm"
+                >
+                  Đăng ký nhận bảng hàng
+                </a>
+
+                <div className="mt-3">
+                  <PropertyShareButton property={selectedProperty} />
                 </div>
+
                 <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-white p-3">
                     <div className="text-slate-500">Diện tích</div>
@@ -1520,12 +1528,18 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
                     <div className="font-bold text-slate-950">{selectedProperty.legal_status}</div>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-2">
-                  <a href={zaloUrl} className="rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white">Chat Zalo</a>
-                  <a href={facebookUrl} className="rounded-lg bg-sky-600 px-4 py-3 text-center text-sm font-bold text-white">Messenger</a>
-                  <a href={`tel:${phoneNumber}`} className="rounded-lg bg-slate-950 px-4 py-3 text-center text-sm font-bold text-white">Gọi ngay</a>
-                </div>
               </aside>
+            </div>
+
+            <div id="property-lead-form" className="border-t border-slate-200 p-4 sm:p-6">
+              <h3 className="text-xl font-extrabold text-slate-950">Đăng ký nhận bảng hàng</h3>
+              <p className="mt-2 text-sm text-slate-600">Để lại thông tin để nhận bảng hàng và tư vấn chi tiết cho {selectedProperty.title}.</p>
+              <div className="mt-4 max-w-xl">
+                <LeadCaptureForm
+                  source={`property:${selectedProperty.id}`}
+                  submitLabel="Đăng ký nhận bảng hàng"
+                />
+              </div>
             </div>
 
             {hasGoogleMap(selectedProperty) && (
@@ -1558,6 +1572,43 @@ export default function ListingsPage({ properties, propertySlug }: ListingsPageP
             )}
           </div>
         </div>
+
+        <div
+          className="fixed inset-x-0 bottom-0 z-[80] border-t border-slate-200 bg-white/95 shadow-[0_-4px_24px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="mx-auto grid max-w-5xl grid-cols-4 gap-2 px-3 pt-2">
+            <a
+              href="tel:0905777594"
+              onClick={() => trackPhoneClick('property_mobile_bar')}
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-slate-950 px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              <Phone className="mb-0.5 h-4 w-4" />
+              Gọi
+            </a>
+            <a
+              href={zaloUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackZaloClick('property_mobile_bar')}
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-blue-600 px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              <MessageCircle className="mb-0.5 h-4 w-4" />
+              Zalo
+            </a>
+            <a
+              href="#property-lead-form"
+              className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-invest-cta px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
+            >
+              Bảng hàng
+            </a>
+            <PropertyShareCompactButton
+              property={selectedProperty}
+              className="flex min-h-[52px] w-full flex-col items-center justify-center rounded-xl bg-slate-700 px-2 py-2 text-[11px] font-bold leading-tight text-white"
+            />
+          </div>
+        </div>
+        </>
       )}
     </div>
   );

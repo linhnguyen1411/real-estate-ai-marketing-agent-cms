@@ -1,9 +1,5 @@
-import {
-  INVESTMENT_MAP_ZONES,
-  MARKET_REPORT_SECTIONS,
-  OPPORTUNITY_GROUPS,
-} from '../../src/leadGen/leadMagnetFramework';
-import { normalizeOpportunityGroups } from '../../src/leadGen/normalizeOpportunityGroup';
+import { INVESTMENT_REPORT_2026 } from '../../src/leadGen/investmentReport2026';
+import { buildInvestmentPlaybook } from '../../src/leadGen/buildInvestmentPlaybook';
 import { LEAD_MAGNETS, getLeadMagnet } from '../../src/leadGen/leadMagnets';
 import type {
   LeadMagnetContent,
@@ -29,24 +25,11 @@ export function getLeadMagnetContent(slug: string): LeadMagnetContent | null {
   if (!magnet) return null;
 
   if (slug === 'bao-cao-nam-da-nang-2026') {
-    return withFrameworkMeta({
-      type: 'report',
-      sections: MARKET_REPORT_SECTIONS,
-    });
+    return withFrameworkMeta(INVESTMENT_REPORT_2026);
   }
 
   if (slug === 'top-20-co-hoi-dau-tu') {
-    return withFrameworkMeta({
-      type: 'opportunity-framework',
-      groups: normalizeOpportunityGroups(OPPORTUNITY_GROUPS),
-    });
-  }
-
-  if (slug === 'ban-do-dau-tu-nam-da-nang') {
-    return withFrameworkMeta({
-      type: 'map',
-      zones: INVESTMENT_MAP_ZONES,
-    });
+    return withFrameworkMeta(buildInvestmentPlaybook());
   }
 
   return null;
@@ -56,7 +39,11 @@ export function listLeadMagnetContentMeta(): LeadMagnetContentMeta[] {
   return LEAD_MAGNETS.map(magnet => {
     const content = getLeadMagnetContent(magnet.slug);
     const itemCount =
-      content?.type === 'opportunity-framework'
+      content?.type === 'investment-playbook'
+        ? content.chapters.reduce((sum, chapter) => sum + chapter.subsections.length, 0)
+        : content?.type === 'investment-report'
+        ? content.chapters.reduce((sum, chapter) => sum + chapter.blocks.length, 0)
+        : content?.type === 'opportunity-framework'
         ? content.groups.length
         : content?.type === 'report'
           ? content.sections.length
@@ -67,7 +54,12 @@ export function listLeadMagnetContentMeta(): LeadMagnetContentMeta[] {
     return {
       slug: magnet.slug,
       title: magnet.title,
-      contentType: content?.type ?? 'report',
+      contentType:
+        content?.type === 'investment-playbook'
+          ? 'opportunity-framework'
+          : content?.type === 'investment-report'
+            ? 'report'
+            : content?.type ?? 'report',
       source: content?.source ?? DEFAULT_SOURCE,
       itemCount,
     };
