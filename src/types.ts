@@ -81,6 +81,8 @@ export interface Property {
   map_latitude?: number;
   map_longitude?: number;
   selling_points: string[]; // Key selling highligts
+  project_name?: string;
+  market_zone?: string;
   ai_posts?: {
     strategy?: {
       target_customer: string;
@@ -136,6 +138,98 @@ export interface Post {
   company_id?: string;
   owner_user_id?: string;
   assigned_member_ids?: string[];
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  hubPath: string;
+  legacyHubPath?: string | null;
+  sortOrder?: number;
+  postCount?: number;
+}
+
+export interface BlogInternalLink {
+  id?: string;
+  label: string;
+  href: string;
+  sortOrder?: number;
+  isAuto?: boolean;
+}
+
+export interface SeoAuditReport {
+  passed: boolean;
+  score: number;
+  checks: { id: string; label: string; passed: boolean; severity: string; message: string }[];
+  warnings: string[];
+  errors: string[];
+  wordCount: number;
+}
+
+export interface DuplicateCheckReport {
+  passed: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export interface BlogAuthor {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogFaq {
+  id?: string;
+  question: string;
+  answer: string;
+  sortOrder?: number;
+}
+
+export interface BlogArticle {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content?: string;
+  contentMarkdown?: string;
+  contentHtml?: string | null;
+  metaTitle: string;
+  metaDescription: string;
+  canonicalUrl?: string | null;
+  coverImage?: string | null;
+  status: 'draft' | 'review' | 'published' | 'archived';
+  categoryId: string;
+  authorId: string;
+  publishedAt?: string | null;
+  readingTime?: number | null;
+  wordCount?: number | null;
+  seoScore?: number | null;
+  contentQualityScore?: number | null;
+  sourceType?: string;
+  primaryKeyword?: string | null;
+  secondaryKeywords?: string[] | null;
+  targetIntent?: string | null;
+  cluster?: string | null;
+  articleType?: string | null;
+  isPillar?: boolean;
+  isIndexable?: boolean;
+  relatedSuggestions?: string[];
+  relatedPostIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+  category?: BlogCategory;
+  author?: BlogAuthor;
+  tags?: BlogTag[];
+  faqs?: BlogFaq[];
+  internalLinks?: BlogInternalLink[];
 }
 
 export interface InboxMessage {

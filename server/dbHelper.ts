@@ -1,11 +1,9 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
 import { AppSettings } from "../src/types";
+import { prisma } from "./prisma";
 
 type CmsCollection = "customers" | "properties" | "posts" | "inbox" | "automations";
 
-interface CmsDatabase {
+export interface CmsDatabase {
   companies: any[];
   users: any[];
   customers: any[];
@@ -17,9 +15,6 @@ interface CmsDatabase {
   chat_history?: any[];
   generated_contents?: any[];
 }
-
-const dataDir = path.join(process.cwd(), "data");
-const sqlitePath = path.join(dataDir, "cms.sqlite");
 
 const defaultSettings: AppSettings = {
   ai_mode:
@@ -34,124 +29,39 @@ const defaultSettings: AppSettings = {
   ollama_model: process.env.OLLAMA_MODEL || "qwen3:8b",
   openai_model: process.env.OPENAI_MODEL || "gpt-5-mini",
   agent_tone: process.env.AGENT_TONE || "sang trọng và chuyên nghiệp",
-  site_view_count: 0
+  site_view_count: 0,
 };
 
-let sqlite: Database.Database | null = null;
+let cache: CmsDatabase | null = null;
+let readyPromise: Promise<void> | null = null;
 
-function getSqlite() {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-  if (!sqlite) {
-    sqlite = new Database(sqlitePath);
-    sqlite.pragma("journal_mode = WAL");
-    ensureSchema(sqlite);
-  }
-
-  return sqlite;
+function emptyDatabase(): CmsDatabase {
+  return {
+    companies: [],
+    users: [],
+    customers: [],
+    properties: [],
+    posts: [],
+    inbox: [],
+    automations: [],
+    settings: { ...defaultSettings },
+    chat_history: [],
+    generated_contents: [],
+  };
 }
 
-function ensureSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS companies (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      role TEXT NOT NULL,
-      company_id TEXT,
-      data TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS cms_records (
-      collection TEXT NOT NULL,
-      id TEXT NOT NULL,
-      company_id TEXT,
-      owner_user_id TEXT,
-      sale_status TEXT,
-      status TEXT,
-      data TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (collection, id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_cms_records_collection_company ON cms_records(collection, company_id);
-    CREATE INDEX IF NOT EXISTS idx_cms_records_collection_status ON cms_records(collection, status);
-    CREATE INDEX IF NOT EXISTS idx_cms_records_sale_status ON cms_records(collection, sale_status);
-    CREATE VIRTUAL TABLE IF NOT EXISTS cms_records_fts USING fts5(
-      collection UNINDEXED,
-      id UNINDEXED,
-      search_text,
-      tokenize = 'unicode61 remove_diacritics 2'
-    );
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS chat_history (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      company_id TEXT,
-      role TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_chat_history_user_created ON chat_history(user_id, created_at);
-    CREATE INDEX IF NOT EXISTS idx_chat_history_company_created ON chat_history(company_id, created_at);
-    CREATE TABLE IF NOT EXISTS public_chat_guests (
-      session_id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      customer_id TEXT,
-      ai_enabled INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_public_chat_guests_updated ON public_chat_guests(updated_at);
-    CREATE TABLE IF NOT EXISTS generated_contents (
-      id TEXT PRIMARY KEY,
-      company_id TEXT,
-      user_id TEXT,
-      property_id TEXT,
-      property_title TEXT,
-      channel TEXT NOT NULL,
-      raw_content TEXT NOT NULL,
-      verified_content TEXT,
-      status TEXT NOT NULL DEFAULT 'raw',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      verified_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_generated_company_channel ON generated_contents(company_id, channel);
-    CREATE INDEX IF NOT EXISTS idx_generated_property ON generated_contents(property_id);
-    CREATE INDEX IF NOT EXISTS idx_generated_status ON generated_contents(status);
-  `);
-
-  const settings = db.prepare("SELECT key FROM settings WHERE key = 'app'").get();
-  if (!settings) {
-    db.prepare("INSERT INTO settings (key, data, updated_at) VALUES ('app', ?, ?)")
-      .run(JSON.stringify(defaultSettings), new Date().toISOString());
-  }
-
-  const indexedCount = (db.prepare("SELECT COUNT(*) count FROM cms_records_fts").get() as any).count;
-  const recordCount = (db.prepare("SELECT COUNT(*) count FROM cms_records").get() as any).count;
-  if (indexedCount !== recordCount) {
-    const rebuild = db.transaction(() => {
-      db.prepare("DELETE FROM cms_records_fts").run();
-      const insert = db.prepare("INSERT INTO cms_records_fts (collection, id, search_text) VALUES (?, ?, ?)");
-      const rows = db.prepare("SELECT collection, id, data FROM cms_records").all() as any[];
-      rows.forEach(row => insert.run(row.collection, row.id, buildSearchText(JSON.parse(row.data))));
-    });
-    rebuild();
-  }
+function cloneDb(db: CmsDatabase): CmsDatabase {
+  return JSON.parse(JSON.stringify(db)) as CmsDatabase;
 }
 
-function buildSearchText(record: any) {
+function requireCache(): CmsDatabase {
+  if (!cache) {
+    throw new Error("Database chưa sẵn sàng. Gọi ensureDatabaseReady() trước khi khởi động server.");
+  }
+  return cache;
+}
+
+export function buildSearchText(record: any) {
   return [
     record.title,
     record.name,
@@ -175,119 +85,244 @@ function buildSearchText(record: any) {
     record.property_type,
     record.notes,
     record.ai_summary,
-    ...(Array.isArray(record.selling_points) ? record.selling_points : [])
-  ].filter(Boolean).join(" ");
+    ...(Array.isArray(record.selling_points) ? record.selling_points : []),
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
-function parseData(row: any) {
-  return JSON.parse(row.data);
+function parseIsoDate(value: unknown, fallback = new Date()): Date {
+  if (value instanceof Date) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return fallback;
 }
 
-function getJsonRows(table: "companies" | "users") {
-  return getSqlite()
-    .prepare(`SELECT data FROM ${table} ORDER BY created_at DESC`)
-    .all()
-    .map(parseData);
+async function loadCacheFromPostgres() {
+  const [companies, users, settingsRow, chatHistory, generatedContents, cmsRecords, publicGuests] =
+    await Promise.all([
+    prisma.company.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.user.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.appSetting.findUnique({ where: { key: "app" } }),
+    prisma.chatHistory.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
+    prisma.generatedContent.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
+    prisma.cmsRecord.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.publicChatGuest.findMany({ orderBy: { updatedAt: "desc" } }),
+  ]);
+
+  const db = emptyDatabase();
+  db.companies = companies.map((row) => row.data as any);
+  db.users = users.map((row) => row.data as any);
+
+  for (const row of cmsRecords) {
+    const collection = row.collection as CmsCollection;
+    if (!db[collection]) continue;
+    db[collection].push(row.data as any);
+  }
+
+  db.settings = settingsRow
+    ? { ...defaultSettings, ...(settingsRow.data as unknown as AppSettings) }
+    : { ...defaultSettings };
+
+  db.chat_history = chatHistory.map((row) => ({
+    id: row.id,
+    user_id: row.userId,
+    company_id: row.companyId,
+    role: row.role,
+    message: row.message,
+    created_at: row.createdAt.toISOString(),
+  }));
+
+  db.generated_contents = generatedContents.map((row) => ({
+    id: row.id,
+    company_id: row.companyId,
+    user_id: row.userId,
+    property_id: row.propertyId,
+    property_title: row.propertyTitle,
+    channel: row.channel,
+    raw_content: row.rawContent,
+    verified_content: row.verifiedContent,
+    status: row.status,
+    created_at: row.createdAt.toISOString(),
+    verified_at: row.verifiedAt?.toISOString() || null,
+  }));
+
+  const guestEnriched = await Promise.all(
+    publicGuests.map(async (guest) => {
+      const userId = `public-${guest.sessionId}`;
+      const [lastMessage, messageCount] = await Promise.all([
+        prisma.chatHistory.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.chatHistory.count({ where: { userId } }),
+      ]);
+      return {
+        session_id: guest.sessionId,
+        name: guest.name,
+        phone: guest.phone,
+        customer_id: guest.customerId,
+        ai_enabled: guest.aiEnabled ? 1 : 0,
+        created_at: guest.createdAt.toISOString(),
+        updated_at: guest.updatedAt.toISOString(),
+        last_message: lastMessage?.message || null,
+        last_message_at: lastMessage?.createdAt.toISOString() || null,
+        message_count: messageCount,
+      };
+    })
+  );
+  (db as any).public_chat_guests = guestEnriched;
+
+  cache = db;
 }
 
-function getRecords(collection: CmsCollection) {
-  return getSqlite()
-    .prepare("SELECT data FROM cms_records WHERE collection = ? ORDER BY created_at DESC")
-    .all(collection)
-    .map(parseData);
+async function ensureDefaultSettings() {
+  const existing = await prisma.appSetting.findUnique({ where: { key: "app" } });
+  if (!existing) {
+    await prisma.appSetting.create({
+      data: { key: "app", data: defaultSettings as any },
+    });
+  }
 }
 
-function upsertRecord(collection: CmsCollection, record: any) {
-  const now = new Date().toISOString();
-  getSqlite()
-    .prepare(`
-      INSERT INTO cms_records (collection, id, company_id, owner_user_id, sale_status, status, data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(collection, id) DO UPDATE SET
-        company_id = excluded.company_id,
-        owner_user_id = excluded.owner_user_id,
-        sale_status = excluded.sale_status,
-        status = excluded.status,
-        data = excluded.data,
-        updated_at = excluded.updated_at
-    `)
-    .run(
-      collection,
-      record.id,
-      record.company_id || null,
-      record.owner_user_id || null,
-      record.sale_status || null,
-      record.status || null,
-      JSON.stringify(record),
-      record.created_at || now,
-      now
+export async function ensureDatabaseReady() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL bắt buộc (PostgreSQL). Ví dụ: postgresql://user:pass@localhost:5432/real_estate_ai"
     );
-
-  getSqlite().prepare("DELETE FROM cms_records_fts WHERE collection = ? AND id = ?").run(collection, record.id);
-  getSqlite().prepare("INSERT INTO cms_records_fts (collection, id, search_text) VALUES (?, ?, ?)")
-    .run(collection, record.id, buildSearchText(record));
+  }
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      await ensureDefaultSettings();
+      await loadCacheFromPostgres();
+    })();
+  }
+  await readyPromise;
 }
 
 export function readDatabase(): CmsDatabase {
-  const settingsRow = getSqlite().prepare("SELECT data FROM settings WHERE key = 'app'").get() as any;
-
-  return {
-    companies: getJsonRows("companies"),
-    users: getJsonRows("users"),
-    customers: getRecords("customers"),
-    properties: getRecords("properties"),
-    posts: getRecords("posts"),
-    inbox: getRecords("inbox"),
-    automations: getRecords("automations"),
-    settings: settingsRow ? { ...defaultSettings, ...JSON.parse(settingsRow.data) } : defaultSettings,
-    chat_history: getSqlite().prepare("SELECT * FROM chat_history ORDER BY created_at DESC LIMIT 200").all(),
-    generated_contents: getSqlite().prepare("SELECT * FROM generated_contents ORDER BY created_at DESC LIMIT 200").all()
-  };
+  return cloneDb(requireCache());
 }
 
-export function writeDatabase(dbData: CmsDatabase) {
-  const db = getSqlite();
-  const now = new Date().toISOString();
+async function upsertRecordToPostgres(collection: CmsCollection, record: any) {
+  const now = new Date();
+  const createdAt = parseIsoDate(record.created_at, now);
+  const searchText = buildSearchText(record);
 
-  const write = db.transaction(() => {
-    const companyStmt = db.prepare(`
-      INSERT INTO companies (id, data, created_at, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
-    `);
-    dbData.companies?.forEach(company => {
-      companyStmt.run(company.id, JSON.stringify(company), company.created_at || now, now);
-    });
-
-    const userStmt = db.prepare(`
-      INSERT INTO users (id, email, role, company_id, data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        email = excluded.email,
-        role = excluded.role,
-        company_id = excluded.company_id,
-        data = excluded.data,
-        updated_at = excluded.updated_at
-    `);
-    dbData.users?.forEach(user => {
-      userStmt.run(user.id, user.email, user.role, user.company_id || null, JSON.stringify(user), user.created_at || now, now);
-    });
-
-    (["customers", "properties", "posts", "inbox", "automations"] as CmsCollection[]).forEach(collection => {
-      dbData[collection]?.forEach(record => upsertRecord(collection, record));
-    });
-
-    db.prepare(`
-      INSERT INTO settings (key, data, updated_at)
-      VALUES ('app', ?, ?)
-      ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
-    `).run(JSON.stringify({ ...defaultSettings, ...dbData.settings }), now);
+  await prisma.cmsRecord.upsert({
+    where: { collection_id: { collection, id: record.id } },
+    create: {
+      collection,
+      id: record.id,
+      companyId: record.company_id || null,
+      ownerUserId: record.owner_user_id || null,
+      saleStatus: record.sale_status || null,
+      status: record.status || null,
+      data: record,
+      searchText,
+      createdAt,
+      updatedAt: now,
+    },
+    update: {
+      companyId: record.company_id || null,
+      ownerUserId: record.owner_user_id || null,
+      saleStatus: record.sale_status || null,
+      status: record.status || null,
+      data: record,
+      searchText,
+      updatedAt: now,
+    },
   });
-
-  write();
 }
 
-export function saveChatMessage(input: {
+function upsertRecordInCache(collection: CmsCollection, record: any) {
+  const db = requireCache();
+  const index = db[collection].findIndex((item: any) => item.id === record.id);
+  if (index >= 0) db[collection][index] = record;
+  else db[collection].unshift(record);
+}
+
+export async function writeDatabase(dbData: CmsDatabase) {
+  cache = cloneDb(dbData);
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    for (const company of dbData.companies || []) {
+      await tx.company.upsert({
+        where: { id: company.id },
+        create: {
+          id: company.id,
+          data: company,
+          createdAt: parseIsoDate(company.created_at, now),
+          updatedAt: now,
+        },
+        update: { data: company, updatedAt: now },
+      });
+    }
+
+    for (const user of dbData.users || []) {
+      await tx.user.upsert({
+        where: { id: user.id },
+        create: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          companyId: user.company_id || null,
+          data: user,
+          createdAt: parseIsoDate(user.created_at, now),
+          updatedAt: now,
+        },
+        update: {
+          email: user.email,
+          role: user.role,
+          companyId: user.company_id || null,
+          data: user,
+          updatedAt: now,
+        },
+      });
+    }
+
+    for (const collection of ["customers", "properties", "posts", "inbox", "automations"] as CmsCollection[]) {
+      for (const record of dbData[collection] || []) {
+        const createdAt = parseIsoDate(record.created_at, now);
+        await tx.cmsRecord.upsert({
+          where: { collection_id: { collection, id: record.id } },
+          create: {
+            collection,
+            id: record.id,
+            companyId: record.company_id || null,
+            ownerUserId: record.owner_user_id || null,
+            saleStatus: record.sale_status || null,
+            status: record.status || null,
+            data: record,
+            searchText: buildSearchText(record),
+            createdAt,
+            updatedAt: now,
+          },
+          update: {
+            companyId: record.company_id || null,
+            ownerUserId: record.owner_user_id || null,
+            saleStatus: record.sale_status || null,
+            status: record.status || null,
+            data: record,
+            searchText: buildSearchText(record),
+            updatedAt: now,
+          },
+        });
+      }
+    }
+
+    await tx.appSetting.upsert({
+      where: { key: "app" },
+      create: { key: "app", data: { ...defaultSettings, ...dbData.settings } as any },
+      update: { data: { ...defaultSettings, ...dbData.settings } as any },
+    });
+  }, { timeout: 120_000, maxWait: 30_000 });
+}
+
+export async function saveChatMessage(input: {
   id?: string;
   user_id: string;
   company_id?: string;
@@ -295,99 +330,140 @@ export function saveChatMessage(input: {
   message: string;
   created_at?: string;
 }) {
-  const createdAt = input.created_at || new Date().toISOString();
+  const createdAt = parseIsoDate(input.created_at);
   const id = input.id || `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const row = {
+    id,
+    user_id: input.user_id,
+    company_id: input.company_id || null,
+    role: input.role,
+    message: input.message,
+    created_at: createdAt.toISOString(),
+  };
 
-  getSqlite()
-    .prepare("INSERT INTO chat_history (id, user_id, company_id, role, message, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(id, input.user_id, input.company_id || null, input.role, input.message, createdAt);
+  await prisma.chatHistory.create({
+    data: {
+      id,
+      userId: input.user_id,
+      companyId: input.company_id || null,
+      role: input.role,
+      message: input.message,
+      createdAt,
+    },
+  });
 
-  return { id, ...input, created_at: createdAt };
+  const db = requireCache();
+  db.chat_history = [row, ...(db.chat_history || [])].slice(0, 200);
+
+  if (input.user_id.startsWith('public-')) {
+    await refreshPublicChatGuestsCache();
+  }
+
+  return row;
 }
 
 export function getChatHistoryByUser(userId: string, limit = 50) {
-  return getSqlite()
-    .prepare("SELECT * FROM chat_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
-    .all(userId, limit) as any[];
+  return (requireCache().chat_history || [])
+    .filter((row) => row.user_id === userId)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .slice(0, limit);
 }
 
-export function upsertPublicChatGuest(input: {
+export async function upsertPublicChatGuest(input: {
   session_id: string;
   name: string;
   phone: string;
   customer_id?: string;
 }) {
-  const now = new Date().toISOString();
-  getSqlite().prepare(`
-    INSERT INTO public_chat_guests (session_id, name, phone, customer_id, ai_enabled, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 1, ?, ?)
-    ON CONFLICT(session_id) DO UPDATE SET
-      name = excluded.name,
-      phone = excluded.phone,
-      customer_id = COALESCE(excluded.customer_id, public_chat_guests.customer_id),
-      updated_at = excluded.updated_at
-  `).run(input.session_id, input.name, input.phone, input.customer_id || null, now, now);
+  const now = new Date();
+  await prisma.publicChatGuest.upsert({
+    where: { sessionId: input.session_id },
+    create: {
+      sessionId: input.session_id,
+      name: input.name,
+      phone: input.phone,
+      customerId: input.customer_id || null,
+      aiEnabled: true,
+      createdAt: now,
+      updatedAt: now,
+    },
+    update: {
+      name: input.name,
+      phone: input.phone,
+      customerId: input.customer_id || undefined,
+      updatedAt: now,
+    },
+  });
+  await refreshPublicChatGuestsCache();
   return getPublicChatGuest(input.session_id);
 }
 
 export function getPublicChatGuest(sessionId: string) {
-  return getSqlite()
-    .prepare("SELECT * FROM public_chat_guests WHERE session_id = ?")
-    .get(sessionId) as any | undefined;
+  const guests = getPublicChatGuests();
+  return guests.find((guest) => guest.session_id === sessionId);
 }
 
 export function getPublicChatGuests() {
-  return getSqlite()
-    .prepare(`
-      SELECT
-        guest.*,
-        (
-          SELECT message FROM chat_history
-          WHERE user_id = 'public-' || guest.session_id
-          ORDER BY created_at DESC
-          LIMIT 1
-        ) AS last_message,
-        (
-          SELECT created_at FROM chat_history
-          WHERE user_id = 'public-' || guest.session_id
-          ORDER BY created_at DESC
-          LIMIT 1
-        ) AS last_message_at,
-        (
-          SELECT COUNT(*) FROM chat_history
-          WHERE user_id = 'public-' || guest.session_id
-        ) AS message_count
-      FROM public_chat_guests guest
-      ORDER BY COALESCE(last_message_at, guest.updated_at) DESC
-    `)
-    .all() as any[];
+  return [...((requireCache() as any).public_chat_guests || [])];
 }
 
-export function updatePublicChatGuestAi(sessionId: string, aiEnabled: boolean) {
-  getSqlite()
-    .prepare("UPDATE public_chat_guests SET ai_enabled = ?, updated_at = ? WHERE session_id = ?")
-    .run(aiEnabled ? 1 : 0, new Date().toISOString(), sessionId);
+export async function refreshPublicChatGuestsCache() {
+  const guests = await prisma.publicChatGuest.findMany({ orderBy: { updatedAt: "desc" } });
+  const enriched = await Promise.all(
+    guests.map(async (guest) => {
+      const userId = `public-${guest.sessionId}`;
+      const [lastMessage, messageCount] = await Promise.all([
+        prisma.chatHistory.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.chatHistory.count({ where: { userId } }),
+      ]);
+      return {
+        session_id: guest.sessionId,
+        name: guest.name,
+        phone: guest.phone,
+        customer_id: guest.customerId,
+        ai_enabled: guest.aiEnabled ? 1 : 0,
+        created_at: guest.createdAt.toISOString(),
+        updated_at: guest.updatedAt.toISOString(),
+        last_message: lastMessage?.message || null,
+        last_message_at: lastMessage?.createdAt.toISOString() || null,
+        message_count: messageCount,
+      };
+    })
+  );
+
+  (requireCache() as any).public_chat_guests = enriched;
+  return enriched;
+}
+
+export async function updatePublicChatGuestAi(sessionId: string, aiEnabled: boolean) {
+  const now = new Date();
+  await prisma.publicChatGuest.update({
+    where: { sessionId },
+    data: { aiEnabled, updatedAt: now },
+  });
+  await refreshPublicChatGuestsCache();
   return getPublicChatGuest(sessionId);
 }
 
-export function deleteChatHistoryByUserId(userId: string) {
-  const result = getSqlite()
-    .prepare("DELETE FROM chat_history WHERE user_id = ?")
-    .run(userId);
-  return result.changes;
+export async function deleteChatHistoryByUserId(userId: string) {
+  const result = await prisma.chatHistory.deleteMany({ where: { userId } });
+  const db = requireCache();
+  db.chat_history = (db.chat_history || []).filter((row) => row.user_id !== userId);
+  return result.count;
 }
 
-export function deletePublicChatGuest(sessionId: string) {
-  const result = getSqlite()
-    .prepare("DELETE FROM public_chat_guests WHERE session_id = ?")
-    .run(sessionId);
-  return result.changes;
+export async function deletePublicChatGuest(sessionId: string) {
+  const result = await prisma.publicChatGuest.deleteMany({ where: { sessionId } });
+  await refreshPublicChatGuestsCache();
+  return result.count;
 }
 
 export function getChatHistorySessionMeta(userId: string) {
-  return getSqlite()
-    .prepare("SELECT company_id FROM chat_history WHERE user_id = ? LIMIT 1")
-    .get(userId) as { company_id?: string | null } | undefined;
+  const row = (requireCache().chat_history || []).find((item) => item.user_id === userId);
+  return row ? { company_id: row.company_id } : undefined;
 }
 
 export function searchCmsRecords(
@@ -396,32 +472,37 @@ export function searchCmsRecords(
   limit = 30,
   options?: { availableOnly?: boolean }
 ) {
-  const clauses = ["records.collection = ?"];
-  const params: any[] = [collection];
-  if (options?.availableOnly) clauses.push("(records.sale_status IS NULL OR records.sale_status NOT IN ('sold', 'hidden'))");
-
-  if (tokens.length > 0) {
-    const matchQuery = tokens.map(token => `"${token.replace(/"/g, '""')}"`).join(" OR ");
-    return getSqlite().prepare(`
-      SELECT records.data
-      FROM cms_records_fts fts
-      JOIN cms_records records ON records.collection = fts.collection AND records.id = fts.id
-      WHERE ${clauses.join(" AND ")} AND cms_records_fts MATCH ?
-      ORDER BY bm25(cms_records_fts)
-      LIMIT ?
-    `).all(...params, matchQuery, limit).map(parseData);
+  let records = [...requireCache()[collection]];
+  if (options?.availableOnly) {
+    records = records.filter(
+      (record) => !["sold", "hidden"].includes(String(record.sale_status || "available"))
+    );
   }
 
-  return getSqlite().prepare(`
-    SELECT records.data
-    FROM cms_records records
-    WHERE ${clauses.join(" AND ")}
-    ORDER BY records.updated_at DESC
-    LIMIT ?
-  `).all(...params, limit).map(parseData);
+  if (tokens.length > 0) {
+    const normalized = tokens.map((token) => token.toLowerCase());
+    records = records
+      .map((record) => {
+        const text = buildSearchText(record).toLowerCase();
+        const score = normalized.reduce(
+          (sum, token) => sum + (text.includes(token) ? token.length : 0),
+          0
+        );
+        return { record, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.record);
+  } else {
+    records.sort((a, b) =>
+      String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || ""))
+    );
+  }
+
+  return records.slice(0, limit);
 }
 
-export function saveGeneratedContent(input: {
+export async function saveGeneratedContent(input: {
   id?: string;
   company_id?: string;
   user_id?: string;
@@ -433,174 +514,225 @@ export function saveGeneratedContent(input: {
   status?: "raw" | "verified";
   created_at?: string;
 }) {
-  const createdAt = input.created_at || new Date().toISOString();
+  const createdAt = parseIsoDate(input.created_at);
   const id = input.id || `content-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const status = input.status || "raw";
 
-  getSqlite()
-    .prepare(`
-      INSERT INTO generated_contents
-        (id, company_id, user_id, property_id, property_title, channel, raw_content, verified_content, status, created_at, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    .run(
+  await prisma.generatedContent.create({
+    data: {
       id,
-      input.company_id || null,
-      input.user_id || null,
-      input.property_id || null,
-      input.property_title || null,
-      input.channel,
-      input.raw_content,
-      input.verified_content || null,
+      companyId: input.company_id || null,
+      userId: input.user_id || null,
+      propertyId: input.property_id || null,
+      propertyTitle: input.property_title || null,
+      channel: input.channel,
+      rawContent: input.raw_content,
+      verifiedContent: input.verified_content || null,
       status,
       createdAt,
-      status === "verified" ? createdAt : null
-    );
+      verifiedAt: status === "verified" ? createdAt : null,
+    },
+  });
 
-  return { id, ...input, status, created_at: createdAt };
+  const row = {
+    id,
+    ...input,
+    status,
+    created_at: createdAt.toISOString(),
+    verified_at: status === "verified" ? createdAt.toISOString() : null,
+  };
+  const db = requireCache();
+  db.generated_contents = [row, ...(db.generated_contents || [])].slice(0, 200);
+  return row;
 }
 
-export function verifyGeneratedContent(id: string, verifiedContent: string) {
-  const result = getSqlite()
-    .prepare("UPDATE generated_contents SET verified_content = ?, status = 'verified', verified_at = ? WHERE id = ?")
-    .run(verifiedContent, new Date().toISOString(), id);
+export async function verifyGeneratedContent(id: string, verifiedContent: string) {
+  const verifiedAt = new Date();
+  const result = await prisma.generatedContent.updateMany({
+    where: { id },
+    data: { verifiedContent, status: "verified", verifiedAt },
+  });
 
-  return result.changes > 0;
+  if (result.count > 0) {
+    const db = requireCache();
+    db.generated_contents = (db.generated_contents || []).map((row) =>
+      row.id === id
+        ? {
+            ...row,
+            verified_content: verifiedContent,
+            status: "verified",
+            verified_at: verifiedAt.toISOString(),
+          }
+        : row
+    );
+  }
+  return result.count > 0;
 }
 
 export function getDatabaseFilePath() {
-  return sqlitePath;
+  return process.env.DATABASE_URL || "postgresql";
 }
 
 export function getCustomers() {
-  return getRecords("customers");
+  return [...requireCache().customers];
 }
 
-export function createCustomer(data: any) {
-  const record = { ...data, id: data.id || `c-${Date.now()}`, created_at: data.created_at || new Date().toISOString() };
-  upsertRecord("customers", record);
+export async function createCustomer(data: any) {
+  const record = {
+    ...data,
+    id: data.id || `c-${Date.now()}`,
+    created_at: data.created_at || new Date().toISOString(),
+  };
+  upsertRecordInCache("customers", record);
+  await upsertRecordToPostgres("customers", record);
   return record;
 }
 
-export function updateCustomer(id: string, data: any) {
-  const current = getRecords("customers").find(record => record.id === id);
+export async function updateCustomer(id: string, data: any) {
+  const current = requireCache().customers.find((record) => record.id === id);
   if (!current) throw new Error("Customer not found");
   const updated = { ...current, ...data };
-  upsertRecord("customers", updated);
+  upsertRecordInCache("customers", updated);
+  await upsertRecordToPostgres("customers", updated);
   return updated;
 }
 
-export function deleteCustomer(id: string) {
-  getSqlite().prepare("DELETE FROM cms_records WHERE collection = 'customers' AND id = ?").run(id);
+export async function deleteCustomer(id: string) {
+  const db = requireCache();
+  db.customers = db.customers.filter((record) => record.id !== id);
+  await prisma.cmsRecord.deleteMany({ where: { collection: "customers", id } });
 }
 
 export function getProperties() {
-  return getRecords("properties");
+  return [...requireCache().properties];
 }
 
-export function createProperty(data: any) {
-  const record = { ...data, id: data.id || `p-${Date.now()}`, created_at: data.created_at || new Date().toISOString() };
-  upsertRecord("properties", record);
+export async function createProperty(data: any) {
+  const record = {
+    ...data,
+    id: data.id || `p-${Date.now()}`,
+    created_at: data.created_at || new Date().toISOString(),
+  };
+  upsertRecordInCache("properties", record);
+  await upsertRecordToPostgres("properties", record);
   return record;
 }
 
-export function updateProperty(id: string, data: any) {
-  const current = getRecords("properties").find(record => record.id === id);
+export async function updateProperty(id: string, data: any) {
+  const current = requireCache().properties.find((record) => record.id === id);
   if (!current) throw new Error("Property not found");
   const updated = { ...current, ...data };
-  upsertRecord("properties", updated);
+  upsertRecordInCache("properties", updated);
+  await upsertRecordToPostgres("properties", updated);
   return updated;
 }
 
-export function deleteProperty(id: string) {
-  getSqlite().prepare("DELETE FROM cms_records WHERE collection = 'properties' AND id = ?").run(id);
+export async function deleteProperty(id: string) {
+  const db = requireCache();
+  db.properties = db.properties.filter((record) => record.id !== id);
+  await prisma.cmsRecord.deleteMany({ where: { collection: "properties", id } });
 }
 
 export function getPosts() {
-  return getRecords("posts");
+  return [...requireCache().posts];
 }
 
-export function createPost(data: any) {
-  const record = { ...data, id: data.id || `post-${Date.now()}`, created_at: data.created_at || new Date().toISOString() };
-  upsertRecord("posts", record);
+export async function createPost(data: any) {
+  const record = {
+    ...data,
+    id: data.id || `post-${Date.now()}`,
+    created_at: data.created_at || new Date().toISOString(),
+  };
+  upsertRecordInCache("posts", record);
+  await upsertRecordToPostgres("posts", record);
   return record;
 }
 
-export function updatePost(id: string, data: any) {
-  const current = getRecords("posts").find(record => record.id === id);
+export async function updatePost(id: string, data: any) {
+  const current = requireCache().posts.find((record) => record.id === id);
   if (!current) throw new Error("Post not found");
   const updated = { ...current, ...data };
-  upsertRecord("posts", updated);
+  upsertRecordInCache("posts", updated);
+  await upsertRecordToPostgres("posts", updated);
   return updated;
 }
 
-export function deletePost(id: string) {
-  getSqlite().prepare("DELETE FROM cms_records WHERE collection = 'posts' AND id = ?").run(id);
+export async function deletePost(id: string) {
+  const db = requireCache();
+  db.posts = db.posts.filter((record) => record.id !== id);
+  await prisma.cmsRecord.deleteMany({ where: { collection: "posts", id } });
 }
 
 export function getInboxMessages() {
-  return getRecords("inbox");
+  return [...requireCache().inbox];
 }
 
-export function createInboxMessage(data: any) {
-  const record = { ...data, id: data.id || `in-${Date.now()}`, created_at: data.created_at || new Date().toISOString() };
-  upsertRecord("inbox", record);
+export async function createInboxMessage(data: any) {
+  const record = {
+    ...data,
+    id: data.id || `in-${Date.now()}`,
+    created_at: data.created_at || new Date().toISOString(),
+  };
+  upsertRecordInCache("inbox", record);
+  await upsertRecordToPostgres("inbox", record);
   return record;
 }
 
-export function updateInboxMessage(id: string, data: any) {
-  const current = getRecords("inbox").find(record => record.id === id);
+export async function updateInboxMessage(id: string, data: any) {
+  const current = requireCache().inbox.find((record) => record.id === id);
   if (!current) throw new Error("Inbox message not found");
   const updated = { ...current, ...data };
-  upsertRecord("inbox", updated);
+  upsertRecordInCache("inbox", updated);
+  await upsertRecordToPostgres("inbox", updated);
   return updated;
 }
 
 export function getAutomations() {
-  return getRecords("automations");
+  return [...requireCache().automations];
 }
 
-export function updateAutomation(id: string, data: any) {
-  const current = getRecords("automations").find(record => record.id === id);
+export async function updateAutomation(id: string, data: any) {
+  const current = requireCache().automations.find((record) => record.id === id);
   if (!current) throw new Error("Automation not found");
   const updated = { ...current, ...data };
-  upsertRecord("automations", updated);
+  upsertRecordInCache("automations", updated);
+  await upsertRecordToPostgres("automations", updated);
   return updated;
 }
 
-export function getSettings() {
-  const row = getSqlite().prepare("SELECT data FROM settings WHERE key = 'app'").get() as any;
-  return row ? { ...defaultSettings, ...JSON.parse(row.data) } : defaultSettings;
+export function getSettings(): AppSettings {
+  return { ...requireCache().settings };
 }
 
-export function updateSettings(data: Partial<AppSettings>) {
+export async function updateSettings(data: Partial<AppSettings>) {
   const settings = { ...getSettings(), ...data };
-  getSqlite().prepare(`
-    INSERT INTO settings (key, data, updated_at)
-    VALUES ('app', ?, ?)
-    ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
-  `).run(JSON.stringify(settings), new Date().toISOString());
+  const db = requireCache();
+  db.settings = settings;
+  await prisma.appSetting.upsert({
+    where: { key: "app" },
+    create: { key: "app", data: settings as any },
+    update: { data: settings as any },
+  });
   return settings;
 }
 
-export function triggerAutomationEvent(event: string, detail: string) {
+export async function triggerAutomationEvent(event: string, detail: string) {
   const db = readDatabase();
   const now = new Date().toISOString();
 
-  db.automations = db.automations.map(auto => {
+  db.automations = db.automations.map((auto) => {
     if (auto.status !== "active" || !auto.trigger_event?.toLowerCase().includes(event.toLowerCase())) {
       return auto;
     }
-
     return {
       ...auto,
       last_run: now,
       run_count: Number(auto.run_count || 0) + 1,
-      logs: [`${now} - Triggered: [${detail}]`, ...(auto.logs || [])].slice(0, 20)
+      logs: [`${now} - Triggered: [${detail}]`, ...(auto.logs || [])].slice(0, 20),
     };
   });
 
-  writeDatabase(db);
+  await writeDatabase(db);
 }
 
 export function getAllDataForContext() {
@@ -608,6 +740,6 @@ export function getAllDataForContext() {
     customers: getCustomers(),
     properties: getProperties(),
     posts: getPosts(),
-    settings: getSettings()
+    settings: getSettings(),
   };
 }

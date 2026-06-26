@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,125 +7,349 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Customer {
-  id              String   @id @default(cuid())
-  name            String
-  phone           String
-  email           String?
-  source          String   @default("website") // facebook, zalo, tiktok, website, referral
-  budget          Float    // in VND billions
-  interested_area String
-  property_type   String   @default("đất nền")
-  status          String   @default("new") // new, warm, hot, closed, lost
-  notes           String?
-  ai_summary      String?
-  lead_score      Int      @default(50)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  inbox           InboxMessage[]
+model Company {
+  id        String   @id
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("companies")
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  role      String
+  companyId String?  @map("company_id")
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model CmsRecord {
+  collection  String
+  id          String
+  companyId   String?  @map("company_id")
+  ownerUserId String?  @map("owner_user_id")
+  saleStatus  String?  @map("sale_status")
+  status      String?
+  data        Json
+  searchText  String?  @map("search_text") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@id([collection, id])
+  @@index([collection, companyId])
+  @@index([collection, status])
+  @@index([collection, saleStatus])
+  @@map("cms_records")
+}
+
+model AppSetting {
+  key       String   @id
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model ChatHistory {
+  id        String   @id
+  userId    String   @map("user_id")
+  companyId String?  @map("company_id")
+  role      String
+  message   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("chat_history")
+}
+
+model PublicChatGuest {
+  sessionId  String   @id @map("session_id")
+  name       String
+  phone      String
+  customerId String?  @map("customer_id")
+  aiEnabled  Boolean  @default(true) @map("ai_enabled")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([updatedAt])
+  @@map("public_chat_guests")
+}
+
+model GeneratedContent {
+  id              String    @id
+  companyId       String?   @map("company_id")
+  userId          String?   @map("user_id")
+  propertyId      String?   @map("property_id")
+  propertyTitle   String?   @map("property_title")
+  channel         String
+  rawContent      String    @map("raw_content") @db.Text
+  verifiedContent String?   @map("verified_content") @db.Text
+  status          String    @default("raw")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  verifiedAt      DateTime? @map("verified_at")
+
+  @@index([companyId, channel])
+  @@index([propertyId])
   @@index([status])
-  @@index([lead_score])
+  @@map("generated_contents")
 }
 
-model Property {
-  id              String   @id @default(cuid())
-  title           String
-  type            String   @default("đất") // đất, nhà phố, căn hộ, shophouse, kho xưởng
-  location        String
-  area            Float    // square meters
-  price           Float    // in VND billions
-  legal_status    String   @default("Sổ hồng riêng")
-  direction       String?
-  road_width      Float?
-  description     String?
-  images          String?
-  selling_points  String[] @default([])
-  
-  ai_posts        Json?    // {facebook, zalo, tiktok, website, image_prompt, video_prompt}
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  posts           Post[]
-  inbox           InboxMessage[]
-  
-  @@index([type])
-  @@index([price])
-}
+model Lead {
+  id            String   @id
+  name          String
+  phone         String
+  email         String?
+  city          String?
+  interestType  String?  @map("interest_type")
+  budgetRange   String?  @map("budget_range")
+  source        String?
+  channel       String?
+  utmSource     String?  @map("utm_source")
+  utmMedium     String?  @map("utm_medium")
+  utmCampaign   String?  @map("utm_campaign")
+  pagePath      String?  @map("page_path")
+  magnetSlug    String?  @map("magnet_slug")
+  investorScore Int      @default(0) @map("investor_score")
+  status        String   @default("new")
+  accessToken   String?  @map("access_token")
+  emailsSent    Int      @default(0) @map("emails_sent")
+  createdAt     DateTime @map("created_at")
+  updatedAt     DateTime @map("updated_at")
 
-model Post {
-  id              String   @id @default(cuid())
-  title           String
-  platform        String   // facebook, zalo, tiktok, website
-  content         String   @db.Text
-  status          String   @default("draft") // draft, scheduled, published
-  scheduled_at    DateTime?
-  
-  property_id     String?
-  property        Property? @relation(fields: [property_id], references: [id], onDelete: SetNull)
-  
-  created_by_ai   Boolean  @default(false)
-  engagement      Json?    // {views, likes, shares, comments}
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([platform])
+  scores  LeadScore[]
+  sources LeadSource[]
+  events  LeadEvent[]
+  tags    LeadTag[]
+
+  @@index([phone])
+  @@index([investorScore])
   @@index([status])
-  @@index([property_id])
+  @@index([createdAt])
+  @@map("leads")
 }
 
-model InboxMessage {
-  id              String   @id @default(cuid())
-  sender_name     String
-  platform        String   // facebook, zalo, tiktok, website
-  avatar          String?
-  message         String   @db.Text
-  intent          String?  // hỏi giá, hỏi vị trí, thương lượng, đặt lịch xem, không tiềm năng, chưa rõ
-  status          String   @default("pending") // pending, replied, ignored
-  
-  customer_id     String?
-  customer        Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
-  
-  property_id     String?
-  property        Property? @relation(fields: [property_id], references: [id], onDelete: SetNull)
-  
-  ai_reply_suggestion String? @db.Text
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([status])
-  @@index([customer_id])
-  @@index([property_id])
+model LeadScore {
+  id         String   @id
+  leadId     String   @map("lead_id")
+  totalScore Int      @map("total_score")
+  breakdown  Json
+  createdAt  DateTime @map("created_at")
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_scores")
 }
 
-model AutomationTask {
-  id              String   @id @default(cuid())
-  name            String
-  trigger_event   String
-  action_description String
-  status          String   @default("active") // active, inactive
-  
-  last_run        DateTime?
-  run_count       Int      @default(0)
-  logs            String[] @default([])
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([status])
+model LeadSource {
+  id          String   @id
+  leadId      String   @map("lead_id")
+  channel     String?
+  referrer    String?
+  landingPage String?  @map("landing_page")
+  utmSource   String?  @map("utm_source")
+  utmMedium   String?  @map("utm_medium")
+  utmCampaign String?  @map("utm_campaign")
+  createdAt   DateTime @map("created_at")
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_sources")
 }
 
-model AppSettings {
-  id              String   @id @default("default")
-  ai_mode         String   @default("gemini") // gemini, ollama
-  ollama_endpoint String   @default("http://localhost:11434")
-  ollama_model    String   @default("qwen2.5")
-  agent_tone      String   @default("chuyên nghiệp")
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model LeadEvent {
+  id        String   @id
+  leadId    String?  @map("lead_id")
+  sessionId String?  @map("session_id")
+  eventType String   @map("event_type")
+  eventData Json?    @map("event_data")
+  pagePath  String?  @map("page_path")
+  createdAt DateTime @map("created_at")
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([eventType])
+  @@index([leadId])
+  @@index([sessionId])
+  @@map("lead_events")
+}
+
+model LeadTag {
+  id        String   @id
+  leadId    String   @map("lead_id")
+  tag       String
+  createdAt DateTime @map("created_at")
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tag])
+  @@index([leadId])
+  @@map("lead_tags")
+}
+
+model Author {
+  id        String     @id
+  name      String
+  slug      String     @unique
+  bio       String?    @db.Text
+  avatarUrl String?    @map("avatar_url")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  posts     BlogPost[]
+
+  @@map("authors")
+}
+
+model Category {
+  id            String     @id
+  name          String
+  slug          String     @unique
+  description   String?    @db.Text
+  hubPath       String     @map("hub_path")
+  legacyHubPath String?    @map("legacy_hub_path")
+  sortOrder     Int        @default(0) @map("sort_order")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  posts         BlogPost[]
+
+  @@map("categories")
+}
+
+model Tag {
+  id        String        @id
+  name      String
+  slug      String        @unique
+  createdAt DateTime      @default(now()) @map("created_at")
+  postTags  BlogPostTag[]
+
+  @@map("tags")
+}
+
+model BlogPost {
+  id                  String               @id
+  title               String
+  slug                String               @unique
+  excerpt             String               @db.Text
+  content             String               @db.Text
+  contentMarkdown     String?              @map("content_markdown") @db.Text
+  contentHtml         String?              @map("content_html") @db.Text
+  metaTitle           String               @map("meta_title")
+  metaDescription     String               @map("meta_description") @db.Text
+  canonicalUrl        String?              @map("canonical_url")
+  coverImage          String?              @map("cover_image")
+  status              String               @default("draft")
+  categoryId          String               @map("category_id")
+  authorId            String               @map("author_id")
+  publishedAt         DateTime?            @map("published_at")
+  readingTime         Int?                 @map("reading_time")
+  wordCount           Int?                 @map("word_count")
+  seoScore            Int?                 @map("seo_score")
+  contentQualityScore Int?                 @map("content_quality_score")
+  sourceType          String               @default("manual") @map("source_type")
+  primaryKeyword      String?              @map("primary_keyword")
+  secondaryKeywords   Json?                @map("secondary_keywords")
+  targetIntent        String?              @map("target_intent")
+  cluster             String?
+  articleType         String?              @map("article_type")
+  isPillar            Boolean              @default(false) @map("is_pillar")
+  isIndexable         Boolean              @default(true) @map("is_indexable")
+  relatedSuggestions  Json?                @map("related_suggestions")
+  relatedPostIds      Json?                @map("related_post_ids")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author              Author               @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  tags                BlogPostTag[]
+  faqs                BlogPostFaq[]
+  internalLinks       BlogPostInternalLink[]
+  seoAudits           BlogPostSeoAudit[]
+  revisions           BlogPostRevision[]
+  aiDrafts            BlogPostAiDraft[]
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([sourceType])
+  @@map("blog_posts")
+}
+
+model BlogPostTag {
+  postId String   @map("post_id")
+  tagId  String   @map("tag_id")
+  post   BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@map("blog_post_tags")
+}
+
+model BlogPostFaq {
+  id        String   @id
+  postId    String   @map("post_id")
+  question  String   @db.Text
+  answer    String   @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("blog_post_faqs")
+}
+
+model BlogPostInternalLink {
+  id        String   @id
+  postId    String   @map("post_id")
+  label     String
+  href      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isAuto    Boolean  @default(false) @map("is_auto")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("blog_post_internal_links")
+}
+
+model BlogPostSeoAudit {
+  id        String   @id
+  postId    String   @map("post_id")
+  passed    Boolean  @default(false)
+  score     Int      @default(0)
+  results   Json
+  warnings  Json?
+  errors    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("blog_post_seo_audits")
+}
+
+model BlogPostRevision {
+  id          String   @id
+  postId      String   @map("post_id")
+  snapshot    Json
+  note        String?  @db.Text
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  post        BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("blog_post_revisions")
+}
+
+model BlogPostAiDraft {
+  id           String    @id
+  postId       String?   @map("post_id")
+  status       String    @default("pending")
+  input        Json
+  outputMarkdown String? @map("output_markdown") @db.Text
+  articleType  String?   @map("article_type")
+  errorMessage String?   @map("error_message") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  post         BlogPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("blog_post_ai_drafts")
 }

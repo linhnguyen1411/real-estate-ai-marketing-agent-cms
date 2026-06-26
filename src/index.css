@@ -1,27 +1,286 @@
 @import "tailwindcss";
 
+/* ─── Phase 19: Investment Light Theme Design System ─── */
+@theme {
+  --color-invest-blue: #0f3d5e;
+  --color-invest-blue-light: #1a5a85;
+  --color-invest-blue-muted: #e8f0f6;
+  --color-invest-gold: #d4a017;
+  --color-invest-gold-muted: #fbf5e6;
+  --color-invest-cta: #e67e22;
+  --color-invest-cta-hover: #cf6d17;
+  --color-section-alt: #f8fafc;
+  --color-invest-border: #e5e7eb;
+  --color-invest-text: #111827;
+  --color-invest-muted: #6b7280;
+  --color-invest-success: #10b981;
+  --color-invest-danger: #ef4444;
+
+  --font-sans: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  --invest-blue: #0f3d5e;
+  --invest-gold: #d4a017;
+  --invest-cta: #e67e22;
+  --invest-bg: #ffffff;
+  --invest-section-alt: #f8fafc;
+  --invest-border: #e5e7eb;
+  --invest-text: #111827;
+  --invest-muted: #6b7280;
+}
+
 * {
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+html {
   height: 100%;
-  min-height: 100%;
 }
 
 body {
   margin: 0;
-  overflow: hidden;
-  background: #020617;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: var(--invest-bg);
+  color: var(--invest-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
+#root {
+  min-height: 100%;
+}
+
+/* Typography */
+.text-body-lg {
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+.text-body {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+@media (min-width: 768px) {
+  .text-body-lg {
+    font-size: 1.125rem;
+  }
+}
+
+.heading-hero {
+  font-size: clamp(2rem, 4vw + 1rem, 3.5rem);
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--invest-text);
+}
+
+.heading-page {
+  font-size: clamp(1.75rem, 2.5vw + 1rem, 2.5rem);
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--invest-text);
+}
+
+.heading-section {
+  font-size: clamp(1.5rem, 2vw + 0.5rem, 2rem);
+  line-height: 1.25;
+  font-weight: 800;
+  color: var(--invest-text);
+}
+
+.label-section {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--invest-gold);
+}
+
+/* Layout */
+.section-alt {
+  background-color: var(--invest-section-alt);
+}
+
+.public-shell {
+  min-height: 100vh;
+  background: var(--invest-bg);
+  color: var(--invest-text);
+}
+
+/* Buttons */
+.btn-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background-color: var(--invest-cta);
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-cta:hover {
+  background-color: #cf6d17;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background-color: var(--invest-blue);
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  transition: background-color 0.15s ease;
+}
+
+.btn-primary:hover {
+  background-color: #1a5a85;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--invest-border);
+  background-color: #fff;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--invest-text);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-outline:hover {
+  border-color: var(--invest-blue);
+  background-color: var(--invest-section-alt);
+}
+
+/* Cards */
+.invest-card {
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--invest-border);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(15 61 94 / 6%);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.invest-card:hover {
+  box-shadow: 0 8px 24px rgb(15 61 94 / 10%);
+  transform: translateY(-2px);
+}
+
+.property-card {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--invest-border);
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 1px 3px rgb(15 61 94 / 6%);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.property-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 28px rgb(15 61 94 / 12%);
+  transform: translateY(-2px);
+}
+
+/* Header */
+.public-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  overflow: visible;
+  border-bottom: 1px solid var(--invest-border);
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 1px 3px rgb(15 61 94 / 4%);
+  backdrop-filter: blur(8px);
+}
+
+/* Hero */
+.hero-investment {
+  position: relative;
+  min-height: 560px;
+  overflow: hidden;
+  background: var(--invest-section-alt);
+}
+
+@media (min-width: 768px) {
+  .hero-investment {
+    min-height: 680px;
+  }
+}
+
+.hero-investment__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    rgb(255 255 255 / 92%) 0%,
+    rgb(255 255 255 / 78%) 45%,
+    rgb(255 255 255 / 35%) 100%
+  );
+}
+
+/* Blog / report prose */
+.article-prose {
+  max-width: 50rem;
+  margin-inline: auto;
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: var(--invest-text);
+}
+
+.article-prose p {
+  margin-bottom: 1.25rem;
+}
+
+.blog-cover-image,
+.blog-content-image {
+  display: block;
+  margin-inline: auto;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(72vh, 640px);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.article-prose img,
+.prose img {
+  display: block;
+  margin-inline: auto;
+  width: auto !important;
+  max-width: 100%;
+  height: auto !important;
+  max-height: min(72vh, 640px);
+  object-fit: contain !important;
+  object-position: center;
+}
+
+/* Scrollbar (admin + modals) */
 .app-scroll {
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .app-scroll::-webkit-scrollbar {
@@ -34,12 +293,12 @@ body {
 }
 
 .app-scroll::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #cbd5e1;
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 
 .app-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #334155;
+  background-color: #94a3b8;
 }

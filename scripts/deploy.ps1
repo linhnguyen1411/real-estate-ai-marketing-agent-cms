@@ -33,12 +33,16 @@ try {
   if (-not $SkipLint) {
     Run-Step "Type check" {
       npm.cmd run lint
+      if ($LASTEXITCODE -ne 0) { throw "lint failed (exit $LASTEXITCODE)" }
     }
   }
 
   if (-not $SkipBuild) {
-    Run-Step "Build" {
+    Run-Step "Build (local, optional)" {
       npm.cmd run build
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "Local build failed; will build on VPS after upload." -ForegroundColor Yellow
+      }
     }
   }
 
@@ -51,6 +55,8 @@ try {
       --exclude=.git `
       --exclude=node_modules `
       --exclude=data `
+      --exclude=.env `
+      --exclude=.env.* `
       --exclude=*.log `
       --exclude=db.json `
       --exclude=db.json.*.bak `
@@ -62,13 +68,15 @@ try {
     scp $localArchive "${remote}:$remoteArchive"
   }
 
-  Run-Step "Extract and restart PM2" {
-    $remoteCommand = "cd $RemoteDir && rm -rf dist && tar -xzf $remoteArchive && pm2 restart $Pm2Name --update-env && rm -f $remoteArchive"
+  Run-Step "Extract, build on VPS, restart PM2" {
+    $remoteCommand = "cd $RemoteDir && rm -rf dist && tar -xzf $remoteArchive && npm install && npx prisma db push --accept-data-loss && npm run build && pm2 restart $Pm2Name --update-env && rm -f $remoteArchive"
     ssh $remote $remoteCommand
+    if ($LASTEXITCODE -ne 0) { throw "Remote deploy failed (exit $LASTEXITCODE)" }
   }
 
   Run-Step "Health check" {
-    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 20
+    Start-Sleep -Seconds 4
+    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 30
     $health | ConvertTo-Json -Depth 5
   }
 

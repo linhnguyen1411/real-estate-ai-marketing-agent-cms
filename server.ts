@@ -19,8 +19,10 @@ import {
   upsertPublicChatGuest,
   deleteChatHistoryByUserId,
   deletePublicChatGuest,
-  getChatHistorySessionMeta
+  getChatHistorySessionMeta,
+  ensureDatabaseReady
 } from './server/dbHelper';
+import { checkDatabaseConnection } from './server/prisma';
 import { 
   analyzeCustomerWithAI, 
   generatePropertyMarketingContent, 
@@ -33,6 +35,20 @@ import {
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 import { mergePostHashtags, mergeKeywordLists, hashtagsToKeywords, getPropertyContentForHashtags, collectSiteSeoKeywords as buildSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './src/utils/hashtags';
+import { getPageMetaByPath } from './src/seo/pageMeta';
+import { buildSitemapEntries, entriesToXml, sitemapIndexXml } from './src/seo/sitemap';
+import {
+  buildArticleSchema,
+  buildBreadcrumbSchema,
+  buildDefaultPageSchemas,
+  buildFaqSchema,
+  buildPropertySchemas,
+} from './src/seo/schemas';
+import { isReservedSlug } from './src/seo/routes';
+import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from './server/investorLeadRoutes';
+import { registerBlogAdminRoutes, registerBlogPublicRoutes } from './server/blogRoutes';
+import { getBlogPostBySlug, getPublishedBlogPostsForSitemap } from './server/blogDb';
+import { processLeadCapture } from './server/investorLeadService';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -40,6 +56,12 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+
+const publicAssetsPath = path.join(process.cwd(), 'public');
+app.get('/favicon.ico', (_req: Request, res: Response) => {
+  res.sendFile(path.join(publicAssetsPath, 'logo.jpg'));
+});
+app.use(express.static(publicAssetsPath));
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof SyntaxError && 'body' in err) {
@@ -55,13 +77,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.get('/api/health', (req: Request, res: Response) => {
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const dbStatus = await checkDatabaseConnection();
   res.json({
-    status: 'success',
+    status: dbStatus.ok ? 'success' : 'degraded',
     data: {
       service: 'real-estate-ai-marketing-agent-cms',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      database: dbStatus.message,
       aiProvider: process.env.DEFAULT_AI_MODE || 'db-settings'
     }
   });
@@ -482,19 +506,19 @@ app.get('/api/public/properties', (req: Request, res: Response) => {
   res.json({ status: 'success', data: publicProperties });
 });
 
-app.get('/api/public/seo', (req: Request, res: Response) => {
+app.get('/api/public/seo', async (req: Request, res: Response) => {
   const keywords = buildSiteSeoKeywords(
     getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available')),
     DEFAULT_SEO_KEYWORDS
   );
-  updateSettings({ seo_keywords: keywords });
+  await updateSettings({ seo_keywords: keywords });
   res.json({ status: 'success', data: { keywords } });
 });
 
 // ----------------------------------------------------
 // Public traffic tracking (register early, before static/vite fallbacks)
 // ----------------------------------------------------
-app.post('/api/public/track-view', (req: Request, res: Response) => {
+app.post('/api/public/track-view', async (req: Request, res: Response) => {
   const now = new Date().toISOString();
   const propertyId = String(req.body?.propertyId || '').trim();
   const trackingType = String(req.body?.type || '').trim();
@@ -503,7 +527,7 @@ app.post('/api/public/track-view', (req: Request, res: Response) => {
   let property: Property | undefined;
 
   if (trackingType === 'site' || !propertyId) {
-    settings = updateSettings({
+    settings = await updateSettings({
       site_view_count: Number(settings.site_view_count || 0) + 1,
       last_site_view_at: now
     } as AppSettings);
@@ -512,7 +536,7 @@ app.post('/api/public/track-view', (req: Request, res: Response) => {
   if (propertyId) {
     const current = getProperties().find((item: Property) => item.id === propertyId);
     if (current) {
-      property = updateProperty(propertyId, {
+      property = await updateProperty(propertyId, {
         public_view_count: Number(current.public_view_count || 0) + 1,
         last_public_view_at: now
       }) as Property;
@@ -561,7 +585,7 @@ app.get('/api/public/chat/history', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/public/chat/guest', (req: Request, res: Response) => {
+app.post('/api/public/chat/guest', async (req: Request, res: Response) => {
   const sessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const name = String(req.body?.name || '').trim().slice(0, 120);
   const phone = String(req.body?.phone || '').trim().replace(/[^\d+.\-\s]/g, '').slice(0, 40);
@@ -574,7 +598,7 @@ app.post('/api/public/chat/guest', (req: Request, res: Response) => {
   const customerId = `guest-${sessionId}`;
   const existingCustomer = getCustomers().find(customer => customer.id === customerId);
   if (!existingCustomer) {
-    createCustomer({
+    await createCustomer({
       id: customerId,
       name,
       phone,
@@ -594,45 +618,47 @@ app.post('/api/public/chat/guest', (req: Request, res: Response) => {
     } as Customer);
   }
 
-  const guest = upsertPublicChatGuest({ session_id: sessionId, name, phone, customer_id: customerId });
+  const guest = await upsertPublicChatGuest({ session_id: sessionId, name, phone, customer_id: customerId });
   res.json({ status: 'success', data: guest });
 });
 
-app.post('/api/public/contact', (req: Request, res: Response) => {
+app.post('/api/public/contact', async (req: Request, res: Response) => {
   const name = String(req.body?.name || '').trim();
   const phone = String(req.body?.phone || '').trim();
   const budget = String(req.body?.budget || '').trim();
   const area = String(req.body?.area || '').trim();
   const note = String(req.body?.note || '').trim();
+  const email = String(req.body?.email || '').trim();
 
   if (!name || !phone) {
     res.status(400).json({ status: 'error', message: 'Vui lòng nhập tên và số điện thoại.' });
     return;
   }
 
-  const messageLines = [
-    `Khách gửi form liên hệ từ website.`,
-    `Họ tên: ${name}`,
-    `Số điện thoại: ${phone}`,
-    budget ? `Ngân sách: ${budget}` : '',
-    area ? `Khu vực quan tâm: ${area}` : '',
-    note ? `Nhu cầu chi tiết: ${note}` : ''
-  ].filter(Boolean);
-
-  const inboxMessage = createInboxMessage({
-    id: `in-web-${Date.now()}`,
-    sender_name: name,
-    platform: 'website',
-    message: messageLines.join('\n'),
-    intent: 'đặt lịch xem',
-    status: 'pending',
-    company_id: 'comp-da-nang',
-    owner_user_id: 'u-owner',
-    assigned_member_ids: [],
-    created_at: new Date().toISOString()
-  });
-
-  res.json({ status: 'success', data: inboxMessage });
+  try {
+    const lead = await processLeadCapture({
+      name,
+      phone,
+      email: email || undefined,
+      city: area || undefined,
+      budget_range: budget.includes('10') ? 'over-10' : budget.includes('5') ? '5-10' : budget.includes('3') ? '3-5' : undefined,
+      source: 'contact_form_legacy',
+      form_type: 'simple',
+      page_path: String(req.body?.page_path || ''),
+      note: note || undefined,
+    });
+    res.json({
+      status: 'success',
+      data: {
+        id: lead.id,
+        investor_score: lead.investor_score,
+        access_token: lead.access_token,
+      },
+    });
+  } catch (error) {
+    console.error('[Contact] lead capture failed:', error);
+    res.status(500).json({ status: 'error', message: 'Không gửi được. Vui lòng gọi hotline.' });
+  }
 });
 
 app.post('/api/public/chat', async (req: Request, res: Response) => {
@@ -690,7 +716,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
   ].filter((property, index, items) => items.findIndex(item => item.id === property.id) === index).slice(0, 5);
 
   try {
-    saveChatMessage({
+    await saveChatMessage({
       id: `chat-public-${Date.now()}-user`,
       user_id: publicUserId,
       role: 'user',
@@ -712,7 +738,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
     if (!hasRealEstateIntent) {
       const smallTalkResponse = await generatePublicSmallTalkReply(String(message), recentHistory);
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -730,7 +756,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         'Anh/chị đang quan tâm loại BĐS nào ở Đà Nẵng để em lọc đúng nhu cầu hơn: nhà phố, đất nền, căn hộ hay shophouse ạ?'
       ].join('\n\n');
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -749,7 +775,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
       ].join('\n\n');
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -768,7 +794,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
       ].join('\n\n');
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -785,7 +811,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         ? `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Nếu anh/chị thực sự quan tâm ${recentlyMentionedProperty.title}, anh/chị để lại số điện thoại để anh Linh bên em liên hệ trao đổi trực tiếp với chủ và phản hồi ngay cho mình nhé.\n\nAnh Linh: 0905 777 594\nChị Hằng: 0984 755 258`
         : 'Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Anh/chị cho em xin tên căn đang quan tâm và để lại số điện thoại, bên em sẽ liên hệ chủ rồi phản hồi ngay cho mình nhé.\n\nAnh Linh: 0905 777 594\nChị Hằng: 0984 755 258';
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -819,7 +845,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
         '**Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem ạ?**'
       ].join('\n\n');
 
-      saveChatMessage({
+      await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
         user_id: publicUserId,
         role: 'model',
@@ -904,7 +930,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
       }
     }
 
-    saveChatMessage({
+    await saveChatMessage({
       id: `chat-public-${Date.now()}-model`,
       user_id: publicUserId,
       role: 'model',
@@ -932,7 +958,7 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
           '**Để em lọc sát hơn, anh/chị đang ưu tiên tiêu chí nào nhất?**\n- Khu vực mong muốn\n- Khoảng ngân sách\n- Loại hình hoặc tiện ích cần có'
         ].join('\n\n');
 
-    saveChatMessage({
+    await saveChatMessage({
       id: `chat-public-${Date.now()}-model`,
       user_id: publicUserId,
       role: 'model',
@@ -946,6 +972,9 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
     });
   }
 });
+
+registerBlogPublicRoutes(app);
+app.use('/api/public', createInvestorLeadPublicRouter());
 
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   if (req.path === '/health' || req.path === '/auth/login' || req.path.startsWith('/public/')) return next();
@@ -967,6 +996,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 app.get('/api/auth/me', (req: Request, res: Response) => {
   res.json({ status: 'success', data: getAuthUser(req) });
 });
+
+registerInvestorLeadAdminRoutes(app);
+registerBlogAdminRoutes(app);
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);
@@ -1013,7 +1045,7 @@ app.get('/api/users', (req: Request, res: Response) => {
   res.json({ status: 'success', data: scopeUsers(db.users || [], req) });
 });
 
-app.post('/api/users', (req: Request, res: Response) => {
+app.post('/api/users', async (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
 
   const db = readDatabase();
@@ -1058,11 +1090,11 @@ app.post('/api/users', (req: Request, res: Response) => {
   };
 
   db.users.push(newUser);
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: newUser });
 });
 
-app.put('/api/users/:id', (req: Request, res: Response) => {
+app.put('/api/users/:id', async (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
 
   const db = readDatabase();
@@ -1140,7 +1172,7 @@ app.put('/api/users/:id', (req: Request, res: Response) => {
     status: nextStatus
   };
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.users[index] });
 });
 
@@ -1252,7 +1284,7 @@ app.get('/api/customers', (req: Request, res: Response) => {
   res.json({ status: 'success', data: scopeCollection(db.customers, req) });
 });
 
-app.post('/api/customers', (req: Request, res: Response) => {
+app.post('/api/customers', async (req: Request, res: Response) => {
   const db = readDatabase();
   const customerData = req.body;
   
@@ -1280,11 +1312,11 @@ app.post('/api/customers', (req: Request, res: Response) => {
     triggerAutomationEvent('Lead Score vượt mốc 80', `Khách hàng tiềm năng: ${newCustomer.name}`, db);
   }
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: newCustomer });
 });
 
-app.put('/api/customers/:id', (req: Request, res: Response) => {
+app.put('/api/customers/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.customers.findIndex(c => c.id === req.params.id);
   
@@ -1312,11 +1344,11 @@ app.put('/api/customers/:id', (req: Request, res: Response) => {
     triggerAutomationEvent('Lead Score vượt mốc 80', `Cập nhật khách hàng VIP: ${updatedCustomer.name}`, db);
   }
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: updatedCustomer });
 });
 
-app.delete('/api/customers/:id', (req: Request, res: Response) => {
+app.delete('/api/customers/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const target = db.customers.find(c => c.id === req.params.id);
   const filtered = db.customers.filter(c => c.id !== req.params.id);
@@ -1332,7 +1364,7 @@ app.delete('/api/customers/:id', (req: Request, res: Response) => {
   }
 
   db.customers = filtered;
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', message: 'Đã xóa khách hàng thành công' });
 });
 
@@ -1362,7 +1394,7 @@ app.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
       triggerAutomationEvent('Lead Score vượt mốc 80', `AI chấm điểm VIP: ${customer.name}`, db);
     }
 
-    writeDatabase(db);
+    await writeDatabase(db);
     res.json({ status: 'success', data: customer });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
@@ -1377,7 +1409,7 @@ app.get('/api/properties', (req: Request, res: Response) => {
   res.json({ status: 'success', data: scopeCollection(db.properties, req) });
 });
 
-app.post('/api/properties', (req: Request, res: Response) => {
+app.post('/api/properties', async (req: Request, res: Response) => {
   const db = readDatabase();
   const propData = req.body;
   
@@ -1419,11 +1451,11 @@ app.post('/api/properties', (req: Request, res: Response) => {
   db.properties[indexedProperty] = applyPropertyHashtagSeo(db.properties[indexedProperty]);
   syncSiteSeoKeywords(db);
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.properties[indexedProperty] });
 });
 
-app.put('/api/properties/:id', (req: Request, res: Response) => {
+app.put('/api/properties/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.properties.findIndex(p => p.id === req.params.id);
   
@@ -1445,11 +1477,11 @@ app.put('/api/properties/:id', (req: Request, res: Response) => {
   });
 
   syncSiteSeoKeywords(db);
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.properties[index] });
 });
 
-app.delete('/api/properties/:id', (req: Request, res: Response) => {
+app.delete('/api/properties/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.properties.findIndex(p => p.id === req.params.id);
   const target = index >= 0 ? db.properties[index] : null;
@@ -1468,10 +1500,10 @@ app.delete('/api/properties/:id', (req: Request, res: Response) => {
     ...db.properties[index],
     sale_status: 'hidden'
   };
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.properties[index], message: 'Soft deleted property.' });
   return;
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', message: 'Đã xóa bất động sản thành công' });
 });
 
@@ -1498,9 +1530,9 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
     
     // Auto populate posts CMS draft if requested or trigger automation representation
     const platformKeys: ('facebook' | 'zalo' | 'tiktok' | 'website')[] = ['facebook', 'zalo', 'tiktok', 'website'];
-    platformKeys.forEach(platform => {
+    for (const platform of platformKeys) {
       if (content[platform]) {
-        saveGeneratedContent({
+        await saveGeneratedContent({
           id: `gen-${Date.now()}-${platform}`,
           company_id: property.company_id,
           user_id: user.id,
@@ -1542,11 +1574,11 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
           });
         }
       }
-    });
+    }
 
-    (['image_prompt', 'video_prompt'] as const).forEach((channel) => {
+    for (const channel of ['image_prompt', 'video_prompt'] as const) {
       if (content[channel]) {
-        saveGeneratedContent({
+        await saveGeneratedContent({
           id: `gen-${Date.now()}-${channel}`,
           company_id: property.company_id,
           user_id: user.id,
@@ -1558,9 +1590,9 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
           created_at: new Date().toISOString()
         });
       }
-    });
+    }
 
-    writeDatabase(db);
+    await writeDatabase(db);
     res.json({ status: 'success', data: property });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
@@ -1575,7 +1607,7 @@ app.get('/api/posts', (req: Request, res: Response) => {
   res.json({ status: 'success', data: scopeCollection(db.posts, req) });
 });
 
-app.post('/api/posts', (req: Request, res: Response) => {
+app.post('/api/posts', async (req: Request, res: Response) => {
   const db = readDatabase();
   const postData = req.body;
   const linkedProperty = db.properties.find(property => property.id === postData.property_id);
@@ -1606,11 +1638,11 @@ app.post('/api/posts', (req: Request, res: Response) => {
   };
 
   db.posts.push(newPost);
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: newPost });
 });
 
-app.put('/api/posts/:id', (req: Request, res: Response) => {
+app.put('/api/posts/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.posts.findIndex(p => p.id === req.params.id);
 
@@ -1629,11 +1661,11 @@ app.put('/api/posts/:id', (req: Request, res: Response) => {
     ...req.body
   };
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.posts[index] });
 });
 
-app.delete('/api/posts/:id', (req: Request, res: Response) => {
+app.delete('/api/posts/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const target = db.posts.find(p => p.id === req.params.id);
   const filtered = db.posts.filter(p => p.id !== req.params.id);
@@ -1649,7 +1681,7 @@ app.delete('/api/posts/:id', (req: Request, res: Response) => {
   }
 
   db.posts = filtered;
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', message: 'Đã xóa bài viết thành công' });
 });
 
@@ -1709,7 +1741,7 @@ app.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
       triggerAutomationEvent('Nhận comment bình luận hỏi giá', `Tin nhắn của ${msg.sender_name}`, db);
     }
 
-    writeDatabase(db);
+    await writeDatabase(db);
     res.json({ status: 'success', data: msg });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
@@ -1717,7 +1749,7 @@ app.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
 });
 
 // Update reply status / send manual response simulations
-app.post('/api/inbox/:id/reply', (req: Request, res: Response) => {
+app.post('/api/inbox/:id/reply', async (req: Request, res: Response) => {
   const { replyText } = req.body;
   const db = readDatabase();
   const index = db.inbox.findIndex(i => i.id === req.params.id);
@@ -1737,7 +1769,7 @@ app.post('/api/inbox/:id/reply', (req: Request, res: Response) => {
   // Simulate posting the reply back to the platform
   console.log(`[OUTBOX SENT] Sent to ${db.inbox[index].platform} to ${db.inbox[index].sender_name}: "${replyText}"`);
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.inbox[index] });
 });
 
@@ -1771,7 +1803,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
     .join('\n');
 
   try {
-    saveChatMessage({
+    await saveChatMessage({
       id: `chat-${Date.now()}-user`,
       user_id: user.id,
       company_id: user.company_id,
@@ -1807,7 +1839,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
       aiResponse = buildAssistantFallback(dbContext);
     }
 
-    saveChatMessage({
+    await saveChatMessage({
       id: `chat-${Date.now()}-model`,
       user_id: user.id,
       company_id: user.company_id,
@@ -1836,7 +1868,7 @@ app.get('/api/chat/history', (req: Request, res: Response) => {
   res.json({ status: 'success', data: history });
 });
 
-function deleteChatSessionHandler(req: Request, res: Response) {
+async function deleteChatSessionHandler(req: Request, res: Response) {
   const sessionUserId = decodeURIComponent(String(req.params.sessionUserId || '').trim());
   if (!sessionUserId) {
     res.status(400).json({ status: 'error', message: 'Thiếu mã phiên trò chuyện.' });
@@ -1845,12 +1877,12 @@ function deleteChatSessionHandler(req: Request, res: Response) {
 
   if (!assertCanManageChatSession(req, res, sessionUserId)) return;
 
-  const deletedCount = deleteChatHistoryByUserId(sessionUserId);
+  const deletedCount = await deleteChatHistoryByUserId(sessionUserId);
   let guestDeleted = false;
 
   if (sessionUserId.startsWith('public-')) {
     const sessionId = sessionUserId.slice('public-'.length);
-    guestDeleted = deletePublicChatGuest(sessionId) > 0;
+    guestDeleted = await deletePublicChatGuest(sessionId) > 0;
   }
 
   res.json({
@@ -1917,14 +1949,14 @@ app.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) => 
   res.json({ status: 'success', data: history });
 });
 
-app.put('/api/chat/guests/:sessionId/ai', (req: Request, res: Response) => {
+app.put('/api/chat/guests/:sessionId/ai', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
     res.status(403).json({ status: 'error', message: 'Bạn không có quyền đổi trạng thái AI.' });
     return;
   }
   const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
-  const guest = updatePublicChatGuestAi(sessionId, Boolean(req.body?.ai_enabled));
+  const guest = await updatePublicChatGuestAi(sessionId, Boolean(req.body?.ai_enabled));
   if (!guest) {
     res.status(404).json({ status: 'error', message: 'Không tìm thấy khách chat.' });
     return;
@@ -1932,7 +1964,7 @@ app.put('/api/chat/guests/:sessionId/ai', (req: Request, res: Response) => {
   res.json({ status: 'success', data: guest });
 });
 
-app.post('/api/chat/guests/:sessionId/messages', (req: Request, res: Response) => {
+app.post('/api/chat/guests/:sessionId/messages', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
     res.status(403).json({ status: 'error', message: 'Bạn không có quyền gửi tin cho khách.' });
@@ -1949,8 +1981,8 @@ app.post('/api/chat/guests/:sessionId/messages', (req: Request, res: Response) =
     res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống.' });
     return;
   }
-  updatePublicChatGuestAi(sessionId, false);
-  const saved = saveChatMessage({
+  await updatePublicChatGuestAi(sessionId, false);
+  const saved = await saveChatMessage({
     id: `chat-admin-${Date.now()}-${user.id}`,
     user_id: `public-${sessionId}`,
     company_id: user.company_id,
@@ -1982,7 +2014,7 @@ app.get('/api/content/generated', (req: Request, res: Response) => {
   res.json({ status: 'success', data: records });
 });
 
-app.post('/api/content/generated/:id/verify', (req: Request, res: Response) => {
+app.post('/api/content/generated/:id/verify', async (req: Request, res: Response) => {
   const { verifiedContent } = req.body;
   const db = readDatabase();
   const user = getAuthUser(req);
@@ -1998,7 +2030,7 @@ app.post('/api/content/generated/:id/verify', (req: Request, res: Response) => {
     return;
   }
 
-  const ok = verifyGeneratedContent(record.id, verifiedContent || record.raw_content);
+  const ok = await verifyGeneratedContent(record.id, verifiedContent || record.raw_content);
   if (!ok) {
     res.status(500).json({ status: 'error', message: 'Không thể cập nhật trạng thái verified.' });
     return;
@@ -2016,7 +2048,7 @@ app.get('/api/automations', (req: Request, res: Response) => {
   res.json({ status: 'success', data: scopeCollection(db.automations, req) });
 });
 
-app.post('/api/automations/:id/toggle', (req: Request, res: Response) => {
+app.post('/api/automations/:id/toggle', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.automations.findIndex(a => a.id === req.params.id);
 
@@ -2036,12 +2068,12 @@ app.post('/api/automations/:id/toggle', (req: Request, res: Response) => {
   const now = new Date().toISOString();
   db.automations[index].logs.unshift(`${now} - Trạng thái hoạt động chuyển sang: ${db.automations[index].status.toUpperCase()}`);
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.automations[index] });
 });
 
 // Run Demo simulation report
-app.post('/api/automations/run-demo', (req: Request, res: Response) => {
+app.post('/api/automations/run-demo', async (req: Request, res: Response) => {
   const db = readDatabase();
   const now = new Date().toISOString();
   const scopedIds = new Set(scopeCollection(db.automations, req).map(auto => auto.id));
@@ -2060,7 +2092,7 @@ app.post('/api/automations/run-demo', (req: Request, res: Response) => {
     return auto;
   });
 
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: scopeCollection(db.automations, req) });
 });
 
@@ -2089,7 +2121,7 @@ app.get('/api/settings', (req: Request, res: Response) => {
   res.json({ status: 'success', data: db.settings });
 });
 
-app.put('/api/settings', (req: Request, res: Response) => {
+app.put('/api/settings', async (req: Request, res: Response) => {
   if (!requireOwner(req, res)) return;
 
   const db = readDatabase();
@@ -2097,7 +2129,7 @@ app.put('/api/settings', (req: Request, res: Response) => {
     ...db.settings,
     ...req.body
   };
-  writeDatabase(db);
+  await writeDatabase(db);
   res.json({ status: 'success', data: db.settings });
 });
 
@@ -2241,7 +2273,12 @@ function getPropertyShareMeta(property: Property, origin: string) {
   return { title, description, image, url, keywords };
 }
 
-function renderIndexWithMeta(indexHtml: string, meta: { title: string; description: string; image: string; url: string; keywords: string }) {
+function renderIndexWithMeta(
+  indexHtml: string,
+  meta: { title: string; description: string; image: string; url: string; keywords: string; ogType?: string },
+  schemas: Record<string, unknown>[] = []
+) {
+  const ogType = meta.ogType || (meta.url.includes('/') && meta.url.split('/').filter(Boolean).length > 1 ? 'article' : 'website');
   const tags = [
     `<title>${escapeHtml(meta.title)}</title>`,
     `<meta name="description" content="${escapeHtml(meta.description)}" />`,
@@ -2249,7 +2286,7 @@ function renderIndexWithMeta(indexHtml: string, meta: { title: string; descripti
     '<meta name="robots" content="index, follow, max-image-preview:large" />',
     '<meta name="googlebot" content="index, follow, max-image-preview:large" />',
     '<meta property="og:locale" content="vi_VN" />',
-    '<meta property="og:type" content="product" />',
+    `<meta property="og:type" content="${escapeHtml(ogType)}" />`,
     '<meta property="og:site_name" content="Estoria" />',
     `<meta property="og:url" content="${escapeHtml(meta.url)}" />`,
     `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
@@ -2262,7 +2299,8 @@ function renderIndexWithMeta(indexHtml: string, meta: { title: string; descripti
     `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
     meta.image ? `<meta name="twitter:image" content="${escapeHtml(meta.image)}" />` : '',
-    `<link rel="canonical" href="${escapeHtml(meta.url)}" />`
+    `<link rel="canonical" href="${escapeHtml(meta.url)}" />`,
+    ...schemas.map(schema => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`),
   ].filter(Boolean).join('\n    ');
 
   return indexHtml
@@ -2274,6 +2312,7 @@ function renderIndexWithMeta(indexHtml: string, meta: { title: string; descripti
     .replace(/<meta property="og:[^"]+"[^>]*>/gi, '')
     .replace(/<meta name="twitter:[^"]+"[^>]*>/gi, '')
     .replace(/<link rel="canonical"[^>]*>/gi, '')
+    .replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/gi, '')
     .replace('</head>', `    ${tags}\n  </head>`);
 }
 
@@ -2322,52 +2361,148 @@ function getIndexHtmlTemplate() {
 
 function getDefaultShareMeta(origin: string) {
   const keywordList = buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
+  const defaultImage = `${origin}/logo.jpg`;
   return {
     title: DEFAULT_SEO_TITLE,
     description: DEFAULT_SEO_DESCRIPTION,
-    image: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=90',
+    image: defaultImage,
     url: `${origin}${publicListingsPath}`,
-    keywords: keywordList.join(', ')
+    keywords: keywordList.join(', '),
+    ogType: 'website',
   };
 }
 
-function sendPublicIndex(req: Request, res: Response) {
+function getStaticPageShareMeta(origin: string, pathname: string) {
+  const pageMeta = getPageMetaByPath(pathname);
+  if (!pageMeta) return null;
+  const keywordList = pageMeta.keywords?.length ? pageMeta.keywords : buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
+  const defaultImage = `${origin}/logo.jpg`;
+  return {
+    title: pageMeta.title,
+    description: pageMeta.description,
+    image: defaultImage,
+    url: `${origin}${pageMeta.path}`,
+    keywords: keywordList.join(', '),
+    ogType: pageMeta.ogType || 'website',
+  };
+}
+
+async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
   const origin = getPublicOrigin(req);
   const indexHtml = getIndexHtmlTemplate();
   const pathSlug = decodeURIComponent(String(req.path || '').replace(/^\//, ''));
 
   if (!pathSlug) {
-    res
-      .status(200)
-      .set({ 'Content-Type': 'text/html; charset=utf-8' })
-      .send(renderIndexWithMeta(indexHtml, getDefaultShareMeta(origin)));
-    return;
+    const meta = getDefaultShareMeta(origin);
+    const schemas = buildDefaultPageSchemas([{ name: 'Trang chủ', path: '/' }], origin);
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, meta, schemas));
+    return true;
+  }
+
+  const staticMeta = getStaticPageShareMeta(origin, `/${pathSlug}`);
+  if (staticMeta) {
+    const breadcrumbs = [
+      { name: 'Trang chủ', path: '/' },
+      { name: staticMeta.title.split('|')[0].trim(), path: `/${pathSlug}` },
+    ];
+    const schemas = [
+      ...buildDefaultPageSchemas(breadcrumbs, origin),
+      buildBreadcrumbSchema(breadcrumbs, origin),
+    ];
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, staticMeta, schemas));
+    return true;
+  }
+
+  if (pathSlug.startsWith('tin-tuc/')) {
+    const blogSlug = pathSlug.slice('tin-tuc/'.length);
+    if (blogSlug && !blogSlug.includes('/')) {
+      try {
+        const post = await getBlogPostBySlug(blogSlug, true);
+        if (post) {
+          const postPath = `/tin-tuc/${post.slug}`;
+          const keywords = (post.tags || []).map((tag: { name: string }) => tag.name).join(', ');
+          const description = post.metaDescription || post.excerpt;
+          const meta = {
+            title: post.metaTitle || post.title,
+            description,
+            image: post.coverImage ? absoluteUrl(post.coverImage, origin) : `${origin}/logo.jpg`,
+            url: `${origin}${postPath}`,
+            keywords,
+            ogType: 'article',
+          };
+          const breadcrumbs = [
+            { name: 'Trang chủ', path: '/' },
+            { name: 'Tin tức', path: '/tin-tuc' },
+            ...(post.category
+              ? [{ name: post.category.name, path: post.category.hubPath }]
+              : []),
+            { name: post.title, path: postPath },
+          ];
+          const schemas = [
+            ...buildDefaultPageSchemas(breadcrumbs, origin),
+            buildBreadcrumbSchema(breadcrumbs, origin),
+            buildArticleSchema({
+              title: post.title,
+              description,
+              path: postPath,
+              publishedAt: post.publishedAt || undefined,
+              updatedAt: post.updatedAt,
+              image: meta.image,
+              origin,
+            }),
+            ...(post.faqs?.length ? [buildFaqSchema(post.faqs)] : []),
+          ];
+          await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, meta, schemas));
+          return true;
+        }
+      } catch (error) {
+        console.error('[SSR] blog post meta error:', error);
+      }
+    }
+  }
+
+  if (isReservedSlug(pathSlug)) {
+    await sendIndexHtml(req, res, indexHtml);
+    return true;
   }
 
   const property = findPublicPropertyBySlug(pathSlug);
   if (property) {
-    res
-      .status(200)
-      .set({ 'Content-Type': 'text/html; charset=utf-8' })
-      .send(renderIndexWithMeta(indexHtml, getPropertyShareMeta(property, origin)));
-    return;
+    const shareMeta = getPropertyShareMeta(property, origin);
+    const breadcrumbs = [
+      { name: 'Trang chủ', path: '/' },
+      { name: 'Bất động sản', path: '/bat-dong-san' },
+      { name: property.title, path: shareMeta.url.replace(origin, '') },
+    ];
+    const schemas = [
+      ...buildDefaultPageSchemas(breadcrumbs, origin),
+      buildBreadcrumbSchema(breadcrumbs, origin),
+      ...buildPropertySchemas(property, origin),
+    ];
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, { ...shareMeta, ogType: 'product' }, schemas));
+    return true;
   }
 
-  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
+  return false;
 }
 
-app.get('/robots.txt', (req: Request, res: Response) => {
-  const origin = getPublicOrigin(req);
-  res
-    .type('text/plain')
-    .send([
-      'User-agent: *',
-      'Allow: /',
-      'Disallow: /api/',
-      'Disallow: /admin/',
-      `Sitemap: ${origin}/sitemap.xml`
-    ].join('\n'));
-});
+function shouldAttemptPublicIndex(req: Request) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const requestPath = String(req.path || '');
+  if (requestPath.startsWith('/api')) return false;
+  if (/\.[a-z0-9]+$/i.test(requestPath)) return false;
+  return true;
+}
+
+async function handlePublicIndex(req: Request, res: Response, next: NextFunction) {
+  if (!shouldAttemptPublicIndex(req)) {
+    next();
+    return;
+  }
+  const handled = await sendPublicIndex(req, res);
+  if (handled) return;
+  next();
+}
 
 app.get('/bds-da-nang', (req: Request, res: Response) => {
   res.redirect(301, publicListingsPath);
@@ -2389,78 +2524,177 @@ app.get('/listings', (req: Request, res: Response) => {
   res.redirect(301, publicListingsPath);
 });
 
-app.get('/sitemap.xml', (req: Request, res: Response) => {
+app.get('/robots.txt', (req: Request, res: Response) => {
   const origin = getPublicOrigin(req);
-  const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
-  const urls = [
-    origin,
-    ...publicProperties.map(property => `${origin}${getPropertyPath(property)}`)
-  ];
-  const xml = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    ...urls.map((url, index) => [
-      '  <url>',
-      `    <loc>${escapeXml(url)}</loc>`,
-      `    <changefreq>${index === 0 ? 'daily' : 'weekly'}</changefreq>`,
-      `    <priority>${index === 0 ? '1.0' : '0.8'}</priority>`,
-      '  </url>'
-    ].join('\n')),
-    '</urlset>'
-  ].join('\n');
+  res
+    .type('text/plain')
+    .send([
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /api/',
+      'Disallow: /admin/',
+      '',
+      `Sitemap: ${origin}/sitemap.xml`,
+      `Sitemap: ${origin}/sitemap-pages.xml`,
+      `Sitemap: ${origin}/sitemap-properties.xml`,
+      `Sitemap: ${origin}/sitemap-projects.xml`,
+      `Sitemap: ${origin}/sitemap-posts.xml`,
+    ].join('\n'));
+});
 
-  res.type('application/xml').send(xml);
+app.get('/sitemap.xml', (req: Request, res: Response) => {
+  res.type('application/xml').send(sitemapIndexXml(getPublicOrigin(req)));
+});
+
+app.get('/sitemap-pages.xml', (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  const publicProperties = getProperties().filter((p: Property) => !['sold', 'hidden'].includes(p.sale_status || 'available'));
+  const { pages, landings } = buildSitemapEntries(origin, publicProperties);
+  res.type('application/xml').send(entriesToXml([...pages, ...landings]));
+});
+
+app.get('/sitemap-properties.xml', (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  const publicProperties = getProperties().filter((p: Property) => !['sold', 'hidden'].includes(p.sale_status || 'available'));
+  const { properties } = buildSitemapEntries(origin, publicProperties);
+  res.type('application/xml').send(entriesToXml(properties));
+});
+
+app.get('/sitemap-projects.xml', (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  const publicProperties = getProperties().filter((p: Property) => !['sold', 'hidden'].includes(p.sale_status || 'available'));
+  const { projects } = buildSitemapEntries(origin, publicProperties);
+  res.type('application/xml').send(entriesToXml(projects));
+});
+
+app.get('/sitemap-posts.xml', async (req: Request, res: Response) => {
+  const origin = getPublicOrigin(req);
+  const now = new Date().toISOString().slice(0, 10);
+  const base = origin.replace(/\/+$/, '');
+  let blogPosts: Awaited<ReturnType<typeof getPublishedBlogPostsForSitemap>> = [];
+  try {
+    blogPosts = await getPublishedBlogPostsForSitemap();
+  } catch (error) {
+    console.error('[sitemap-posts] blog query failed:', error);
+  }
+  const entries = [
+    { loc: `${base}/tin-tuc`, changefreq: 'daily' as const, priority: 0.85, lastmod: now },
+    ...blogPosts.map(post => ({
+      loc: `${base}/tin-tuc/${encodeURIComponent(post.slug)}`,
+      changefreq: 'weekly' as const,
+      priority: 0.75,
+      lastmod: (post.updatedAt || post.publishedAt || new Date()).toISOString().slice(0, 10),
+    })),
+  ];
+  res.type('application/xml').send(entriesToXml(entries));
 });
 
 const distPath = path.join(process.cwd(), 'dist');
+let viteDevServer: import('vite').ViteDevServer | null = null;
+
+async function finalizeIndexHtml(req: Request, html: string): Promise<string> {
+  if (process.env.NODE_ENV === 'production' || !viteDevServer) return html;
+  return viteDevServer.transformIndexHtml(req.originalUrl, html);
+}
+
+async function sendIndexHtml(req: Request, res: Response, html: string) {
+  const finalHtml = await finalizeIndexHtml(req, html);
+  res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(finalHtml);
+}
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
+  app.use(handlePublicIndex);
   app.get('*', (req: Request, res: Response) => {
     if (req.path.startsWith('/api')) {
       res.status(404).json({ status: 'error', message: 'Not found' });
       return;
     }
-    sendPublicIndex(req, res);
+    const indexHtml = getIndexHtmlTemplate();
+    res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
   });
-} else {
-  // Setup programmatic Vite server in developmental mode
-  // so everything runs seamlessly under standard port 3000
-  import('vite').then(({ createServer }) => {
-    createServer({
-      server: {
-        middlewareMode: true,
-        watch: {
-          ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log']
-        }
+}
+
+async function setupViteDevServer() {
+  const { createServer } = await import('vite');
+  const viteServer = await createServer({
+    configFile: path.join(process.cwd(), 'vite.config.ts'),
+    server: {
+      middlewareMode: true,
+      watch: {
+        ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log'],
       },
-      appType: 'spa',
-    }).then((viteServer) => {
-      app.use(viteServer.middlewares);
-      app.get('*', (req: Request, res: Response, next: NextFunction) => {
-        if (req.url.startsWith('/api')) {
-          return next();
-        }
-        sendPublicIndex(req, res);
-      });
-    }).catch(err => {
-      console.error("Vite server fails construction:", err);
-    });
+    },
+    appType: 'spa',
+  });
+  viteDevServer = viteServer;
+  app.use(handlePublicIndex);
+  app.use(viteServer.middlewares);
+  app.get('*', async (req: Request, res: Response, next: NextFunction) => {
+    if (req.url.startsWith('/api')) {
+      return next();
+    }
+    await sendIndexHtml(req, res, getIndexHtmlTemplate());
   });
 }
 
-// Start backend
-try {
-  const db = readDatabase();
-  syncSiteSeoKeywords(db);
-  writeDatabase(db);
-} catch (error) {
-  console.warn('[SEO] Could not sync site keywords on startup:', error);
+function startHttpServer() {
+  const server = app.listen(PORT, HOST, () => {
+    console.log('====================================================');
+    console.log(`Real Estate AI CMS is listening on port ${PORT} (PostgreSQL)`);
+    console.log(`Live Preview at: http://localhost:${PORT}`);
+    console.log('====================================================');
+  });
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(
+        `[Server] Port ${PORT} đang được dùng. Chạy: npm run dev:restart`,
+      );
+    } else {
+      console.error('[Server] Không khởi động được HTTP:', error);
+    }
+    process.exit(1);
+  });
 }
 
-app.listen(PORT, HOST, () => {
-  console.log(`====================================================`);
-  console.log(`🚀 Real Estate AI CMS is listening on port ${PORT}!`);
-  console.log(`🌍 Live Preview at: http://localhost:${PORT}`);
-  console.log(`====================================================`);
-});
+async function bootstrap(): Promise<boolean> {
+  try {
+    await ensureDatabaseReady();
+  } catch (error) {
+    console.error('[DB] Không kết nối được PostgreSQL:', error);
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+    console.warn('[DB] Dev mode: tiếp tục chạy UI — bật Postgres: npm run db:pg-start');
+    return false;
+  }
+
+  try {
+    const keywords = syncSiteSeoKeywords(readDatabase());
+    await updateSettings({ seo_keywords: keywords });
+  } catch (error) {
+    console.warn('[DB] Bỏ qua sync seo_keywords lúc khởi động:', error);
+  }
+
+  console.log('[DB] PostgreSQL sẵn sàng');
+  return true;
+}
+
+async function main() {
+  await bootstrap();
+
+  if (process.env.NODE_ENV === 'production') {
+    startHttpServer();
+    return;
+  }
+
+  try {
+    await setupViteDevServer();
+    startHttpServer();
+  } catch (error) {
+    console.error('Vite server fails construction:', error);
+    process.exit(1);
+  }
+}
+
+void main();
