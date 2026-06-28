@@ -63,6 +63,7 @@ import { cacheControlMiddleware, createDistStaticOptions, createPublicStaticOpti
 import { getCached, setCached } from './server/cache/publicCache';
 import { filterPublicProperties } from './server/publicPropertyMapper';
 import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
+import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -71,7 +72,17 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.set('trust proxy', true);
 app.use(compression({ level: 6 }));
 app.use(cacheControlMiddleware);
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+
+app.use(express.json({
+  limit: process.env.JSON_BODY_LIMIT || '25mb',
+  verify: (req, _res, buf) => {
+    if (req.url?.startsWith('/webhooks/facebook')) {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    }
+  },
+}));
+
+registerFacebookWebhookRoutes(app);
 
 const publicAssetsPath = path.join(process.cwd(), 'public');
 app.get('/favicon.ico', (_req: Request, res: Response) => {
@@ -1076,6 +1087,7 @@ app.get('/api/auth/me', (req: Request, res: Response) => {
 registerInvestorLeadAdminRoutes(app);
 registerBlogAdminRoutes(app);
 registerShortLinkAdminRoutes(app);
+registerFacebookAdminRoutes(app);
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);

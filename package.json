@@ -28,6 +28,8 @@
     "preview": "vite preview",
     "analyze": "ANALYZE=true npm run build",
     "check:assets": "node scripts/check-assets.mjs",
+    "test:facebook-webhook": "tsx scripts/test-facebook-webhook.mjs",
+    "fb:test": "tsx scripts/fb-test.mjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate",
