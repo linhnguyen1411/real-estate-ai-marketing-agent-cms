@@ -145,9 +145,13 @@ export function findPropertyForShortLinkTarget(
     const decoded = decodeURIComponent(pathname).toLowerCase();
     return getProperties().find(property => {
       if (['sold', 'hidden'].includes(property.sale_status || 'available')) return false;
+      const id = property.id.toLowerCase();
+      const slug = getPublicPropertySlug(property).toLowerCase();
       return (
-        property.id.toLowerCase() === decoded ||
-        getPublicPropertySlug(property).toLowerCase() === decoded
+        id === decoded ||
+        slug === decoded ||
+        decoded.endsWith(`-${id}`) ||
+        decoded.includes(id)
       );
     });
   } catch {

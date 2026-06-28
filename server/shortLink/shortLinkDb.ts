@@ -87,9 +87,23 @@ export async function slugExists(slug: string, excludeId?: string): Promise<bool
   return true;
 }
 
-export async function getShortLinkBySlug(slug: string) {
-  return prisma.shortLink.findUnique({ where: { slug: normalizeShortSlug(slug) } });
+export async function getShortLinkBySlug(slug: string): Promise<ShortLink | null> {
+  const row = await prisma.shortLink.findUnique({ where: { slug: normalizeShortSlug(slug) } });
+  if (!row) return null;
+  return rowToShortLink(row);
 }
+
+function toRedirectInput(shortLink: ShortLink) {
+  return {
+    slug: shortLink.slug,
+    targetUrl: shortLink.target_url,
+    utmSource: shortLink.utm_source,
+    utmMedium: shortLink.utm_medium,
+    utmCampaign: shortLink.utm_campaign,
+  };
+}
+
+export { toRedirectInput };
 
 export async function getShortLinkByEntity(entityType: string, entityId: string) {
   return prisma.shortLink.findFirst({
