@@ -10,6 +10,7 @@ import {
   getShortLinkBySlug,
   listShortLinks,
   recordShortLinkClick,
+  toRedirectInput,
   updateShortLink,
 } from './shortLinkDb';
 import { suggestBlogShortSlug, suggestPropertyShortSlug } from './slugUtils';
@@ -58,7 +59,7 @@ export function registerShortLinkRedirect(
       const slug = String(req.params.slug || '').trim();
       const shortLink = await getShortLinkBySlug(slug);
 
-      if (!shortLink || !shortLink.isActive) {
+      if (!shortLink || !shortLink.is_active) {
         res.status(404).type('text/html').send(`
           <!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Link không tồn tại</title></head>
           <body style="font-family:sans-serif;text-align:center;padding:48px;">
@@ -70,7 +71,7 @@ export function registerShortLinkRedirect(
         return;
       }
 
-      if (shortLink.expiresAt && shortLink.expiresAt.getTime() < Date.now()) {
+      if (shortLink.expires_at && new Date(shortLink.expires_at).getTime() < Date.now()) {
         res.status(410).type('text/html').send(`
           <!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Link đã hết hạn</title></head>
           <body style="font-family:sans-serif;text-align:center;padding:48px;">
@@ -92,21 +93,22 @@ export function registerShortLinkRedirect(
         utmCampaign: String(req.query.utm_campaign || ''),
       });
 
-      const redirectUrl = buildRedirectUrl(shortLink, {
+      const redirectUrl = buildRedirectUrl(toRedirectInput(shortLink), {
         utm_source: String(req.query.utm_source || ''),
         utm_medium: String(req.query.utm_medium || ''),
         utm_campaign: String(req.query.utm_campaign || ''),
       });
 
+      const origin = getPublicOrigin(req);
       const userAgent = String(req.headers['user-agent'] || '');
       if (isSocialPreviewCrawler(userAgent)) {
-        let shareMeta = await resolveShareMetaForShortLink(shortLink, getPublicOrigin(req), getProperties);
-        if (!shareMeta.image.includes('/property-images/') && shareMeta.image.endsWith('/logo.jpg')) {
+        let shareMeta = await resolveShareMetaForShortLink(shortLink, origin, getProperties);
+        if (!shareMeta.image.includes('/property-images/')) {
           const property = findPropertyForShortLinkTarget(shortLink.target_url, getProperties);
           if (property) {
             shareMeta = await resolveShareMetaForShortLink(
               { ...shortLink, entity_type: 'property', entity_id: property.id },
-              getPublicOrigin(req),
+              origin,
               getProperties,
             );
           }
