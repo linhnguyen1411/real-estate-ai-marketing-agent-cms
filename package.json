@@ -26,6 +26,8 @@
     "audit:lead-magnets": "tsx scripts/audit-lead-magnet-content.ts",
     "audit:content": "tsx scripts/audit-content.ts",
     "preview": "vite preview",
+    "analyze": "ANALYZE=true npm run build",
+    "check:assets": "node scripts/check-assets.mjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate",
@@ -39,6 +41,7 @@
     "@prisma/client": "^5.22.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "compression": "^1.8.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "gray-matter": "^4.0.3",
@@ -56,12 +59,14 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.11.10",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "prisma": "^5.22.0",
+    "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"

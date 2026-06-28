@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -58,19 +59,25 @@ import {
   registerShortLinkRedirect,
 } from './server/shortLink/shortLinkRoutes';
 import { processLeadCapture } from './server/investorLeadService';
+import { cacheControlMiddleware, createDistStaticOptions, createPublicStaticOptions } from './server/middleware/staticAssets';
+import { getCached, setCached } from './server/cache/publicCache';
+import { filterPublicProperties } from './server/publicPropertyMapper';
+import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.set('trust proxy', true);
+app.use(compression({ level: 6 }));
+app.use(cacheControlMiddleware);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
 
 const publicAssetsPath = path.join(process.cwd(), 'public');
 app.get('/favicon.ico', (_req: Request, res: Response) => {
   res.sendFile(path.join(publicAssetsPath, 'logo.jpg'));
 });
-app.use(express.static(publicAssetsPath));
+app.use(express.static(publicAssetsPath, createPublicStaticOptions()));
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof SyntaxError && 'body' in err) {
@@ -511,17 +518,66 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 });
 
 app.get('/api/public/properties', (req: Request, res: Response) => {
-  const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
+  const cached = getCached<{
+    status: string;
+    data: Property[];
+    meta: { projectDisplayOrder?: string[] };
+  }>('public-properties');
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
   const settings = getSettings();
-  res.json({
+  const payload = {
     status: 'success',
-    data: publicProperties,
+    data: filterPublicProperties(getProperties()),
     meta: {
       projectDisplayOrder: settings.project_display_order?.length
         ? settings.project_display_order
         : undefined,
     },
-  });
+  };
+  setCached('public-properties', payload, 120_000);
+  res.json(payload);
+});
+
+app.get('/api/public/homepage', async (req: Request, res: Response) => {
+  const cached = getCached<{
+    status: string;
+    data: Record<string, unknown>;
+  }>('public-homepage');
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
+  const settings = getSettings();
+  const publicProperties = filterPublicProperties(getProperties());
+  let latestPosts: Array<{ slug: string; publishedAt: string | null }> = [];
+  try {
+    const posts = await getPublishedBlogPostsForSitemap();
+    latestPosts = posts.slice(0, 6).map(post => ({
+      slug: post.slug,
+      publishedAt: post.publishedAt ? new Date(post.publishedAt).toISOString() : null,
+    }));
+  } catch (error) {
+    console.error('[homepage] blog query failed:', error);
+  }
+
+  const payload = {
+    status: 'success',
+    data: {
+      properties: publicProperties,
+      projectDisplayOrder: settings.project_display_order?.length
+        ? settings.project_display_order
+        : undefined,
+      latestPosts,
+      leadMagnets: LEAD_MAGNETS,
+    },
+  };
+  setCached('public-homepage', payload, 180_000);
+  res.json(payload);
 });
 
 app.get('/api/public/seo', async (req: Request, res: Response) => {
@@ -2661,7 +2717,7 @@ async function sendIndexHtml(req: Request, res: Response, html: string) {
 }
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, createDistStaticOptions()));
   app.use(handlePublicIndex);
   app.get('*', (req: Request, res: Response) => {
     if (req.path.startsWith('/api')) {
@@ -2669,7 +2725,10 @@ if (process.env.NODE_ENV === 'production') {
       return;
     }
     const indexHtml = getIndexHtmlTemplate();
-    res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
+    res.status(200).set({
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    }).send(indexHtml);
   });
 }
 

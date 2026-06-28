@@ -10,7 +10,6 @@ import {
   Outlet,
 } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
-import App from './App.tsx';
 import ListingsPage from './ListingsPage.tsx';
 import PublicSiteLayout from './components/layout/PublicSiteLayout.tsx';
 import type { Property } from './types.ts';
@@ -34,6 +33,15 @@ const BlogPostPage = React.lazy(() => import('./pages/BlogPostPage.tsx'));
 const BlogCategoryPage = React.lazy(() => import('./pages/BlogCategoryPage.tsx'));
 const BlogTagPage = React.lazy(() => import('./pages/BlogTagPage.tsx'));
 const InvestorDashboardPage = React.lazy(() => import('./pages/InvestorDashboardPage.tsx'));
+const AdminApp = React.lazy(() => import('./App.tsx'));
+
+function AdminRoute() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <AdminApp />
+    </Suspense>
+  );
+}
 
 function PageLoader() {
   return (
@@ -138,13 +146,13 @@ createRoot(document.getElementById('root')!).render(
     <Router>
       <HelmetProvider>
         <Routes>
-          <Route path="/admin/login" element={<App />} />
-          <Route path="/admin/dashboard" element={<App />} />
+          <Route path="/admin/login" element={<AdminRoute />} />
+          <Route path="/admin/dashboard" element={<AdminRoute />} />
           <Route path="/admin/ai-content" element={<Navigate to="/admin/seo/posts" replace />} />
-          <Route path="/admin/seo/posts" element={<App />} />
-          <Route path="/admin/seo/categories" element={<App />} />
-          <Route path="/admin/seo/tags" element={<App />} />
-          <Route path="/admin/seo/audit" element={<App />} />
+          <Route path="/admin/seo/posts" element={<AdminRoute />} />
+          <Route path="/admin/seo/categories" element={<AdminRoute />} />
+          <Route path="/admin/seo/tags" element={<AdminRoute />} />
+          <Route path="/admin/seo/audit" element={<AdminRoute />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to="/" replace />} />

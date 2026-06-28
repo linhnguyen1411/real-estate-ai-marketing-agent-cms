@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Property } from '../types';
 
 import { getPublicPropertySlug } from '../utils/propertyShare';
+import { getPropertyThumbnailUrl } from '../utils/propertyImage';
 
 import SeoHead from '../components/seo/SeoHead';
 
@@ -351,10 +352,12 @@ export default function CategoryListingsPage({
 
                   <img
 
-                    src={property.gallery_images?.[0] || property.images}
+                    src={getPropertyThumbnailUrl(property)}
 
                     alt={`${property.title} — ${property.location} — ${property.type}`}
 
+                    width={800}
+                    height={600}
                     loading="lazy"
 
                     decoding="async"
