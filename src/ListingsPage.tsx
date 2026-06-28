@@ -28,14 +28,16 @@ import LeadCaptureForm from './components/LeadCaptureForm';
 import { getPublicPropertySlug } from './utils/propertyShare';
 import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
 import SocialProof from './components/leadGen/SocialProof';
-import MultiStepInvestorForm from './components/leadGen/MultiStepInvestorForm';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from './leadGen/analytics';
+import { getPropertyGalleryUrls, getPropertyThumbnailUrl } from './utils/propertyImage';
 import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
 import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
 import { compareProjectDisplayOrder, getPropertyProjectLabel, matchProjectName, sortProjectEntries } from './seo/propertyCatalog';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
+
+const MultiStepInvestorForm = React.lazy(() => import('./components/leadGen/MultiStepInvestorForm'));
 
 interface ListingsPageProps {
   properties: Property[];
@@ -75,7 +77,7 @@ const facebookUrl = 'https://www.facebook.com/estoria.dn';
 const messengerUrl = 'https://m.me/estoria.dn';
 const phoneTel = '+84905777594';
 const phoneNumber = '0905 777 594';
-const heroImageUrl = 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=2200&q=90';
+const heroImageUrl = '/hero-da-nang.jpg';
 const publicListingsPath = '/';
 const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
 const DEFAULT_SEO_KEYWORDS = [
@@ -114,11 +116,7 @@ function getPropertyViewCount(property: Property) {
 }
 
 function getImage(property?: Property) {
-  if (!property) {
-    return 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
-  }
-
-  return property.gallery_images?.[0] || property.images || 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85';
+  return getPropertyThumbnailUrl(property);
 }
 
 function hasGoogleMap(property: Property) {
@@ -231,13 +229,15 @@ interface PropertyCardProps {
   onSelect: (property: Property) => void;
   viewCount: number;
   large?: boolean;
+  priorityLoad?: boolean;
 }
 
 const PropertyCard: React.FC<PropertyCardProps> = ({
   property,
   onSelect,
   viewCount,
-  large = false
+  large = false,
+  priorityLoad = false,
 }) => {
   const transactionType = getTransactionType(property);
 
@@ -255,7 +255,10 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
         <img
           src={getImage(property)}
           alt={property.title}
-          loading="lazy"
+          width={800}
+          height={large ? 800 : 600}
+          loading={priorityLoad ? 'eager' : 'lazy'}
+          fetchPriority={priorityLoad ? 'high' : 'auto'}
           decoding="async"
           className="block h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
@@ -341,7 +344,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   const [galleryIndex, setGalleryIndex] = useState(0);
   const selectedPropertyIdRef = React.useRef<string | null>(initialRouteProperty?.id ?? null);
   const localPropertiesRef = React.useRef(properties);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [guestProfileReady, setGuestProfileReady] = useState(false);
@@ -686,7 +689,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         '@context': 'https://schema.org',
         '@type': 'Product',
         name: selectedProperty.title,
-        image: selectedProperty.gallery_images?.length ? selectedProperty.gallery_images : [getImage(selectedProperty)],
+        image: getPropertyGalleryUrls(selectedProperty),
         description: seoDescription,
         category: selectedProperty.type,
         url: canonicalUrl,
@@ -915,7 +918,10 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           <img
             src={heroImageUrl}
             alt="Cảnh quan Đà Nẵng — Nam Đà Nẵng và ven biển"
+            width={1600}
+            height={1067}
             fetchPriority="high"
+            loading="eager"
             decoding="async"
             className="absolute inset-0 h-full w-full object-cover"
           />
@@ -1037,8 +1043,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-            {featuredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} large />
+            {featuredProperties.map((property, index) => (
+              <PropertyCard
+                key={property.id}
+                property={property}
+                onSelect={openProperty}
+                viewCount={getPropertyViewCount(property)}
+                large
+                priorityLoad={index === 0}
+              />
             ))}
           </div>
         </section>
@@ -1140,8 +1153,14 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {paginatedFilteredProperties.map(property => (
-              <PropertyCard key={property.id} property={property} onSelect={openProperty} viewCount={getPropertyViewCount(property)} />
+              {paginatedFilteredProperties.map((property, index) => (
+              <PropertyCard
+                key={property.id}
+                property={property}
+                onSelect={openProperty}
+                viewCount={getPropertyViewCount(property)}
+                priorityLoad={listingPage === 1 && index === 0 && featuredProperties.length === 0}
+              />
             ))}
           </div>
 
@@ -1235,7 +1254,9 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             </div>
 
             <div className="min-w-0">
-            <MultiStepInvestorForm source="homepage_contact" />
+            <React.Suspense fallback={<div className="h-48 animate-pulse rounded-lg bg-slate-100" aria-hidden />}>
+              <MultiStepInvestorForm source="homepage_contact" />
+            </React.Suspense>
             </div>
           </div>
         </section>
@@ -1397,8 +1418,10 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           <div key={selectedProperty.id} className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white pb-24 shadow-2xl sm:my-8 lg:pb-0">
             <div className="relative flex h-[62vh] max-h-[680px] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:h-auto">
               <img
-                src={selectedProperty.gallery_images?.[galleryIndex] || getImage(selectedProperty)}
+                src={getPropertyGalleryUrls(selectedProperty)[galleryIndex] || getImage(selectedProperty)}
                 alt={selectedProperty.title}
+                width={1280}
+                height={853}
                 decoding="async"
                 className="block h-full w-full object-contain"
               />
@@ -1409,18 +1432,24 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
               >
                 <X className="h-5 w-5" />
               </button>
-              {(selectedProperty.gallery_images || []).length > 1 && (
+              {getPropertyGalleryUrls(selectedProperty).length > 1 && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setGalleryIndex(index => index === 0 ? selectedProperty.gallery_images!.length - 1 : index - 1)}
+                    onClick={() => {
+                      const urls = getPropertyGalleryUrls(selectedProperty);
+                      setGalleryIndex(index => (index === 0 ? urls.length - 1 : index - 1));
+                    }}
                     className="absolute left-4 top-1/2 -translate-y-1/2 rounded-lg bg-white/90 p-2 text-slate-900"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGalleryIndex(index => (index + 1) % selectedProperty.gallery_images!.length)}
+                    onClick={() => {
+                      const urls = getPropertyGalleryUrls(selectedProperty);
+                      setGalleryIndex(index => (index + 1) % urls.length);
+                    }}
                     className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg bg-white/90 p-2 text-slate-900"
                   >
                     <ChevronRight className="h-5 w-5" />
