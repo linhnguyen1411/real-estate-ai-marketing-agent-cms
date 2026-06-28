@@ -38,8 +38,7 @@ if (result.failures.length > 0) {
 
 lines.push('## Magnets covered', '');
 lines.push('- `bao-cao-nam-da-nang-2026` — budget framework, remote ops risks, 90-day checklist');
-lines.push('- `top-20-co-hoi-dau-tu` — 20 opportunity groups (whyWatch + risks per group)');
-lines.push('- `ban-do-dau-tu-nam-da-nang` — zone notes');
+lines.push('- `top-20-co-hoi-dau-tu` — investment playbook (4 chapters, subsections + tables)');
 lines.push('');
 
 writeFileSync(docPath, `${lines.join('\n')}\n`, 'utf8');

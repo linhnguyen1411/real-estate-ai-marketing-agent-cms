@@ -1,6 +1,7 @@
 import type { LeadMagnetDefinition } from './leadMagnets';
 import type { LeadMagnetContent } from '../types/leadMagnetContent';
 import { LEAD_MAGNET_FRAMEWORK_SOURCE_LABEL } from '../types/leadMagnetContent';
+import { buildInvestmentPlaybook } from './buildInvestmentPlaybook';
 import { normalizeOpportunityGroups } from './normalizeOpportunityGroup';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -36,6 +37,46 @@ export function normalizeLeadMagnetContent(
       : LEAD_MAGNET_FRAMEWORK_SOURCE_LABEL;
 
   const type = typeof payload.type === 'string' ? payload.type : magnet.type;
+
+  if (magnet.slug === 'top-20-co-hoi-dau-tu') {
+    if (type === 'investment-playbook' && Array.isArray(payload.chapters)) {
+      return {
+        type: 'investment-playbook',
+        chapters: payload.chapters,
+        edition: String(payload.edition || ''),
+        publisher: String(payload.publisher || ''),
+        closingMessage: String(payload.closingMessage || ''),
+        source,
+        sourceLabel,
+      };
+    }
+    return { ...buildInvestmentPlaybook(), source, sourceLabel };
+  }
+
+  if (type === 'investment-playbook') {
+    if (!Array.isArray(payload.chapters)) return null;
+    return {
+      type: 'investment-playbook',
+      chapters: payload.chapters,
+      edition: String(payload.edition || ''),
+      publisher: String(payload.publisher || ''),
+      closingMessage: String(payload.closingMessage || ''),
+      source,
+      sourceLabel,
+    };
+  }
+
+  if (type === 'investment-report') {
+    if (!Array.isArray(payload.chapters)) return null;
+    return {
+      type: 'investment-report',
+      chapters: payload.chapters,
+      edition: String(payload.edition || 'Ấn bản Q2 · 2026'),
+      publisher: String(payload.publisher || 'Estoria Research · Nam Đà Nẵng'),
+      source,
+      sourceLabel,
+    };
+  }
 
   if (type === 'report' || magnet.type === 'report') {
     if (!Array.isArray(payload.sections)) return null;

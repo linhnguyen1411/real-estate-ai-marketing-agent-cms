@@ -3,8 +3,7 @@ export type LeadBudgetRange = 'under-3' | '3-5' | '5-10' | 'over-10';
 export type LeadChannel = 'google' | 'facebook' | 'tiktok' | 'google_ads' | 'direct' | 'website' | 'unknown';
 export type LeadMagnetSlug =
   | 'bao-cao-nam-da-nang-2026'
-  | 'top-20-co-hoi-dau-tu'
-  | 'ban-do-dau-tu-nam-da-nang';
+  | 'top-20-co-hoi-dau-tu';
 
 export type LeadEventType =
   | 'generate_lead'
@@ -16,7 +15,15 @@ export type LeadEventType =
   | 'download_report'
   | 'exit_intent_shown'
   | 'popup_shown'
-  | 'form_step';
+  | 'form_step'
+  | 'short_link_click'
+  | 'property_share_open'
+  | 'property_share_copy'
+  | 'property_share_facebook'
+  | 'property_share_zalo'
+  | 'property_share_tiktok'
+  | 'qr_view'
+  | 'qr_download';
 
 export interface InvestorLead {
   id: string;
@@ -33,6 +40,7 @@ export interface InvestorLead {
   utm_campaign?: string;
   page_path?: string;
   magnet_slug?: string;
+  short_link_slug?: string;
   investor_score: number;
   score_breakdown?: Record<string, number>;
   status: 'new' | 'contacted' | 'qualified' | 'closed' | 'lost';
@@ -67,6 +75,7 @@ export interface LeadCapturePayload {
   utm_campaign?: string;
   page_path?: string;
   magnet_slug?: string;
+  short_link_slug?: string;
   session_id?: string;
   tags?: string[];
   form_type?: 'simple' | 'multi_step' | 'exit_intent' | 'lead_magnet';

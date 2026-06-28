@@ -1,6 +1,6 @@
 import type { LeadCapturePayload } from '../src/types/investorLead';
 
-import { createCustomer, createInboxMessage } from './dbHelper';
+import { createCustomer } from './dbHelper';
 
 import {
 
@@ -129,32 +129,6 @@ export async function processLeadCapture(payload: LeadCapturePayload) {
     // customer may exist
 
   }
-
-
-
-  await createInboxMessage({
-
-    id: `in-lead-${Date.now()}`,
-
-    sender_name: lead.name,
-
-    platform: 'website',
-
-    message: buildCrmNotes(lead, payload),
-
-    intent: score.total >= 60 ? 'đặt lịch xem' : 'hỏi giá',
-
-    status: 'pending',
-
-    company_id: 'comp-da-nang',
-
-    owner_user_id: 'u-owner',
-
-    assigned_member_ids: [],
-
-    created_at: new Date().toISOString(),
-
-  });
 
 
 

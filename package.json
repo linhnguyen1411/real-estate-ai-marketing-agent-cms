@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "dev:restart": "powershell -ExecutionPolicy Bypass -File scripts/restart-dev.ps1",
+    "dev": "node scripts/free-dev-ports.mjs && node scripts/ensure-local-pg.mjs && tsx server.ts",
+    "dev:restart": "node scripts/free-dev-ports.mjs && node scripts/ensure-local-pg.mjs && tsx server.ts",
     "build": "prisma generate && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node scripts/start-production.cjs",
     "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",

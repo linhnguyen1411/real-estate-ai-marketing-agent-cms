@@ -1,11 +1,7 @@
 $ErrorActionPreference = "Stop"
-
-$ports = 3000, 24678
-foreach ($port in $ports) {
-  Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
-    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
-}
-
-Start-Sleep -Seconds 1
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
+Write-Host "==> Giai phong port dev + bat Postgres local (neu can)" -ForegroundColor Cyan
+node scripts/free-dev-ports.mjs
+node scripts/ensure-local-pg.mjs
+Start-Sleep -Seconds 1
 npm run dev

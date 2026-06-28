@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { Bot, Facebook, Menu, MessageCircle, Phone, X } from 'lucide-react';
 import { CONTACT, PRIMARY_CTA } from '../../seo/siteConfig';
@@ -6,9 +6,14 @@ import PublicNav, { PublicNavMobile } from './PublicNav';
 import SiteLogo from './SiteLogo';
 import PublicSiteFooter from './PublicSiteFooter';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from '../../leadGen/analytics';
+import { captureShortLinkFromUrl } from '../../utils/shortLinkAttribution';
 
 export default function PublicSiteLayout({ children }: { children?: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    captureShortLinkFromUrl();
+  }, []);
 
   return (
     <div className="public-shell min-h-screen">

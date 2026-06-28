@@ -16,6 +16,7 @@ import PublicSiteLayout from './components/layout/PublicSiteLayout.tsx';
 import type { Property } from './types.ts';
 import LeadGenProvider from './components/leadGen/LeadGenProvider.tsx';
 import { isPropertySlugCandidate } from './seo/routes.ts';
+import { captureShortLinkFromUrl } from './utils/shortLinkAttribution.ts';
 import './index.css';
 
 const AboutPage = React.lazy(() => import('./pages/AboutPage.tsx'));
@@ -42,22 +43,35 @@ function PageLoader() {
   );
 }
 
-async function fetchPublicProperties() {
+import { getEffectiveProjectDisplayOrder } from './seo/propertyCatalog.ts';
+
+type PublicPropertiesPayload = {
+  properties: Property[];
+  projectDisplayOrder: string[];
+};
+
+async function fetchPublicProperties(): Promise<PublicPropertiesPayload> {
   try {
     const response = await fetch('/api/public/properties');
     if (!response.ok) throw new Error('Failed to fetch properties');
     const json = await response.json();
-    return Array.isArray(json.data) ? json.data : [];
+    const properties = Array.isArray(json.data) ? json.data : [];
+    const projectDisplayOrder = getEffectiveProjectDisplayOrder({
+      project_display_order: Array.isArray(json.meta?.projectDisplayOrder)
+        ? json.meta.projectDisplayOrder
+        : undefined,
+    });
+    return { properties, projectDisplayOrder };
   } catch (error) {
     console.error('Error fetching properties:', error);
-    return [];
+    return { properties: [], projectDisplayOrder: getEffectiveProjectDisplayOrder() };
   }
 }
 
-let cachedPublicProperties: Property[] | null = null;
-let publicPropertiesPromise: Promise<Property[]> | null = null;
+let cachedPublicProperties: PublicPropertiesPayload | null = null;
+let publicPropertiesPromise: Promise<PublicPropertiesPayload> | null = null;
 
-function loadPublicProperties(): Promise<Property[]> {
+function loadPublicProperties(): Promise<PublicPropertiesPayload> {
   if (cachedPublicProperties) return Promise.resolve(cachedPublicProperties);
   if (!publicPropertiesPromise) {
     publicPropertiesPromise = fetchPublicProperties().then(data => {
@@ -70,12 +84,17 @@ function loadPublicProperties(): Promise<Property[]> {
 
 function PublicListingsShell() {
   const { propertySlug } = useParams();
-  const [properties, setProperties] = React.useState<Property[]>(cachedPublicProperties ?? []);
+  const [properties, setProperties] = React.useState<Property[]>(cachedPublicProperties?.properties ?? []);
+  const [projectDisplayOrder, setProjectDisplayOrder] = React.useState<string[]>(
+    cachedPublicProperties?.projectDisplayOrder ?? getEffectiveProjectDisplayOrder(),
+  );
   const [loading, setLoading] = React.useState(!cachedPublicProperties);
 
   React.useEffect(() => {
+    captureShortLinkFromUrl();
     loadPublicProperties().then(data => {
-      setProperties(data);
+      setProperties(data.properties);
+      setProjectDisplayOrder(data.projectDisplayOrder);
       setLoading(false);
     });
   }, []);
@@ -86,7 +105,11 @@ function PublicListingsShell() {
 
   return (
     <>
-      <ListingsPage properties={properties} propertySlug={propertySlug} />
+      <ListingsPage
+        properties={properties}
+        propertySlug={propertySlug}
+        projectDisplayOrder={projectDisplayOrder}
+      />
       <Outlet />
     </>
   );

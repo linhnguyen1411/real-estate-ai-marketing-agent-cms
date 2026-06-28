@@ -1,76 +1,33 @@
-import React from 'react';
-import { Copy, Facebook, Music2, Share2 } from 'lucide-react';
-import { Property } from '../types';
-import { shareProperty } from '../utils/propertyShare';
+import React, { useState } from 'react';
+import { Share2 } from 'lucide-react';
+import type { Property } from '../types';
+import PropertyShareModal from './PropertyShareModal';
 
 interface PropertyShareActionsProps {
   property: Property;
   className?: string;
   buttonClassName?: string;
-  onCopied?: () => void;
-  onError?: (error: unknown) => void;
 }
-
-const baseButtonClassName = 'inline-flex items-center justify-center rounded-lg border text-xs font-bold transition';
 
 export default function PropertyShareActions({
   property,
   className = '',
-  buttonClassName = 'h-9 px-3 border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700',
-  onCopied,
-  onError
+  buttonClassName = 'h-9 px-3 border-slate-200 bg-white text-slate-700 hover:border-invest-blue/30 hover:bg-invest-blue/5 hover:text-invest-blue',
 }: PropertyShareActionsProps) {
-  const runShare = (event: React.MouseEvent<HTMLButtonElement>, platform: Parameters<typeof shareProperty>[1]) => {
-    event.preventDefault();
-    event.stopPropagation();
-    shareProperty(property, platform, { onCopied, onError });
-  };
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+    <div className={className}>
       <button
         type="button"
-        onClick={event => runShare(event, 'native')}
-        className={`${baseButtonClassName} ${buttonClassName}`}
-        title="Chia sẻ nhanh"
+        onClick={() => setOpen(true)}
+        className={`inline-flex items-center justify-center gap-1.5 rounded-lg border text-xs font-bold transition ${buttonClassName}`}
+        title="Copy link chia sẻ"
       >
         <Share2 className="h-3.5 w-3.5" />
-        <span className="ml-1.5">Share</span>
+        Chia sẻ
       </button>
-      <button
-        type="button"
-        onClick={event => runShare(event, 'facebook')}
-        className={`${baseButtonClassName} ${buttonClassName}`}
-        title="Chia sẻ Facebook"
-      >
-        <Facebook className="h-3.5 w-3.5" />
-        <span className="ml-1.5">Facebook</span>
-      </button>
-      <button
-        type="button"
-        onClick={event => runShare(event, 'zalo')}
-        className={`${baseButtonClassName} ${buttonClassName}`}
-        title="Chia sẻ Zalo"
-      >
-        Zalo
-      </button>
-      <button
-        type="button"
-        onClick={event => runShare(event, 'tiktok')}
-        className={`${baseButtonClassName} ${buttonClassName}`}
-        title="Copy caption và mở TikTok"
-      >
-        <Music2 className="h-3.5 w-3.5" />
-        <span className="ml-1.5">TikTok</span>
-      </button>
-      <button
-        type="button"
-        onClick={event => runShare(event, 'copy')}
-        className={`${baseButtonClassName} ${buttonClassName}`}
-        title="Copy link sản phẩm"
-      >
-        <Copy className="h-3.5 w-3.5" />
-      </button>
+      <PropertyShareModal property={property} open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }

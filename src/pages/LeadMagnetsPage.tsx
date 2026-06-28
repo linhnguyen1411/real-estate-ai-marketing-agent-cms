@@ -18,7 +18,7 @@ export function LeadMagnetsHubPage() {
     <>
       <SeoHead
         title="Tài Liệu Đầu Tư Nam Đà Nẵng | Báo Cáo & Khung Phân Tích"
-        description="Tải báo cáo thị trường 2026, khung 20 nhóm cơ hội đầu tư và bản đồ Nam Đà Nẵng — miễn phí cho nhà đầu tư."
+        description="Tải báo cáo thị trường 2026 và bản đồ cơ hội đầu tư — miễn phí cho nhà đầu tư."
         path="/tai-lieu-dau-tu"
         schemas={[
           ...buildDefaultPageSchemas(breadcrumbs, origin),
@@ -29,9 +29,9 @@ export function LeadMagnetsHubPage() {
         <Breadcrumbs items={breadcrumbs} className="mb-6" />
         <h1 className="text-3xl font-extrabold text-slate-950">Trung tâm tài liệu đầu tư</h1>
         <p className="mt-3 text-lg text-slate-600">
-          Nhận báo cáo, khung phân tích và bản đồ định hướng — đổi lấy thông tin liên hệ. Không spam.
+          Nhận báo cáo và sổ tay đầu tư — đổi lấy thông tin liên hệ. Không spam.
         </p>
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:grid-cols-2">
           {LEAD_MAGNETS.map(magnet => (
             <Link
               key={magnet.slug}
@@ -85,7 +85,7 @@ export function LeadMagnetDetailPage() {
           buildBreadcrumbSchema(breadcrumbs, origin),
         ]}
       />
-      <div className="mx-auto max-w-4xl px-4 py-10">
+      <div className={`mx-auto px-4 py-10 ${magnet.slug === 'bao-cao-nam-da-nang-2026' || magnet.slug === 'top-20-co-hoi-dau-tu' ? 'max-w-6xl' : 'max-w-4xl'}`}>
         <Breadcrumbs items={breadcrumbs} className="mb-6" />
         <span className="text-3xl">{magnet.icon}</span>
         <h1 className="mt-3 text-2xl font-extrabold text-slate-950 sm:text-3xl">{magnet.title}</h1>

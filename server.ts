@@ -3,6 +3,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { execSync } from 'node:child_process';
+import type { Server } from 'node:http';
 import { 
   getCustomers, createCustomer, updateCustomer, deleteCustomer,
   getProperties, createProperty, updateProperty, deleteProperty,
@@ -48,6 +50,13 @@ import { isReservedSlug } from './src/seo/routes';
 import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from './server/investorLeadRoutes';
 import { registerBlogAdminRoutes, registerBlogPublicRoutes } from './server/blogRoutes';
 import { getBlogPostBySlug, getPublishedBlogPostsForSitemap } from './server/blogDb';
+import { resolveBlogShareImage, guessImageMimeType } from './src/seo/shareImage';
+import { ogImageDimensions, readImageDimensionsFromBuffer } from './server/seo/ogImageMeta';
+import {
+  registerShortLinkAdminRoutes,
+  registerShortLinkPublicRoutes,
+  registerShortLinkRedirect,
+} from './server/shortLink/shortLinkRoutes';
 import { processLeadCapture } from './server/investorLeadService';
 
 const app = express();
@@ -503,7 +512,16 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 
 app.get('/api/public/properties', (req: Request, res: Response) => {
   const publicProperties = getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'));
-  res.json({ status: 'success', data: publicProperties });
+  const settings = getSettings();
+  res.json({
+    status: 'success',
+    data: publicProperties,
+    meta: {
+      projectDisplayOrder: settings.project_display_order?.length
+        ? settings.project_display_order
+        : undefined,
+    },
+  });
 });
 
 app.get('/api/public/seo', async (req: Request, res: Response) => {
@@ -974,6 +992,8 @@ app.post('/api/public/chat', async (req: Request, res: Response) => {
 });
 
 registerBlogPublicRoutes(app);
+registerShortLinkPublicRoutes(app, getProperties);
+registerShortLinkRedirect(app, getProperties);
 app.use('/api/public', createInvestorLeadPublicRouter());
 
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -999,6 +1019,7 @@ app.get('/api/auth/me', (req: Request, res: Response) => {
 
 registerInvestorLeadAdminRoutes(app);
 registerBlogAdminRoutes(app);
+registerShortLinkAdminRoutes(app);
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);
@@ -2275,10 +2296,22 @@ function getPropertyShareMeta(property: Property, origin: string) {
 
 function renderIndexWithMeta(
   indexHtml: string,
-  meta: { title: string; description: string; image: string; url: string; keywords: string; ogType?: string },
+  meta: {
+    title: string;
+    description: string;
+    image: string;
+    url: string;
+    keywords: string;
+    ogType?: string;
+    imageWidth?: number;
+    imageHeight?: number;
+    imageType?: string;
+    publishedTime?: string;
+  },
   schemas: Record<string, unknown>[] = []
 ) {
   const ogType = meta.ogType || (meta.url.includes('/') && meta.url.split('/').filter(Boolean).length > 1 ? 'article' : 'website');
+  const imageType = meta.imageType || (meta.image ? guessImageMimeType(meta.image) : '');
   const tags = [
     `<title>${escapeHtml(meta.title)}</title>`,
     `<meta name="description" content="${escapeHtml(meta.description)}" />`,
@@ -2292,9 +2325,12 @@ function renderIndexWithMeta(
     `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
     meta.image ? `<meta property="og:image" content="${escapeHtml(meta.image)}" />` : '',
-    meta.image ? '<meta property="og:image:secure_url" content="' + escapeHtml(meta.image) + '" />' : '',
-    meta.image ? '<meta property="og:image:type" content="image/jpeg" />' : '',
-    meta.image ? '<meta property="og:image:alt" content="' + escapeHtml(meta.title) + '" />' : '',
+    meta.image ? `<meta property="og:image:secure_url" content="${escapeHtml(meta.image)}" />` : '',
+    meta.image && imageType ? `<meta property="og:image:type" content="${escapeHtml(imageType)}" />` : '',
+    meta.image && meta.imageWidth ? `<meta property="og:image:width" content="${meta.imageWidth}" />` : '',
+    meta.image && meta.imageHeight ? `<meta property="og:image:height" content="${meta.imageHeight}" />` : '',
+    meta.image ? `<meta property="og:image:alt" content="${escapeHtml(meta.title)}" />` : '',
+    meta.publishedTime ? `<meta property="article:published_time" content="${escapeHtml(meta.publishedTime)}" />` : '',
     '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
@@ -2422,13 +2458,24 @@ async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
           const postPath = `/tin-tuc/${post.slug}`;
           const keywords = (post.tags || []).map((tag: { name: string }) => tag.name).join(', ');
           const description = post.metaDescription || post.excerpt;
+          const image = resolveBlogShareImage({
+            coverImage: post.coverImage,
+            content: post.content,
+            contentHtml: post.contentHtml,
+            origin,
+          });
+          const dims = ogImageDimensions(image, origin);
           const meta = {
             title: post.metaTitle || post.title,
             description,
-            image: post.coverImage ? absoluteUrl(post.coverImage, origin) : `${origin}/logo.jpg`,
+            image,
             url: `${origin}${postPath}`,
             keywords,
             ogType: 'article',
+            imageWidth: dims.width,
+            imageHeight: dims.height,
+            imageType: guessImageMimeType(image),
+            publishedTime: post.publishedAt || undefined,
           };
           const breadcrumbs = [
             { name: 'Trang chủ', path: '/' },
@@ -2469,6 +2516,11 @@ async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
   const property = findPublicPropertyBySlug(pathSlug);
   if (property) {
     const shareMeta = getPropertyShareMeta(property, origin);
+    const image = shareMeta.image;
+    const dataUrlMatch = (property.gallery_images?.[0] || property.images || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    const dims = dataUrlMatch
+      ? readImageDimensionsFromBuffer(Buffer.from(dataUrlMatch[1], 'base64')) || ogImageDimensions(image, origin)
+      : ogImageDimensions(image, origin);
     const breadcrumbs = [
       { name: 'Trang chủ', path: '/' },
       { name: 'Bất động sản', path: '/bat-dong-san' },
@@ -2479,7 +2531,13 @@ async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
       buildBreadcrumbSchema(breadcrumbs, origin),
       ...buildPropertySchemas(property, origin),
     ];
-    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, { ...shareMeta, ogType: 'product' }, schemas));
+    await sendIndexHtml(req, res, renderIndexWithMeta(indexHtml, {
+      ...shareMeta,
+      ogType: 'product',
+      imageWidth: dims.width,
+      imageHeight: dims.height,
+      imageType: guessImageMimeType(image),
+    }, schemas));
     return true;
   }
 
@@ -2621,6 +2679,9 @@ async function setupViteDevServer() {
     configFile: path.join(process.cwd(), 'vite.config.ts'),
     server: {
       middlewareMode: true,
+      hmr: {
+        port: 0,
+      },
       watch: {
         ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log'],
       },
@@ -2638,23 +2699,59 @@ async function setupViteDevServer() {
   });
 }
 
-function startHttpServer() {
-  const server = app.listen(PORT, HOST, () => {
-    console.log('====================================================');
-    console.log(`Real Estate AI CMS is listening on port ${PORT} (PostgreSQL)`);
-    console.log(`Live Preview at: http://localhost:${PORT}`);
-    console.log('====================================================');
+function freeDevPortsSync() {
+  try {
+    execSync('node scripts/free-dev-ports.mjs', { stdio: 'inherit', cwd: process.cwd() });
+  } catch {
+    /* best effort */
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+
+function listenHttpServer(): Promise<Server> {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(PORT, HOST, () => {
+      console.log('====================================================');
+      console.log(`Real Estate AI CMS is listening on port ${PORT} (PostgreSQL)`);
+      console.log(`Live Preview at: http://localhost:${PORT}`);
+      console.log('====================================================');
+      resolve(server);
+    });
+    server.on('error', (error: NodeJS.ErrnoException) => reject(error));
   });
-  server.on('error', (error: NodeJS.ErrnoException) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(
-        `[Server] Port ${PORT} đang được dùng. Chạy: npm run dev:restart`,
-      );
-    } else {
-      console.error('[Server] Không khởi động được HTTP:', error);
+}
+
+async function startHttpServerWithRetry() {
+  try {
+    await listenHttpServer();
+    return;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (process.env.NODE_ENV === 'production' || err.code !== 'EADDRINUSE') {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`[Server] Port ${PORT} đang được dùng. Chạy: npm run dev:restart`);
+      } else {
+        console.error('[Server] Không khởi động được HTTP:', err);
+      }
+      process.exit(1);
     }
-    process.exit(1);
-  });
+    console.warn(`[Server] Port ${PORT} bận — giải phóng và thử lại...`);
+    freeDevPortsSync();
+    await sleep(1000);
+    try {
+      await listenHttpServer();
+    } catch (retryError) {
+      const retryErr = retryError as NodeJS.ErrnoException;
+      console.error(
+        `[Server] Vẫn không bind được port ${PORT}. Chạy: npm run dev:restart`,
+        retryErr.message || retryErr,
+      );
+      process.exit(1);
+    }
+  }
 }
 
 async function bootstrap(): Promise<boolean> {
@@ -2681,16 +2778,21 @@ async function bootstrap(): Promise<boolean> {
 }
 
 async function main() {
+  if (process.env.NODE_ENV !== 'production') {
+    freeDevPortsSync();
+    await sleep(400);
+  }
+
   await bootstrap();
 
   if (process.env.NODE_ENV === 'production') {
-    startHttpServer();
+    await startHttpServerWithRetry();
     return;
   }
 
   try {
     await setupViteDevServer();
-    startHttpServer();
+    await startHttpServerWithRetry();
   } catch (error) {
     console.error('Vite server fails construction:', error);
     process.exit(1);

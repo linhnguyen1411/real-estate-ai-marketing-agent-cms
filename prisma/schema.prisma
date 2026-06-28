@@ -114,6 +114,7 @@ model Lead {
   utmCampaign   String?  @map("utm_campaign")
   pagePath      String?  @map("page_path")
   magnetSlug    String?  @map("magnet_slug")
+  shortLinkSlug String?  @map("short_link_slug")
   investorScore Int      @default(0) @map("investor_score")
   status        String   @default("new")
   accessToken   String?  @map("access_token")
@@ -126,6 +127,7 @@ model Lead {
   events  LeadEvent[]
   tags    LeadTag[]
 
+  @@index([shortLinkSlug])
   @@index([phone])
   @@index([investorScore])
   @@index([status])
@@ -352,4 +354,47 @@ model BlogPostAiDraft {
 
   @@index([status, createdAt])
   @@map("blog_post_ai_drafts")
+}
+
+model ShortLink {
+  id          String   @id
+  slug        String   @unique
+  targetUrl   String   @map("target_url") @db.Text
+  title       String?
+  description String?  @db.Text
+  entityType  String?  @map("entity_type")
+  entityId    String?  @map("entity_id")
+  campaign    String?
+  utmSource   String?  @map("utm_source")
+  utmMedium   String?  @map("utm_medium")
+  utmCampaign String?  @map("utm_campaign")
+  isActive    Boolean  @default(true) @map("is_active")
+  expiresAt   DateTime? @map("expires_at")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  clicks      ShortLinkClick[]
+
+  @@index([entityType, entityId])
+  @@index([isActive])
+  @@map("short_links")
+}
+
+model ShortLinkClick {
+  id          String    @id
+  shortLinkId String    @map("short_link_id")
+  ipHash      String?   @map("ip_hash")
+  userAgent   String?   @map("user_agent") @db.Text
+  device      String?
+  browser     String?
+  os          String?
+  referer     String?   @db.Text
+  utmSource   String?   @map("utm_source")
+  utmMedium   String?   @map("utm_medium")
+  utmCampaign String?   @map("utm_campaign")
+  clickedAt   DateTime  @default(now()) @map("clicked_at")
+  shortLink   ShortLink @relation(fields: [shortLinkId], references: [id], onDelete: Cascade)
+
+  @@index([shortLinkId, clickedAt])
+  @@map("short_link_clicks")
 }

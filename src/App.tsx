@@ -41,12 +41,14 @@ import {
   Globe,
   ShieldCheck,
   UserPlus,
+  Building2,
   Menu,
   GripVertical,
   Newspaper,
   FolderOpen,
   Tags,
-  FileSearch
+  FileSearch,
+  Link2
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
@@ -56,6 +58,15 @@ import MarkdownEditor from './components/MarkdownEditor';
 import { uploadContentImage } from './services/blogApi';
 import { resizeImageFile } from './utils/resizeImageFile';
 import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
+import ShortLinksPanel from './components/admin/ShortLinksPanel';
+import AdminPropertyDirectory from './components/admin/AdminPropertyDirectory';
+import AdminProjectsPanel from './components/admin/AdminProjectsPanel';
+import {
+  countPropertyStatuses,
+  getPropertySaleStatus,
+  isPublicProperty,
+  matchesAdminPropertyStatusFilter,
+} from './utils/propertyStatus';
 import LeadMagnetContentAdmin from './components/admin/LeadMagnetContentAdmin';
 import { getPublicPropertyUrl } from './utils/propertyShare';
 import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
@@ -94,7 +105,7 @@ import {
   verifyContent
 } from './services/api';
 import SeoContentAdmin from './components/admin/SeoContentAdmin';
-import { MARKET_ZONE_OPTIONS, PROPERTY_PROJECT_GROUPS } from './seo/propertyCatalog';
+import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
 
 const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
 const TRANSACTION_TYPE_OPTIONS = ['Bán', 'Cho thuê'];
@@ -247,7 +258,7 @@ export default function App() {
     const platforms: Post['platform'][] = ['facebook', 'zalo', 'tiktok', 'website'];
     const postViews = posts.reduce((sum, post) => sum + Number(post.engagement?.views || 0), 0);
     const topProperties = properties
-      .filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available'))
+      .filter(isPublicProperty)
       .slice()
       .sort((a, b) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
       .slice(0, 10)
@@ -277,7 +288,7 @@ export default function App() {
           warm: customers.filter(customer => customer.status === 'warm').length,
           cold: customers.filter(customer => customer.status === 'new').length
         },
-        totalProperties: properties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')).length,
+        totalProperties: properties.filter(isPublicProperty).length,
         totalPosts: posts.length,
         pendingInbox: inbox.filter(message => message.status === 'pending').length,
         siteViews: Number(settings.site_view_count || 0),
@@ -773,7 +784,7 @@ export default function App() {
 
   const openEditPropertyModal = (property: Property) => {
     setEditingProperty(property);
-    const knownProjects = PROPERTY_PROJECT_GROUPS.flatMap(group => group.projects);
+    const knownProjects = getEffectiveProjectGroups(settings).flatMap(group => group.projects);
     const hasKnownProject = property.project_name ? knownProjects.includes(property.project_name) : false;
     setCustomProjectMode(Boolean(property.project_name && !hasKnownProject));
     setNewPropertyForm({
@@ -801,7 +812,7 @@ export default function App() {
       is_featured: Boolean(property.is_featured),
       selling_points: (property.selling_points || []).join('\n'),
       market_zone: property.market_zone || '',
-      project_name: property.project_name || '',
+      project_name: normalizeProjectName(property.project_name) || property.project_name || '',
     });
     setShowAddPropertyModal(true);
   };
@@ -1247,6 +1258,20 @@ export default function App() {
     }
   };
 
+  const handleSaveProjectCatalog = async (patch: Partial<AppSettings>) => {
+    setActionLoading('save-projects');
+    try {
+      const updatedSettings = await saveSettings({ ...settings, ...patch });
+      setSettings(updatedSettings);
+      showToast('Đã lưu danh mục và thứ tự dự án.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Không thể lưu dự án.', 'error');
+      throw e;
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Filter lists based on lookup
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1255,9 +1280,12 @@ export default function App() {
     c.property_type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const propertyStatusCounts = useMemo(() => countPropertyStatuses(properties), [properties]);
+  const projectCatalogGroups = useMemo(() => getEffectiveProjectGroups(settings), [settings.project_groups]);
+
   const filteredProperties = properties.filter(p => {
     const normalizedSearch = searchQuery.toLowerCase();
-    const saleStatus = p.sale_status || 'available';
+    const saleStatus = getPropertySaleStatus(p);
     const searchableText = [
       p.title,
       p.location,
@@ -1273,9 +1301,7 @@ export default function App() {
     const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
     const matchesType = propertyFilters.type === 'all' || p.type === propertyFilters.type;
     const matchesTransaction = propertyFilters.transactionType === 'all' || (p.transaction_type || 'Bán') === propertyFilters.transactionType;
-    const matchesStatus =
-      propertyFilters.status === 'all'
-        || (propertyFilters.status === 'visible' ? saleStatus !== 'hidden' : saleStatus === propertyFilters.status);
+    const matchesStatus = matchesAdminPropertyStatusFilter(p, propertyFilters.status);
     const matchesPrice =
       propertyFilters.price === 'all'
         || (propertyFilters.price === 'under3' && p.price < 3)
@@ -1501,8 +1527,10 @@ export default function App() {
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
               { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
+              { id: 'short-links', label: 'Short Links', icon: Link2 },
               { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
-              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: properties.length },
+              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: propertyStatusCounts.adminVisible },
+              { id: 'projects', label: 'Quản trị dự án', icon: Building2 },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
               { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
             ].map(item => {
@@ -2211,9 +2239,26 @@ export default function App() {
                 </div>
               )}
 
+              {activeTab === 'short-links' && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <ShortLinksPanel />
+                </div>
+              )}
+
               {activeTab === 'lead-magnet-content' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <LeadMagnetContentAdmin />
+                </div>
+              )}
+
+              {activeTab === 'projects' && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <AdminProjectsPanel
+                    properties={properties}
+                    settings={settings}
+                    saving={actionLoading === 'save-projects'}
+                    onSave={handleSaveProjectCatalog}
+                  />
                 </div>
               )}
 
@@ -2291,7 +2336,7 @@ export default function App() {
                           onChange={(e) => setPropertyFilters({ ...propertyFilters, status: e.target.value })}
                           className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
                         >
-                          <option value="visible">Mặc định: không hiện BĐS đã ẩn</option>
+                          <option value="visible">Mặc định: đang bán + đã bán (không gồm ẩn)</option>
                           <option value="available">Đang bán/cho thuê</option>
                           <option value="sold">Đã bán/đã thuê</option>
                           <option value="hidden">Chỉ BĐS đã ẩn</option>
@@ -2299,8 +2344,26 @@ export default function App() {
                         </select>
                       </div>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-3 text-2xs text-slate-500">
-                      <span>Đang hiển thị {filteredProperties.length}/{properties.length} bất động sản.</span>
+                    <div className="mt-3 flex flex-col gap-2 text-2xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <p>
+                          <span className="font-semibold text-slate-300">{filteredProperties.length}</span> kết quả
+                          sau bộ lọc
+                          {propertyFilters.status === 'visible' &&
+                          propertyFilters.price === 'all' &&
+                          propertyFilters.area === 'all' &&
+                          propertyFilters.type === 'all' &&
+                          propertyFilters.transactionType === 'all' &&
+                          !searchQuery
+                            ? ` (mặc định: không gồm ${propertyStatusCounts.hidden} BĐS đã ẩn)`
+                            : null}
+                        </p>
+                        <p>
+                          Kho: {propertyStatusCounts.available} đang bán/cho thuê ·{' '}
+                          {propertyStatusCounts.sold} đã bán · {propertyStatusCounts.hidden} đã ẩn ·{' '}
+                          {propertyStatusCounts.publicVisible} hiện trên web
+                        </p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setPropertyFilters({ price: 'all', area: 'all', type: 'all', transactionType: 'all', status: 'visible' })}
@@ -2311,268 +2374,24 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Property list grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredProperties.map((prop) => (
-                      <div key={prop.id} className={`bg-slate-900/40 rounded-2xl border overflow-hidden flex flex-col justify-between hover:border-slate-800 transition-all shadow-sm hover:shadow-xl group ${
-                        prop.sale_status === 'hidden'
-                          ? 'border-amber-700/50 opacity-70'
-                          : prop.sale_status === 'sold'
-                            ? 'border-emerald-700/50 opacity-80'
-                            : 'border-slate-900'
-                      }`}>
-                        
-                        {/* Hero Image - Square Gallery */}
-                        <div className="relative aspect-square bg-slate-950 overflow-hidden shrink-0 group/gallery">
-                          {prop.gallery_images?.length ? (
-                            <>
-                              <img 
-                                src={prop.gallery_images[propertyGalleryIndex[prop.id] || 0]} 
-                                alt={prop.title} 
-                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-500 opacity-90"
-                              />
-                              {prop.gallery_images.length > 1 && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const currentIndex = propertyGalleryIndex[prop.id] || 0;
-                                      const newIndex = currentIndex === 0 ? prop.gallery_images!.length - 1 : currentIndex - 1;
-                                      setPropertyGalleryIndex({ ...propertyGalleryIndex, [prop.id]: newIndex });
-                                    }}
-                                    className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white p-1.5 rounded-lg opacity-0 group-hover/gallery:opacity-100 transition-opacity"
-                                  >
-                                    <ChevronLeft className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const currentIndex = propertyGalleryIndex[prop.id] || 0;
-                                      const newIndex = (currentIndex + 1) % prop.gallery_images!.length;
-                                      setPropertyGalleryIndex({ ...propertyGalleryIndex, [prop.id]: newIndex });
-                                    }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white p-1.5 rounded-lg opacity-0 group-hover/gallery:opacity-100 transition-opacity"
-                                  >
-                                    <ChevronRight className="w-4 h-4" />
-                                  </button>
-                                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white px-2 py-1 rounded-lg text-2xs font-bold">
-                                    {(propertyGalleryIndex[prop.id] || 0) + 1} / {prop.gallery_images.length}
-                                  </div>
-                                </>
-                              )}
-                            </>
-                          ) : (
-                            <img 
-                              src={prop.images} 
-                              alt={prop.title} 
-                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-500 opacity-80"
-                            />
-                          )}
-                          <div className="absolute left-4 top-4 flex max-w-[calc(100%-7rem)] flex-wrap items-center gap-1.5">
-                            <div className="bg-slate-950/95 border border-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-400 capitalize">
-                            {(prop.transaction_type || 'Bán')} • {prop.type}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePropertyFeatured(prop)}
-                              disabled={actionLoading === `featured-prop-${prop.id}`}
-                              title={prop.is_featured ? 'Bỏ gắn nổi bật' : 'Gắn BĐS nổi bật'}
-                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-2xs font-extrabold transition-all ${
-                                prop.is_featured
-                                  ? 'border-rose-500/70 bg-rose-600 text-white shadow-sm shadow-rose-600/20'
-                                  : 'border-slate-800 bg-slate-950/90 text-slate-400 hover:border-rose-500/60 hover:text-rose-300'
-                              }`}
-                            >
-                              <Sparkles className="h-3 w-3" />
-                              {prop.is_featured ? 'Nổi bật' : 'Bỏ nổi bật'}
-                            </button>
-                          </div>
-                          {prop.sale_status === 'sold' && (
-                            <div className="absolute top-14 left-4 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
-                              ĐÃ BÁN
-                            </div>
-                          )}
-                          {prop.sale_status === 'hidden' && (
-                            <div className="absolute top-14 left-4 bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
-                              ĐÃ ẨN
-                            </div>
-                          )}
-                          <div className="absolute top-4 right-4 bg-rose-600 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold tracking-tight">
-                            {prop.price} Tỷ VNĐ
-                          </div>
-                          
-                          <div className="absolute bottom-4 left-4 bg-slate-950/80 px-2.5 py-1 rounded-lg text-2xs text-slate-300 flex items-center gap-1 border border-slate-900">
-                            <MapPin className="w-3.5 h-3.5 text-rose-500" /> {prop.direction}
-                          </div>
-                        </div>
-
-                        {/* Description */}
-                        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                          <div className="space-y-2">
-                            <h3 className="line-clamp-2 text-md font-bold text-white leading-relaxed group-hover:text-rose-400 transition-colors">
-                              {prop.title}
-                            </h3>
-                            <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                              📍 {prop.location}
-                            </p>
-                            {Number.isFinite(prop.map_latitude) && Number.isFinite(prop.map_longitude) && (
-                              <span className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-950/40 px-2 py-1 text-2xs font-bold text-blue-300">
-                                <MapPin className="h-3 w-3" />
-                                Có Google Map
-                              </span>
-                            )}
-                            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-2xs font-bold text-slate-400">
-                              <TrendingUp className="h-3 w-3" />
-                              {prop.public_view_count || 0} lượt xem
-                            </span>
-                            <MarkdownContent
-                              content={prop.rich_description || prop.description}
-                              compact
-                              className="line-clamp-3 text-xs leading-relaxed text-slate-400"
-                            />
-                          </div>
-
-                          {prop.gallery_images?.length ? (
-                            <div className="flex gap-2 overflow-x-auto pb-1">
-                              {prop.gallery_images.map((img, idx) => (
-                                <img key={idx} src={img} alt={`${prop.title} ${idx + 1}`} className="w-16 h-16 aspect-square rounded-lg object-cover object-center border border-slate-800 shrink-0" />
-                              ))}
-                            </div>
-                          ) : null}
-
-                          <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-2.5 rounded-xl border border-slate-900/80 text-center text-xs font-semibold">
-                            <div>
-                              <span className="block text-2xs text-slate-500">Diện tích</span>
-                              <span className="text-slate-200">{prop.area} m²</span>
-                            </div>
-                            <div>
-                              <span className="block text-2xs text-slate-500">Pháp lý</span>
-                              <span className="text-slate-200 truncate block">{prop.legal_status}</span>
-                            </div>
-                            <div>
-                              <span className="block text-2xs text-slate-500">Lòng đường</span>
-                              <span className="text-slate-200">{prop.road_width} m</span>
-                            </div>
-                          </div>
-
-                          {(prop.floor_area || prop.floors || prop.bedrooms || prop.bathrooms || prop.garage || prop.pool) && (
-                            <div className="flex flex-wrap gap-1.5 text-2xs">
-                              {prop.floor_area ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Sàn {prop.floor_area} m²</span> : null}
-                              {prop.floors ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.floors} tầng</span> : null}
-                              {prop.bedrooms ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.bedrooms} PN</span> : null}
-                              {prop.bathrooms ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">{prop.bathrooms} WC</span> : null}
-                              {prop.garage ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Gara</span> : null}
-                              {prop.pool ? <span className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-400">Hồ bơi</span> : null}
-                            </div>
-                          )}
-
-                          {/* Key Selling Points Bullet points */}
-                          <div className="space-y-1">
-                            <span className="block text-2xs font-semibold uppercase text-slate-500">Đặc điểm nổi trội:</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {prop.selling_points.map((pt, idx) => (
-                                <span key={idx} className="bg-slate-950 text-slate-400 border border-slate-900 text-2xs px-2 py-0.5 rounded-lg">
-                                  ✓ {pt}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {prop.internal_notes && (
-                            <div className="bg-slate-950/50 border border-slate-900 rounded-xl p-3">
-                              <span className="block text-2xs font-bold text-amber-400 uppercase mb-1">Ghi chú AI/Search</span>
-                              <p className="text-2xs text-slate-400 leading-relaxed line-clamp-3">{prop.internal_notes}</p>
-                            </div>
-                          )}
-
-                          {/* AI generated configuration buttons */}
-                          <div className="pt-4 border-t border-slate-900/80 space-y-3">
-                            <div className="grid grid-cols-3 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openEditPropertyModal(prop)}
-                                className="bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                                <span>Chỉnh sửa</span>
-                              </button>
-
-                              <label className="cursor-pointer bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all">
-                                <ImageIcon className="w-3.5 h-3.5" />
-                                <span>{actionLoading === `upload-prop-${prop.id}` ? 'Đang upload...' : 'Upload ảnh'}</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  className="hidden"
-                                  onChange={(e) => handlePropertyImageUpload(prop, e.target.files)}
-                                />
-                              </label>
-
-                              <button
-                                type="button"
-                                onClick={() => handleCopyText(buildPropertyCopyText(prop))}
-                                className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copy mô tả</span>
-                              </button>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="text-2xs text-slate-500 font-mono">
-                              {prop.ai_posts?.facebook ? (
-                                <span className="text-emerald-400 flex items-center gap-1 font-bold">✓ Đã tối ưu AI</span>
-                              ) : (
-                                <span className="text-slate-500 italic block">Chưa tối ưu marketing</span>
-                              )}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePropertySold(prop)}
-                              disabled={actionLoading === `sold-prop-${prop.id}`}
-                              className={`border font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
-                                prop.sale_status === 'sold'
-                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50 hover:bg-emerald-900/60'
-                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-emerald-500/50 hover:text-emerald-300'
-                              }`}
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>{prop.sale_status === 'sold' ? 'Đã bán' : 'Đánh dấu bán'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => prop.sale_status === 'hidden' ? handleRestoreProperty(prop) : handleSoftDeleteProperty(prop)}
-                              disabled={actionLoading === `hide-prop-${prop.id}` || actionLoading === `restore-prop-${prop.id}`}
-                              className={`border font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
-                                prop.sale_status === 'hidden'
-                                  ? 'bg-amber-950/60 text-amber-300 border-amber-700/50 hover:bg-amber-900/60'
-                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-amber-500/50 hover:text-amber-300'
-                              }`}
-                            >
-                              {prop.sale_status === 'hidden' ? <RefreshCw className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
-                              <span>{prop.sale_status === 'hidden' ? 'Khôi phục' : 'Ẩn'}</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setSelectedPropertyForAI(prop);
-                                setAiGeneratingTone('sang trọng và chuyên nghiệp');
-                                setActiveTab('ai-content');
-                              }}
-                              className="bg-slate-950 hover:bg-rose-950 hover:text-rose-300 border border-slate-800 hover:border-rose-500/40 text-rose-400 font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all"
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span>Sinh Content Marketing</span>
-                            </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <AdminPropertyDirectory
+                    properties={filteredProperties}
+                    propertyGalleryIndex={propertyGalleryIndex}
+                    setPropertyGalleryIndex={setPropertyGalleryIndex}
+                    actionLoading={actionLoading}
+                    onToggleFeatured={handleTogglePropertyFeatured}
+                    onEdit={openEditPropertyModal}
+                    onImageUpload={handlePropertyImageUpload}
+                    onCopyDescription={prop => handleCopyText(buildPropertyCopyText(prop))}
+                    onToggleSold={handleTogglePropertySold}
+                    onHide={handleSoftDeleteProperty}
+                    onRestore={handleRestoreProperty}
+                    onOpenAiContent={prop => {
+                      setSelectedPropertyForAI(prop);
+                      setAiGeneratingTone('sang trọng và chuyên nghiệp');
+                      setActiveTab('ai-content');
+                    }}
+                  />
                 </div>
               )}
 
@@ -4410,7 +4229,7 @@ export default function App() {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
                     >
                       <option value="">— Chọn dự án —</option>
-                      {PROPERTY_PROJECT_GROUPS.map(group => (
+                      {projectCatalogGroups.map(group => (
                         <optgroup key={group.zone} label={group.label}>
                           {group.projects.map(project => (
                             <option key={`${group.zone}-${project}`} value={project}>{project}</option>

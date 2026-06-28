@@ -53,7 +53,6 @@ function magnetLinks(lead: InvestorLead) {
   return {
     report: `${base}/tai-lieu-dau-tu/bao-cao-nam-da-nang-2026?token=${token}`,
     top20: `${base}/tai-lieu-dau-tu/top-20-co-hoi-dau-tu?token=${token}`,
-    map: `${base}/tai-lieu-dau-tu/ban-do-dau-tu-nam-da-nang?token=${token}`,
     contact: `${base}/lien-he`,
   };
 }

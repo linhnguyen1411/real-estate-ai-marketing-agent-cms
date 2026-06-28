@@ -1,4 +1,5 @@
 import { AppSettings } from "../src/types";
+import { normalizeProjectName } from "../src/seo/propertyCatalog";
 import { prisma } from "./prisma";
 
 type CmsCollection = "customers" | "properties" | "posts" | "inbox" | "automations";
@@ -178,6 +179,17 @@ async function loadCacheFromPostgres() {
   cache = db;
 }
 
+async function migrateLegacyPropertyProjectNames() {
+  const db = requireCache();
+  for (const prop of db.properties) {
+    const normalized = normalizeProjectName(prop.project_name);
+    if (!normalized || normalized === prop.project_name) continue;
+    prop.project_name = normalized;
+    upsertRecordInCache("properties", prop);
+    await upsertRecordToPostgres("properties", prop);
+  }
+}
+
 async function ensureDefaultSettings() {
   const existing = await prisma.appSetting.findUnique({ where: { key: "app" } });
   if (!existing) {
@@ -195,8 +207,18 @@ export async function ensureDatabaseReady() {
   }
   if (!readyPromise) {
     readyPromise = (async () => {
-      await ensureDefaultSettings();
-      await loadCacheFromPostgres();
+      try {
+        await ensureDefaultSettings();
+        await loadCacheFromPostgres();
+        try {
+          await migrateLegacyPropertyProjectNames();
+        } catch (error) {
+          console.warn('[DB] Bỏ qua chuẩn hóa tên dự án lúc khởi động:', error);
+        }
+      } catch (error) {
+        readyPromise = null;
+        throw error;
+      }
     })();
   }
   await readyPromise;

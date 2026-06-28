@@ -75,12 +75,46 @@ export function trackMessengerClick(source = 'floating') {
   trackGa4Event('messenger_click', { link_source: source });
 }
 
+export function trackPropertyShareOpen(propertyId: string, shortSlug?: string) {
+  trackGa4Event('property_share_open', { property_id: propertyId, short_slug: shortSlug });
+}
+
+export function trackPropertyShareCopy(propertyId: string, shortSlug?: string) {
+  trackGa4Event('property_share_copy', { property_id: propertyId, short_slug: shortSlug });
+}
+
+export function trackPropertyShareFacebook(propertyId: string, shortSlug?: string) {
+  trackGa4Event('property_share_facebook', { property_id: propertyId, short_slug: shortSlug });
+}
+
+export function trackPropertyShareZalo(propertyId: string, shortSlug?: string) {
+  trackGa4Event('property_share_zalo', { property_id: propertyId, short_slug: shortSlug });
+}
+
+export function trackPropertyShareTiktok(propertyId: string, shortSlug?: string) {
+  trackGa4Event('property_share_tiktok', { property_id: propertyId, short_slug: shortSlug });
+}
+
+export function trackQrView(shortSlug: string) {
+  trackGa4Event('qr_view', { short_slug: shortSlug });
+}
+
+export function trackQrDownload(shortSlug: string) {
+  trackGa4Event('qr_download', { short_slug: shortSlug });
+}
+
 export function storeMagnetAccess(slug: string, token: string) {
   localStorage.setItem(`magnet_access_${slug}`, token);
+  localStorage.setItem('magnet_access_token', token);
 }
 
 export function getMagnetAccess(slug: string): string | null {
-  return localStorage.getItem(`magnet_access_${slug}`);
+  return localStorage.getItem(`magnet_access_${slug}`) || localStorage.getItem('magnet_access_token');
+}
+
+export function clearMagnetAccess(slug?: string) {
+  if (slug) localStorage.removeItem(`magnet_access_${slug}`);
+  localStorage.removeItem('magnet_access_token');
 }
 
 export const POPUP_DISMISS_KEY = 'investor_popup_dismissed_at';

@@ -19,15 +19,9 @@ import { buildBreadcrumbSchema, buildDefaultPageSchemas } from '../seo/schemas';
 import { PRIMARY_CTA, getSiteOrigin } from '../seo/siteConfig';
 
 import {
-
-  getAllProjectNames,
-
   matchMarketZone,
-
   matchProjectName,
-
-  PROPERTY_PROJECT_GROUPS,
-
+  getPropertyProjectLabel,
 } from '../seo/propertyCatalog';
 
 
@@ -167,18 +161,11 @@ export default function CategoryListingsPage({
 
 
   const projectOptions = useMemo(() => {
-
-    const fromData = Array.from(new Set(properties.map(p => p.project_name).filter(Boolean))) as string[];
-
-    const zoneProjects = filterMarketZone
-
-      ? PROPERTY_PROJECT_GROUPS.find(g => g.zone === filterMarketZone || (filterMarketZone === 'nam-da-nang' && g.zone === 'nam-da-nang'))?.projects || []
-
-      : getAllProjectNames();
-
-    return Array.from(new Set([...fromData, ...zoneProjects])).sort((a, b) => a.localeCompare(b, 'vi'));
-
-  }, [properties, filterMarketZone]);
+    const fromData = Array.from(
+      new Set(properties.map(p => getPropertyProjectLabel(p)).filter(Boolean)),
+    ) as string[];
+    return fromData.sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [properties]);
 
 
 

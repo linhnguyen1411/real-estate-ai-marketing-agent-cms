@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { formatLeadBudget, formatLeadInterest, formatLeadSource } from '../../leadGen/leadLabels';
+import { getLeadMagnet } from '../../leadGen/leadMagnets';
 import { fetchInvestorLeads, updateInvestorLeadStatus } from '../../services/investorLeadsApi';
 import type { InvestorLead } from '../../types/investorLead';
 
@@ -69,13 +71,20 @@ export default function InvestorLeadsPanel() {
                   {lead.email && <div className="text-xs text-slate-500">{lead.email}</div>}
                   {lead.city && <div className="text-xs text-slate-500">{lead.city}</div>}
                 </td>
-                <td className="px-4 py-3 text-slate-400 text-xs">
-                  {lead.interest_type || '—'}
-                  <br />
-                  {lead.budget_range || '—'}
+                <td className="px-4 py-3 text-slate-300 text-xs">
+                  <div className="font-medium text-white">{formatLeadInterest(lead.interest_type)}</div>
+                  <div className="mt-0.5 text-slate-400">{formatLeadBudget(lead.budget_range)}</div>
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-500">
-                  {lead.magnet_slug || lead.source || '—'}
+                  {lead.short_link_slug ? (
+                    <span title={`/s/${lead.short_link_slug}`}>Short link: /s/{lead.short_link_slug}</span>
+                  ) : lead.magnet_slug ? (
+                    <span title={lead.magnet_slug}>
+                      {getLeadMagnet(lead.magnet_slug)?.title || lead.magnet_slug}
+                    </span>
+                  ) : (
+                    formatLeadSource(lead.source)
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <select

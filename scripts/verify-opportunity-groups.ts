@@ -16,20 +16,23 @@ if (!normalized?.whyWatch || !normalized.assetType) {
 }
 
 const content = getLeadMagnetContent('top-20-co-hoi-dau-tu');
-if (!content || content.type !== 'opportunity-framework') {
-  throw new Error('Lead magnet content missing or wrong type');
+if (!content || content.type !== 'investment-playbook') {
+  throw new Error('Lead magnet content missing or wrong type (expected investment-playbook)');
 }
 
-const requiredFields = ['area', 'assetType', 'whyWatch', 'risks', 'suitableBudget'] as const;
-
-for (const rank of [1, 5, 10, 20]) {
-  const group = content.groups.find(item => item.rank === rank);
-  if (!group) throw new Error(`Missing group rank ${rank}`);
-
-  const missing = requiredFields.filter(field => !group[field].trim());
-  if (missing.length > 0) {
-    throw new Error(`Group ${rank} missing fields: ${missing.join(', ')}`);
-  }
+if (content.chapters.length !== 4) {
+  throw new Error(`Expected 4 chapters, got ${content.chapters.length}`);
 }
 
-console.log('PASS — opportunity groups 01, 05, 10, 20 have full field mapping');
+const subsectionCount = content.chapters.reduce((sum, chapter) => sum + chapter.subsections.length, 0);
+if (subsectionCount < 10) {
+  throw new Error(`Expected at least 10 subsections, got ${subsectionCount}`);
+}
+
+if (!content.closingMessage.includes('danh mục tài sản')) {
+  throw new Error('Missing closing CTA message');
+}
+
+console.log(
+  `PASS — investment playbook: ${content.chapters.length} chapters, ${subsectionCount} subsections`
+);

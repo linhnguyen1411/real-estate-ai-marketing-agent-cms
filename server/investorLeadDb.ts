@@ -27,6 +27,7 @@ function rowToLead(
     utmCampaign: string | null;
     pagePath: string | null;
     magnetSlug: string | null;
+    shortLinkSlug: string | null;
     investorScore: number;
     status: string;
     accessToken: string | null;
@@ -51,6 +52,7 @@ function rowToLead(
     utm_campaign: row.utmCampaign || undefined,
     page_path: row.pagePath || undefined,
     magnet_slug: row.magnetSlug || undefined,
+    short_link_slug: row.shortLinkSlug || undefined,
     investor_score: row.investorScore,
     status: (row.status as InvestorLead['status']) || 'new',
     access_token: row.accessToken || undefined,
@@ -125,6 +127,10 @@ export async function createInvestorLead(
         channel: payload.channel || existing.channel,
         pagePath: payload.page_path || existing.pagePath,
         magnetSlug: payload.magnet_slug || existing.magnetSlug,
+        shortLinkSlug: payload.short_link_slug || existing.shortLinkSlug,
+        utmSource: payload.utm_source || existing.utmSource,
+        utmMedium: payload.utm_medium || existing.utmMedium,
+        utmCampaign: payload.utm_campaign || existing.utmCampaign,
         investorScore: Math.max(existing.investorScore, score.total),
         accessToken,
         updatedAt: now,
@@ -147,6 +153,7 @@ export async function createInvestorLead(
         utmCampaign: payload.utm_campaign || null,
         pagePath: payload.page_path || null,
         magnetSlug: payload.magnet_slug || null,
+        shortLinkSlug: payload.short_link_slug || null,
         investorScore: score.total,
         status: 'new',
         accessToken,
@@ -183,6 +190,7 @@ export async function createInvestorLead(
   const tags = payload.tags || [];
   if (payload.form_type) tags.push(`form:${payload.form_type}`);
   if (payload.magnet_slug) tags.push(`magnet:${payload.magnet_slug}`);
+  if (payload.short_link_slug) tags.push(`short:${payload.short_link_slug}`);
 
   for (const tag of tags) {
     try {

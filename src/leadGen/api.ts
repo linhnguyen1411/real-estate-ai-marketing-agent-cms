@@ -1,5 +1,6 @@
 import type { LeadCapturePayload } from '../types/investorLead';
 import { getLeadSessionId, getUtmParams, inferChannel, trackGa4Event } from './analytics';
+import { getStoredShortLinkSlug } from '../utils/shortLinkAttribution';
 import { getLeadMagnet } from './leadMagnets';
 import { normalizeLeadMagnetContent } from './normalizeLeadMagnetContent';
 import type { LeadMagnetContent } from '../types/leadMagnetContent';
@@ -17,6 +18,7 @@ export async function submitInvestorLead(
   }
 ): Promise<SubmitLeadResult> {
   const utm = getUtmParams();
+  const shortLinkSlug = getStoredShortLinkSlug();
   const body: LeadCapturePayload = {
     ...payload,
     session_id: getLeadSessionId(),
@@ -25,6 +27,7 @@ export async function submitInvestorLead(
     utm_medium: utm.utm_medium || undefined,
     utm_campaign: utm.utm_campaign || undefined,
     page_path: payload.page_path || (typeof window !== 'undefined' ? window.location.pathname : ''),
+    short_link_slug: payload.short_link_slug || shortLinkSlug || undefined,
   };
 
   const response = await fetch('/api/public/leads', {
@@ -44,6 +47,16 @@ export async function submitInvestorLead(
   return json.data;
 }
 
+export class LeadMagnetAccessError extends Error {
+  requiresForm: boolean;
+
+  constructor(message: string, requiresForm = false) {
+    super(message);
+    this.name = 'LeadMagnetAccessError';
+    this.requiresForm = requiresForm;
+  }
+}
+
 export async function fetchLeadMagnetContent(slug: string, token: string): Promise<LeadMagnetContent> {
   const magnet = getLeadMagnet(slug);
   if (!magnet) throw new Error('Không tìm thấy tài liệu');
@@ -53,7 +66,10 @@ export async function fetchLeadMagnetContent(slug: string, token: string): Promi
   );
   const json = await response.json();
   if (!response.ok) {
-    throw new Error(json.message || 'Không tải được tài liệu');
+    throw new LeadMagnetAccessError(
+      json.message || 'Không tải được tài liệu',
+      response.status === 403 && Boolean(json.requires_form)
+    );
   }
 
   const raw = json.data?.content ?? json.data;

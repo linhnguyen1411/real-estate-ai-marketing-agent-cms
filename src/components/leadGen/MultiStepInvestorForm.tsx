@@ -5,34 +5,10 @@ import { ChevronRight, Send } from 'lucide-react';
 import type { LeadBudgetRange, LeadInterestType } from '../../types/investorLead';
 
 import { submitInvestorLead } from '../../leadGen/api';
+import { LEAD_BUDGET_OPTIONS, LEAD_INTEREST_OPTIONS } from '../../leadGen/leadLabels';
 
-
-
-const INTERESTS: { id: LeadInterestType; label: string }[] = [
-
-  { id: 'dat-nen', label: 'Đất nền' },
-
-  { id: 'can-ho', label: 'Căn hộ' },
-
-  { id: 'nha-pho', label: 'Nhà phố' },
-
-  { id: 'du-an', label: 'Danh mục BĐS' },
-
-];
-
-
-
-const BUDGETS: { id: LeadBudgetRange; label: string }[] = [
-
-  { id: 'under-3', label: 'Dưới 3 tỷ' },
-
-  { id: '3-5', label: '3–5 tỷ' },
-
-  { id: '5-10', label: '5–10 tỷ' },
-
-  { id: 'over-10', label: 'Trên 10 tỷ' },
-
-];
+const INTERESTS = LEAD_INTEREST_OPTIONS;
+const BUDGETS = LEAD_BUDGET_OPTIONS;
 
 
 

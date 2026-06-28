@@ -282,6 +282,12 @@ export interface MarketingChannel {
   };
 }
 
+export interface ProjectCatalogGroup {
+  zone: string;
+  label: string;
+  projects: string[];
+}
+
 export interface AppSettings {
   ai_mode: 'auto' | 'ollama' | 'openai' | 'gemini';
   ollama_endpoint: string;
@@ -291,6 +297,10 @@ export interface AppSettings {
   site_view_count?: number;
   last_site_view_at?: string;
   seo_keywords?: string[];
+  /** Thứ tự thẻ dự án trên trang BĐS công khai */
+  project_display_order?: string[];
+  /** Danh mục dự án tùy chỉnh (ghi đè PROPERTY_PROJECT_GROUPS khi có) */
+  project_groups?: ProjectCatalogGroup[];
 }
 
 export interface ChatHistoryRecord {

@@ -92,6 +92,8 @@ export function createInvestorLeadPublicRouter() {
 
         magnet_slug: body.magnet_slug,
 
+        short_link_slug: body.short_link_slug || body.shortLinkSlug,
+
         session_id: body.session_id,
 
         tags: Array.isArray(body.tags) ? body.tags : undefined,
