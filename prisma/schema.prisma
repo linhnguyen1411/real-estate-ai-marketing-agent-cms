@@ -119,6 +119,14 @@ model Lead {
   status        String   @default("new")
   accessToken   String?  @map("access_token")
   emailsSent    Int      @default(0) @map("emails_sent")
+  facebookContactId      String? @map("facebook_contact_id")
+  facebookConversationId String? @map("facebook_conversation_id")
+  facebookPageId         String? @map("facebook_page_id")
+  sourceChannel          String? @map("source_channel")
+  sourceType             String? @map("source_type")
+  sourcePostId           String? @map("source_post_id")
+  sourceCommentId        String? @map("source_comment_id")
+  firstMessage           String? @map("first_message") @db.Text
   createdAt     DateTime @map("created_at")
   updatedAt     DateTime @map("updated_at")
 
@@ -126,12 +134,15 @@ model Lead {
   sources LeadSource[]
   events  LeadEvent[]
   tags    LeadTag[]
+  facebookContact FacebookContact? @relation(fields: [facebookContactId], references: [id], onDelete: SetNull)
 
   @@index([shortLinkSlug])
   @@index([phone])
   @@index([investorScore])
   @@index([status])
   @@index([createdAt])
+  @@index([facebookContactId])
+  @@index([sourceChannel])
   @@map("leads")
 }
 
@@ -397,4 +408,135 @@ model ShortLinkClick {
 
   @@index([shortLinkId, clickedAt])
   @@map("short_link_clicks")
+}
+
+model FacebookPageConnection {
+  id                   String   @id
+  pageId               String   @unique @map("page_id")
+  pageName             String?  @map("page_name")
+  accessTokenEncrypted String   @map("access_token_encrypted") @db.Text
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("facebook_page_connections")
+}
+
+model FacebookContact {
+  id             String    @id
+  psid           String
+  facebookUserId String?   @map("facebook_user_id")
+  name           String?
+  profilePic     String?   @map("profile_pic") @db.Text
+  locale         String?
+  timezone       Int?
+  gender         String?
+  tags           Json      @default("[]")
+  firstSeenAt    DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+  leadId         String?   @map("lead_id")
+
+  conversations FacebookConversation[]
+  messages      FacebookMessage[]
+  interactions  FacebookInteraction[]
+  leads         Lead[]
+
+  @@unique([psid])
+  @@index([lastSeenAt])
+  @@map("facebook_contacts")
+}
+
+model FacebookConversation {
+  id             String    @id
+  pageId         String    @map("page_id")
+  contactId      String    @map("contact_id")
+  channel        String
+  threadKey      String    @map("thread_key")
+  status         String    @default("open")
+  lastMessageAt  DateTime? @map("last_message_at")
+  lastInboundAt  DateTime? @map("last_inbound_at")
+  lastOutboundAt DateTime? @map("last_outbound_at")
+  assignedTo     String?   @map("assigned_to")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  contact  FacebookContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages FacebookMessage[]
+
+  @@unique([pageId, threadKey])
+  @@index([pageId, status, lastMessageAt])
+  @@index([contactId])
+  @@map("facebook_conversations")
+}
+
+model FacebookMessage {
+  id                String   @id
+  conversationId    String   @map("conversation_id")
+  contactId         String   @map("contact_id")
+  direction         String
+  messageType       String   @map("message_type")
+  text              String?  @db.Text
+  attachments       Json?
+  facebookMessageId String?  @map("facebook_message_id")
+  facebookCommentId String?  @map("facebook_comment_id")
+  facebookPostId    String?  @map("facebook_post_id")
+  rawPayload        Json?    @map("raw_payload")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  conversation FacebookConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact      FacebookContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([facebookMessageId])
+  @@map("facebook_messages")
+}
+
+model FacebookInteraction {
+  id              String   @id
+  pageId          String   @map("page_id")
+  contactId       String?  @map("contact_id")
+  type            String
+  postId          String?  @map("post_id")
+  commentId       String?  @map("comment_id")
+  text            String?  @db.Text
+  status          String   @default("new")
+  intentTags      Json?    @map("intent_tags")
+  rawPayload      Json?    @map("raw_payload")
+  canPrivateReply Boolean  @default(false) @map("can_private_reply")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  contact FacebookContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([pageId, type, createdAt])
+  @@index([status])
+  @@index([commentId])
+  @@map("facebook_interactions")
+}
+
+model FacebookWebhookLog {
+  id          String    @id
+  object      String?
+  entryCount  Int       @default(0) @map("entry_count")
+  payload     Json
+  processedAt DateTime? @map("processed_at")
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("facebook_webhook_logs")
+}
+
+model FacebookWebhookEvent {
+  id          String    @id
+  object      String?
+  payload     Json
+  eventType   String?   @map("event_type")
+  processed   Boolean   @default(false)
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([createdAt])
+  @@index([processed])
+  @@map("facebook_webhook_events")
 }

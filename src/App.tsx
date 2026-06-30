@@ -48,7 +48,8 @@ import {
   FolderOpen,
   Tags,
   FileSearch,
-  Link2
+  Link2,
+  Facebook
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
@@ -59,6 +60,7 @@ import { uploadContentImage } from './services/blogApi';
 import { resizeImageFile } from './utils/resizeImageFile';
 import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
 import ShortLinksPanel from './components/admin/ShortLinksPanel';
+import FacebookPanel from './components/admin/FacebookPanel';
 import AdminPropertyDirectory from './components/admin/AdminPropertyDirectory';
 import AdminProjectsPanel from './components/admin/AdminProjectsPanel';
 import {
@@ -1527,6 +1529,7 @@ export default function App() {
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
               { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
+              { id: 'facebook', label: 'Kênh Facebook', icon: Facebook },
               { id: 'short-links', label: 'Short Links', icon: Link2 },
               { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
               { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: propertyStatusCounts.adminVisible },
@@ -2236,6 +2239,12 @@ export default function App() {
               {activeTab === 'investor-leads' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <InvestorLeadsPanel />
+                </div>
+              )}
+
+              {activeTab === 'facebook' && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <FacebookPanel />
                 </div>
               )}
 
