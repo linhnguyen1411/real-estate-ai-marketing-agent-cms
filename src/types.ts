@@ -1,4 +1,5 @@
 export type UserRole = 'owner' | 'company' | 'member';
+export type AgentTier = 'legendary' | 'diamond' | 'gold' | 'silver' | 'bronze' | 'normal';
 
 export interface Company {
   id: string;
@@ -14,6 +15,12 @@ export interface User {
   password: string;
   role: UserRole;
   company_id?: string;
+  phone?: string;
+  avatar_url?: string;
+  bio?: string;
+  agent_tier?: AgentTier;
+  public_slug?: string;
+  show_public_profile?: boolean;
   status: 'active' | 'inactive';
   created_at: string;
 }
@@ -25,6 +32,25 @@ export interface AuthUser {
   role: UserRole;
   company_id?: string;
   company_name?: string;
+  phone?: string;
+  avatar_url?: string;
+  bio?: string;
+  agent_tier?: AgentTier;
+  public_slug?: string;
+  show_public_profile?: boolean;
+}
+
+export interface PublicAgentProfile {
+  id: string;
+  name: string;
+  phone?: string;
+  avatar_url?: string;
+  bio?: string;
+  agent_tier: AgentTier;
+  public_slug: string;
+  company_name?: string;
+  property_count: number;
+  profile_url: string;
 }
 
 export interface AccessControlledResource {
@@ -111,7 +137,9 @@ export interface Property {
   };
   company_id?: string;
   owner_user_id?: string;
+  created_by_user_id?: string;
   assigned_member_ids?: string[];
+  created_at?: string;
 }
 
 export interface Post {

@@ -11,6 +11,7 @@ async function addLeadTags(leadId: string, tags: string[]) {
         id: `ltag-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
         leadId,
         tag,
+        createdAt: new Date(),
       },
       update: {},
     });

@@ -37,7 +37,10 @@ import {
   getAIProviderStatus
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
+import type { AgentTier } from './src/utils/agentTier';
+import { resolveAgentTier, slugifyAgentProfile } from './src/utils/agentTier';
 import { mergePostHashtags, mergeKeywordLists, hashtagsToKeywords, getPropertyContentForHashtags, collectSiteSeoKeywords as buildSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './src/utils/hashtags';
+import { saveImageFromDataUrl } from './server/blog/imageStorage';
 import { getPageMetaByPath } from './src/seo/pageMeta';
 import { buildSitemapEntries, entriesToXml, sitemapIndexXml } from './src/seo/sitemap';
 import {
@@ -48,6 +51,7 @@ import {
   buildPropertySchemas,
 } from './src/seo/schemas';
 import { isReservedSlug } from './src/seo/routes';
+import { sortByCreatedAtDesc } from './src/utils/propertySort';
 import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from './server/investorLeadRoutes';
 import { registerBlogAdminRoutes, registerBlogPublicRoutes } from './server/blogRoutes';
 import { getBlogPostBySlug, getPublishedBlogPostsForSitemap } from './server/blogDb';
@@ -60,7 +64,7 @@ import {
 } from './server/shortLink/shortLinkRoutes';
 import { processLeadCapture } from './server/investorLeadService';
 import { cacheControlMiddleware, createDistStaticOptions, createPublicStaticOptions } from './server/middleware/staticAssets';
-import { getCached, setCached } from './server/cache/publicCache';
+import { getCached, setCached, clearCacheKey } from './server/cache/publicCache';
 import { filterPublicProperties } from './server/publicPropertyMapper';
 import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
@@ -122,14 +126,63 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-only-auth-secret-change-me';
 
 function toAuthUser(user: User, db: any): AuthUser {
   const company = db.companies?.find((item: any) => item.id === user.company_id);
+  const publicSlug = user.public_slug || `${slugifyAgentProfile(user.name)}-${user.id.slice(-4)}`;
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
     company_id: user.company_id,
-    company_name: company?.name
+    company_name: company?.name,
+    phone: user.phone,
+    avatar_url: user.avatar_url,
+    bio: user.bio,
+    agent_tier: resolveAgentTier(user),
+    public_slug: publicSlug,
+    show_public_profile: user.show_public_profile !== false,
   };
+}
+
+function toPublicAgentProfile(user: User, db: any, propertyCount = 0): any {
+  const auth = toAuthUser(user, db);
+  if (user.status !== 'active' || user.show_public_profile === false) return null;
+  return {
+    id: auth.id,
+    name: auth.name,
+    phone: auth.phone,
+    avatar_url: auth.avatar_url,
+    bio: auth.bio,
+    agent_tier: auth.agent_tier,
+    public_slug: auth.public_slug,
+    company_name: auth.company_name,
+    property_count: propertyCount,
+    profile_url: `/moi-gioi/${auth.public_slug}`,
+  };
+}
+
+function countPublicAgentProperties(db: any, userId: string): number {
+  return filterPublicProperties(db.properties || []).filter((property: Property) => {
+    const creatorId = property.created_by_user_id || property.owner_user_id;
+    return creatorId === userId;
+  }).length;
+}
+
+function assertUniquePublicSlug(db: any, slug: string, userId: string, res: Response): boolean {
+  const normalized = slugifyAgentProfile(slug);
+  if (!normalized) {
+    res.status(400).json({ status: 'error', message: 'Đường dẫn hồ sơ không hợp lệ.' });
+    return false;
+  }
+  const conflict = (db.users || []).some((user: User) => (
+    user.id !== userId
+    && user.public_slug
+    && user.public_slug.toLowerCase() === normalized
+  ));
+  if (conflict) {
+    res.status(409).json({ status: 'error', message: 'Đường dẫn hồ sơ đã được sử dụng.' });
+    return false;
+  }
+  return true;
 }
 
 function signToken(user: AuthUser): string {
@@ -163,24 +216,35 @@ function getAuthUser(req: Request): AuthUser {
 function scopeCollection<T extends { company_id?: string; owner_user_id?: string; assigned_member_ids?: string[] }>(items: T[], req: Request): T[] {
   const user = getAuthUser(req);
   if (user.role === 'owner') return items;
-  if (user.role === 'company') return items.filter(item => item.company_id === user.company_id);
-  return items.filter(item => item.company_id === user.company_id && (item.assigned_member_ids || []).includes(user.id));
+  if (user.role === 'company') {
+    return items.filter(item => !item.company_id || item.company_id === user.company_id);
+  }
+  return items.filter(item => {
+    const itemCompanyId = item.company_id || user.company_id;
+    return itemCompanyId === user.company_id && (item.assigned_member_ids || []).includes(user.id);
+  });
 }
 
 function canAccessResource(resource: { company_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
   if (!resource) return false;
   const user = getAuthUser(req);
   if (user.role === 'owner') return true;
-  if (user.role === 'company') return resource.company_id === user.company_id;
-  return resource.company_id === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
+  if (user.role === 'company') {
+    return !resource.company_id || resource.company_id === user.company_id;
+  }
+  const companyId = resource.company_id || user.company_id;
+  return companyId === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
 }
 
 function canManageResource(resource: { company_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
   if (!resource) return false;
   const user = getAuthUser(req);
   if (user.role === 'owner') return true;
-  if (user.role === 'company') return resource.company_id === user.company_id;
-  return resource.company_id === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
+  if (user.role === 'company') {
+    return !resource.company_id || resource.company_id === user.company_id;
+  }
+  const companyId = resource.company_id || user.company_id;
+  return companyId === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
 }
 
 function accessDefaults(req: Request, body: any = {}) {
@@ -598,6 +662,55 @@ app.get('/api/public/seo', async (req: Request, res: Response) => {
   );
   await updateSettings({ seo_keywords: keywords });
   res.json({ status: 'success', data: { keywords } });
+});
+
+app.get('/api/public/agents', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const agents = (db.users || [])
+    .map((user: User) => toPublicAgentProfile(user, db, countPublicAgentProperties(db, user.id)))
+    .filter(Boolean)
+    .sort((a: any, b: any) => b.property_count - a.property_count || a.name.localeCompare(b.name, 'vi'));
+  res.json({ status: 'success', data: agents });
+});
+
+app.get('/api/public/agents/by-user/:userId', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const user = (db.users || []).find((item: User) => item.id === req.params.userId);
+  if (!user) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy môi giới.' });
+    return;
+  }
+  const profile = toPublicAgentProfile(user, db, countPublicAgentProperties(db, user.id));
+  if (!profile) {
+    res.status(404).json({ status: 'error', message: 'Hồ sơ môi giới không công khai.' });
+    return;
+  }
+  res.json({ status: 'success', data: profile });
+});
+
+app.get('/api/public/agents/:slug', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const slug = slugifyAgentProfile(req.params.slug);
+  const user = (db.users || []).find((item: User) => {
+    const itemSlug = item.public_slug || `${slugifyAgentProfile(item.name)}-${item.id.slice(-4)}`;
+    return itemSlug.toLowerCase() === slug;
+  });
+  if (!user) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy môi giới.' });
+    return;
+  }
+  const profile = toPublicAgentProfile(user, db, countPublicAgentProperties(db, user.id));
+  if (!profile) {
+    res.status(404).json({ status: 'error', message: 'Hồ sơ môi giới không công khai.' });
+    return;
+  }
+
+  const properties = filterPublicProperties(getProperties()).filter((property: Property) => {
+    const creatorId = property.created_by_user_id || property.owner_user_id;
+    return creatorId === user.id;
+  });
+
+  res.json({ status: 'success', data: { ...profile, properties } });
 });
 
 // ----------------------------------------------------
@@ -1084,6 +1197,88 @@ app.get('/api/auth/me', (req: Request, res: Response) => {
   res.json({ status: 'success', data: getAuthUser(req) });
 });
 
+app.put('/api/auth/profile', async (req: Request, res: Response) => {
+  const authUser = getAuthUser(req);
+  const db = readDatabase();
+  const index = db.users.findIndex((user: User) => user.id === authUser.id);
+
+  if (index === -1) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy tài khoản.' });
+    return;
+  }
+
+  const target = db.users[index] as User;
+  const body = req.body || {};
+  const nextName = body.name !== undefined ? String(body.name).trim() : target.name;
+  const nextEmail = body.email !== undefined ? String(body.email).trim().toLowerCase() : target.email;
+  const nextPhone = body.phone !== undefined ? String(body.phone).trim() : (target.phone || '');
+  const nextBio = body.bio !== undefined ? String(body.bio).trim().slice(0, 600) : (target.bio || '');
+  let nextAvatarUrl = body.avatar_url !== undefined ? String(body.avatar_url).trim() : target.avatar_url;
+  const nextShowPublic = body.show_public_profile !== undefined
+    ? body.show_public_profile !== false
+    : target.show_public_profile !== false;
+
+  if (body.image !== undefined) {
+    const image = String(body.image || '').trim();
+    if (image) {
+      try {
+        nextAvatarUrl = saveImageFromDataUrl(image, 'agent-avatars', authUser.id);
+      } catch (error: any) {
+        res.status(400).json({ status: 'error', message: error.message || 'Upload avatar thất bại.' });
+        return;
+      }
+    }
+  }
+
+  let nextPublicSlug = target.public_slug;
+  if (body.public_slug !== undefined) {
+    nextPublicSlug = slugifyAgentProfile(String(body.public_slug || ''));
+    if (!assertUniquePublicSlug(db, nextPublicSlug, target.id, res)) return;
+  } else if (!nextPublicSlug) {
+    nextPublicSlug = `${slugifyAgentProfile(nextName)}-${target.id.slice(-4)}`;
+  }
+
+  if (!nextName || !nextEmail) {
+    res.status(400).json({ status: 'error', message: 'Tên và email là bắt buộc.' });
+    return;
+  }
+
+  if (db.users.some((user: User) => user.id !== target.id && user.email.toLowerCase() === nextEmail)) {
+    res.status(409).json({ status: 'error', message: 'Email đã được sử dụng.' });
+    return;
+  }
+
+  let nextPassword = target.password;
+  const newPassword = String(body.new_password || '').trim();
+  if (newPassword) {
+    const currentPassword = String(body.current_password || '');
+    if (!currentPassword || currentPassword !== target.password) {
+      res.status(400).json({ status: 'error', message: 'Mật khẩu hiện tại không đúng.' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({ status: 'error', message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+      return;
+    }
+    nextPassword = newPassword;
+  }
+
+  db.users[index] = {
+    ...target,
+    name: nextName,
+    email: nextEmail,
+    phone: nextPhone || undefined,
+    bio: nextBio || undefined,
+    avatar_url: nextAvatarUrl || undefined,
+    public_slug: nextPublicSlug,
+    show_public_profile: nextShowPublic,
+    password: nextPassword,
+  };
+
+  await writeDatabase(db);
+  res.json({ status: 'success', data: toAuthUser(db.users[index], db) });
+});
+
 registerInvestorLeadAdminRoutes(app);
 registerBlogAdminRoutes(app);
 registerShortLinkAdminRoutes(app);
@@ -1251,6 +1446,25 @@ app.put('/api/users/:id', async (req: Request, res: Response) => {
     return;
   }
 
+  let nextAgentTier = target.agent_tier || 'normal';
+  if (authUser.role === 'owner' && body.agent_tier !== undefined) {
+    const tier = String(body.agent_tier) as AgentTier;
+    if (!['legendary', 'diamond', 'gold', 'silver', 'bronze', 'normal'].includes(tier)) {
+      res.status(400).json({ status: 'error', message: 'Bậc agent không hợp lệ.' });
+      return;
+    }
+    if (tier === 'legendary' && nextRole !== 'owner') {
+      res.status(400).json({ status: 'error', message: 'Bậc Administrator chỉ dành cho chủ sở hữu.' });
+      return;
+    }
+    nextAgentTier = tier;
+  }
+  if (nextRole === 'owner') {
+    nextAgentTier = 'legendary';
+  } else if (nextAgentTier === 'legendary') {
+    nextAgentTier = 'normal';
+  }
+
   db.users[index] = {
     ...target,
     name: nextName,
@@ -1258,11 +1472,88 @@ app.put('/api/users/:id', async (req: Request, res: Response) => {
     password: body.password ? String(body.password) : target.password,
     role: nextRole,
     company_id: nextCompanyId,
-    status: nextStatus
+    status: nextStatus,
+    agent_tier: nextAgentTier,
   };
 
   await writeDatabase(db);
   res.json({ status: 'success', data: db.users[index] });
+});
+
+type MemberPermissionCollection = 'customers' | 'properties' | 'posts';
+
+app.post('/api/member-permissions/bulk', async (req: Request, res: Response) => {
+  if (!canManageUsers(req, res)) return;
+
+  const memberId = String(req.body?.member_id || '').trim();
+  const collection = String(req.body?.collection || '') as MemberPermissionCollection;
+  const assign = req.body?.assign !== false;
+  const resourceIds = Array.isArray(req.body?.resource_ids)
+    ? req.body.resource_ids.map((id: unknown) => String(id))
+    : null;
+
+  if (!memberId || !['customers', 'properties', 'posts'].includes(collection)) {
+    res.status(400).json({ status: 'error', message: 'Thiếu member_id hoặc collection không hợp lệ.' });
+    return;
+  }
+
+  const authUser = getAuthUser(req);
+  const db = readDatabase();
+  const items = db[collection] as Array<{ id: string; company_id?: string; assigned_member_ids?: string[] }>;
+
+  const targets = items.filter(item => {
+    if (resourceIds && !resourceIds.includes(item.id)) return false;
+    if (authUser.role === 'company' && item.company_id && item.company_id !== authUser.company_id) return false;
+    const assigned = (item.assigned_member_ids || []).includes(memberId);
+    return assign ? !assigned : assigned;
+  });
+
+  let updated = 0;
+  for (const item of targets) {
+    const index = items.findIndex(row => row.id === item.id);
+    if (index < 0) continue;
+
+    const assignedIds = item.assigned_member_ids || [];
+    const nextAssignedIds = assign
+      ? [...new Set([...assignedIds, memberId])]
+      : assignedIds.filter(id => id !== memberId);
+
+    const companyId = items[index].company_id || authUser.company_id || 'comp-da-nang';
+    const nextItem = {
+      ...items[index],
+      assigned_member_ids: nextAssignedIds,
+      company_id: companyId,
+    };
+
+    if (collection === 'properties') {
+      db.properties[index] = applyPropertyHashtagSeo(nextItem);
+    } else {
+      db[collection][index] = nextItem;
+    }
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    if (collection === 'properties') {
+      syncSiteSeoKeywords(db);
+    }
+    await writeDatabase(db);
+    if (collection === 'properties') {
+      clearCacheKey('public-properties');
+      clearCacheKey('public-homepage');
+    }
+  }
+
+  res.json({
+    status: 'success',
+    data: {
+      updated,
+      collection,
+      member_id: memberId,
+      assign,
+      items: scopeCollection(db[collection], req),
+    },
+  });
 });
 
 // Helper to trigger automated tasks simulation based on event
@@ -1495,15 +1786,19 @@ app.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/properties', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeCollection(db.properties, req) });
+  res.json({ status: 'success', data: scopeCollection(sortByCreatedAtDesc(db.properties), req) });
 });
 
 app.post('/api/properties', async (req: Request, res: Response) => {
   const db = readDatabase();
   const propData = req.body;
   
+  const now = new Date().toISOString();
+  const authUser = getAuthUser(req);
   const newProperty: Property = {
     id: `p-${Date.now()}`,
+    created_at: now,
+    created_by_user_id: authUser.id,
     title: propData.title || 'BĐS Chưa đặt tên',
     transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
     type: propData.type || 'Đất nền',
@@ -1531,16 +1826,18 @@ app.post('/api/properties', async (req: Request, res: Response) => {
     ...accessDefaults(req, propData)
   };
 
-  db.properties.push(newProperty);
+  db.properties.unshift(newProperty);
   
   // Trigger automation: Khi thêm mới bất động sản
   triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${newProperty.title}`, db);
 
-  const indexedProperty = db.properties.length - 1;
+  const indexedProperty = 0;
   db.properties[indexedProperty] = applyPropertyHashtagSeo(db.properties[indexedProperty]);
   syncSiteSeoKeywords(db);
 
   await writeDatabase(db);
+  clearCacheKey('public-properties');
+  clearCacheKey('public-homepage');
   res.json({ status: 'success', data: db.properties[indexedProperty] });
 });
 
@@ -1561,12 +1858,17 @@ app.put('/api/properties/:id', async (req: Request, res: Response) => {
   db.properties[index] = applyPropertyHashtagSeo({
     ...db.properties[index],
     ...req.body,
+    created_by_user_id:
+      db.properties[index].created_by_user_id
+      || db.properties[index].owner_user_id,
     public_view_count: req.body.public_view_count ?? db.properties[index].public_view_count ?? 0,
     last_public_view_at: req.body.last_public_view_at ?? db.properties[index].last_public_view_at
   });
 
   syncSiteSeoKeywords(db);
   await writeDatabase(db);
+  clearCacheKey('public-properties');
+  clearCacheKey('public-homepage');
   res.json({ status: 'success', data: db.properties[index] });
 });
 
@@ -1590,6 +1892,8 @@ app.delete('/api/properties/:id', async (req: Request, res: Response) => {
     sale_status: 'hidden'
   };
   await writeDatabase(db);
+  clearCacheKey('public-properties');
+  clearCacheKey('public-homepage');
   res.json({ status: 'success', data: db.properties[index], message: 'Soft deleted property.' });
   return;
   await writeDatabase(db);

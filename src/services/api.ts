@@ -146,6 +146,29 @@ export function getCurrentUser() {
   return apiRequest<AuthUser>('/api/auth/me');
 }
 
+export function updateProfile(payload: {
+  name?: string;
+  email?: string;
+  phone?: string;
+  bio?: string;
+  avatar_url?: string;
+  image?: string;
+  public_slug?: string;
+  show_public_profile?: boolean;
+  current_password?: string;
+  new_password?: string;
+}) {
+  return apiRequest<AuthUser>('/api/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadProfileAvatar(imageDataUrl: string) {
+  const user = await updateProfile({ image: imageDataUrl });
+  return { url: user.avatar_url || '', user };
+}
+
 export async function getInitialAppData(): Promise<InitialAppData> {
   const [
     dashboard,
@@ -253,6 +276,33 @@ export function updatePost(postId: string, post: Record<string, unknown>) {
   return apiRequest<Post>(`/api/posts/${postId}`, {
     method: 'PUT',
     body: JSON.stringify(post)
+  });
+}
+
+export type MemberPermissionCollection = 'customers' | 'properties' | 'posts';
+
+export interface BulkMemberPermissionResult {
+  updated: number;
+  collection: MemberPermissionCollection;
+  member_id: string;
+  assign: boolean;
+  items: Array<Customer | Property | Post>;
+}
+
+export function bulkMemberPermissions(payload: {
+  member_id: string;
+  collection: MemberPermissionCollection;
+  assign: boolean;
+  resource_ids?: string[];
+}) {
+  return apiRequest<BulkMemberPermissionResult>('/api/member-permissions/bulk', {
+    method: 'POST',
+    body: JSON.stringify({
+      member_id: payload.member_id,
+      collection: payload.collection,
+      assign: payload.assign,
+      resource_ids: payload.resource_ids,
+    }),
   });
 }
 

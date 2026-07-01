@@ -49,7 +49,8 @@ import {
   Tags,
   FileSearch,
   Link2,
-  Facebook
+  Facebook,
+  UserCircle,
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
@@ -62,6 +63,7 @@ import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
 import ShortLinksPanel from './components/admin/ShortLinksPanel';
 import FacebookPanel from './components/admin/FacebookPanel';
 import AdminPropertyDirectory from './components/admin/AdminPropertyDirectory';
+import AdminProfilePanel from './components/admin/AdminProfilePanel';
 import AdminProjectsPanel from './components/admin/AdminProjectsPanel';
 import {
   countPropertyStatuses,
@@ -71,6 +73,9 @@ import {
 } from './utils/propertyStatus';
 import LeadMagnetContentAdmin from './components/admin/LeadMagnetContentAdmin';
 import { getPublicPropertyUrl } from './utils/propertyShare';
+import { sortByCreatedAtDesc } from './utils/propertySort';
+import { getPropertyCreatorId, getPropertyCreatorName } from './utils/propertyCreator';
+import { AGENT_TIER_ORDER, AGENT_TIER_META } from './utils/agentTier';
 import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
 import {
   analyzeCustomer,
@@ -104,7 +109,8 @@ import {
   updatePost,
   updateProperty,
   updateUser,
-  verifyContent
+  verifyContent,
+  bulkMemberPermissions,
 } from './services/api';
 import SeoContentAdmin from './components/admin/SeoContentAdmin';
 import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
@@ -161,10 +167,17 @@ const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string 
   tiktok: { label: 'TikTok 9:16' }
 };
 
+/** Tạm tắt — tính năng bài đăng MXH chưa sử dụng được */
+const MXH_POSTS_ENABLED = false;
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('real_estate_ai_active_tab') || 'dashboard');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const tab = localStorage.getItem('real_estate_ai_active_tab') || 'dashboard';
+    if (!MXH_POSTS_ENABLED && tab === 'posts') return 'dashboard';
+    return tab;
+  });
   const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
     const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
     return tab.startsWith('seo-');
@@ -202,7 +215,8 @@ export default function App() {
     area: 'all',
     type: 'all',
     transactionType: 'all',
-    status: 'visible'
+    status: 'visible',
+    creator: 'all',
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
@@ -248,7 +262,8 @@ export default function App() {
     password: '',
     role: 'member',
     company_id: '',
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    agent_tier: 'normal' as User['agent_tier'],
   });
 
   const detectedPropertyHashtags = useMemo(
@@ -651,7 +666,8 @@ export default function App() {
       password: '',
       role: user.role,
       company_id: user.company_id || '',
-      status: user.status
+      status: user.status,
+      agent_tier: user.agent_tier || (user.role === 'owner' ? 'legendary' : 'normal'),
     });
   };
 
@@ -663,7 +679,8 @@ export default function App() {
       password: '',
       role: 'member',
       company_id: '',
-      status: 'active'
+      status: 'active',
+      agent_tier: 'normal',
     });
   };
 
@@ -685,6 +702,7 @@ export default function App() {
       if (currentUser.role === 'owner') {
         payload.role = editUserForm.role;
         payload.company_id = editUserForm.role === 'owner' ? undefined : editUserForm.company_id;
+        payload.agent_tier = editUserForm.role === 'owner' ? 'legendary' : editUserForm.agent_tier;
         if (editingUser.id !== currentUser.id) {
           payload.status = editUserForm.status;
         }
@@ -733,9 +751,88 @@ export default function App() {
         const updated = await updatePost(resource.id, { assigned_member_ids: nextAssignedIds });
         setPosts(prev => prev.map(item => item.id === updated.id ? updated : item));
       }
-      showToast('Da cap nhat quyen truy cap.', 'success');
+      showToast('Đã cập nhật quyền truy cập.', 'success');
     } catch (error: any) {
-      showToast(error.message || 'Khong the cap quyen.', 'error');
+      showToast(error.message || 'Không thể cấp quyền.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleBulkMemberAssignment = async (
+    collection: 'customers' | 'properties' | 'posts',
+    _items: Array<Customer | Property | Post>,
+    memberId: string,
+    assign: boolean,
+    options: { manageLoading?: boolean; quiet?: boolean } = {},
+  ) => {
+    if (!memberId) return;
+    const { manageLoading = true, quiet = false } = options;
+
+    if (manageLoading) setActionLoading(`assign-all-${collection}`);
+    try {
+      const result = await bulkMemberPermissions({
+        member_id: memberId,
+        collection,
+        assign,
+      });
+
+      if (result.updated === 0) {
+        if (!quiet) {
+          showToast(assign ? 'Tất cả đã được cấp quyền.' : 'Không có mục nào đang được cấp.', 'info');
+        }
+        return result;
+      }
+
+      const updatedMap = new Map(result.items.map(item => [item.id, item]));
+      if (collection === 'customers') {
+        setCustomers(prev => prev.map(item => updatedMap.get(item.id) || item));
+      } else if (collection === 'properties') {
+        setProperties(prev => prev.map(item => updatedMap.get(item.id) || item));
+      } else {
+        setPosts(prev => prev.map(item => updatedMap.get(item.id) || item));
+      }
+
+      if (!quiet) {
+        showToast(
+          assign ? `Đã cấp quyền ${result.updated} mục.` : `Đã bỏ quyền ${result.updated} mục.`,
+          'success',
+        );
+      }
+      return result;
+    } catch (error: any) {
+      showToast(error.message || 'Không thể cập nhật hàng loạt.', 'error');
+      throw error;
+    } finally {
+      if (manageLoading) setActionLoading(null);
+    }
+  };
+
+  const handleSelectAllMemberPermissions = async (memberId: string, assign: boolean) => {
+    if (!memberId) return;
+    setActionLoading('assign-all-global');
+    try {
+      const results = await Promise.all([
+        bulkMemberPermissions({ member_id: memberId, collection: 'properties', assign }),
+        bulkMemberPermissions({ member_id: memberId, collection: 'customers', assign }),
+      ]);
+
+      const [propsResult, customersResult] = results;
+      const propsMap = new Map(propsResult.items.map(item => [item.id, item]));
+      const customersMap = new Map(customersResult.items.map(item => [item.id, item]));
+
+      setProperties(prev => prev.map(item => propsMap.get(item.id) || item));
+      setCustomers(prev => prev.map(item => customersMap.get(item.id) || item));
+
+      const totalUpdated = results.reduce((sum, result) => sum + result.updated, 0);
+      showToast(
+        assign
+          ? `Đã cấp quyền ${totalUpdated} tài nguyên cho member.`
+          : `Đã bỏ quyền ${totalUpdated} tài nguyên.`,
+        totalUpdated > 0 ? 'success' : 'info',
+      );
+    } catch (error: any) {
+      showToast(error.message || 'Không thể cập nhật hàng loạt.', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -1285,7 +1382,29 @@ export default function App() {
   const propertyStatusCounts = useMemo(() => countPropertyStatuses(properties), [properties]);
   const projectCatalogGroups = useMemo(() => getEffectiveProjectGroups(settings), [settings.project_groups]);
 
-  const filteredProperties = properties.filter(p => {
+  const propertyCreatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const user of managedUsers) {
+      map.set(user.id, user.name);
+    }
+    if (currentUser) {
+      map.set(currentUser.id, currentUser.name);
+    }
+    return map;
+  }, [managedUsers, currentUser]);
+
+  const propertyCreatorFilterOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const property of properties) {
+      const creatorId = getPropertyCreatorId(property);
+      if (creatorId) ids.add(creatorId);
+    }
+    return Array.from(ids)
+      .map(id => ({ id, name: propertyCreatorNameById.get(id) || id }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  }, [properties, propertyCreatorNameById]);
+
+  const filteredProperties = sortByCreatedAtDesc(properties.filter(p => {
     const normalizedSearch = searchQuery.toLowerCase();
     const saleStatus = getPropertySaleStatus(p);
     const searchableText = [
@@ -1315,9 +1434,12 @@ export default function App() {
         || (propertyFilters.area === 'under80' && p.area < 80)
         || (propertyFilters.area === '80to150' && p.area >= 80 && p.area <= 150)
         || (propertyFilters.area === 'over150' && p.area > 150);
+    const matchesCreator =
+      propertyFilters.creator === 'all'
+      || getPropertyCreatorId(p) === propertyFilters.creator;
 
-    return matchesSearch && matchesType && matchesTransaction && matchesStatus && matchesPrice && matchesArea;
-  });
+    return matchesSearch && matchesType && matchesTransaction && matchesStatus && matchesPrice && matchesArea && matchesCreator;
+  }));
 
   const filteredPosts = posts.filter(pos => 
     pos.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1475,12 +1597,21 @@ export default function App() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <div className="hidden lg:flex flex-col items-end leading-tight">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('profile');
+              setAdminMenuOpen(false);
+              navigate('/admin/dashboard');
+            }}
+            className="hidden lg:flex flex-col items-end leading-tight rounded-lg px-2 py-1 transition-colors hover:bg-slate-900/60"
+            title="Hồ sơ cá nhân"
+          >
             <span className="text-xs font-bold text-slate-200">{currentUser.name}</span>
             <span className="text-[11px] text-slate-500 uppercase">
               {currentUser.role}{currentUser.company_name ? ` · ${currentUser.company_name}` : ''}
             </span>
-          </div>
+          </button>
 
           <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
             <span className="relative flex h-2 w-2">
@@ -1535,7 +1666,7 @@ export default function App() {
               { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: propertyStatusCounts.adminVisible },
               { id: 'projects', label: 'Quản trị dự án', icon: Building2 },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
-              { id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length },
+              ...(MXH_POSTS_ENABLED ? [{ id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length }] : []),
             ].map(item => {
               const IconComp = item.icon;
               const isSelected = activeTab === item.id;
@@ -1619,6 +1750,7 @@ export default function App() {
               { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
               { id: 'automations', label: 'Automation AI Center', icon: Cpu },
               ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
+              { id: 'profile', label: 'Hồ sơ cá nhân', icon: UserCircle },
               { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
               { id: 'settings', label: 'Cấu hình hệ thống', icon: SettingsIcon },
             ].map(item => {
@@ -2284,7 +2416,7 @@ export default function App() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-900 bg-slate-900/35 p-4">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
                       <div className="space-y-1">
                         <label className="block text-2xs font-semibold uppercase text-slate-500">Khoảng giá</label>
                         <select
@@ -2352,6 +2484,21 @@ export default function App() {
                           <option value="all">Tất cả trạng thái</option>
                         </select>
                       </div>
+                      {(currentUser?.role === 'owner' || currentUser?.role === 'company') && propertyCreatorFilterOptions.length > 0 && (
+                        <div className="space-y-1">
+                          <label className="block text-2xs font-semibold uppercase text-slate-500">Người tạo</label>
+                          <select
+                            value={propertyFilters.creator}
+                            onChange={(e) => setPropertyFilters({ ...propertyFilters, creator: e.target.value })}
+                            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                          >
+                            <option value="all">Tất cả người tạo</option>
+                            {propertyCreatorFilterOptions.map(option => (
+                              <option key={option.id} value={option.id}>{option.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                     <div className="mt-3 flex flex-col gap-2 text-2xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                       <div className="space-y-1">
@@ -2363,6 +2510,7 @@ export default function App() {
                           propertyFilters.area === 'all' &&
                           propertyFilters.type === 'all' &&
                           propertyFilters.transactionType === 'all' &&
+                          propertyFilters.creator === 'all' &&
                           !searchQuery
                             ? ` (mặc định: không gồm ${propertyStatusCounts.hidden} BĐS đã ẩn)`
                             : null}
@@ -2375,7 +2523,7 @@ export default function App() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setPropertyFilters({ price: 'all', area: 'all', type: 'all', transactionType: 'all', status: 'visible' })}
+                        onClick={() => setPropertyFilters({ price: 'all', area: 'all', type: 'all', transactionType: 'all', status: 'visible', creator: 'all' })}
                         className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-semibold text-slate-300 hover:border-slate-700"
                       >
                         Xóa bộ lọc
@@ -2385,6 +2533,7 @@ export default function App() {
 
                   <AdminPropertyDirectory
                     properties={filteredProperties}
+                    creatorNameById={propertyCreatorNameById}
                     propertyGalleryIndex={propertyGalleryIndex}
                     setPropertyGalleryIndex={setPropertyGalleryIndex}
                     actionLoading={actionLoading}
@@ -2667,7 +2816,7 @@ export default function App() {
               {/* ==================================================== */}
               {/* TAB 5: POST CMS SCHEDULE */}
               {/* ==================================================== */}
-              {activeTab === 'posts' && (
+              {MXH_POSTS_ENABLED && activeTab === 'posts' && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -3611,7 +3760,9 @@ export default function App() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-bold text-white">Cấp quyền tài nguyên cho Member</h3>
-                        <p className="text-xs text-slate-500">Member chỉ access được tài nguyên có tick trong danh sách này.</p>
+                        <p className="text-xs text-slate-500">
+                          Member chỉ truy cập được tài nguyên có tick trong danh sách bên dưới.
+                        </p>
                       </div>
                       <select
                         value={selectedPermissionMemberId}
@@ -3626,17 +3777,58 @@ export default function App() {
                     </div>
 
                     {selectedPermissionMember ? (
-                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAllMemberPermissions(selectedPermissionMember.id, true)}
+                            disabled={actionLoading === 'assign-all-global'}
+                            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+                          >
+                            Chọn tất cả
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAllMemberPermissions(selectedPermissionMember.id, false)}
+                            disabled={actionLoading === 'assign-all-global'}
+                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            Bỏ chọn tất cả
+                          </button>
+                        </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         {[
-                          { key: 'properties' as const, title: 'Danh sách BĐS', items: properties },
-                          { key: 'customers' as const, title: 'Khách hàng', items: customers },
-                          { key: 'posts' as const, title: 'Bài đăng', items: posts }
+                          { key: 'properties' as const, title: 'Tin BĐS (website)', subtitle: 'Hiển thị trên trang công khai', items: properties },
+                          { key: 'customers' as const, title: 'Khách hàng', subtitle: 'Lead & CRM', items: customers },
                         ].map(section => (
                           <div key={section.key} className="bg-slate-950/60 border border-slate-900 rounded-xl overflow-hidden">
                             <div className="px-4 py-3 border-b border-slate-900">
-                              <div className="text-xs font-bold text-white">{section.title}</div>
-                              <div className="text-2xs text-slate-500">
-                                {section.items.filter(item => (item.assigned_member_ids || []).includes(selectedPermissionMember.id)).length}/{section.items.length} đã cấp
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="text-xs font-bold text-white">{section.title}</div>
+                                  <div className="text-2xs text-slate-500">{section.subtitle}</div>
+                                  <div className="text-2xs text-slate-500 mt-0.5">
+                                    {section.items.filter(item => (item.assigned_member_ids || []).includes(selectedPermissionMember.id)).length}/{section.items.length} đã cấp
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleBulkMemberAssignment(section.key, section.items, selectedPermissionMember.id, true)}
+                                    disabled={actionLoading === `assign-all-${section.key}` || actionLoading === 'assign-all-global'}
+                                    className="rounded-md border border-slate-800 px-2 py-1 text-2xs font-bold text-rose-300 hover:bg-slate-900 disabled:opacity-50"
+                                  >
+                                    All
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleBulkMemberAssignment(section.key, section.items, selectedPermissionMember.id, false)}
+                                    disabled={actionLoading === `assign-all-${section.key}` || actionLoading === 'assign-all-global'}
+                                    className="rounded-md border border-slate-800 px-2 py-1 text-2xs font-bold text-slate-400 hover:bg-slate-900 disabled:opacity-50"
+                                  >
+                                    None
+                                  </button>
+                                </div>
                               </div>
                             </div>
                             <div className="max-h-80 overflow-y-auto app-scroll divide-y divide-slate-900">
@@ -3663,12 +3855,45 @@ export default function App() {
                           </div>
                         ))}
                       </div>
+                      </>
                     ) : (
                       <div className="border border-dashed border-slate-800 rounded-xl p-6 text-center text-xs text-slate-500">
                         Chọn một member active để bắt đầu cấp quyền.
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB: PROFILE */}
+              {/* ==================================================== */}
+              {activeTab === 'profile' && currentUser && (
+                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
+                  <AdminProfilePanel
+                    currentUser={currentUser}
+                    saving={actionLoading === 'save-profile'}
+                    onSavingChange={(loading) => setActionLoading(loading ? 'save-profile' : null)}
+                    onUpdated={(user) => {
+                      setCurrentUser(user);
+                      setManagedUsers(prev => prev.map(item => (
+                        item.id === user.id
+                          ? {
+                            ...item,
+                            name: user.name,
+                            email: user.email,
+                            phone: user.phone,
+                            avatar_url: user.avatar_url,
+                            bio: user.bio,
+                            agent_tier: user.agent_tier,
+                            public_slug: user.public_slug,
+                            show_public_profile: user.show_public_profile,
+                          }
+                          : item
+                      )));
+                    }}
+                    onNotify={showToast}
+                  />
                 </div>
               )}
 
@@ -4104,6 +4329,23 @@ export default function App() {
                 </div>
               )}
 
+              {currentUser.role === 'owner' && editingUser.role !== 'owner' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-400">Bậc agent</label>
+                  <select
+                    value={editUserForm.agent_tier || 'normal'}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, agent_tier: e.target.value as User['agent_tier'] })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
+                  >
+                    {AGENT_TIER_ORDER.filter(tier => tier !== 'legendary').map(tier => (
+                      <option key={tier} value={tier}>
+                        {AGENT_TIER_META[tier].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {editingUser.id !== currentUser.id && (currentUser.role === 'owner' || (currentUser.role === 'company' && editingUser.role === 'member')) && (
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-400">Trạng thái</label>
@@ -4167,6 +4409,9 @@ export default function App() {
                           Xem gần nhất: {new Date(editingProperty.last_public_view_at).toLocaleString('vi-VN')}
                         </span>
                       )}
+                      <span className="text-violet-300/90">
+                        Người tạo: {getPropertyCreatorName(editingProperty, propertyCreatorNameById)}
+                      </span>
                     </div>
                   </div>
                 )}

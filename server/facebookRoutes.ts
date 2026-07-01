@@ -206,8 +206,8 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
         firstMessage: interaction.text || undefined,
         postId: interaction.postId || undefined,
         commentId: interaction.commentId || undefined,
-        baseScore: 20,
-        extraTags: ['comment', 'manual-create'],
+        score: 20,
+        tags: ['comment', 'manual-create'],
       });
       res.json({ status: 'success', data: lead });
     } catch (error) {
@@ -279,8 +279,8 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
         firstMessage: lastInbound?.text || undefined,
         contactName: conversation.contact.name || undefined,
         psid: conversation.contact.psid,
-        baseScore: 15,
-        extraTags: ['messenger', 'manual-create'],
+        score: 15,
+        tags: ['messenger', 'manual-create'],
       });
       res.json({ status: 'success', data: lead });
     } catch (error) {

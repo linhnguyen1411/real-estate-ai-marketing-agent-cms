@@ -33,6 +33,8 @@ const BlogPostPage = React.lazy(() => import('./pages/BlogPostPage.tsx'));
 const BlogCategoryPage = React.lazy(() => import('./pages/BlogCategoryPage.tsx'));
 const BlogTagPage = React.lazy(() => import('./pages/BlogTagPage.tsx'));
 const InvestorDashboardPage = React.lazy(() => import('./pages/InvestorDashboardPage.tsx'));
+const AgentProfilePage = React.lazy(() => import('./pages/AgentProfilePage.tsx'));
+const AgentsDirectoryPage = React.lazy(() => import('./pages/AgentsDirectoryPage.tsx'));
 const AdminApp = React.lazy(() => import('./App.tsx'));
 
 function AdminRoute() {
@@ -297,6 +299,14 @@ createRoot(document.getElementById('root')!).render(
             <Route
               path="/tai-lieu-dau-tu/:magnetSlug"
               element={<SuspensePage><LeadMagnetDetailPage /></SuspensePage>}
+            />
+            <Route
+              path="/moi-gioi"
+              element={<SuspensePage><AgentsDirectoryPage /></SuspensePage>}
+            />
+            <Route
+              path="/moi-gioi/:agentSlug"
+              element={<SuspensePage><AgentProfilePage /></SuspensePage>}
             />
           </Route>
 
