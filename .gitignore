@@ -68,3 +68,7 @@ cookies.json
 **/screenshots/
 **/*screenshot*.png
 **/*screenshot*.jpg
+**/playwright-traces/
+**/traces/
+**/*.trace.zip
+data/browser-debug/

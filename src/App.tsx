@@ -51,6 +51,7 @@ import {
   Link2,
   Facebook,
   UserCircle,
+  ScanSearch,
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
@@ -113,6 +114,7 @@ import {
   bulkMemberPermissions,
 } from './services/api';
 import SeoContentAdmin from './components/admin/SeoContentAdmin';
+import AgentPlatformPage from './pages/AgentPlatformPage';
 import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
 
 const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
@@ -161,6 +163,30 @@ const SEO_SUBMENU = [
   { id: 'seo-audit', label: 'SEO Audit', icon: FileSearch },
 ] as const;
 
+const AGENT_TAB_TO_PATH: Record<string, string> = {
+  'agent-dashboard': '/admin/agents',
+  'agent-sources': '/admin/agents/sources',
+  'agent-missions': '/admin/agents/missions',
+  'agent-jobs': '/admin/agents/jobs',
+  'agent-findings': '/admin/agents/findings',
+  'agent-notifications': '/admin/agents/notifications',
+  'agent-sessions': '/admin/agents/sessions',
+};
+
+const AGENT_PATH_TO_TAB: Record<string, string> = Object.fromEntries(
+  Object.entries(AGENT_TAB_TO_PATH).map(([tab, path]) => [path, tab])
+);
+
+const AGENT_SUBMENU = [
+  { id: 'agent-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'agent-sources', label: 'Nguồn', icon: Globe },
+  { id: 'agent-missions', label: 'Mission', icon: Sparkles },
+  { id: 'agent-jobs', label: 'Jobs', icon: Clock },
+  { id: 'agent-findings', label: 'Findings', icon: FileSearch },
+  { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare },
+  { id: 'agent-sessions', label: 'Sessions', icon: Cpu },
+] as const;
+
 const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
   facebook: { label: 'Facebook 3:4' },
   zalo: { label: 'Zalo 1:1' },
@@ -181,6 +207,10 @@ export default function App() {
   const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
     const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
     return tab.startsWith('seo-');
+  });
+  const [agentMenuOpen, setAgentMenuOpen] = useState(() => {
+    const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
+    return tab.startsWith('agent-');
   });
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
@@ -398,13 +428,22 @@ export default function App() {
   }, [authLoading, currentUser, location.pathname, navigate]);
 
   useEffect(() => {
+    const agentTab = AGENT_PATH_TO_TAB[location.pathname];
+    if (agentTab) {
+      setActiveTab(agentTab);
+      setAgentMenuOpen(true);
+      setSeoMenuOpen(false);
+      return;
+    }
     const seoTab = SEO_PATH_TO_TAB[location.pathname];
     if (seoTab) {
       setActiveTab(seoTab);
       setSeoMenuOpen(true);
+      setAgentMenuOpen(false);
     } else if (location.pathname === '/admin/ai-content') {
       setActiveTab('seo-posts');
       setSeoMenuOpen(true);
+      setAgentMenuOpen(false);
       navigate('/admin/seo/posts', { replace: true });
     } else if (activeTab === 'seo-content' || activeTab === 'seo-ai-studio') {
       setActiveTab('seo-posts');
@@ -1726,9 +1765,56 @@ export default function App() {
                         onClick={() => {
                           setActiveTab(item.id);
                           setSeoMenuOpen(true);
+                          setAgentMenuOpen(false);
                           setSearchQuery('');
                           setAdminMenuOpen(false);
                           navigate(SEO_TAB_TO_PATH[item.id] || '/admin/seo/posts');
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <IconComp className="w-3.5 h-3.5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setAgentMenuOpen(prev => !prev)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab.startsWith('agent-')
+                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ScanSearch className={`w-4 h-4 ${activeTab.startsWith('agent-') ? 'text-rose-500' : 'text-slate-500'}`} />
+                  <span>AI Agent</span>
+                </div>
+                {agentMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {agentMenuOpen && (
+                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
+                  {AGENT_SUBMENU.map(item => {
+                    const IconComp = item.icon;
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setAgentMenuOpen(true);
+                          setSeoMenuOpen(false);
+                          setSearchQuery('');
+                          setAdminMenuOpen(false);
+                          navigate(AGENT_TAB_TO_PATH[item.id] || '/admin/agents');
                         }}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
@@ -1803,6 +1889,11 @@ export default function App() {
 
         {/* Outer Content Area */}
         <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-6 app-scroll">
+
+          {location.pathname.startsWith('/admin/agents') ? (
+            <AgentPlatformPage userRole={currentUser.role} />
+          ) : (
+          <>
 
           {/* Search bar inside view headers */}
           {['crm', 'properties', 'posts', 'chat-history'].includes(activeTab) && (
@@ -4064,6 +4155,9 @@ export default function App() {
               )}
 
             </>
+          )}
+
+          </>
           )}
 
         </main>

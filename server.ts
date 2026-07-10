@@ -68,6 +68,7 @@ import { getCached, setCached, clearCacheKey } from './server/cache/publicCache'
 import { filterPublicProperties } from './server/publicPropertyMapper';
 import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
+import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -1283,6 +1284,7 @@ registerInvestorLeadAdminRoutes(app);
 registerBlogAdminRoutes(app);
 registerShortLinkAdminRoutes(app);
 registerFacebookAdminRoutes(app);
+registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);

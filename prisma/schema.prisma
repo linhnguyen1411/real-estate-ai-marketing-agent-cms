@@ -100,40 +100,40 @@ model GeneratedContent {
 }
 
 model Lead {
-  id            String   @id
-  name          String
-  phone         String
-  email         String?
-  city          String?
-  interestType  String?  @map("interest_type")
-  budgetRange   String?  @map("budget_range")
-  source        String?
-  channel       String?
-  utmSource     String?  @map("utm_source")
-  utmMedium     String?  @map("utm_medium")
-  utmCampaign   String?  @map("utm_campaign")
-  pagePath      String?  @map("page_path")
-  magnetSlug    String?  @map("magnet_slug")
-  shortLinkSlug String?  @map("short_link_slug")
-  investorScore Int      @default(0) @map("investor_score")
-  status        String   @default("new")
-  accessToken   String?  @map("access_token")
-  emailsSent    Int      @default(0) @map("emails_sent")
-  facebookContactId      String? @map("facebook_contact_id")
-  facebookConversationId String? @map("facebook_conversation_id")
-  facebookPageId         String? @map("facebook_page_id")
-  sourceChannel          String? @map("source_channel")
-  sourceType             String? @map("source_type")
-  sourcePostId           String? @map("source_post_id")
-  sourceCommentId        String? @map("source_comment_id")
-  firstMessage           String? @map("first_message") @db.Text
-  createdAt     DateTime @map("created_at")
-  updatedAt     DateTime @map("updated_at")
+  id                     String   @id
+  name                   String
+  phone                  String
+  email                  String?
+  city                   String?
+  interestType           String?  @map("interest_type")
+  budgetRange            String?  @map("budget_range")
+  source                 String?
+  channel                String?
+  utmSource              String?  @map("utm_source")
+  utmMedium              String?  @map("utm_medium")
+  utmCampaign            String?  @map("utm_campaign")
+  pagePath               String?  @map("page_path")
+  magnetSlug             String?  @map("magnet_slug")
+  shortLinkSlug          String?  @map("short_link_slug")
+  investorScore          Int      @default(0) @map("investor_score")
+  status                 String   @default("new")
+  accessToken            String?  @map("access_token")
+  emailsSent             Int      @default(0) @map("emails_sent")
+  facebookContactId      String?  @map("facebook_contact_id")
+  facebookConversationId String?  @map("facebook_conversation_id")
+  facebookPageId         String?  @map("facebook_page_id")
+  sourceChannel          String?  @map("source_channel")
+  sourceType             String?  @map("source_type")
+  sourcePostId           String?  @map("source_post_id")
+  sourceCommentId        String?  @map("source_comment_id")
+  firstMessage           String?  @map("first_message") @db.Text
+  createdAt              DateTime @map("created_at")
+  updatedAt              DateTime @map("updated_at")
 
-  scores  LeadScore[]
-  sources LeadSource[]
-  events  LeadEvent[]
-  tags    LeadTag[]
+  scores          LeadScore[]
+  sources         LeadSource[]
+  events          LeadEvent[]
+  tags            LeadTag[]
   facebookContact FacebookContact? @relation(fields: [facebookContactId], references: [id], onDelete: SetNull)
 
   @@index([shortLinkSlug])
@@ -242,39 +242,39 @@ model Tag {
 }
 
 model BlogPost {
-  id                  String               @id
+  id                  String                 @id
   title               String
-  slug                String               @unique
-  excerpt             String               @db.Text
-  content             String               @db.Text
-  contentMarkdown     String?              @map("content_markdown") @db.Text
-  contentHtml         String?              @map("content_html") @db.Text
-  metaTitle           String               @map("meta_title")
-  metaDescription     String               @map("meta_description") @db.Text
-  canonicalUrl        String?              @map("canonical_url")
-  coverImage          String?              @map("cover_image")
-  status              String               @default("draft")
-  categoryId          String               @map("category_id")
-  authorId            String               @map("author_id")
-  publishedAt         DateTime?            @map("published_at")
-  readingTime         Int?                 @map("reading_time")
-  wordCount           Int?                 @map("word_count")
-  seoScore            Int?                 @map("seo_score")
-  contentQualityScore Int?                 @map("content_quality_score")
-  sourceType          String               @default("manual") @map("source_type")
-  primaryKeyword      String?              @map("primary_keyword")
-  secondaryKeywords   Json?                @map("secondary_keywords")
-  targetIntent        String?              @map("target_intent")
+  slug                String                 @unique
+  excerpt             String                 @db.Text
+  content             String                 @db.Text
+  contentMarkdown     String?                @map("content_markdown") @db.Text
+  contentHtml         String?                @map("content_html") @db.Text
+  metaTitle           String                 @map("meta_title")
+  metaDescription     String                 @map("meta_description") @db.Text
+  canonicalUrl        String?                @map("canonical_url")
+  coverImage          String?                @map("cover_image")
+  status              String                 @default("draft")
+  categoryId          String                 @map("category_id")
+  authorId            String                 @map("author_id")
+  publishedAt         DateTime?              @map("published_at")
+  readingTime         Int?                   @map("reading_time")
+  wordCount           Int?                   @map("word_count")
+  seoScore            Int?                   @map("seo_score")
+  contentQualityScore Int?                   @map("content_quality_score")
+  sourceType          String                 @default("manual") @map("source_type")
+  primaryKeyword      String?                @map("primary_keyword")
+  secondaryKeywords   Json?                  @map("secondary_keywords")
+  targetIntent        String?                @map("target_intent")
   cluster             String?
-  articleType         String?              @map("article_type")
-  isPillar            Boolean              @default(false) @map("is_pillar")
-  isIndexable         Boolean              @default(true) @map("is_indexable")
-  relatedSuggestions  Json?                @map("related_suggestions")
-  relatedPostIds      Json?                @map("related_post_ids")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  author              Author               @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  articleType         String?                @map("article_type")
+  isPillar            Boolean                @default(false) @map("is_pillar")
+  isIndexable         Boolean                @default(true) @map("is_indexable")
+  relatedSuggestions  Json?                  @map("related_suggestions")
+  relatedPostIds      Json?                  @map("related_post_ids")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  category            Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author              Author                 @relation(fields: [authorId], references: [id], onDelete: Restrict)
   tags                BlogPostTag[]
   faqs                BlogPostFaq[]
   internalLinks       BlogPostInternalLink[]
@@ -339,51 +339,51 @@ model BlogPostSeoAudit {
 }
 
 model BlogPostRevision {
-  id          String   @id
-  postId      String   @map("post_id")
-  snapshot    Json
-  note        String?  @db.Text
-  createdBy   String?  @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  post        BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id        String   @id
+  postId    String   @map("post_id")
+  snapshot  Json
+  note      String?  @db.Text
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt])
   @@map("blog_post_revisions")
 }
 
 model BlogPostAiDraft {
-  id           String    @id
-  postId       String?   @map("post_id")
-  status       String    @default("pending")
-  input        Json
-  outputMarkdown String? @map("output_markdown") @db.Text
-  articleType  String?   @map("article_type")
-  errorMessage String?   @map("error_message") @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  post         BlogPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  id             String    @id
+  postId         String?   @map("post_id")
+  status         String    @default("pending")
+  input          Json
+  outputMarkdown String?   @map("output_markdown") @db.Text
+  articleType    String?   @map("article_type")
+  errorMessage   String?   @map("error_message") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  post           BlogPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@map("blog_post_ai_drafts")
 }
 
 model ShortLink {
-  id          String   @id
-  slug        String   @unique
-  targetUrl   String   @map("target_url") @db.Text
+  id          String           @id
+  slug        String           @unique
+  targetUrl   String           @map("target_url") @db.Text
   title       String?
-  description String?  @db.Text
-  entityType  String?  @map("entity_type")
-  entityId    String?  @map("entity_id")
+  description String?          @db.Text
+  entityType  String?          @map("entity_type")
+  entityId    String?          @map("entity_id")
   campaign    String?
-  utmSource   String?  @map("utm_source")
-  utmMedium   String?  @map("utm_medium")
-  utmCampaign String?  @map("utm_campaign")
-  isActive    Boolean  @default(true) @map("is_active")
-  expiresAt   DateTime? @map("expires_at")
-  createdBy   String?  @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  utmSource   String?          @map("utm_source")
+  utmMedium   String?          @map("utm_medium")
+  utmCampaign String?          @map("utm_campaign")
+  isActive    Boolean          @default(true) @map("is_active")
+  expiresAt   DateTime?        @map("expires_at")
+  createdBy   String?          @map("created_by")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
   clicks      ShortLinkClick[]
 
   @@index([entityType, entityId])
@@ -423,18 +423,18 @@ model FacebookPageConnection {
 }
 
 model FacebookContact {
-  id             String    @id
+  id             String   @id
   psid           String
-  facebookUserId String?   @map("facebook_user_id")
+  facebookUserId String?  @map("facebook_user_id")
   name           String?
-  profilePic     String?   @map("profile_pic") @db.Text
+  profilePic     String?  @map("profile_pic") @db.Text
   locale         String?
   timezone       Int?
   gender         String?
-  tags           Json      @default("[]")
-  firstSeenAt    DateTime  @default(now()) @map("first_seen_at")
-  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
-  leadId         String?   @map("lead_id")
+  tags           Json     @default("[]")
+  firstSeenAt    DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+  leadId         String?  @map("lead_id")
 
   conversations FacebookConversation[]
   messages      FacebookMessage[]
@@ -460,7 +460,7 @@ model FacebookConversation {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  contact  FacebookContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contact  FacebookContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   messages FacebookMessage[]
 
   @@unique([pageId, threadKey])
@@ -539,4 +539,194 @@ model FacebookWebhookEvent {
   @@index([createdAt])
   @@index([processed])
   @@map("facebook_webhook_events")
+}
+
+// --- AI Employee Platform (Prisma-native; not cms_records / dbHelper cache) ---
+
+model AgentSource {
+  id                  String    @id @default(cuid())
+  companyId           String?   @map("company_id")
+  name                String
+  type                String
+  url                 String    @db.Text
+  status              String    @default("active")
+  priority            Int       @default(5)
+  scanIntervalMinutes Int       @default(60) @map("scan_interval_minutes")
+  config              Json      @default("{}")
+  checkpoint          Json?
+  lastScannedAt       DateTime? @map("last_scanned_at")
+  nextScanAt          DateTime? @map("next_scan_at")
+  lastError           String?   @map("last_error") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  jobs            AgentJob[]
+  scannedContents ScannedContent[]
+  findings        AgentFinding[]
+
+  @@unique([companyId, url])
+  @@index([companyId])
+  @@index([status, nextScanAt])
+  @@index([priority])
+  @@map("agent_sources")
+}
+
+model AgentMission {
+  id          String   @id @default(cuid())
+  companyId   String?  @map("company_id")
+  ownerUserId String?  @map("owner_user_id")
+  name        String
+  objective   String   @db.Text
+  status      String   @default("draft")
+  rules       Json     @default("{}")
+  schedule    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  jobs     AgentJob[]
+  findings AgentFinding[]
+
+  @@index([companyId])
+  @@index([ownerUserId])
+  @@index([status])
+  @@map("agent_missions")
+}
+
+model AgentJob {
+  id           String    @id @default(cuid())
+  companyId    String?   @map("company_id")
+  missionId    String?   @map("mission_id")
+  sourceId     String?   @map("source_id")
+  type         String
+  status       String    @default("queued")
+  priority     Int       @default(5)
+  payload      Json      @default("{}")
+  result       Json?
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3) @map("max_attempts")
+  claimedBy    String?   @map("claimed_by")
+  claimedAt    DateTime? @map("claimed_at")
+  startedAt    DateTime? @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  availableAt  DateTime  @default(now()) @map("available_at")
+  errorMessage String?   @map("error_message") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  mission AgentMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  source  AgentSource?  @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt, priority])
+  @@index([sourceId, status])
+  @@index([missionId, status])
+  @@index([claimedBy])
+  @@index([companyId])
+  @@map("agent_jobs")
+}
+
+model BrowserSession {
+  id              String    @id @default(cuid())
+  companyId       String?   @map("company_id")
+  name            String
+  status          String    @default("offline")
+  workerId        String?   @map("worker_id")
+  profilePath     String    @map("profile_path")
+  currentUrl      String?   @map("current_url") @db.Text
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  lastError       String?   @map("last_error") @db.Text
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([workerId])
+  @@index([status])
+  @@index([lastHeartbeatAt])
+  @@map("browser_sessions")
+}
+
+model ScannedContent {
+  id           String    @id @default(cuid())
+  companyId    String?   @map("company_id")
+  sourceId     String    @map("source_id")
+  externalId   String?   @map("external_id")
+  canonicalUrl String    @map("canonical_url") @db.Text
+  authorName   String?   @map("author_name")
+  authorUrl    String?   @map("author_url") @db.Text
+  contentText  String    @map("content_text") @db.Text
+  contentHash  String    @map("content_hash")
+  publishedAt  DateTime? @map("published_at")
+  collectedAt  DateTime  @default(now()) @map("collected_at")
+  status       String    @default("collected")
+  rawData      Json?     @map("raw_data")
+  metrics      Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  source   AgentSource    @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  findings AgentFinding[]
+
+  @@unique([sourceId, contentHash])
+  @@index([sourceId, publishedAt])
+  @@index([sourceId, externalId])
+  @@index([status, collectedAt])
+  @@index([companyId])
+  @@map("scanned_contents")
+}
+
+model AgentFinding {
+  id               String   @id @default(cuid())
+  companyId        String?  @map("company_id")
+  missionId        String?  @map("mission_id")
+  sourceId         String   @map("source_id")
+  scannedContentId String   @map("scanned_content_id")
+  type             String
+  score            Int
+  title            String
+  summary          String   @db.Text
+  extractedData    Json     @default("{}") @map("extracted_data")
+  reasons          Json     @default("[]")
+  status           String   @default("new")
+  promotedLeadId   String?  @map("promoted_lead_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  mission        AgentMission?       @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  source         AgentSource         @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  scannedContent ScannedContent      @relation(fields: [scannedContentId], references: [id], onDelete: Restrict)
+  notifications  AgentNotification[]
+
+  @@unique([scannedContentId, type])
+  @@index([companyId])
+  @@index([status, score])
+  @@index([sourceId, createdAt])
+  @@index([missionId, createdAt])
+  @@index([promotedLeadId])
+  @@map("agent_findings")
+}
+
+model AgentNotification {
+  id        String    @id @default(cuid())
+  companyId String?   @map("company_id")
+  userId    String?   @map("user_id")
+  findingId String?   @map("finding_id")
+  type      String
+  eventKey  String?   @map("event_key")
+  title     String
+  message   String    @db.Text
+  severity  String    @default("info")
+  status    String    @default("unread")
+  data      Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  readAt    DateTime? @map("read_at")
+
+  finding AgentFinding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, eventKey])
+  @@index([companyId])
+  @@index([userId, status, createdAt])
+  @@index([findingId])
+  @@index([eventKey])
+  @@index([status, createdAt])
+  @@map("agent_notifications")
 }
