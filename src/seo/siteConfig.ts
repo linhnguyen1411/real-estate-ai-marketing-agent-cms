@@ -130,7 +130,7 @@ export const RESERVED_SLUGS = new Set([
   'dau-tu-da-nang', 'dau-tu-nam-da-nang', 'dau-tu-fpt-city',
   'can-ho-da-nang-cho-thue', 'can-ho-dau-tu-da-nang',
   'nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang', 'dat-nen-nam-da-nang',
-  'tai-lieu-dau-tu', 'tin-tuc', 'nha-dau-tu',
+  'tai-lieu-dau-tu', 'tin-tuc', 'nha-dau-tu', 'moi-gioi',
   'property-images', 'sitemap.xml', 'robots.txt',
 ]);
 

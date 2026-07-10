@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export type PublicImageFolder = 'blog-covers' | 'content-images';
+export type PublicImageFolder = 'blog-covers' | 'content-images' | 'agent-avatars';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 

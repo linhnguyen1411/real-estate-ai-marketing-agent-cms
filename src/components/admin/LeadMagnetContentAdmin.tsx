@@ -16,6 +16,8 @@ const SOURCE_BADGE: Record<LeadMagnetContentMeta['source'], string> = {
 
 const TYPE_LABELS: Record<LeadMagnetContentMeta['contentType'], string> = {
   report: 'Báo cáo',
+  'investment-report': 'Báo cáo đầu tư',
+  'investment-playbook': 'Playbook đầu tư',
   'opportunity-framework': 'Khung nhóm cơ hội',
   map: 'Bản đồ',
 };

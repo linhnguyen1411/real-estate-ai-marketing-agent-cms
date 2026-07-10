@@ -1,5 +1,6 @@
 import { AppSettings } from "../src/types";
 import { normalizeProjectName } from "../src/seo/propertyCatalog";
+import { sortByCreatedAtDesc } from "../src/utils/propertySort";
 import { prisma } from "./prisma";
 
 type CmsCollection = "customers" | "properties" | "posts" | "inbox" | "automations";
@@ -175,6 +176,8 @@ async function loadCacheFromPostgres() {
     })
   );
   (db as any).public_chat_guests = guestEnriched;
+
+  db.properties = sortByCreatedAtDesc(db.properties);
 
   cache = db;
 }
@@ -626,7 +629,7 @@ export async function deleteCustomer(id: string) {
 }
 
 export function getProperties() {
-  return [...requireCache().properties];
+  return sortByCreatedAtDesc(requireCache().properties);
 }
 
 export async function createProperty(data: any) {

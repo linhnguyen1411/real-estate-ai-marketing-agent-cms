@@ -21,8 +21,11 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
-import { Property } from './types';
+import { Property, PublicAgentProfile } from './types';
 import MarkdownContent from './components/MarkdownContent';
+import AgentPublicCard from './components/agent/AgentPublicCard';
+import { fetchPublicAgentByUserId } from './services/agentApi';
+import { getPropertyCreatorId } from './utils/propertyCreator';
 import { PropertyShareButton, PropertyShareCompactButton } from './components/PropertyShareModal';
 import LeadCaptureForm from './components/LeadCaptureForm';
 import { getPublicPropertySlug } from './utils/propertyShare';
@@ -35,6 +38,7 @@ import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
 import { compareProjectDisplayOrder, getPropertyProjectLabel, matchProjectName, sortProjectEntries } from './seo/propertyCatalog';
+import { sortByCreatedAtDesc } from './utils/propertySort';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
 
 const MultiStepInvestorForm = React.lazy(() => import('./components/leadGen/MultiStepInvestorForm'));
@@ -342,6 +346,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(() => initialRouteProperty);
   const [detailViewCount, setDetailViewCount] = useState(() => Number(initialRouteProperty?.public_view_count || 0));
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [listingAgent, setListingAgent] = useState<PublicAgentProfile | null>(null);
   const selectedPropertyIdRef = React.useRef<string | null>(initialRouteProperty?.id ?? null);
   const localPropertiesRef = React.useRef(properties);
   const [chatOpen, setChatOpen] = useState(false);
@@ -513,7 +518,9 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   }, []);
 
   const activeProperties = useMemo(
-    () => localProperties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
+    () => sortByCreatedAtDesc(
+      localProperties.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available')),
+    ),
     [localProperties]
   );
 
@@ -549,6 +556,25 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     sessionStorage.setItem(sessionKey, '1');
     trackPropertyView(selectedProperty);
   }, [selectedProperty?.id, trackPropertyView]);
+
+  React.useEffect(() => {
+    if (!selectedProperty) {
+      setListingAgent(null);
+      return;
+    }
+    const creatorId = getPropertyCreatorId(selectedProperty);
+    if (!creatorId) {
+      setListingAgent(null);
+      return;
+    }
+    let cancelled = false;
+    fetchPublicAgentByUserId(creatorId).then(agent => {
+      if (!cancelled) setListingAgent(agent);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProperty?.id]);
 
   const featuredProperties = useMemo(
     () => activeProperties.filter(property => property.is_featured).slice(0, 6),
@@ -1491,6 +1517,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
               <aside className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-invest-gold">{formatPrice(selectedProperty.price)}</div>
+
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Môi giới phụ trách</div>
+                  {listingAgent ? (
+                    <AgentPublicCard agent={listingAgent} compact className="border-0 bg-transparent p-0 shadow-none" />
+                  ) : (
+                    <p className="text-sm text-slate-500">Thông tin môi giới đang cập nhật.</p>
+                  )}
+                </div>
 
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Liên hệ nhanh</div>

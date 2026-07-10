@@ -13,9 +13,11 @@ import {
   Sparkles,
   Trash2,
   TrendingUp,
+  User,
 } from 'lucide-react';
 import MarkdownContent from '../MarkdownContent';
 import { getPropertyProjectLabel } from '../../seo/propertyCatalog';
+import { getPropertyCreatorName } from '../../utils/propertyCreator';
 import { Property } from '../../types';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from '../common/PaginationBar';
 
@@ -25,6 +27,7 @@ type ViewMode = 'grid' | 'list';
 
 interface AdminPropertyDirectoryProps {
   properties: Property[];
+  creatorNameById: Map<string, string>;
   propertyGalleryIndex: Record<string, number>;
   setPropertyGalleryIndex: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   actionLoading: string | null;
@@ -169,6 +172,7 @@ function PropertyActions({
 
 export default function AdminPropertyDirectory({
   properties,
+  creatorNameById,
   propertyGalleryIndex,
   setPropertyGalleryIndex,
   actionLoading,
@@ -250,7 +254,7 @@ export default function AdminPropertyDirectory({
       {viewMode === 'list' ? (
         <div className="overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-xs">
+            <table className="w-full min-w-[1040px] text-left text-xs">
               <thead className="border-b border-slate-800 bg-slate-950/80 text-2xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 w-14">Ảnh</th>
@@ -260,6 +264,7 @@ export default function AdminPropertyDirectory({
                   <th className="px-4 py-3">Diện tích</th>
                   <th className="px-4 py-3">Pháp lý</th>
                   <th className="px-4 py-3">Trạng thái</th>
+                  <th className="px-4 py-3">Người tạo</th>
                   <th className="px-4 py-3">Lượt xem</th>
                   <th className="px-4 py-3 min-w-[280px]">Thao tác</th>
                 </tr>
@@ -313,6 +318,12 @@ export default function AdminPropertyDirectory({
                       <td className="px-4 py-3 align-top">
                         <span className={`inline-block rounded-lg border px-2 py-1 text-2xs font-bold ${status.className}`}>
                           {status.text}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-top text-slate-300">
+                        <span className="inline-flex items-center gap-1 text-2xs">
+                          <User className="h-3 w-3 text-slate-500" />
+                          {getPropertyCreatorName(prop, creatorNameById)}
                         </span>
                       </td>
                       <td className="px-4 py-3 align-top text-slate-400 whitespace-nowrap">
@@ -469,6 +480,10 @@ export default function AdminPropertyDirectory({
                   <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-2xs font-bold text-slate-400">
                     <TrendingUp className="h-3 w-3" />
                     {prop.public_view_count || 0} lượt xem
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-2xs font-bold text-slate-400">
+                    <User className="h-3 w-3" />
+                    {getPropertyCreatorName(prop, creatorNameById)}
                   </span>
                   <MarkdownContent
                     content={prop.rich_description || prop.description}
