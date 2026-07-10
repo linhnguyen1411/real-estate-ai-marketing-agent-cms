@@ -19,26 +19,21 @@ Write-Host ""
 Write-Host "==> Production backup on VPS" -ForegroundColor Cyan
 Write-Host "    $remote ($RemoteDir)"
 
-$remoteCommand = @"
-set -e
-mkdir -p '$BackupDir'
-cd '$RemoteDir'
-if [ ! -f .env ]; then echo 'Missing .env on VPS' >&2; exit 1; fi
-set -a && . ./.env && set +a
-if [ -z "`$DATABASE_URL" ]; then echo 'DATABASE_URL empty on VPS' >&2; exit 1; fi
-command -v pg_dump >/dev/null 2>&1 || { echo 'pg_dump not installed on VPS' >&2; exit 1; }
-DB_URL="`${DATABASE_URL%%\?*}"
-DB_FILE='$BackupDir/db-$timestamp.sql'
-pg_dump "`$DB_URL" --no-owner --clean --if-exists --format=plain -f "`$DB_FILE"
-if [ -d dist ]; then
-  tar -czf '$BackupDir/dist-$timestamp.tar.gz' dist
-fi
-if [ -f .env ]; then
-  cp .env '$BackupDir/env-$timestamp.bak'
-fi
-ls -lh '$BackupDir/db-$timestamp.sql' '$BackupDir/dist-$timestamp.tar.gz' 2>/dev/null || ls -lh '$BackupDir/db-$timestamp.sql'
-echo "BACKUP_DB=$BackupDir/db-$timestamp.sql"
-"@
+# Build with concatenation so bash $ vars are not expanded by PowerShell when passed to ssh.
+$remoteCommand = (
+  'set -e; mkdir -p ' + $BackupDir +
+  '; cd ' + $RemoteDir +
+  '; test -f .env || { echo ''Missing .env on VPS'' >&2; exit 1; }' +
+  '; set -a && . ./.env && set +a' +
+  '; test -n "$DATABASE_URL" || { echo ''DATABASE_URL empty on VPS'' >&2; exit 1; }' +
+  '; command -v pg_dump >/dev/null 2>&1 || { echo ''pg_dump not installed on VPS'' >&2; exit 1; }' +
+  '; DB_URL="${DATABASE_URL%%\?*}"' +
+  '; pg_dump "$DB_URL" --no-owner --clean --if-exists --format=plain -f ' + $BackupDir + '/db-' + $timestamp + '.sql' +
+  '; test -d dist && tar -czf ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz dist' +
+  '; cp .env ' + $BackupDir + '/env-' + $timestamp + '.bak' +
+  '; ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz 2>/dev/null || ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql' +
+  '; echo BACKUP_DB=' + $BackupDir + '/db-' + $timestamp + '.sql'
+)
 
 ssh $remote $remoteCommand
 if ($LASTEXITCODE -ne 0) {

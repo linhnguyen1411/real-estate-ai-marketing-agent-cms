@@ -1526,7 +1526,7 @@ app.post('/api/member-permissions/bulk', async (req: Request, res: Response) => 
     };
 
     if (collection === 'properties') {
-      db.properties[index] = applyPropertyHashtagSeo(nextItem);
+      db.properties[index] = applyPropertyHashtagSeo(nextItem as Property);
     } else {
       db[collection][index] = nextItem;
     }

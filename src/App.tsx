@@ -786,11 +786,11 @@ export default function App() {
 
       const updatedMap = new Map(result.items.map(item => [item.id, item]));
       if (collection === 'customers') {
-        setCustomers(prev => prev.map(item => updatedMap.get(item.id) || item));
+        setCustomers(prev => prev.map(item => (updatedMap.get(item.id) as Customer | undefined) || item));
       } else if (collection === 'properties') {
-        setProperties(prev => prev.map(item => updatedMap.get(item.id) || item));
+        setProperties(prev => prev.map(item => (updatedMap.get(item.id) as Property | undefined) || item));
       } else {
-        setPosts(prev => prev.map(item => updatedMap.get(item.id) || item));
+        setPosts(prev => prev.map(item => (updatedMap.get(item.id) as Post | undefined) || item));
       }
 
       if (!quiet) {
@@ -821,8 +821,8 @@ export default function App() {
       const propsMap = new Map(propsResult.items.map(item => [item.id, item]));
       const customersMap = new Map(customersResult.items.map(item => [item.id, item]));
 
-      setProperties(prev => prev.map(item => propsMap.get(item.id) || item));
-      setCustomers(prev => prev.map(item => customersMap.get(item.id) || item));
+      setProperties(prev => prev.map(item => (propsMap.get(item.id) as Property | undefined) || item));
+      setCustomers(prev => prev.map(item => (customersMap.get(item.id) as Customer | undefined) || item));
 
       const totalUpdated = results.reduce((sum, result) => sum + result.updated, 0);
       showToast(

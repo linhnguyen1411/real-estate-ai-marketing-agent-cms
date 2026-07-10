@@ -10,7 +10,7 @@ export interface SeoHeadProps {
   image?: string;
   imageWidth?: number;
   imageHeight?: number;
-  ogType?: 'website' | 'article' | 'product';
+  ogType?: 'website' | 'article' | 'product' | 'profile';
   noindex?: boolean;
   publishedTime?: string;
   schemas?: Record<string, unknown>[];
