@@ -79,24 +79,49 @@ export async function saveScannedContent(input: SaveContentInput): Promise<SaveC
   return { record, inserted: !existing };
 }
 
+export type FacebookDedupeHit = {
+  record: ScannedContent;
+  match: 'externalId' | 'canonicalUrl' | 'contentHash';
+};
+
+/**
+ * Dedup priority: externalId > canonicalUrl > contentHash.
+ */
 export async function findExistingFacebookPost(
   sourceId: string,
   post: Pick<FacebookPostParsed, 'externalId' | 'canonicalUrl' | 'contentText'>,
 ): Promise<ScannedContent | null> {
+  const hit = await findExistingFacebookPostDetailed(sourceId, post);
+  return hit?.record ?? null;
+}
+
+export async function findExistingFacebookPostDetailed(
+  sourceId: string,
+  post: Pick<FacebookPostParsed, 'externalId' | 'canonicalUrl' | 'contentText'>,
+): Promise<FacebookDedupeHit | null> {
   if (post.externalId) {
     const byExternal = await prisma.scannedContent.findFirst({
       where: { sourceId, externalId: post.externalId },
     });
-    if (byExternal) return byExternal;
+    if (byExternal) return { record: byExternal, match: 'externalId' };
+  }
+
+  if (post.canonicalUrl) {
+    const byUrl = await prisma.scannedContent.findFirst({
+      where: { sourceId, canonicalUrl: post.canonicalUrl },
+    });
+    if (byUrl) return { record: byUrl, match: 'canonicalUrl' };
   }
 
   const bodyText = normalizeText(post.contentText);
   const contentHash = computeContentHash(post.canonicalUrl, bodyText);
-  return prisma.scannedContent.findUnique({
+  const byHash = await prisma.scannedContent.findUnique({
     where: {
       sourceId_contentHash: { sourceId, contentHash },
     },
   });
+  if (byHash) return { record: byHash, match: 'contentHash' };
+  return null;
 }
 
 export async function saveFacebookScannedPost(input: {

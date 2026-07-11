@@ -1,163 +1,87 @@
-# AI Agent — Facebook Group Reader (Sprint 5.1)
+# AI Agent — Facebook Group Reader
 
-> **MVP quan sát** — chỉ đọc bài trong group bằng profile đã đăng nhập thủ công.  
-> **Không** like/comment/inbox/post. **Không** bypass captcha/checkpoint/fingerprint.
+> Chỉ đọc group mà tài khoản **đã có quyền xem**. Không like/comment/post. Không bypass security.
 
----
+## Browser cho Facebook = CDP (khuyến nghị)
 
-## Yêu cầu trước khi chạy
+Facebook không ổn định trong browser do agent tự launch. Dùng Chrome do người dùng mở + remote debugging.
 
-1. `npm run agent:install-browser`
-2. `npm run agent:login` — đăng nhập Facebook trong Chromium headed
-3. Tạo `AgentSource` với `type: facebook_group` và URL group (`https://www.facebook.com/groups/...`)
-4. `npm run agent:worker` hoặc debug script (bên dưới)
+Chi tiết: [`AI-AGENT-BROWSER-MODES.md`](./AI-AGENT-BROWSER-MODES.md)
 
-Cookies nằm trong `AGENT_BROWSER_PROFILE_DIR` (gitignored). **Không** lưu password vào DB.
+### Quy trình
 
----
+1. Mở Chrome (profile riêng + port 9222):
 
-## Module layout
-
-```
-server/agent-worker/
-  adapters/facebookGroupAdapter.ts   — orchestration scan_source
-  facebook/
-    facebookSelectors.ts             — selectors tập trung (@calibrate)
-    facebookCheckpointDetector.ts    — login/checkpoint/captcha
-    facebookSessionGuard.ts          — needs_login + notification + debug shots
-    facebookDomParser.ts             — parse [role=article] posts
-    facebookScrollController.ts      — scroll + feed tab
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="C:\ai-agent\chrome-profile"
 ```
 
----
+2. Đăng nhập Facebook thủ công (2FA/checkpoint tự xử lý). Mở group cần đọc.
+3. `.env`:
 
-## Luồng scan
-
-1. Mở `AgentSource.url` (group)
-2. `detectFacebookAuthBlock` — nếu blocked → dừng job, `BrowserSession.status = needs_login`, tạo notification
-3. Chuyển feed tab nếu `config.feedTab` (discussion/new/featured) — defensive nếu không tìm thấy tab
-4. Vòng lặp:
-   - Click **Xem thêm / See more** (giới hạn)
-   - Parse posts hiển thị (`role=article`)
-   - Dedupe: `externalId` → `contentHash`
-   - Lưu `ScannedContent`, keyword finding + lead analysis (Sprint 4.1)
-   - Dừng khi: N bài đã tồn tại liên tiếp, `maxPosts`, `maxScrolls`, `maxDurationSeconds`
-   - Cuộn feed
-5. Cập nhật `AgentSource.checkpoint` + `lastScannedAt`
-
----
-
-## Source config
-
-```json
-{
-  "maxScrolls": 8,
-  "maxPosts": 25,
-  "maxDurationSeconds": 120,
-  "stopAfterKnownPosts": 5,
-  "feedTab": "discussion",
-  "pageTimeoutMs": 45000,
-  "maxContentChars": 12000,
-  "scrollPauseMs": 1500
-}
+```env
+AGENT_BROWSER_MODE=cdp
+AGENT_CDP_ENDPOINT=http://127.0.0.1:9222
 ```
 
-| Key | Mặc định | Mô tả |
-|-----|----------|--------|
-| `maxScrolls` | 8 | Số lần cuộn |
-| `maxPosts` | 25 | Tối đa bài parse mỗi job |
-| `maxDurationSeconds` | 120 | Timeout tổng |
-| `stopAfterKnownPosts` | 5 | Dừng sau N bài trùng liên tiếp |
-| `feedTab` | `default` | `discussion` \| `new` \| `featured` |
+4. `npm run agent:check-facebook-session` → `logged_in`
+5. `npm run agent:worker` — attach CDP, không đóng Chrome khi dừng worker.
+6. Tạo `AgentSource` `type: facebook_group` + URL group → enqueue scan.
+
+Override mode (hiếm): `source.config.browserMode = "managed" | "cdp"`.
+
+### Managed login (không khuyến nghị cho FB)
+
+`npm run agent:login` — persistent profile `AGENT_BROWSER_PROFILE_DIR`, không autofill.
+Nếu Facebook vẫn từ chối → chuyển CDP, **không** thêm stealth.
 
 ---
 
-## Post fields
+## Auth / needs_login
 
-| Field | Nguồn |
-|-------|--------|
-| `externalId` | Permalink `/posts/{id}` hoặc `story_fbid` |
-| `canonicalUrl` | Permalink bài |
-| `authorName` / `authorUrl` | Link tác giả trong article |
-| `contentText` | Body sau expand |
-| `publishedLabel` | `abbr` / aria-label thời gian |
-| `metrics` | likes/comments/shares (regex trên text) |
-| `rawData` | metadata tối thiểu, `platform: facebook` |
+Detector kết hợp URL + form login + checkpoint/challenge signals.
 
-Chống trùng: `ScannedContent` unique `(sourceId, contentHash)` + tra `externalId` trước khi insert.
+| State | Hành vi |
+|-------|---------|
+| `login_required` / `checkpoint` / `challenge` / `unknown` | Dừng job, `needs_login`, notification, không retry nhanh |
+| `logged_in` | Tiếp tục scan |
+
+Error codes: `FACEBOOK_LOGIN_REQUIRED`, `FACEBOOK_CHECKPOINT`, `FACEBOOK_CHALLENGE`, `FACEBOOK_SESSION_UNKNOWN`, `CDP_UNREACHABLE`, `CDP_NO_CONTEXT`.
 
 ---
 
-## Auth / checkpoint
+## Scan / incremental
 
-Khi phát hiện login, checkpoint hoặc captcha:
+Defaults (`resolveFacebookScanConfig`):
 
-- Job **dừng** (throw `FacebookAuthBlockedError`)
-- `browser_sessions.status = needs_login`
-- Notification `browser_needs_login` (dedupe `eventKey`)
-- Screenshot debug nếu `AGENT_FB_DEBUG_SCREENSHOTS=1` → `data/browser-debug/` (gitignored)
+| Key | Default |
+|-----|---------|
+| maxPosts | 100 |
+| maxScrolls | 20 |
+| maxEmptyPasses | 4 |
+| scrollPauseMs | 2500 |
+| loadWaitMs | 1500 |
+| knownPostStopStreak | 8 |
+| maxDurationSeconds | 180 |
 
-**Không** tự giải captcha hoặc vượt checkpoint.
+Stop reasons: `max_posts` | `max_scrolls` | `max_duration` | `consecutive_empty_passes` | `known_post_streak` | auth (`login_required` / `checkpoint` / `challenge`).
 
----
+Một empty pass **không** dừng scan — cần `maxEmptyPasses` pass liên tiếp không có unique post mới trong session. Sau mỗi scroll: pause + chờ tín hiệu feed (article count / externalId / URL / fingerprint).
 
-## Job result metrics
+Metrics: `articlesObserved`, `uniquePostsObserved`, `newPostsInserted`, `knownFromDatabase`, `duplicateInSession`, `parseFailed`, `ignoredByRule`, `analyzed`, `findingsCreated`, `notificationsCreated`.
 
-Ngoài metrics chung (`contentsSeen`, `contentsInserted`, …):
+Checkpoint chỉ ghi sau scan thành công (`recentExternalIds` / `recentCanonicalUrls` / `recentContentHashes` / `lastScanMetrics` / `lastStopReason`).
 
-```json
-{
-  "scrollsPerformed": 6,
-  "postsParsed": 18,
-  "seeMoreClicks": 4,
-  "knownPostsStreak": 5,
-  "stoppedReason": "known_posts",
-  "feedTabSwitched": true,
-  "checkpointUpdated": true
-}
-```
+Test offline: `npm run test:facebook-checkpoint`.
 
 ---
 
-## Debug một source
+## An toàn
 
-```bash
-AGENT_SOURCE_ID=<agent-source-cuid> npm run agent:debug-facebook
-```
-
-Đọc URL từ DB — không hardcode account/URL trong script.
-
----
-
-## Selector calibration (@calibrate)
-
-Facebook DOM thay đổi thường xuyên. Sprint 5.1 triển khai **defensive**:
-
-- Ưu tiên `[role="article"]`, `role=tab`, nút text **Xem thêm/See more**
-- Tránh class hash; fallback `div[dir="auto"]` có thể nhiễu
-- `rawData.needsCalibration: true` trên mỗi post
-
-**Chưa xác nhận** parse thành công trên production Facebook trong môi trường CI — cần hiệu chỉnh selector sau khi login thật.
-
----
-
-## An toàn MVP
-
-| Cho phép | Không cho phép |
-|----------|----------------|
-| Mở group | Like / comment |
-| Đọc feed hiển thị | Inbox / kết bạn |
-| Click Xem thêm | Đăng bài |
-| Cuộn giới hạn | Bypass captcha/checkpoint |
-| Lưu bài mới | Spoof fingerprint |
-
----
-
-## Kiểm tra
-
-```bash
-npm run lint
-npm run build
-```
-
-E2E thủ công: login → tạo source `facebook_group` → `POST /api/agent/sources/:id/run` → xem Jobs / Findings / Sessions.
+| Cho phép | Không |
+|----------|-------|
+| Đọc feed group đã join | Like / comment / inbox |
+| CDP attach localhost | Bypass captcha / checkpoint |
+| needs_login + notify | Stealth / fingerprint spoof / ẩn webdriver |

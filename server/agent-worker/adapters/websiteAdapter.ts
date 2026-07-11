@@ -32,12 +32,29 @@ export class WebsiteAdapter implements SourceAdapter {
   async scan(ctx: ScanContext): Promise<ScanMetrics> {
     const started = Date.now();
     const config = parseWebsiteConfig(ctx.source.config);
+    const missionRules = (ctx.mission?.rules || {}) as Record<string, unknown>;
+    if (missionRules.maxItemsPerRun !== undefined) {
+      const maxItems = Number(missionRules.maxItemsPerRun);
+      if (Number.isFinite(maxItems)) {
+        config.maxPages = Math.min(25, Math.max(1, Math.floor(maxItems)));
+      }
+    }
     const rules = resolveRuleSet(ctx.source, ctx.mission);
 
     const seedUrl = normalizeCanonicalUrl(ctx.source.url);
     assertSafePublicUrl(seedUrl);
 
-    const page = await ctx.browser.getPage();
+    const page = await ctx.browser.getPage({
+      source: ctx.source,
+      preferredDomain: (() => {
+        try {
+          return new URL(seedUrl).hostname;
+        } catch {
+          return undefined;
+        }
+      })(),
+      initialUrl: seedUrl,
+    });
     await configurePageRoutes(page);
 
     const queue: string[] = [seedUrl];

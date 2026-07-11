@@ -36,26 +36,102 @@ export async function getAgentDashboardCounts(user: AuthUser): Promise<AgentDash
     ...(user.role === 'member' ? { OR: [{ userId: user.id }, { userId: null }] } : {}),
   };
 
-  const [activeSources, queuedJobs, runningJobs, newFindings, unreadNotifications, jobsFailed24h] =
-    await Promise.all([
-      prisma.agentSource.count({ where: { ...companyScope, status: 'active' } }),
-      prisma.agentJob.count({ where: { ...companyScope, status: 'queued' } }),
-      prisma.agentJob.count({ where: { ...companyScope, status: { in: ['claimed', 'running'] } } }),
-      prisma.agentFinding.count({ where: { ...companyScope, status: 'new' } }),
-      prisma.agentNotification.count({ where: notificationWhere }),
-      prisma.agentJob.count({
-        where: {
-          ...companyScope,
-          status: 'failed',
-          OR: [
-            { finishedAt: { gte: since24h } },
-            { finishedAt: null, updatedAt: { gte: since24h } },
-          ],
-        },
-      }),
-    ]);
+  const [
+    activeSources,
+    queuedJobs,
+    runningJobs,
+    newFindings,
+    unreadNotifications,
+    jobsFailed24h,
+    sourcesWithError,
+    recentSources,
+  ] = await Promise.all([
+    prisma.agentSource.count({ where: { ...companyScope, status: 'active' } }),
+    prisma.agentJob.count({ where: { ...companyScope, status: 'queued' } }),
+    prisma.agentJob.count({ where: { ...companyScope, status: { in: ['claimed', 'running'] } } }),
+    prisma.agentFinding.count({ where: { ...companyScope, status: 'new' } }),
+    prisma.agentNotification.count({ where: notificationWhere }),
+    prisma.agentJob.count({
+      where: {
+        ...companyScope,
+        status: 'failed',
+        OR: [
+          { finishedAt: { gte: since24h } },
+          { finishedAt: null, updatedAt: { gte: since24h } },
+        ],
+      },
+    }),
+    prisma.agentSource.count({
+      where: {
+        ...companyScope,
+        OR: [{ status: 'error' }, { lastError: { not: null } }],
+      },
+    }),
+    prisma.agentSource.findMany({
+      where: companyScope,
+      orderBy: [{ lastScannedAt: 'desc' }, { updatedAt: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+        lastScannedAt: true,
+        nextScanAt: true,
+        lastError: true,
+        checkpoint: true,
+      },
+    }),
+  ]);
 
-  return { activeSources, queuedJobs, runningJobs, newFindings, unreadNotifications, jobsFailed24h };
+  const recentSourceScans = recentSources.map(source => {
+    const checkpoint = (source.checkpoint || {}) as Record<string, unknown>;
+    const scanStats = (
+      (checkpoint.lastScanMetrics && typeof checkpoint.lastScanMetrics === 'object'
+        ? checkpoint.lastScanMetrics
+        : checkpoint.scanStats) || {}
+    ) as Record<string, unknown>;
+    const postsNewRaw = scanStats.newPostsInserted ?? scanStats.postsNew;
+    const postsNew = Number.isFinite(Number(postsNewRaw)) ? Number(postsNewRaw) : null;
+    const findingsRaw = scanStats.findingsCreated ?? scanStats.findings;
+    const findings = Number.isFinite(Number(findingsRaw)) ? Number(findingsRaw) : null;
+    const stoppedReason = checkpoint.lastStopReason
+      ? String(checkpoint.lastStopReason)
+      : scanStats.stoppedReason
+        ? String(scanStats.stoppedReason)
+        : scanStats.stopReason
+          ? String(scanStats.stopReason)
+          : null;
+    return {
+      id: source.id,
+      name: source.name,
+      type: source.type,
+      status: source.status,
+      lastScannedAt: source.lastScannedAt?.toISOString() ?? null,
+      nextScanAt: source.nextScanAt?.toISOString() ?? null,
+      lastError: source.lastError,
+      postsNew,
+      findings,
+      stoppedReason,
+    };
+  });
+
+  const postsNewLastScans = recentSourceScans.reduce(
+    (sum, item) => sum + (item.postsNew ?? 0),
+    0,
+  );
+
+  return {
+    activeSources,
+    queuedJobs,
+    runningJobs,
+    newFindings,
+    unreadNotifications,
+    jobsFailed24h,
+    sourcesWithError,
+    postsNewLastScans,
+    recentSourceScans,
+  };
 }
 
 export async function listAgentSources(
@@ -278,6 +354,30 @@ export async function markNotificationRead(id: string) {
   });
 }
 
+export async function countUnreadAgentNotifications(user: AuthUser): Promise<number> {
+  const companyScope = buildCompanyScopeFilter(user);
+  const where: Prisma.AgentNotificationWhereInput = {
+    ...companyScope,
+    status: 'unread',
+    ...(user.role === 'member' ? { OR: [{ userId: user.id }, { userId: null }] } : {}),
+  };
+  return prisma.agentNotification.count({ where });
+}
+
+export async function markAllAgentNotificationsRead(user: AuthUser): Promise<number> {
+  const companyScope = buildCompanyScopeFilter(user);
+  const where: Prisma.AgentNotificationWhereInput = {
+    ...companyScope,
+    status: 'unread',
+    ...(user.role === 'member' ? { OR: [{ userId: user.id }, { userId: null }] } : {}),
+  };
+  const result = await prisma.agentNotification.updateMany({
+    where,
+    data: { status: 'read', readAt: new Date() },
+  });
+  return result.count;
+}
+
 export async function listBrowserSessions(
   user: AuthUser,
   pagination: PaginationInput,
@@ -297,6 +397,45 @@ export async function listBrowserSessions(
       take: pagination.limit,
     }),
     prisma.browserSession.count({ where }),
+  ]);
+
+  return { items, total };
+}
+
+export async function listScannedContents(
+  user: AuthUser,
+  pagination: PaginationInput,
+  filters: { sourceId?: string; status?: string; search?: string },
+) {
+  const companyScope = buildCompanyScopeFilter(user);
+  const where: Prisma.ScannedContentWhereInput = {
+    ...companyScope,
+    ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.search
+      ? {
+          OR: [
+            { contentText: { contains: filters.search, mode: 'insensitive' } },
+            { authorName: { contains: filters.search, mode: 'insensitive' } },
+            { canonicalUrl: { contains: filters.search, mode: 'insensitive' } },
+            { externalId: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.scannedContent.findMany({
+      where,
+      orderBy: { collectedAt: 'desc' },
+      skip: pagination.skip,
+      take: pagination.limit,
+      include: {
+        source: { select: { id: true, name: true, type: true } },
+        findings: { select: { id: true, score: true, status: true, type: true } },
+      },
+    }),
+    prisma.scannedContent.count({ where }),
   ]);
 
   return { items, total };

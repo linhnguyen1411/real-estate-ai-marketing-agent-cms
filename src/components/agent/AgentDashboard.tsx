@@ -48,25 +48,84 @@ export default function AgentDashboard() {
   if (loading && !counts) return <AgentPanelLoader label="Đang tải dashboard AI Agent..." />;
   if (error && !counts) return <AgentPanelError message={error} onRetry={load} />;
 
+  const sourceScans = counts?.recentSourceScans ?? [];
+
   return (
     <div className="space-y-6">
       <AgentPanelHeader
         title="AI Agent Dashboard"
-        subtitle="Quan sát hệ thống trước khi Browser Worker chạy"
+        subtitle="Quan sát hệ thống — incremental scan & job queue"
         onRefresh={load}
         refreshing={loading}
       />
 
       {counts && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
           <AgentStatCard label="Nguồn đang hoạt động" value={counts.activeSources} tone="success" />
           <AgentStatCard label="Job đang chờ" value={counts.queuedJobs} />
           <AgentStatCard label="Job đang chạy" value={counts.runningJobs} tone="warning" />
           <AgentStatCard label="Finding mới" value={counts.newFindings} tone="warning" />
           <AgentStatCard label="Thông báo chưa đọc" value={counts.unreadNotifications} />
           <AgentStatCard label="Job lỗi 24h" value={counts.jobsFailed24h} tone="danger" />
+          <AgentStatCard label="Nguồn có lỗi" value={counts.sourcesWithError ?? 0} tone="danger" />
+          <AgentStatCard label="Bài mới (scan gần)" value={counts.postsNewLastScans ?? 0} tone="success" />
         </div>
       )}
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+          Nguồn — lần quét gần nhất
+        </h3>
+        {sourceScans.length === 0 ? (
+          <p className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-sm text-slate-500">
+            Chưa có nguồn. Thêm source rồi chạy worker để thấy last/next scan.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Nguồn</th>
+                  <th className="px-3 py-2">Last scan</th>
+                  <th className="px-3 py-2">Next scan</th>
+                  <th className="px-3 py-2">Bài mới</th>
+                  <th className="px-3 py-2">Lỗi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sourceScans.map(source => (
+                  <tr key={source.id} className="border-t border-slate-800 hover:bg-slate-900/40">
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-white">{source.name}</div>
+                      <div className="text-xs text-slate-500">{source.type} · {source.status}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-400">
+                      {formatAgentDate(source.lastScannedAt)}
+                      {source.stoppedReason && (
+                        <div className="text-slate-600">{source.stoppedReason}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-400">
+                      {formatAgentDate(source.nextScanAt)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="rounded-full bg-emerald-900/40 px-2 py-0.5 text-xs font-bold text-emerald-300">
+                        mới {source.postsNew ?? '—'}
+                      </span>
+                      {source.findings != null && (
+                        <div className="mt-1 text-[11px] text-slate-500">findings {source.findings}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-rose-400 max-w-[220px] truncate" title={source.lastError || ''}>
+                      {source.lastError || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section className="space-y-3">

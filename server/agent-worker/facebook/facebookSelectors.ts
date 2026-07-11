@@ -6,8 +6,9 @@
 
 export const FB_URL_PATTERNS = {
   login: /\/login(\.php)?/i,
-  checkpoint: /checkpoint|accountquality|two_step_verification/i,
+  checkpoint: /checkpoint|accountquality/i,
   captcha: /captcha|recaptcha/i,
+  challenge: /two_step_verification|two.factor|challenge/i,
   group: /facebook\.com\/groups\//i,
 } as const;
 

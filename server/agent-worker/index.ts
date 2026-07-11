@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { checkDatabaseConnection } from '../prisma';
 import { BrowserManager } from './browserManager';
-import { loadWorkerConfig } from './config';
+import { buildBrowserSessionMetadata, loadWorkerConfig } from './config';
 import { registerGracefulShutdown } from './gracefulShutdown';
 import { HeartbeatService } from './heartbeat';
 import { WorkerLoop } from './workerLoop';
@@ -16,10 +16,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log('[agent-worker] Starting Browser Worker MVP (Sprint 3.1)');
+  console.log('[agent-worker] Starting Browser Worker');
   console.log(`  workerId:    ${config.workerId}`);
+  console.log(`  browserMode: ${config.browserMode}`);
   console.log(`  profileDir:  ${config.profileDir}`);
+  console.log(`  channel:     ${config.browserChannel}`);
   console.log(`  headless:    ${config.headless}`);
+  if (config.cdpEndpoint) {
+    console.log(`  cdpHost:     ${config.cdpEndpoint.host}`);
+    console.log(`  cdpPort:     ${config.cdpEndpoint.port}`);
+  }
   console.log(`  heartbeat:   ${config.heartbeatIntervalMs}ms`);
   console.log(`  poll:        ${config.pollIntervalMs}ms`);
 
@@ -27,20 +33,22 @@ async function main(): Promise<void> {
   const heartbeat = new HeartbeatService(config);
   const loop = new WorkerLoop(config, browser);
 
-  await heartbeat.register(() => browser.currentUrl());
+  await heartbeat.register(() => browser.currentUrl(), buildBrowserSessionMetadata(config));
 
   registerGracefulShutdown(async signal => {
     loop.stop();
     await loop.releaseCurrentJob(`Worker shutdown (${signal})`);
-    await browser.close();
+    // Managed: closes owned Chrome. CDP: does NOT close external Chrome.
+    await browser.shutdown();
     await heartbeat.markOffline();
   });
 
   try {
     await browser.launch();
+    await heartbeat.setStatus('ready');
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Không khởi động được Chromium.';
-    console.error('[agent-worker] Browser launch failed:', message);
+    const message = error instanceof Error ? error.message : 'Browser launch/connect failed.';
+    console.error('[agent-worker] Browser start failed:', message);
     await heartbeat.markOffline(message);
     process.exit(1);
   }

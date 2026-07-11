@@ -1,10 +1,34 @@
-import fs from 'fs';
-import path from 'path';
-import { chromium, type BrowserContext, type Page } from 'playwright';
-import type { WorkerConfig } from './config';
+import type { AgentSource } from '@prisma/client';
+import type { BrowserContext, Page } from 'playwright';
+import {
+  openBrowserConnection,
+  type AgentBrowserConnection,
+  type GetOrCreatePageOptions,
+} from './agentBrowserConnection';
+import {
+  buildBrowserSessionMetadata,
+  type AgentBrowserMode,
+  type WorkerConfig,
+} from './config';
+import {
+  resolveBrowserModeForSource,
+  resolveBrowserModeForUrl,
+} from './browserModeResolver';
+import { detectFacebookAuthBlock } from './facebook/facebookCheckpointDetector';
 
+export interface GetPageOptions extends GetOrCreatePageOptions {
+  source?: Pick<AgentSource, 'type' | 'config'>;
+  mode?: AgentBrowserMode;
+}
+
+/**
+ * Facade: lazy managed + CDP connections.
+ * CDP Facebook concurrency = 1 via beginCdpJob / releaseCdpLock.
+ */
 export class BrowserManager {
-  private context: BrowserContext | null = null;
+  private managed: AgentBrowserConnection | null = null;
+  private cdp: AgentBrowserConnection | null = null;
+  private cdpBusy = false;
   private readonly config: WorkerConfig;
 
   constructor(config: WorkerConfig) {
@@ -15,66 +39,130 @@ export class BrowserManager {
     return this.config.profileDir;
   }
 
-  async launch(): Promise<BrowserContext> {
-    if (this.context) return this.context;
-
-    fs.mkdirSync(this.config.profileDir, { recursive: true });
-
-    this.context = await chromium.launchPersistentContext(this.config.profileDir, {
-      headless: this.config.headless,
-      viewport: { width: 1280, height: 800 },
-      locale: 'vi-VN',
-    });
-
-    return this.context;
+  get browserChannel(): string {
+    return this.config.browserChannel;
   }
 
-  async getPage(): Promise<Page> {
-    const context = await this.launch();
-    const page = context.pages()[0] ?? (await context.newPage());
-    return page;
+  get defaultMode(): AgentBrowserMode {
+    return this.config.browserMode;
+  }
+
+  isCdpBusy(): boolean {
+    return this.cdpBusy;
+  }
+
+  sessionMetadata(activeMode?: AgentBrowserMode): Record<string, unknown> {
+    const meta = buildBrowserSessionMetadata(this.config);
+    if (activeMode) meta.mode = activeMode;
+    if (this.config.cdpEndpoint) {
+      meta.endpointHost = this.config.cdpEndpoint.host;
+      meta.endpointPort = this.config.cdpEndpoint.port;
+    }
+    return meta;
+  }
+
+  async launch(): Promise<BrowserContext | null> {
+    if (this.config.browserMode === 'managed') {
+      const conn = await this.ensureConnection('managed');
+      return conn.context;
+    }
+    console.log('[agent-worker] Default/env mode may use CDP — attach lazily per job.');
+    return null;
+  }
+
+  async beginCdpJob(): Promise<void> {
+    if (this.cdpBusy) {
+      throw new Error('CDP_BUSY: another Facebook/CDP job is using the session.');
+    }
+    this.cdpBusy = true;
+  }
+
+  releaseCdpLock(): void {
+    this.cdpBusy = false;
+  }
+
+  async getPage(options?: GetPageOptions): Promise<Page> {
+    const mode = this.resolveMode(options);
+    const conn = await this.ensureConnection(mode);
+    return conn.getOrCreatePage(options);
   }
 
   async currentUrl(): Promise<string | null> {
-    if (!this.context) return null;
-    const page = this.context.pages()[0];
+    const conn = this.cdp ?? this.managed;
+    if (!conn) return null;
+    const page = conn.context.pages()[0];
     return page?.url() ?? null;
   }
 
   async visitUrl(url: string): Promise<{ title: string; currentUrl: string }> {
-    const page = await this.getPage();
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    const title = await page.title();
-    return { title, currentUrl: page.url() };
+    const mode = resolveBrowserModeForUrl(url, this.config);
+    const preferredDomain = /facebook\.com/i.test(url) ? 'facebook.com' : undefined;
+
+    if (mode === 'cdp') await this.beginCdpJob();
+    try {
+      const page = await this.getPage({
+        mode,
+        preferredDomain,
+        initialUrl: url,
+      });
+      const title = await page.title();
+      const currentUrl = page.url();
+
+      if (/facebook\.com/i.test(currentUrl) || /facebook\.com/i.test(url)) {
+        const auth = await detectFacebookAuthBlock(page);
+        if (auth.blocked) {
+          const { handleFacebookAuthBlocked, getWorkerId } = await import(
+            './facebook/facebookSessionGuard'
+          );
+          await handleFacebookAuthBlocked({
+            workerId: getWorkerId(),
+            companyId: this.config.companyId,
+            sourceId: 'visit_url',
+            sourceName: 'visit_url',
+            kind: auth.kind,
+            reason: auth.reason,
+            errorCode: auth.errorCode,
+          });
+        }
+      }
+
+      return { title, currentUrl };
+    } finally {
+      if (mode === 'cdp') this.releaseCdpLock();
+    }
   }
 
   async close(): Promise<void> {
-    if (!this.context) return;
-    await this.context.close();
-    this.context = null;
+    await this.shutdown();
   }
-}
 
-/** Headed login helper — opens profile dir without starting the worker loop. */
-export async function openLoginBrowser(profileDir: string): Promise<BrowserContext> {
-  fs.mkdirSync(profileDir, { recursive: true });
-  const startUrl = process.env.AGENT_LOGIN_START_URL?.trim() || 'https://www.facebook.com/';
+  async shutdown(): Promise<void> {
+    // CDP: disconnect refs only — never close external Chrome.
+    if (this.cdp) {
+      await this.cdp.shutdown();
+      this.cdp = null;
+    }
+    if (this.managed) {
+      await this.managed.shutdown();
+      this.managed = null;
+    }
+    this.cdpBusy = false;
+  }
 
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: false,
-    viewport: { width: 1280, height: 900 },
-    locale: 'vi-VN',
-  });
+  private resolveMode(options?: GetPageOptions): AgentBrowserMode {
+    if (options?.mode) return options.mode;
+    if (options?.source) return resolveBrowserModeForSource(options.source, this.config);
+    if (options?.initialUrl) return resolveBrowserModeForUrl(options.initialUrl, this.config);
+    if (options?.preferredDomain?.includes('facebook')) return 'cdp';
+    return this.config.browserMode;
+  }
 
-  const page = context.pages()[0] ?? (await context.newPage());
-  await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-
-  console.log('');
-  console.log('=== AI Agent Login Browser ===');
-  console.log(`Profile: ${path.resolve(profileDir)}`);
-  console.log('Đăng nhập thủ công trong cửa sổ Chromium. Không lưu mật khẩu vào DB.');
-  console.log('Đóng cửa sổ browser hoặc nhấn Ctrl+C khi xong.');
-  console.log('');
-
-  return context;
+  private async ensureConnection(mode: AgentBrowserMode): Promise<AgentBrowserConnection> {
+    if (mode === 'cdp') {
+      if (!this.cdp) this.cdp = await openBrowserConnection('cdp', this.config);
+      return this.cdp;
+    }
+    if (!this.managed) this.managed = await openBrowserConnection('managed', this.config);
+    return this.managed;
+  }
 }

@@ -1,6 +1,8 @@
 import type { AgentJob } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import { notifyJobFailed } from '../agent/agentNotificationService';
 import { prisma } from '../prisma';
+import { isNonRetryableBrowserErrorMessage } from './facebook/facebookCheckpointDetector';
 
 export type ClaimedJob = AgentJob;
 
@@ -53,9 +55,26 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
   const job = await prisma.agentJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  const nextAttempts = job.attempts + 1;
+  // CDP busy — defer without burning attempts
+  if (/^CDP_BUSY/.test(errorMessage)) {
+    await prisma.agentJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'queued',
+        availableAt: new Date(Date.now() + 15_000),
+        claimedBy: null,
+        claimedAt: null,
+        startedAt: null,
+        errorMessage: 'CDP_BUSY',
+      },
+    });
+    return;
+  }
 
-  if (nextAttempts < job.maxAttempts) {
+  const nextAttempts = job.attempts + 1;
+  const nonRetryable = isNonRetryableBrowserErrorMessage(errorMessage);
+
+  if (!nonRetryable && nextAttempts < job.maxAttempts) {
     const backoffMs = Math.min(60_000 * 2 ** Math.max(0, nextAttempts - 1), 30 * 60_000);
     await prisma.agentJob.update({
       where: { id: jobId },
@@ -76,12 +95,21 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
     where: { id: jobId },
     data: {
       status: 'failed',
-      attempts: nextAttempts,
+      attempts: nonRetryable ? job.maxAttempts : nextAttempts,
       finishedAt: new Date(),
       errorMessage,
       claimedBy: null,
       claimedAt: null,
     },
+  });
+
+  await notifyJobFailed({
+    companyId: job.companyId,
+    jobId: job.id,
+    jobType: job.type,
+    sourceId: job.sourceId,
+    errorMessage,
+    attempts: nonRetryable ? job.maxAttempts : nextAttempts,
   });
 }
 

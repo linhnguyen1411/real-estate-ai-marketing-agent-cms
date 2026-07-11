@@ -39,6 +39,7 @@ import {
   Clock,
   Eye,
   Globe,
+  FileBarChart,
   ShieldCheck,
   UserPlus,
   Building2,
@@ -48,6 +49,7 @@ import {
   FolderOpen,
   Tags,
   FileSearch,
+  ClipboardCheck,
   Link2,
   Facebook,
   UserCircle,
@@ -115,6 +117,7 @@ import {
 } from './services/api';
 import SeoContentAdmin from './components/admin/SeoContentAdmin';
 import AgentPlatformPage from './pages/AgentPlatformPage';
+import AgentNotificationBell from './components/agent/AgentNotificationBell';
 import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
 
 const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
@@ -168,9 +171,12 @@ const AGENT_TAB_TO_PATH: Record<string, string> = {
   'agent-sources': '/admin/agents/sources',
   'agent-missions': '/admin/agents/missions',
   'agent-jobs': '/admin/agents/jobs',
+  'agent-contents': '/admin/agents/contents',
   'agent-findings': '/admin/agents/findings',
+  'agent-proposals': '/admin/agents/proposals',
   'agent-notifications': '/admin/agents/notifications',
   'agent-sessions': '/admin/agents/sessions',
+  'agent-reports': '/admin/agents/reports',
 };
 
 const AGENT_PATH_TO_TAB: Record<string, string> = Object.fromEntries(
@@ -182,9 +188,12 @@ const AGENT_SUBMENU = [
   { id: 'agent-sources', label: 'Nguồn', icon: Globe },
   { id: 'agent-missions', label: 'Mission', icon: Sparkles },
   { id: 'agent-jobs', label: 'Jobs', icon: Clock },
+  { id: 'agent-contents', label: 'Nội dung quét', icon: ScanSearch },
   { id: 'agent-findings', label: 'Findings', icon: FileSearch },
+  { id: 'agent-proposals', label: 'Duyệt phản hồi', icon: ClipboardCheck },
   { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare },
   { id: 'agent-sessions', label: 'Sessions', icon: Cpu },
+  { id: 'agent-reports', label: 'Báo cáo', icon: FileBarChart },
 ] as const;
 
 const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
@@ -1661,6 +1670,8 @@ export default function App() {
               AI Powered: <span className="text-rose-400 uppercase font-bold">{settings.ai_mode} ({settings.ai_mode === 'openai' ? settings.openai_model : settings.ollama_model})</span>
             </span>
           </div>
+
+          <AgentNotificationBell />
 
           <button 
             onClick={fetchAllData}

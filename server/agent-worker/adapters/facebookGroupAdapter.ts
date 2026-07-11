@@ -1,12 +1,38 @@
 import type { Page } from 'playwright';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma';
-import type { BrowserManager } from '../browserManager';
+import { getLeadAnalysisLimits } from '../../agent/leadAnalyzer';
+import {
+  notifyScanHotLeads,
+  notifyScanSummary,
+} from '../../agent/agentNotificationService';
 import { detectFacebookAuthBlock } from '../facebook/facebookCheckpointDetector';
 import {
+  buildNextCheckpoint,
+  emptyScanMetrics,
+  parseFacebookCheckpoint,
+  syncDeprecatedMetricAliases,
+  type FacebookScanMetrics,
+} from '../facebook/facebookCheckpoint';
+import {
   expandSeeMoreInPosts,
-  parseVisibleFacebookPosts,
+  parseVisibleFacebookPostsWithStats,
 } from '../facebook/facebookDomParser';
+import {
+  buildScanReport,
+  createSessionDedupeSets,
+  emptyEmptyPassState,
+  emptyKnownStreakState,
+  markSessionSeen,
+  pickNewestPublishedAt,
+  shouldIgnoreForStopStreak,
+  updateEmptyPassState,
+  updateKnownStreak,
+} from '../facebook/facebookIncrementalScan';
+import {
+  resolveFacebookScanConfig,
+  type FacebookScanConfig,
+} from '../facebook/facebookScanConfig';
 import { isFacebookGroupUrl, normalizeGroupUrl } from '../facebook/facebookSelectors';
 import {
   captureFacebookDebugArtifact,
@@ -18,25 +44,20 @@ import {
   shouldStopScrolling,
   switchFacebookFeedTab,
 } from '../facebook/facebookScrollController';
+import { computeContentHash, normalizeText } from '../services/contentNormalizer';
 import {
-  findExistingFacebookPost,
+  findExistingFacebookPostDetailed,
   saveFacebookScannedPost,
 } from '../services/contentRepository';
-import { processFindingForContent, resolveRuleSet } from '../services/findingRuleEngine';
-import { getLeadAnalysisLimits } from '../../agent/leadAnalyzer';
-import type { AnalysisBudget } from '../services/findingRuleEngine';
+import {
+  processFindingForContent,
+  resolveRuleSet,
+  type AnalysisBudget,
+} from '../services/findingRuleEngine';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
 
-export interface FacebookGroupConfig {
-  maxScrolls: number;
-  maxPosts: number;
-  maxDurationSeconds: number;
-  stopAfterKnownPosts: number;
-  feedTab: string;
-  pageTimeoutMs: number;
-  maxContentChars: number;
-  scrollPauseMs: number;
-}
+/** @deprecated use FacebookScanConfig from facebookScanConfig */
+export type FacebookGroupConfig = FacebookScanConfig;
 
 const SUPPORTED_TYPE = 'facebook_group';
 
@@ -49,102 +70,172 @@ export class FacebookGroupAdapter implements SourceAdapter {
 
   async scan(ctx: ScanContext): Promise<ScanMetrics> {
     const started = Date.now();
-    const config = parseFacebookConfig(ctx.source.config);
+    const missionRules = (ctx.mission?.rules || {}) as Record<string, unknown>;
+    const config = resolveFacebookScanConfig(ctx.source.config, {
+      maxItemsPerRun: missionRules.maxItemsPerRun,
+    });
     const rules = resolveRuleSet(ctx.source, ctx.mission);
     const groupUrl = normalizeGroupUrl(ctx.source.url);
+    const previousCheckpoint = parseFacebookCheckpoint(ctx.source.checkpoint);
 
     if (!isFacebookGroupUrl(groupUrl)) {
       throw new Error(`URL không phải Facebook group: ${groupUrl}`);
     }
 
-    const page = await ctx.browser.getPage();
+    const page = await ctx.browser.getPage({
+      source: ctx.source,
+      preferredDomain: 'facebook.com',
+      initialUrl: groupUrl,
+    });
     const analysisBudget: AnalysisBudget = {
       used: 0,
       max: getLeadAnalysisLimits().maxPerJob,
     };
 
-    let scrollsPerformed = 0;
-    let postsParsed = 0;
-    let contentsSeen = 0;
-    let contentsInserted = 0;
-    let findingsCreated = 0;
-    let seeMoreClicks = 0;
-    let knownPostsStreak = 0;
-    let stoppedReason = 'completed';
+    const stats: FacebookScanMetrics = emptyScanMetrics();
+    let streak = emptyKnownStreakState();
+    let emptyPasses = emptyEmptyPassState();
     let feedTabSwitched = false;
+    let checkpointUpdated = false;
 
-    const seenKeys = new Set<string>();
-    const checkpoint = (ctx.source.checkpoint || {}) as Record<string, unknown>;
+    const sessionSets = createSessionDedupeSets();
+    const newExternalIds: string[] = [];
+    const newCanonicalUrls: string[] = [];
+    const newContentHashes: string[] = [];
+    let newestPublishedAt: string | null =
+      previousCheckpoint.newestPublishedAt ?? previousCheckpoint.newestKnownPublishedAt;
 
-    await page.goto(groupUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: config.pageTimeoutMs,
-    });
-    await page.waitForTimeout(2000);
-
-    await assertFacebookAccess(page, ctx);
-
-    feedTabSwitched = await switchFacebookFeedTab(page, config.feedTab);
-    seeMoreClicks += await expandSeeMoreInPosts(page, 6);
-
-    while (true) {
-      const stop = shouldStopScrolling({
-        scrollsPerformed,
-        maxScrolls: config.maxScrolls,
-        startedAt: started,
-        maxDurationSeconds: config.maxDurationSeconds,
-        knownPostsStreak,
-        stopAfterKnownPosts: config.stopAfterKnownPosts,
-      });
-      if (stop) {
-        stoppedReason = stop;
-        break;
-      }
-
-      if (postsParsed >= config.maxPosts) {
-        stoppedReason = 'max_posts';
-        break;
+    try {
+      if (!page.url().includes('/groups/')) {
+        await page.goto(groupUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: config.pageTimeoutMs,
+        });
+        await page.waitForTimeout(2000);
       }
 
       await assertFacebookAccess(page, ctx);
 
-      seeMoreClicks += await expandSeeMoreInPosts(page, 4);
-      const posts = await parseVisibleFacebookPosts(page);
+      feedTabSwitched = await switchFacebookFeedTab(page, config.feedTab);
+      stats.seeMoreClicks += await expandSeeMoreInPosts(page, 6);
 
-      let newInPass = 0;
-      for (const post of posts) {
-        if (postsParsed >= config.maxPosts) break;
-
-        const dedupeKey = post.externalId || `${post.canonicalUrl}:${post.contentText.slice(0, 80)}`;
-        if (seenKeys.has(dedupeKey)) continue;
-        seenKeys.add(dedupeKey);
-
-        postsParsed += 1;
-        contentsSeen += 1;
-
-        const existing = await findExistingFacebookPost(ctx.source.id, post);
-        if (existing) {
-          knownPostsStreak += 1;
-          if (knownPostsStreak >= config.stopAfterKnownPosts) {
-            stoppedReason = 'known_posts';
-            break;
-          }
-          continue;
+      while (true) {
+        const stop = shouldStopScrolling({
+          scrollsPerformed: stats.scrollsPerformed,
+          maxScrolls: config.maxScrolls,
+          startedAt: started,
+          maxDurationSeconds: config.maxDurationSeconds,
+          knownPostsStreak: streak.consecutiveKnown,
+          knownPostStopStreak: config.knownPostStopStreak,
+          consecutiveEmptyPasses: emptyPasses.consecutiveEmptyPasses,
+          maxEmptyPasses: config.maxEmptyPasses,
+        });
+        if (stop) {
+          stats.stoppedReason = stop;
+          break;
         }
 
-        knownPostsStreak = 0;
-        newInPass += 1;
+        if (stats.uniquePostsObserved >= config.maxPosts) {
+          stats.stoppedReason = 'max_posts';
+          break;
+        }
 
-        const saved = await saveFacebookScannedPost({
-          companyId: ctx.source.companyId,
-          sourceId: ctx.source.id,
-          post,
-          maxContentChars: config.maxContentChars,
-        });
+        await assertFacebookAccess(page, ctx);
 
-        if (saved?.inserted) contentsInserted += 1;
+        stats.seeMoreClicks += await expandSeeMoreInPosts(page, 4);
+        const parsed = await parseVisibleFacebookPostsWithStats(page);
+        stats.articlesObserved += parsed.articleCount;
+        stats.parseFailed += parsed.parseFailed;
 
-        if (saved) {
+        let uniqueNewInPass = 0;
+
+        for (const post of parsed.posts) {
+          if (stats.uniquePostsObserved >= config.maxPosts) {
+            stats.stoppedReason = 'max_posts';
+            break;
+          }
+
+          const bodyText = normalizeText(post.contentText, config.maxContentChars);
+          if (!bodyText || bodyText.length < 15) {
+            stats.parseFailed += 1;
+            continue;
+          }
+
+          const contentHash = computeContentHash(post.canonicalUrl, bodyText);
+          const session = markSessionSeen(sessionSets, {
+            externalId: post.externalId,
+            canonicalUrl: post.canonicalUrl,
+            contentHash,
+          });
+
+          if (session.duplicateInSession) {
+            stats.duplicateInSession += 1;
+            continue;
+          }
+
+          uniqueNewInPass += 1;
+          stats.uniquePostsObserved += 1;
+
+          const existingHit = await findExistingFacebookPostDetailed(ctx.source.id, {
+            externalId: post.externalId,
+            canonicalUrl: post.canonicalUrl,
+            contentText: bodyText,
+          });
+
+          const treatAsPinned = shouldIgnoreForStopStreak({
+            isPinned: post.isPinned,
+            publishedAt: post.publishedAt,
+            newestKnownPublishedAt:
+              previousCheckpoint.newestPublishedAt ?? previousCheckpoint.newestKnownPublishedAt,
+          });
+
+          if (existingHit) {
+            stats.knownFromDatabase += 1;
+            streak = updateKnownStreak(streak, {
+              isNew: false,
+              isPinned: treatAsPinned,
+              knownPostStopStreak: config.knownPostStopStreak,
+            });
+            if (streak.shouldStop) {
+              stats.stoppedReason = 'known_post_streak';
+              break;
+            }
+            continue;
+          }
+
+          streak = updateKnownStreak(streak, {
+            isNew: true,
+            isPinned: false,
+            knownPostStopStreak: config.knownPostStopStreak,
+          });
+
+          const saved = await saveFacebookScannedPost({
+            companyId: ctx.source.companyId,
+            sourceId: ctx.source.id,
+            post: { ...post, contentText: bodyText },
+            maxContentChars: config.maxContentChars,
+          });
+
+          if (!saved) {
+            stats.parseFailed += 1;
+            continue;
+          }
+
+          if (saved.inserted) {
+            stats.newPostsInserted += 1;
+            if (post.externalId) newExternalIds.push(post.externalId);
+            if (post.canonicalUrl) newCanonicalUrls.push(post.canonicalUrl);
+            newContentHashes.push(saved.record.contentHash);
+            newestPublishedAt = pickNewestPublishedAt(
+              newestPublishedAt,
+              post.publishedAt ?? saved.record.publishedAt?.toISOString() ?? null,
+            );
+          } else {
+            // Race / unique constraint — treat as known
+            stats.knownFromDatabase += 1;
+            continue;
+          }
+
           const finding = await processFindingForContent({
             content: saved.record,
             source: ctx.source,
@@ -153,63 +244,128 @@ export class FacebookGroupAdapter implements SourceAdapter {
             title: post.title,
             analysisBudget,
           });
-          if (finding.findingCreated) findingsCreated += 1;
+
+          if (finding.ignoredByRule) stats.ignoredByRule += 1;
+          if (finding.analysisRan) stats.analyzed += 1;
+          if (finding.findingCreated) stats.findingsCreated += 1;
+          if (finding.notificationCreated) stats.notificationsCreated += 1;
         }
+
+        if (stats.stoppedReason === 'known_post_streak' || stats.stoppedReason === 'max_posts') {
+          break;
+        }
+
+        emptyPasses = updateEmptyPassState(emptyPasses, {
+          uniqueNewInPass,
+          maxEmptyPasses: config.maxEmptyPasses,
+        });
+        stats.emptyPasses = emptyPasses.consecutiveEmptyPasses;
+
+        if (emptyPasses.shouldStop) {
+          stats.stoppedReason = 'consecutive_empty_passes';
+          break;
+        }
+
+        // Still room to scroll? If already at max scrolls, stop next loop via shouldStopScrolling.
+        if (stats.scrollsPerformed >= config.maxScrolls) {
+          stats.stoppedReason = 'max_scrolls';
+          break;
+        }
+
+        await scrollFacebookFeed(
+          page,
+          {
+            maxScrolls: config.maxScrolls,
+            scrollPauseMs: config.scrollPauseMs,
+            maxDurationSeconds: config.maxDurationSeconds,
+            loadWaitMs: config.loadWaitMs,
+          },
+          started,
+        );
+        stats.scrollsPerformed += 1;
       }
 
-      if (stoppedReason === 'known_posts') break;
-
-      if (newInPass === 0 && scrollsPerformed > 0) {
-        stoppedReason = 'no_new_posts';
-        break;
+      if (stats.stoppedReason === 'pending') {
+        stats.stoppedReason = 'consecutive_empty_passes';
       }
 
-      await scrollFacebookFeed(page, {
-        maxScrolls: config.maxScrolls,
-        scrollPauseMs: config.scrollPauseMs,
-        maxDurationSeconds: config.maxDurationSeconds,
-      }, started);
-      scrollsPerformed += 1;
-      await page.waitForTimeout(config.scrollPauseMs);
+      stats.durationMs = Date.now() - started;
+      syncDeprecatedMetricAliases(stats);
+
+      const nextCheckpoint = buildNextCheckpoint({
+        previous: previousCheckpoint,
+        groupUrl,
+        newExternalIds,
+        newCanonicalUrls,
+        newContentHashes,
+        newestPublishedAt,
+        scanStats: stats,
+      });
+
+      const nextScanAt = new Date(Date.now() + ctx.source.scanIntervalMinutes * 60_000);
+      await prisma.agentSource.update({
+        where: { id: ctx.source.id },
+        data: {
+          lastScannedAt: new Date(),
+          nextScanAt,
+          lastError: null,
+          checkpoint: nextCheckpoint as unknown as Prisma.InputJsonValue,
+        },
+      });
+      checkpointUpdated = true;
+
+      if (config.notifyOnScanComplete) {
+        if (stats.findingsCreated > 0) {
+          const hot = await notifyScanHotLeads({
+            companyId: ctx.source.companyId,
+            sourceId: ctx.source.id,
+            sourceName: ctx.source.name,
+            findings: stats.findingsCreated,
+            postsNew: stats.newPostsInserted,
+          });
+          if (hot.created) stats.notificationsCreated += 1;
+        }
+
+        const summary = await notifyScanSummary({
+          companyId: ctx.source.companyId,
+          sourceId: ctx.source.id,
+          sourceName: ctx.source.name,
+          postsNew: stats.newPostsInserted,
+          duplicates: stats.knownFromDatabase,
+          findings: stats.findingsCreated,
+          stoppedReason: String(stats.stoppedReason),
+        });
+        if (summary.created) stats.notificationsCreated += 1;
+      }
+
+      syncDeprecatedMetricAliases(stats);
+
+      return {
+        pagesVisited: 1,
+        contentsSeen: stats.uniquePostsObserved,
+        contentsInserted: stats.newPostsInserted,
+        findingsCreated: stats.findingsCreated,
+        durationMs: stats.durationMs,
+        scrollsPerformed: stats.scrollsPerformed,
+        postsParsed: stats.uniquePostsObserved,
+        seeMoreClicks: stats.seeMoreClicks,
+        knownPostsStreak: streak.consecutiveKnown,
+        emptyPasses: emptyPasses.consecutiveEmptyPasses,
+        stopReason: stats.stoppedReason,
+        stoppedReason: stats.stoppedReason,
+        feedTabSwitched,
+        checkpointUpdated,
+        ...buildScanReport(stats),
+      };
+    } catch (error) {
+      // Mid-scan failure: do NOT write a new checkpoint.
+      const message = error instanceof Error ? error.message : 'Facebook scan thất bại.';
+      await prisma.agentSource.update({
+        where: { id: ctx.source.id },
+        data: { lastError: message },
+      }).catch(() => undefined);
+      throw error;
     }
-
-    const durationMs = Date.now() - started;
-    const nextScanAt = new Date(Date.now() + ctx.source.scanIntervalMinutes * 60_000);
-    const lastPost = [...seenKeys].pop() ?? null;
-
-    await prisma.agentSource.update({
-      where: { id: ctx.source.id },
-      data: {
-        lastScannedAt: new Date(),
-        nextScanAt,
-        lastError: null,
-        checkpoint: {
-          ...checkpoint,
-          lastScanAt: new Date().toISOString(),
-          lastGroupUrl: groupUrl,
-          scrollsPerformed,
-          postsParsed,
-          knownPostsStreak,
-          stoppedReason,
-          lastDedupeKey: lastPost,
-        } as Prisma.InputJsonValue,
-      },
-    });
-
-    return {
-      pagesVisited: 1,
-      contentsSeen,
-      contentsInserted,
-      findingsCreated,
-      durationMs,
-      scrollsPerformed,
-      postsParsed,
-      seeMoreClicks,
-      knownPostsStreak,
-      stoppedReason,
-      feedTabSwitched,
-      checkpointUpdated: true,
-    };
   }
 }
 
@@ -226,27 +382,10 @@ async function assertFacebookAccess(page: Page, ctx: ScanContext): Promise<void>
     sourceName: ctx.source.name,
     kind: auth.kind,
     reason: auth.reason,
+    errorCode: auth.errorCode,
   });
 }
 
-export function parseFacebookConfig(raw: unknown): FacebookGroupConfig {
-  const config = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  return {
-    maxScrolls: clampInt(config.maxScrolls, 0, 40, 8),
-    maxPosts: clampInt(config.maxPosts, 1, 200, 25),
-    maxDurationSeconds: clampInt(config.maxDurationSeconds, 30, 600, 120),
-    stopAfterKnownPosts: clampInt(config.stopAfterKnownPosts, 1, 20, 5),
-    feedTab: String(config.feedTab || 'default').trim(),
-    pageTimeoutMs: clampInt(config.pageTimeoutMs, 10_000, 120_000, 45_000),
-    maxContentChars: clampInt(config.maxContentChars, 500, 50_000, 12_000),
-    scrollPauseMs: clampInt(config.scrollPauseMs, 500, 5000, 1500),
-  };
-}
-
-function clampInt(value: unknown, min: number, max: number, fallback: number): number {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(max, Math.max(min, Math.floor(num)));
-}
+export { resolveFacebookScanConfig as parseFacebookConfig } from '../facebook/facebookScanConfig';
 
 export const facebookGroupAdapter = new FacebookGroupAdapter();

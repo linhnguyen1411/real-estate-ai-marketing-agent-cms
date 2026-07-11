@@ -1,15 +1,21 @@
 import { getAuthToken } from './api';
 import type {
+  AgentActionAuditLog,
+  AgentActionCopyResult,
+  AgentActionProposal,
   AgentDashboardCounts,
+  AgentDailyReport,
   AgentFinding,
   AgentJob,
   AgentListMeta,
   AgentMission,
+  AgentMissionTemplate,
   AgentNotification,
   AgentSource,
   BrowserSession,
   EnqueueMissionResult,
   EnqueueSourceResult,
+  ScannedContentItem,
 } from '../types/agentPlatform';
 
 type ApiStatus = 'success' | 'error';
@@ -136,6 +142,23 @@ export function fetchAgentMissions(params: { page?: number; limit?: number; stat
   return agentListRequest<AgentMission>(`/api/agent/missions${qs(params)}`);
 }
 
+export function fetchAgentMissionTemplates() {
+  return agentRequest<AgentMissionTemplate[]>('/api/agent/missions/templates');
+}
+
+export function createAgentMissionFromTemplate(payload: {
+  templateId: string;
+  sourceIds?: string[];
+  name?: string;
+  objective?: string;
+  status?: string;
+}) {
+  return agentRequest<AgentMission>('/api/agent/missions/from-template', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createAgentMission(payload: {
   name: string;
   objective: string;
@@ -185,6 +208,16 @@ export function fetchAgentFindings(params: {
   return agentListRequest<AgentFinding>(`/api/agent/findings${qs(params)}`);
 }
 
+export function fetchScannedContents(params: {
+  page?: number;
+  limit?: number;
+  sourceId?: string;
+  status?: string;
+  search?: string;
+} = {}) {
+  return agentListRequest<ScannedContentItem>(`/api/agent/scanned-contents${qs(params)}`);
+}
+
 export function updateAgentFinding(
   id: string,
   payload: { status: string; promotedLeadId?: string | null },
@@ -203,8 +236,19 @@ export function fetchAgentNotifications(params: {
   return agentListRequest<AgentNotification>(`/api/agent/notifications${qs(params)}`);
 }
 
+export function fetchAgentNotificationUnreadCount() {
+  return agentRequest<{ unread: number }>('/api/agent/notifications/unread-count');
+}
+
 export function markAgentNotificationRead(id: string) {
   return agentRequest<AgentNotification>(`/api/agent/notifications/${id}/read`, {
+    method: 'PATCH',
+    body: JSON.stringify({}),
+  });
+}
+
+export function markAllAgentNotificationsRead() {
+  return agentRequest<{ updated: number }>('/api/agent/notifications/read-all', {
     method: 'PATCH',
     body: JSON.stringify({}),
   });
@@ -216,4 +260,85 @@ export function fetchAgentSessions(params: {
   status?: string;
 } = {}) {
   return agentListRequest<BrowserSession>(`/api/agent/sessions${qs(params)}`);
+}
+
+export function fetchAgentDailyReport(params: {
+  date?: string;
+  includeAiSummary?: boolean;
+} = {}) {
+  return agentRequest<AgentDailyReport>(
+    `/api/agent/reports/daily${qs({
+      date: params.date,
+      includeAiSummary:
+        params.includeAiSummary === undefined
+          ? undefined
+          : params.includeAiSummary
+            ? 'true'
+            : 'false',
+    })}`,
+  );
+}
+
+export function createFindingActionProposals(
+  findingId: string,
+  payload: { actionType?: string; count?: number } = {},
+) {
+  return agentRequest<AgentActionProposal[]>(`/api/agent/findings/${findingId}/action-proposals`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchAgentActionProposals(params: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  findingId?: string;
+  actionType?: string;
+} = {}) {
+  return agentListRequest<AgentActionProposal>(`/api/agent/action-proposals${qs(params)}`);
+}
+
+export function fetchAgentActionProposal(id: string) {
+  return agentRequest<AgentActionProposal>(`/api/agent/action-proposals/${id}`);
+}
+
+export function updateAgentActionProposal(
+  id: string,
+  payload: {
+    draftText?: string;
+    rationale?: string;
+    riskLevel?: string;
+    actionType?: string;
+  },
+) {
+  return agentRequest<AgentActionProposal>(`/api/agent/action-proposals/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function approveAgentActionProposal(id: string) {
+  return agentRequest<AgentActionProposal>(`/api/agent/action-proposals/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function rejectAgentActionProposal(id: string, reason?: string) {
+  return agentRequest<AgentActionProposal>(`/api/agent/action-proposals/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function copyAgentActionProposal(id: string, markApproved = false) {
+  return agentRequest<AgentActionCopyResult>(`/api/agent/action-proposals/${id}/copy`, {
+    method: 'POST',
+    body: JSON.stringify({ markApproved }),
+  });
+}
+
+export function fetchAgentActionProposalAudits(id: string) {
+  return agentRequest<AgentActionAuditLog[]>(`/api/agent/action-proposals/${id}/audits`);
 }

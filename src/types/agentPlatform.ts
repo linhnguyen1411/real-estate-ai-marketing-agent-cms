@@ -18,6 +18,22 @@ export interface AgentDashboardCounts {
   newFindings: number;
   unreadNotifications: number;
   jobsFailed24h: number;
+  sourcesWithError?: number;
+  postsNewLastScans?: number;
+  recentSourceScans?: AgentSourceScanSummary[];
+}
+
+export interface AgentSourceScanSummary {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  lastScannedAt: string | null;
+  nextScanAt: string | null;
+  lastError: string | null;
+  postsNew: number | null;
+  findings?: number | null;
+  stoppedReason: string | null;
 }
 
 export interface AgentSource {
@@ -49,6 +65,84 @@ export interface AgentMission {
   schedule?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AgentMissionTemplate {
+  id: string;
+  name: string;
+  objective: string;
+  rules: {
+    sourceIds: string[];
+    positiveKeywords: string[];
+    negativeKeywords: string[];
+    minFindingScore: number;
+    minScore: number;
+    notifyScore: number;
+    maxItemsPerRun: number;
+    analysisInstructions: string;
+    preferredSourceTypes?: string[];
+  };
+  schedule: {
+    cadence: string;
+    preferredHoursLocal?: number[];
+    timezone?: string;
+  };
+}
+
+export interface AgentDailyReportMetrics {
+  date: string;
+  timezone: string;
+  rangeStart: string;
+  rangeEnd: string;
+  sourcesScanned: number;
+  postsNew: number;
+  findingsTotal: number;
+  findingsByScore: {
+    hot: number;
+    warm: number;
+    cool: number;
+    buckets: Array<{ label: string; min: number; max: number; count: number }>;
+  };
+  topLeads: Array<{
+    id: string;
+    title: string;
+    score: number;
+    summary: string;
+    sourceName: string | null;
+    missionName: string | null;
+    createdAt: string;
+  }>;
+  mostEffectiveSources: Array<{
+    sourceId: string;
+    sourceName: string;
+    sourceType: string;
+    findingsCount: number;
+    avgScore: number;
+    postsNew: number;
+  }>;
+  demandThemes: Array<{ theme: string; count: number }>;
+  failedJobs: Array<{
+    id: string;
+    type: string;
+    sourceName: string | null;
+    missionName: string | null;
+    errorMessage: string | null;
+    finishedAt: string | null;
+  }>;
+  browserSessionHealth: {
+    total: number;
+    byStatus: Record<string, number>;
+    needsLogin: number;
+    staleHeartbeat: number;
+    healthy: number;
+  };
+}
+
+export interface AgentDailyReport {
+  metrics: AgentDailyReportMetrics;
+  aiSummary: string | null;
+  aiSummaryError: string | null;
+  dataSource: 'database';
 }
 
 export interface AgentJob {
@@ -101,6 +195,26 @@ export interface AgentFinding {
   };
 }
 
+export interface ScannedContentItem {
+  id: string;
+  companyId: string | null;
+  sourceId: string;
+  externalId: string | null;
+  canonicalUrl: string;
+  authorName: string | null;
+  authorUrl: string | null;
+  contentText: string;
+  contentHash: string;
+  publishedAt: string | null;
+  collectedAt: string;
+  status: string;
+  metrics?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  source?: { id: string; name: string; type: string };
+  findings?: Array<{ id: string; score: number; status: string; type: string }>;
+}
+
 export interface AgentNotification {
   id: string;
   companyId: string | null;
@@ -142,4 +256,57 @@ export interface BrowserSession {
   metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type AgentActionType = 'comment' | 'message' | 'save' | 'follow_up';
+export type AgentActionProposalStatus =
+  | 'proposed'
+  | 'approved'
+  | 'rejected'
+  | 'executed'
+  | 'failed';
+export type AgentActionRiskLevel = 'low' | 'medium' | 'high';
+
+export interface AgentActionProposal {
+  id: string;
+  companyId: string | null;
+  findingId: string;
+  actionType: AgentActionType | string;
+  draftText: string;
+  rationale: string;
+  riskLevel: AgentActionRiskLevel | string;
+  status: AgentActionProposalStatus | string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  executedAt?: string | null;
+  result?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finding?: {
+    id: string;
+    title: string;
+    score: number;
+    status: string;
+    summary?: string;
+    source?: { id: string; name: string; type: string } | null;
+  } | null;
+  audits?: AgentActionAuditLog[];
+}
+
+export interface AgentActionAuditLog {
+  id: string;
+  companyId: string | null;
+  proposalId: string;
+  actorUserId: string | null;
+  action: string;
+  detail?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AgentActionCopyResult {
+  proposalId: string;
+  draftText: string;
+  status: string;
+  actionType: string;
 }

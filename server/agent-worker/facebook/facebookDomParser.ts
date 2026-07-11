@@ -20,13 +20,15 @@ export interface FacebookPostParsed {
   metrics: Record<string, number | string>;
   rawData: Record<string, unknown>;
   title: string;
+  /** Pinned/featured — must not alone stop incremental scan */
+  isPinned: boolean;
 }
 
 /** Serialized extraction script — keeps selectors in TS module, logic in browser context. */
 const EXTRACT_POSTS_SCRIPT = `
 (() => {
-  const SEE_MORE = /xem thêm|see more|xem thể/i;
   const posts = [];
+  let parseFailed = 0;
   const articles = document.querySelectorAll('[role="article"]');
 
   function pickText(el) {
@@ -102,12 +104,25 @@ const EXTRACT_POSTS_SCRIPT = `
     return metrics;
   }
 
+  function detectPinned(article, fullText) {
+    const head = fullText.slice(0, 280);
+    if (/\\b(ghim|đã ghim|pinned|pin to top|featured post|bài viết nổi bật)\\b/i.test(head)) return true;
+    const aria = (article.getAttribute('aria-label') || '') + ' ' + (article.getAttribute('aria-description') || '');
+    if (/\\b(pinned|ghim|featured)\\b/i.test(aria)) return true;
+    const badge = article.querySelector('[aria-label*="Pinned" i], [aria-label*="Ghim" i], [aria-label*="ghim" i]');
+    return Boolean(badge);
+  }
+
   for (const article of articles) {
     const permalink = extractPermalink(article);
     const body = extractBody(article);
-    if (!body || body.length < 15) continue;
+    if (!body || body.length < 15) {
+      parseFailed += 1;
+      continue;
+    }
     const author = extractAuthor(article);
     const fullText = pickText(article);
+    const isPinned = detectPinned(article, fullText);
     posts.push({
       externalId: extractExternalId(permalink),
       canonicalUrl: permalink || window.location.href,
@@ -118,25 +133,59 @@ const EXTRACT_POSTS_SCRIPT = `
       publishedAt: null,
       metrics: extractMetrics(fullText),
       title: author.name ? author.name + ': ' + body.slice(0, 80) : body.slice(0, 100),
+      isPinned,
     });
   }
 
-  return posts;
+  return { posts, articleCount: articles.length, parseFailed };
 })()
 `;
 
-export async function parseVisibleFacebookPosts(page: Page): Promise<FacebookPostParsed[]> {
-  const raw = await page.evaluate(EXTRACT_POSTS_SCRIPT) as FacebookPostParsed[];
-  return raw.map(post => ({
-    ...post,
-    canonicalUrl: normalizeFacebookUrl(post.canonicalUrl, page.url()),
+export interface FacebookParsePassResult {
+  posts: FacebookPostParsed[];
+  articleCount: number;
+  parseFailed: number;
+}
+
+export async function parseVisibleFacebookPostsWithStats(
+  page: Page,
+): Promise<FacebookParsePassResult> {
+  const raw = (await page.evaluate(EXTRACT_POSTS_SCRIPT)) as {
+    posts?: Array<Partial<FacebookPostParsed>>;
+    articleCount?: number;
+    parseFailed?: number;
+  };
+
+  const posts = (raw.posts || []).map(post => ({
+    externalId: post.externalId ?? null,
+    canonicalUrl: normalizeFacebookUrl(String(post.canonicalUrl || ''), page.url()),
+    authorName: post.authorName ?? null,
+    authorUrl: post.authorUrl ?? null,
+    contentText: String(post.contentText || ''),
+    publishedAt: post.publishedAt ?? null,
+    publishedLabel: post.publishedLabel ?? null,
+    metrics: post.metrics ?? {},
+    title: String(post.title || ''),
+    isPinned: Boolean(post.isPinned),
     rawData: {
-      publishedLabel: post.publishedLabel,
-      metrics: post.metrics,
-      parser: 'facebookDomParser@v1',
+      publishedLabel: post.publishedLabel ?? null,
+      metrics: post.metrics ?? {},
+      isPinned: Boolean(post.isPinned),
+      parser: 'facebookDomParser@v2',
       needsCalibration: true,
     },
   }));
+
+  return {
+    posts,
+    articleCount: Number(raw.articleCount) || posts.length,
+    parseFailed: Number(raw.parseFailed) || 0,
+  };
+}
+
+export async function parseVisibleFacebookPosts(page: Page): Promise<FacebookPostParsed[]> {
+  const result = await parseVisibleFacebookPostsWithStats(page);
+  return result.posts;
 }
 
 export async function expandSeeMoreInPosts(page: Page, maxClicks = 8): Promise<number> {

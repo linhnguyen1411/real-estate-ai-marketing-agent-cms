@@ -695,6 +695,7 @@ model AgentFinding {
   source         AgentSource         @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   scannedContent ScannedContent      @relation(fields: [scannedContentId], references: [id], onDelete: Restrict)
   notifications  AgentNotification[]
+  actionProposals AgentActionProposal[]
 
   @@unique([scannedContentId, type])
   @@index([companyId])
@@ -729,4 +730,49 @@ model AgentNotification {
   @@index([eventKey])
   @@index([status, createdAt])
   @@map("agent_notifications")
+}
+
+/// Draft interaction proposals — human approval required; no auto-post (Sprint 8.1)
+model AgentActionProposal {
+  id          String    @id @default(cuid())
+  companyId   String?   @map("company_id")
+  findingId   String    @map("finding_id")
+  actionType  String    @map("action_type")
+  draftText   String    @map("draft_text") @db.Text
+  rationale   String    @db.Text
+  riskLevel   String    @default("medium") @map("risk_level")
+  status      String    @default("proposed")
+  approvedBy  String?   @map("approved_by")
+  approvedAt  DateTime? @map("approved_at")
+  executedAt  DateTime? @map("executed_at")
+  result      Json?
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  finding AgentFinding            @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  audits  AgentActionAuditLog[]
+
+  @@index([companyId])
+  @@index([findingId, status])
+  @@index([status, createdAt])
+  @@index([actionType, status])
+  @@map("agent_action_proposals")
+}
+
+model AgentActionAuditLog {
+  id         String   @id @default(cuid())
+  companyId  String?  @map("company_id")
+  proposalId String   @map("proposal_id")
+  actorUserId String? @map("actor_user_id")
+  action     String
+  detail     Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  proposal AgentActionProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([action, createdAt])
+  @@map("agent_action_audit_logs")
 }

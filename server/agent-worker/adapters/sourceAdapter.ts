@@ -18,9 +18,29 @@ export interface ScanMetrics {
   postsParsed?: number;
   seeMoreClicks?: number;
   knownPostsStreak?: number;
+  emptyPasses?: number;
+  stopReason?: string;
   stoppedReason?: string;
   feedTabSwitched?: boolean;
   checkpointUpdated?: boolean;
+  /** Sprint 5.2+ report (flat + nested metrics) */
+  postsSeen?: number;
+  postsNew?: number;
+  duplicates?: number;
+  ignored?: number;
+  analyzed?: number;
+  findings?: number;
+  notifyCount?: number;
+  articlesObserved?: number;
+  uniquePostsObserved?: number;
+  newPostsInserted?: number;
+  knownFromDatabase?: number;
+  duplicateInSession?: number;
+  parseFailed?: number;
+  ignoredByRule?: number;
+  notificationsCreated?: number;
+  scrollsCompleted?: number;
+  metrics?: Record<string, number>;
 }
 
 export interface SourceAdapter {

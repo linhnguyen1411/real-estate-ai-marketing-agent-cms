@@ -1,14 +1,27 @@
 import type { BrowserSession } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import type { WorkerConfig } from './config';
+
+export type BrowserSessionStatus =
+  | 'starting'
+  | 'ready'
+  | 'running'
+  | 'needs_login'
+  | 'error'
+  | 'offline';
 
 export class HeartbeatService {
   private sessionId: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private status: BrowserSessionStatus = 'starting';
 
   constructor(private readonly config: WorkerConfig) {}
 
-  async register(getCurrentUrl?: () => Promise<string | null>): Promise<BrowserSession> {
+  async register(
+    getCurrentUrl?: () => Promise<string | null>,
+    metadata?: Record<string, unknown>,
+  ): Promise<BrowserSession> {
     const existing = await prisma.browserSession.findFirst({
       where: { workerId: this.config.workerId },
       orderBy: { updatedAt: 'desc' },
@@ -19,9 +32,10 @@ export class HeartbeatService {
       workerId: this.config.workerId,
       profilePath: this.config.profileDir,
       companyId: this.config.companyId,
-      status: 'online',
+      status: 'starting' as const,
       lastHeartbeatAt: new Date(),
-      lastError: null,
+      lastError: null as string | null,
+      metadata: (metadata ?? {}) as Prisma.InputJsonValue,
     };
 
     const session = existing
@@ -29,6 +43,7 @@ export class HeartbeatService {
       : await prisma.browserSession.create({ data });
 
     this.sessionId = session.id;
+    this.status = 'starting';
 
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
@@ -38,8 +53,18 @@ export class HeartbeatService {
     return session;
   }
 
+  async setStatus(status: BrowserSessionStatus): Promise<void> {
+    this.status = status;
+    if (!this.sessionId) return;
+    await prisma.browserSession.update({
+      where: { id: this.sessionId },
+      data: { status, lastHeartbeatAt: new Date() },
+    });
+  }
+
   async pulse(getCurrentUrl?: () => Promise<string | null>): Promise<void> {
     if (!this.sessionId) return;
+    if (this.status === 'needs_login' || this.status === 'offline') return;
 
     let currentUrl: string | null = null;
     try {
@@ -51,7 +76,7 @@ export class HeartbeatService {
     await prisma.browserSession.update({
       where: { id: this.sessionId },
       data: {
-        status: 'online',
+        status: this.status === 'starting' ? 'ready' : this.status,
         lastHeartbeatAt: new Date(),
         ...(currentUrl ? { currentUrl } : {}),
       },
@@ -63,6 +88,7 @@ export class HeartbeatService {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.status = 'offline';
     if (!this.sessionId) return;
 
     await prisma.browserSession.update({
@@ -70,7 +96,7 @@ export class HeartbeatService {
       data: {
         status: 'offline',
         lastHeartbeatAt: new Date(),
-        ...(lastError ? { lastError } : {}),
+        ...(lastError ? { lastError: lastError.slice(0, 500) } : {}),
       },
     });
   }

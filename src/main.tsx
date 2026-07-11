@@ -159,9 +159,12 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/sources" element={<AdminRoute />} />
           <Route path="/admin/agents/missions" element={<AdminRoute />} />
           <Route path="/admin/agents/jobs" element={<AdminRoute />} />
+          <Route path="/admin/agents/contents" element={<AdminRoute />} />
           <Route path="/admin/agents/findings" element={<AdminRoute />} />
+          <Route path="/admin/agents/proposals" element={<AdminRoute />} />
           <Route path="/admin/agents/notifications" element={<AdminRoute />} />
           <Route path="/admin/agents/sessions" element={<AdminRoute />} />
+          <Route path="/admin/agents/reports" element={<AdminRoute />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to="/" replace />} />

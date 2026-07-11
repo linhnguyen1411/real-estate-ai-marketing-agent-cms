@@ -178,6 +178,18 @@ export default function AgentSources({ canManage }: Props) {
             className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             placeholder="Ưu tiên 1-10"
           />
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            Lịch quét (phút)
+            <input
+              type="number"
+              min={5}
+              max={10080}
+              required
+              value={form.scanIntervalMinutes}
+              onChange={e => setForm(prev => ({ ...prev, scanIntervalMinutes: Number(e.target.value) }))}
+              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            />
+          </label>
           <input
             required
             placeholder="URL nguồn"
@@ -209,19 +221,47 @@ export default function AgentSources({ canManage }: Props) {
                 <th className="px-3 py-3">Tên</th>
                 <th className="px-3 py-3">Loại</th>
                 <th className="px-3 py-3">Trạng thái</th>
-                <th className="px-3 py-3">Ưu tiên</th>
-                <th className="px-3 py-3">Quét tiếp</th>
+                <th className="px-3 py-3">Lịch quét</th>
+                <th className="px-3 py-3">Last / Next</th>
+                <th className="px-3 py-3">Last scan</th>
                 <th className="px-3 py-3">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {sources.map(source => (
+              {sources.map(source => {
+                const checkpoint = (source.checkpoint || {}) as {
+                  lastStopReason?: string;
+                  lastScanMetrics?: {
+                    newPostsInserted?: number;
+                    postsNew?: number;
+                    findingsCreated?: number;
+                    findings?: number;
+                    stoppedReason?: string;
+                  };
+                  scanStats?: {
+                    newPostsInserted?: number;
+                    postsNew?: number;
+                    findingsCreated?: number;
+                    findings?: number;
+                    stoppedReason?: string;
+                  };
+                };
+                const scanStats = checkpoint.lastScanMetrics || checkpoint.scanStats;
+                const postsNew = scanStats?.newPostsInserted ?? scanStats?.postsNew;
+                const findings = scanStats?.findingsCreated ?? scanStats?.findings;
+                const stopReason = checkpoint.lastStopReason || scanStats?.stoppedReason;
+                return (
                 <tr key={source.id} className="border-t border-slate-800 hover:bg-slate-900/40">
                   <td className="px-3 py-3">
                     <div className="font-medium text-white">{source.name}</div>
                     <a href={source.url} target="_blank" rel="noreferrer" className="text-xs text-rose-400 hover:underline">
                       {source.url.slice(0, 48)}{source.url.length > 48 ? '…' : ''}
                     </a>
+                    {source.lastError && (
+                      <div className="mt-1 text-xs text-rose-400 line-clamp-1" title={source.lastError}>
+                        {source.lastError}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-slate-400">{source.type}</td>
                   <td className="px-3 py-3">
@@ -233,8 +273,18 @@ export default function AgentSources({ canManage }: Props) {
                       {source.status}
                     </span>
                   </td>
-                  <td className="px-3 py-3">{source.priority}</td>
-                  <td className="px-3 py-3 text-xs text-slate-500">{formatAgentDate(source.nextScanAt)}</td>
+                  <td className="px-3 py-3 text-xs text-slate-300">
+                    mỗi {source.scanIntervalMinutes} phút
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-500">
+                    <div>Last: {formatAgentDate(source.lastScannedAt)}</div>
+                    <div>Next: {formatAgentDate(source.nextScanAt)}</div>
+                  </td>
+                  <td className="px-3 py-3 text-[11px] leading-relaxed text-slate-400">
+                    <div className="text-emerald-300">mới {postsNew ?? '—'}</div>
+                    <div>findings {findings ?? '—'}</div>
+                    <div className="font-mono text-amber-200/80">{stopReason || '—'}</div>
+                  </td>
                   <td className="px-3 py-3">
                     {canManage && (
                       <div className="flex flex-wrap gap-1">
@@ -283,7 +333,8 @@ export default function AgentSources({ canManage }: Props) {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

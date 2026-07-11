@@ -4,6 +4,8 @@ import { websiteAdapter } from './adapters/websiteAdapter';
 import { facebookGroupAdapter } from './adapters/facebookGroupAdapter';
 import { getAdapterForSource, registerSourceAdapter, type ScanMetrics } from './adapters/sourceAdapter';
 import type { BrowserManager } from './browserManager';
+import { resolveBrowserModeForSource } from './browserModeResolver';
+import { loadWorkerConfig } from './config';
 
 registerSourceAdapter(websiteAdapter);
 registerSourceAdapter(facebookGroupAdapter);
@@ -36,6 +38,12 @@ export async function runScanSourceJob(
     throw new Error(`Chưa có adapter cho nguồn type="${source.type}".`);
   }
 
+  const workerConfig = loadWorkerConfig();
+  const mode = resolveBrowserModeForSource(source, workerConfig);
+  if (mode === 'cdp') {
+    await browser.beginCdpJob();
+  }
+
   try {
     const metrics = await adapter.scan({
       job,
@@ -49,14 +57,17 @@ export async function runScanSourceJob(
       sourceId: source.id,
       sourceType: source.type,
       adapter: adapter.name,
+      browserMode: mode,
       completedAt: new Date().toISOString(),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Scan thất bại.';
     await prisma.agentSource.update({
       where: { id: source.id },
-      data: { lastError: message },
+      data: { lastError: message.slice(0, 500) },
     });
     throw error;
+  } finally {
+    if (mode === 'cdp') browser.releaseCdpLock();
   }
 }

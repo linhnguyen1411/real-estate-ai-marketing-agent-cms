@@ -1,8 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 import type { Page } from 'playwright';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma';
-import type { FacebookAuthBlockKind } from './facebookCheckpointDetector';
+import { notifyBrowserNeedsLogin } from '../../agent/agentNotificationService';
+import { loadWorkerConfig } from '../config';
+import type {
+  FacebookAuthBlockKind,
+  FacebookSessionErrorCode,
+} from './facebookCheckpointDetector';
 import { FacebookAuthBlockedError } from './facebookCheckpointDetector';
 
 export async function handleFacebookAuthBlocked(input: {
@@ -12,8 +18,26 @@ export async function handleFacebookAuthBlocked(input: {
   sourceName: string;
   kind: FacebookAuthBlockKind;
   reason: string;
+  errorCode?: FacebookSessionErrorCode;
 }): Promise<never> {
-  const message = input.reason || `Facebook ${input.kind} — cần đăng nhập thủ công.`;
+  const errorCode =
+    input.errorCode ||
+    (input.kind === 'login'
+      ? 'FACEBOOK_LOGIN_REQUIRED'
+      : input.kind === 'checkpoint'
+        ? 'FACEBOOK_CHECKPOINT'
+        : input.kind === 'challenge' || input.kind === 'captcha'
+          ? 'FACEBOOK_CHALLENGE'
+          : 'FACEBOOK_SESSION_UNKNOWN');
+
+  // Safe message — no cookies, tokens, or long encrypted query strings
+  const message = `${errorCode}: ${input.reason || `Facebook ${input.kind}`}`;
+
+  const sessions = await prisma.browserSession.findMany({
+    where: { workerId: input.workerId },
+    select: { id: true },
+    take: 1,
+  });
 
   await prisma.browserSession.updateMany({
     where: { workerId: input.workerId },
@@ -21,32 +45,24 @@ export async function handleFacebookAuthBlocked(input: {
       status: 'needs_login',
       lastError: message,
       lastHeartbeatAt: new Date(),
+      metadata: {
+        lastAuthErrorCode: errorCode,
+        lastAuthKind: input.kind,
+      } as Prisma.InputJsonValue,
     },
   });
 
-  const eventKey = `fb-auth:${input.workerId}:${input.kind ?? 'unknown'}`;
-  try {
-    await prisma.agentNotification.create({
-      data: {
-        companyId: input.companyId,
-        type: 'browser_needs_login',
-        eventKey,
-        title: 'Browser cần đăng nhập lại',
-        message: `${input.sourceName}: ${message}`,
-        severity: 'high',
-        status: 'unread',
-        data: {
-          sourceId: input.sourceId,
-          workerId: input.workerId,
-          kind: input.kind,
-        },
-      },
-    });
-  } catch (error) {
-    console.warn('[facebook] Could not create auth notification:', error);
-  }
+  await notifyBrowserNeedsLogin({
+    companyId: input.companyId,
+    workerId: input.workerId,
+    sourceId: input.sourceId,
+    sourceName: input.sourceName,
+    kind: input.kind ?? 'unknown',
+    reason: message,
+    sessionId: sessions[0]?.id,
+  });
 
-  throw new FacebookAuthBlockedError(input.kind, message);
+  throw new FacebookAuthBlockedError(input.kind, message, errorCode);
 }
 
 export async function captureFacebookDebugArtifact(
@@ -66,5 +82,5 @@ export async function captureFacebookDebugArtifact(
 }
 
 export function getWorkerId(): string {
-  return process.env.AGENT_WORKER_ID?.trim() || `worker-${process.pid}`;
+  return loadWorkerConfig().workerId;
 }

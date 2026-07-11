@@ -69,6 +69,7 @@ import { filterPublicProperties } from './server/publicPropertyMapper';
 import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
+import { getAgentSchedulerStatus, startAgentScheduler, stopAgentScheduler } from './server/agent/agentScheduler';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -111,6 +112,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.get('/api/health', async (_req: Request, res: Response) => {
   const dbStatus = await checkDatabaseConnection();
+  const scheduler = getAgentSchedulerStatus();
   res.json({
     status: dbStatus.ok ? 'success' : 'degraded',
     data: {
@@ -118,7 +120,23 @@ app.get('/api/health', async (_req: Request, res: Response) => {
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: dbStatus.message,
-      aiProvider: process.env.DEFAULT_AI_MODE || 'db-settings'
+      aiProvider: process.env.DEFAULT_AI_MODE || 'db-settings',
+      scheduler: {
+        enabled: scheduler.enabled,
+        running: scheduler.running,
+        tickIntervalMs: scheduler.tickIntervalMs,
+        lastTickAt: scheduler.lastTickAt,
+        lastError: scheduler.lastError,
+        lastTickResult: scheduler.lastTickResult
+          ? {
+              skipped: scheduler.lastTickResult.skipped,
+              reason: scheduler.lastTickResult.reason,
+              sourcesDue: scheduler.lastTickResult.sourcesDue,
+              jobsCreated: scheduler.lastTickResult.jobsCreated,
+              jobsSkippedDuplicate: scheduler.lastTickResult.jobsSkippedDuplicate,
+            }
+          : null,
+      },
     }
   });
 });
@@ -3160,7 +3178,20 @@ async function main() {
     await sleep(400);
   }
 
-  await bootstrap();
+  const dbReady = await bootstrap();
+
+  if (dbReady) {
+    startAgentScheduler();
+  } else {
+    console.warn('[agent-scheduler] Bỏ qua — DB chưa sẵn sàng');
+  }
+
+  const shutdown = (signal: string) => {
+    console.log(`[Server] ${signal} — stopping scheduler…`);
+    stopAgentScheduler();
+  };
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 
   if (process.env.NODE_ENV === 'production') {
     await startHttpServerWithRetry();

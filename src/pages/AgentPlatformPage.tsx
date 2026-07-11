@@ -8,15 +8,21 @@ import AgentJobs from '../components/agent/AgentJobs';
 import AgentFindings from '../components/agent/AgentFindings';
 import AgentNotifications from '../components/agent/AgentNotifications';
 import BrowserSessions from '../components/agent/BrowserSessions';
+import AgentReports from '../components/agent/AgentReports';
+import AgentActionProposals from '../components/agent/AgentActionProposals';
+import AgentScannedContents from '../components/agent/AgentScannedContents';
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
   { path: '/admin/agents/sources', label: 'Nguồn' },
   { path: '/admin/agents/missions', label: 'Mission' },
   { path: '/admin/agents/jobs', label: 'Jobs' },
+  { path: '/admin/agents/contents', label: 'Nội dung quét' },
   { path: '/admin/agents/findings', label: 'Findings' },
+  { path: '/admin/agents/proposals', label: 'Duyệt phản hồi' },
   { path: '/admin/agents/notifications', label: 'Thông báo' },
   { path: '/admin/agents/sessions', label: 'Sessions' },
+  { path: '/admin/agents/reports', label: 'Báo cáo' },
 ] as const;
 
 type Props = {
@@ -28,9 +34,12 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
   if (pathname.startsWith('/admin/agents/missions')) return 'missions';
   if (pathname.startsWith('/admin/agents/jobs')) return 'jobs';
+  if (pathname.startsWith('/admin/agents/contents')) return 'contents';
   if (pathname.startsWith('/admin/agents/findings')) return 'findings';
+  if (pathname.startsWith('/admin/agents/proposals')) return 'proposals';
   if (pathname.startsWith('/admin/agents/notifications')) return 'notifications';
   if (pathname.startsWith('/admin/agents/sessions')) return 'sessions';
+  if (pathname.startsWith('/admin/agents/reports')) return 'reports';
   return 'dashboard';
 }
 
@@ -65,9 +74,12 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'sources' && <AgentSources canManage={canManage} />}
         {section === 'missions' && <AgentMissions canManage={canManage} />}
         {section === 'jobs' && <AgentJobs />}
+        {section === 'contents' && <AgentScannedContents />}
         {section === 'findings' && <AgentFindings userRole={userRole} />}
+        {section === 'proposals' && <AgentActionProposals />}
         {section === 'notifications' && <AgentNotifications />}
         {section === 'sessions' && <BrowserSessions />}
+        {section === 'reports' && <AgentReports />}
       </div>
     </div>
   );
