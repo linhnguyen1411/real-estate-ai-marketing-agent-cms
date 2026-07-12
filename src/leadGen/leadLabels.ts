@@ -32,6 +32,8 @@ const SOURCE_LABELS: Record<string, string> = {
   website: 'Website',
   exit_intent: 'Popup thoát trang',
   lead_magnet: 'Lead magnet',
+  agent_finding: 'Lead Intelligence',
+  agent: 'Lead Intelligence',
 };
 
 export function formatLeadInterest(value?: string | null): string {

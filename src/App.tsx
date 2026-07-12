@@ -50,8 +50,8 @@ import {
   Tags,
   FileSearch,
   ClipboardCheck,
+  Package,
   Link2,
-  Facebook,
   UserCircle,
   ScanSearch,
 } from 'lucide-react';
@@ -64,7 +64,7 @@ import { uploadContentImage } from './services/blogApi';
 import { resizeImageFile } from './utils/resizeImageFile';
 import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
 import ShortLinksPanel from './components/admin/ShortLinksPanel';
-import FacebookPanel from './components/admin/FacebookPanel';
+// Graph channel UI (FacebookPanel) deprecated from nav — keep file/server for now.
 import AdminPropertyDirectory from './components/admin/AdminPropertyDirectory';
 import AdminProfilePanel from './components/admin/AdminProfilePanel';
 import AdminProjectsPanel from './components/admin/AdminProjectsPanel';
@@ -173,6 +173,7 @@ const AGENT_TAB_TO_PATH: Record<string, string> = {
   'agent-jobs': '/admin/agents/jobs',
   'agent-contents': '/admin/agents/contents',
   'agent-findings': '/admin/agents/findings',
+  'agent-external-inventory': '/admin/agents/external-inventory',
   'agent-proposals': '/admin/agents/proposals',
   'agent-notifications': '/admin/agents/notifications',
   'agent-sessions': '/admin/agents/sessions',
@@ -189,7 +190,8 @@ const AGENT_SUBMENU = [
   { id: 'agent-missions', label: 'Mission', icon: Sparkles },
   { id: 'agent-jobs', label: 'Jobs', icon: Clock },
   { id: 'agent-contents', label: 'Nội dung quét', icon: ScanSearch },
-  { id: 'agent-findings', label: 'Findings', icon: FileSearch },
+  { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch },
+  { id: 'agent-external-inventory', label: 'Giỏ hàng ngoài', icon: Package },
   { id: 'agent-proposals', label: 'Duyệt phản hồi', icon: ClipboardCheck },
   { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare },
   { id: 'agent-sessions', label: 'Sessions', icon: Cpu },
@@ -211,6 +213,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>(() => {
     const tab = localStorage.getItem('real_estate_ai_active_tab') || 'dashboard';
     if (!MXH_POSTS_ENABLED && tab === 'posts') return 'dashboard';
+    // Graph channel UI removed from nav — redirect stale tab
+    if (tab === 'facebook') return 'dashboard';
     return tab;
   });
   const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
@@ -437,6 +441,15 @@ export default function App() {
   }, [authLoading, currentUser, location.pathname, navigate]);
 
   useEffect(() => {
+    const requestedTab = (location.state as { activeTab?: string } | null)?.activeTab;
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      setAgentMenuOpen(requestedTab.startsWith('agent-'));
+      setSeoMenuOpen(requestedTab.startsWith('seo-'));
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
     const agentTab = AGENT_PATH_TO_TAB[location.pathname];
     if (agentTab) {
       setActiveTab(agentTab);
@@ -458,7 +471,7 @@ export default function App() {
       setActiveTab('seo-posts');
       navigate('/admin/seo/posts', { replace: true });
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.state]);
 
   const loadSecondaryData = async () => {
     const [chatHistoryRecords, guests, myChatHistory, generatedContents, users] = await Promise.all([
@@ -1405,6 +1418,63 @@ export default function App() {
     }
   };
 
+  const handleTestTelegram = async () => {
+    setActionLoading('test-telegram');
+    try {
+      const token = getAuthToken();
+      const response = await fetch('/api/settings/telegram/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
+      }
+      showToast((json as { message?: string }).message || 'Đã gửi tin Telegram thử.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Test Telegram thất bại.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTestAgentSync = async () => {
+    setActionLoading('test-agent-sync');
+    try {
+      const token = getAuthToken();
+      const response = await fetch('/api/settings/agent-sync/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          agent_sync_vps_url: settings.agent_sync_vps_url,
+          agent_sync_key_id: settings.agent_sync_key_id,
+          agent_sync_secret: settings.agent_sync_secret,
+          agent_sync_timeout_ms: settings.agent_sync_timeout_ms,
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (response.status === 404) {
+        showToast('Server chưa có endpoint test — restart CMS rồi thử lại.', 'info');
+        return;
+      }
+      if (!response.ok) {
+        throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
+      }
+      showToast((json as { message?: string }).message || 'Kết nối VPS OK.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Test Đồng bộ VPS thất bại.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleSaveProjectCatalog = async (patch: Partial<AppSettings>) => {
     setActionLoading('save-projects');
     try {
@@ -1710,7 +1780,7 @@ export default function App() {
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
               { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
               { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
-              { id: 'facebook', label: 'Kênh Facebook', icon: Facebook },
+              // Graph channel UI deprecated from nav (FacebookPanel kept on disk).
               { id: 'short-links', label: 'Short Links', icon: Link2 },
               { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
               { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: propertyStatusCounts.adminVisible },
@@ -2473,12 +2543,6 @@ export default function App() {
               {activeTab === 'investor-leads' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <InvestorLeadsPanel />
-                </div>
-              )}
-
-              {activeTab === 'facebook' && (
-                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <FacebookPanel />
                 </div>
               )}
 
@@ -4144,6 +4208,253 @@ export default function App() {
                         />
                       </div>
 
+                    </div>
+
+                    <div className="border-t border-slate-800 pt-6 space-y-4">
+                      <h3 className="text-sm font-bold text-white">Telegram</h3>
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings.telegram_enabled)}
+                          onChange={e => setSettings({ ...settings, telegram_enabled: e.target.checked })}
+                          className="rounded border-slate-700 bg-slate-950"
+                        />
+                        Bật thông báo Telegram
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Bot token</label>
+                          <input
+                            type="password"
+                            autoComplete="off"
+                            value={settings.telegram_bot_token || ''}
+                            onChange={e => setSettings({ ...settings, telegram_bot_token: e.target.value })}
+                            placeholder="•••••••• (không hiện lại sau lưu nếu mask)"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Chat ID</label>
+                          <input
+                            type="text"
+                            value={settings.telegram_chat_id || ''}
+                            onChange={e => setSettings({ ...settings, telegram_chat_id: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Điểm tối thiểu</label>
+                          <input
+                            type="number"
+                            value={settings.telegram_min_score ?? 70}
+                            onChange={e => setSettings({ ...settings, telegram_min_score: Number(e.target.value) || 0 })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={settings.telegram_only_with_phone !== false}
+                          onChange={e => setSettings({ ...settings, telegram_only_with_phone: e.target.checked })}
+                          className="rounded border-slate-700 bg-slate-950"
+                        />
+                        Chỉ gửi khi có số điện thoại
+                      </label>
+                      <div className="flex flex-wrap gap-4 text-xs text-slate-300">
+                        {[
+                          { key: 'telegram_include_phone' as const, label: 'Gồm SĐT' },
+                          { key: 'telegram_include_budget' as const, label: 'Gồm ngân sách' },
+                          { key: 'telegram_include_location' as const, label: 'Gồm vị trí' },
+                          { key: 'telegram_include_link' as const, label: 'Gồm link bài' },
+                        ].map(item => (
+                          <label key={item.key} className="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={settings[item.key] !== false}
+                              onChange={e => setSettings({ ...settings, [item.key]: e.target.checked })}
+                              className="rounded border-slate-700 bg-slate-950"
+                            />
+                            {item.label}
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestTelegram}
+                        disabled={actionLoading === 'test-telegram'}
+                        className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-50"
+                      >
+                        {actionLoading === 'test-telegram' ? 'Đang gửi…' : 'Test Telegram'}
+                      </button>
+                    </div>
+
+                    <div className="border-t border-slate-800 pt-6 space-y-4">
+                      <h3 className="text-sm font-bold text-white">AI Agent — Đồng bộ VPS</h3>
+                      {settings.agent_sync_enabled ? (
+                        <p className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100">
+                          Dữ liệu mới (Source + Nội dung quét + Finding) sẽ được lưu local và đồng bộ lên VPS production.
+                          Máy này là bot quét / cache; CMS production lấy dữ liệu từ VPS.
+                        </p>
+                      ) : null}
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings.agent_sync_enabled)}
+                          onChange={e => setSettings({ ...settings, agent_sync_enabled: e.target.checked })}
+                          className="rounded border-slate-700 bg-slate-950"
+                        />
+                        Bật đồng bộ VPS
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="block text-xs font-semibold text-slate-300">VPS URL</label>
+                          <input
+                            type="text"
+                            value={settings.agent_sync_vps_url || ''}
+                            onChange={e => setSettings({ ...settings, agent_sync_vps_url: e.target.value })}
+                            placeholder="https://…"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Key ID</label>
+                          <input
+                            type="text"
+                            value={settings.agent_sync_key_id || ''}
+                            onChange={e => setSettings({ ...settings, agent_sync_key_id: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Secret</label>
+                          <input
+                            type="password"
+                            autoComplete="off"
+                            value={settings.agent_sync_secret || ''}
+                            onChange={e => setSettings({ ...settings, agent_sync_secret: e.target.value })}
+                            placeholder="••••••••"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Company ID</label>
+                          <input
+                            type="text"
+                            value={settings.agent_sync_company_id || ''}
+                            onChange={e => setSettings({ ...settings, agent_sync_company_id: e.target.value })}
+                            placeholder="comp-da-nang"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Worker ID</label>
+                          <input
+                            type="text"
+                            value={settings.agent_sync_worker_id || ''}
+                            onChange={e => setSettings({ ...settings, agent_sync_worker_id: e.target.value })}
+                            placeholder="local-worker-1"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Batch size</label>
+                          <input
+                            type="number"
+                            value={settings.agent_sync_batch_size ?? 20}
+                            onChange={e => setSettings({ ...settings, agent_sync_batch_size: Number(e.target.value) || 1 })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-300">Timeout (ms)</label>
+                          <input
+                            type="number"
+                            value={settings.agent_sync_timeout_ms ?? 15000}
+                            onChange={e => setSettings({ ...settings, agent_sync_timeout_ms: Number(e.target.value) || 1000 })}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Secret không hiển thị lại sau lưu (mask). Để trống secret nếu không đổi.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTestAgentSync}
+                          disabled={actionLoading === 'test-agent-sync'}
+                          className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-50"
+                        >
+                          {actionLoading === 'test-agent-sync' ? 'Đang kiểm tra…' : 'Test connection'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setActionLoading('flush-agent-sync');
+                            try {
+                              const token = getAuthToken();
+                              const response = await fetch('/api/settings/agent-sync/flush', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                },
+                                body: JSON.stringify({ limit: 20 }),
+                              });
+                              const json = await response.json().catch(() => ({}));
+                              if (!response.ok) {
+                                throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
+                              }
+                              const flush = (json as { data?: { flush?: { synced?: number; failed?: number; processed?: number } } }).data?.flush;
+                              showToast(
+                                `Sync now: processed ${flush?.processed ?? 0}, synced ${flush?.synced ?? 0}, failed ${flush?.failed ?? 0}`,
+                                'success',
+                              );
+                            } catch (e: any) {
+                              showToast(e.message || 'Flush thất bại.', 'error');
+                            } finally {
+                              setActionLoading(null);
+                            }
+                          }}
+                          disabled={actionLoading === 'flush-agent-sync'}
+                          className="rounded-xl border border-emerald-800/60 px-4 py-2 text-xs font-bold text-emerald-200 hover:bg-slate-900 disabled:opacity-50"
+                        >
+                          {actionLoading === 'flush-agent-sync' ? 'Đang sync…' : 'Sync now'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setActionLoading('status-agent-sync');
+                            try {
+                              const token = getAuthToken();
+                              const response = await fetch('/api/settings/agent-sync/status', {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              });
+                              const json = await response.json().catch(() => ({}));
+                              if (!response.ok) {
+                                throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
+                              }
+                              const d = (json as { data?: Record<string, unknown> }).data || {};
+                              showToast(
+                                `Pending ${d.pending ?? 0} · Failed ${d.failed ?? 0} · Synced ${d.synced ?? 0} · Dead ${d.deadLetter ?? 0}`,
+                                'info',
+                              );
+                            } catch (e: any) {
+                              showToast(e.message || 'Không lấy được status.', 'error');
+                            } finally {
+                              setActionLoading(null);
+                            }
+                          }}
+                          disabled={actionLoading === 'status-agent-sync'}
+                          className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300 hover:bg-slate-900 disabled:opacity-50"
+                        >
+                          Xem outbox status
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Backfill dữ liệu cũ: <code className="text-slate-300">npm run agent:enqueue-unsynced-data -- --apply --limit 20</code>
+                      </p>
                     </div>
 
                     <div className="p-4 bg-slate-950 rounded-xl border border-slate-900/80 text-xs text-slate-400 leading-relaxed space-y-1.5">

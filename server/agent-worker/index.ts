@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { checkDatabaseConnection } from '../prisma';
+import { ensureDatabaseReady } from '../dbHelper';
 import { BrowserManager } from './browserManager';
 import { buildBrowserSessionMetadata, loadWorkerConfig } from './config';
 import { registerGracefulShutdown } from './gracefulShutdown';
@@ -15,6 +16,12 @@ async function main(): Promise<void> {
     console.error(`[agent-worker] Database unavailable: ${db.message}`);
     process.exit(1);
   }
+
+  // Required for getSettings() / agent_sync_enabled used by VPS outbox enqueue
+  await ensureDatabaseReady();
+  console.log(
+    `[agent-worker] Settings ready — AGENT_LOCAL_SYNC=${process.env.AGENT_LOCAL_SYNC_ENABLED || 'false'}`,
+  );
 
   console.log('[agent-worker] Starting Browser Worker');
   console.log(`  workerId:    ${config.workerId}`);

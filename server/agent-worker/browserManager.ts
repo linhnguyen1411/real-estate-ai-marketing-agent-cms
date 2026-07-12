@@ -30,9 +30,87 @@ export class BrowserManager {
   private cdp: AgentBrowserConnection | null = null;
   private cdpBusy = false;
   private readonly config: WorkerConfig;
+  /** Single worker-owned scan tab, reused across jobs (never the user's tab). */
+  private scanPage: Page | null = null;
+  /** Safety guard: warn if the context accumulates more tabs than this. */
+  private readonly maxContextPages = 10;
+  readonly scanMetrics = {
+    scanPageCreated: 0,
+    scanPageReused: 0,
+    scanPageRecreatedAfterCrash: 0,
+    facebookConcurrentJobRejected: 0,
+  };
+  /** Mode used for the most recent getScanPage call. */
+  private lastScanPageMode: 'created' | 'reused' | 'recreated' = 'created';
 
   constructor(config: WorkerConfig) {
     this.config = config;
+  }
+
+  /** Number of pages currently open on the active (cdp preferred) context. */
+  currentContextPageCount(): number {
+    const conn = this.cdp ?? this.managed;
+    return conn ? conn.context.pages().length : 0;
+  }
+
+  /** Snapshot for job result (Part 2 / Part 14). */
+  scanPageInfo(): { browserPageMode: 'created' | 'reused' | 'recreated'; contextPageCount: number } {
+    return {
+      browserPageMode: this.lastScanPageMode,
+      contextPageCount: this.currentContextPageCount(),
+    };
+  }
+
+  /**
+   * Get the worker-owned Facebook scan tab, creating it once and reusing it.
+   * In CDP mode this is a fresh tab opened by the worker — never the user's tab,
+   * and it is closed on worker shutdown without touching external Chrome.
+   */
+  async getScanPage(options: GetPageOptions): Promise<Page> {
+    const mode = this.resolveMode(options);
+    const conn = await this.ensureConnection(mode);
+
+    // Reuse the existing worker-owned tab whenever it is still open.
+    if (this.scanPage && !this.scanPage.isClosed()) {
+      this.lastScanPageMode = 'reused';
+      this.scanMetrics.scanPageReused += 1;
+      if (options.initialUrl) {
+        const current = this.scanPage.url();
+        if (shouldReloadScanPage(current, options.initialUrl)) {
+          await this.scanPage
+            .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+            .catch(() => undefined);
+        }
+      }
+      return this.scanPage;
+    }
+
+    // Recreate only when the previous tab crashed/was closed.
+    if (this.scanPage && this.scanPage.isClosed()) {
+      this.lastScanPageMode = 'recreated';
+      this.scanMetrics.scanPageRecreatedAfterCrash += 1;
+    } else {
+      this.lastScanPageMode = 'created';
+      this.scanMetrics.scanPageCreated += 1;
+    }
+    this.scanPage = null;
+
+    const pageCount = conn.context.pages().length;
+    if (pageCount >= this.maxContextPages) {
+      console.warn(
+        `[browser-manager] context has ${pageCount} tabs (>= ${this.maxContextPages}); ` +
+          'not closing user tabs — only worker-owned scan tab is managed.',
+      );
+    }
+
+    const page = await conn.context.newPage();
+    this.scanPage = page;
+    if (options.initialUrl) {
+      await page
+        .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(() => undefined);
+    }
+    return page;
   }
 
   get profilePath(): string {
@@ -72,6 +150,7 @@ export class BrowserManager {
 
   async beginCdpJob(): Promise<void> {
     if (this.cdpBusy) {
+      this.scanMetrics.facebookConcurrentJobRejected += 1;
       throw new Error('CDP_BUSY: another Facebook/CDP job is using the session.');
     }
     this.cdpBusy = true;
@@ -137,6 +216,12 @@ export class BrowserManager {
   }
 
   async shutdown(): Promise<void> {
+    // Close the worker-owned scan tab (never the user's tab / external Chrome).
+    if (this.scanPage && !this.scanPage.isClosed()) {
+      await this.scanPage.close().catch(() => undefined);
+    }
+    this.scanPage = null;
+
     // CDP: disconnect refs only — never close external Chrome.
     if (this.cdp) {
       await this.cdp.shutdown();
@@ -164,5 +249,15 @@ export class BrowserManager {
     }
     if (!this.managed) this.managed = await openBrowserConnection('managed', this.config);
     return this.managed;
+  }
+}
+
+function shouldReloadScanPage(currentUrl: string, targetUrl: string): boolean {
+  try {
+    const current = new URL(currentUrl);
+    const target = new URL(targetUrl);
+    return current.pathname !== target.pathname || current.search !== target.search;
+  } catch {
+    return currentUrl !== targetUrl;
   }
 }

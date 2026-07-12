@@ -1,4 +1,5 @@
 import type { AgentJob } from '@prisma/client';
+import { assertAgentSourceActiveForScan } from '../agent/agentDb';
 import { prisma } from '../prisma';
 import { websiteAdapter } from './adapters/websiteAdapter';
 import { facebookGroupAdapter } from './adapters/facebookGroupAdapter';
@@ -20,13 +21,7 @@ export async function runScanSourceJob(
     throw new Error('scan_source thiếu sourceId.');
   }
 
-  const source = await prisma.agentSource.findUnique({ where: { id: sourceId } });
-  if (!source) {
-    throw new Error(`Không tìm thấy nguồn ${sourceId}.`);
-  }
-  if (source.status !== 'active') {
-    throw new Error(`Nguồn ${source.name} không active (${source.status}).`);
-  }
+  const source = await assertAgentSourceActiveForScan(sourceId);
 
   const missionId = job.missionId || (payload.missionId ? String(payload.missionId) : null);
   const mission = missionId

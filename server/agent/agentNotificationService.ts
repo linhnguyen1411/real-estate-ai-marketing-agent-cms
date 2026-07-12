@@ -57,6 +57,17 @@ export async function createAgentNotification(
     ...(input.link ? { link: input.link } : {}),
   };
 
+  // Pre-check avoids triggering a DB-level unique violation (and its noisy
+  // prisma:error log) on the common duplicate-notification path. The try/catch
+  // below still guards against races.
+  const existing = await prisma.agentNotification.findFirst({
+    where: { companyId: input.companyId ?? null, eventKey },
+    select: { id: true },
+  });
+  if (existing) {
+    return { created: false, id: existing.id };
+  }
+
   try {
     const row = await prisma.agentNotification.create({
       data: {

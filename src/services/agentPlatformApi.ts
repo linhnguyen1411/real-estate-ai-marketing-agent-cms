@@ -15,6 +15,7 @@ import type {
   BrowserSession,
   EnqueueMissionResult,
   EnqueueSourceResult,
+  ExternalInventoryItem,
   ScannedContentItem,
 } from '../types/agentPlatform';
 
@@ -59,6 +60,26 @@ async function agentRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data;
 }
 
+async function agentRequestWithMeta<T, M>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data: T; meta?: M }> {
+  const token = getAuthToken();
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
+  });
+  const json = await parseJsonResponse(response) as ApiResponse<T> & { meta?: M };
+  if (!response.ok || json.status !== 'success') {
+    throw new Error(json.message || `API lỗi ${response.status}`);
+  }
+  return { data: json.data, meta: json.meta };
+}
+
 async function agentListRequest<T>(
   path: string,
   init?: RequestInit,
@@ -78,10 +99,15 @@ async function agentListRequest<T>(
   return { data: json.data, meta: json.meta as AgentListMeta | undefined };
 }
 
-function qs(params: Record<string, string | number | undefined>) {
+function qs(params: Record<string, string | number | boolean | undefined>) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') search.set(key, String(value));
+    if (value === undefined || value === '') return;
+    if (typeof value === 'boolean') {
+      search.set(key, value ? 'true' : 'false');
+      return;
+    }
+    search.set(key, String(value));
   });
   const query = search.toString();
   return query ? `?${query}` : '';
@@ -123,8 +149,25 @@ export function updateAgentSource(id: string, payload: Record<string, unknown>) 
   });
 }
 
+export type DeleteAgentSourceResult = {
+  record: AgentSource;
+  meta: {
+    deleted: { jobs: number; scannedContents: number; findings: number };
+    message: string;
+  };
+};
+
 export function deleteAgentSource(id: string) {
-  return agentRequest<AgentSource>(`/api/agent/sources/${id}`, { method: 'DELETE' });
+  return agentRequestWithMeta<AgentSource, DeleteAgentSourceResult['meta']>(
+    `/api/agent/sources/${id}`,
+    { method: 'DELETE' },
+  ).then(res => ({
+    record: res.data,
+    meta: res.meta ?? {
+      deleted: { jobs: 0, scannedContents: 0, findings: 0 },
+      message: 'Đã xóa nguồn.',
+    },
+  }));
 }
 
 export function runAgentSource(sourceId: string, missionId?: string) {
@@ -197,15 +240,184 @@ export function fetchAgentJobs(params: {
   return agentListRequest<AgentJob>(`/api/agent/jobs${qs(params)}`);
 }
 
+export function deleteAgentJob(id: string) {
+  return agentRequest<{ id: string }>(`/api/agent/jobs/${id}`, { method: 'DELETE' });
+}
+
+export function cleanupAgentJobs(payload: { sourceId?: string; statuses?: string[] } = {}) {
+  return agentRequest<{ deleted: number }>('/api/agent/jobs/cleanup', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchAgentFindings(params: {
   page?: number;
   limit?: number;
-  minScore?: number;
+  classification?: string;
+  intent?: string;
+  actorRole?: string;
   status?: string;
-  type?: string;
+  priority?: string;
+  hasPhone?: boolean;
+  hasBudget?: boolean;
+  location?: string;
+  propertyType?: string;
+  minScore?: number;
+  maxScore?: number;
   sourceId?: string;
+  dedupeStatus?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  search?: string;
+  includeSupplySignals?: boolean;
+  includeDismissed?: boolean;
+  needsReview?: boolean;
+  dismissReason?: string;
+  includeManualApproved?: boolean;
+  promoted?: boolean;
+  externalInventorySaved?: boolean;
+  scoreStatus?: string;
+  type?: string;
 } = {}) {
   return agentListRequest<AgentFinding>(`/api/agent/findings${qs(params)}`);
+}
+
+export function promoteAgentFinding(id: string, preferInvestorLeadPath = false) {
+  const path = preferInvestorLeadPath
+    ? `/api/agent/findings/${id}/promote-investor-lead`
+    : `/api/agent/findings/${id}/promote`;
+  return agentRequest<{
+    outcome: 'created' | 'merged';
+    leadId: string;
+    leadName: string;
+    phone: string;
+    duplicateReason: string | null;
+    findingId: string;
+  }>(path, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  }).catch(async err => {
+    // Fallback: try the alternate promote path if the preferred one is missing.
+    if (!preferInvestorLeadPath) {
+      try {
+        return await agentRequest<{
+          outcome: 'created' | 'merged';
+          leadId: string;
+          leadName: string;
+          phone: string;
+          duplicateReason: string | null;
+          findingId: string;
+        }>(`/api/agent/findings/${id}/promote-investor-lead`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+      } catch {
+        throw err;
+      }
+    }
+    throw err;
+  });
+}
+
+export function saveFindingExternalInventory(id: string, force = false) {
+  return (async () => {
+    const token = getAuthToken();
+    const response = await fetch(`/api/agent/findings/${id}/save-external-inventory`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ force }),
+    });
+    const json = (await parseJsonResponse(response)) as {
+      status: string;
+      data: {
+        outcome: 'created' | 'existing';
+        itemId: string;
+        duplicateReason: string | null;
+        requiresConfirmation?: boolean;
+        warning?: string;
+      };
+      message?: string;
+    };
+    if (response.status === 409 || json.status === 'confirm_required') {
+      return {
+        outcome: 'existing' as const,
+        itemId: '',
+        duplicateReason: null,
+        requiresConfirmation: true,
+        warning: json.data?.warning,
+      };
+    }
+    if (!response.ok || json.status !== 'success') {
+      throw new Error(json.message || `API lỗi ${response.status}`);
+    }
+    return json.data;
+  })();
+}
+
+export function matchAgentFinding(id: string) {
+  return agentRequest<{
+    official: Array<Record<string, unknown>>;
+    external: Array<Record<string, unknown>>;
+    missingReason: string | null;
+  }>(`/api/agent/findings/${id}/match`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function fetchAgentFindingMatches(id: string) {
+  return agentRequest<{
+    official: Array<Record<string, unknown>>;
+    external: Array<Record<string, unknown>>;
+    missingReason: string | null;
+  }>(`/api/agent/findings/${id}/matches`);
+}
+
+export function markFindingReviewed(id: string) {
+  return updateAgentFinding(id, { status: 'reviewed' });
+}
+
+export function dismissAgentFinding(
+  id: string,
+  payload: { dismissReason?: string; dismissNote?: string },
+) {
+  return updateAgentFinding(id, {
+    status: 'dismissed',
+    dismissReason: payload.dismissReason,
+    dismissNote: payload.dismissNote,
+  });
+}
+
+export function fetchExternalInventory(params: {
+  page?: number;
+  limit?: number;
+  transactionType?: string;
+  propertyType?: string;
+  city?: string;
+  hasPhone?: boolean;
+  verificationStatus?: string;
+  status?: string;
+  search?: string;
+} = {}) {
+  return agentListRequest<ExternalInventoryItem>(`/api/agent/external-inventory${qs(params)}`);
+}
+
+export function fetchExternalInventoryItem(id: string) {
+  return agentRequest<ExternalInventoryItem>(`/api/agent/external-inventory/${id}`);
+}
+
+export function patchExternalInventoryItem(
+  id: string,
+  payload: { status?: string; verificationStatus?: string; note?: string },
+) {
+  return agentRequest<ExternalInventoryItem>(`/api/agent/external-inventory/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 }
 
 export function fetchScannedContents(params: {
@@ -218,12 +430,100 @@ export function fetchScannedContents(params: {
   return agentListRequest<ScannedContentItem>(`/api/agent/scanned-contents${qs(params)}`);
 }
 
+export function patchScannedContent(
+  id: string,
+  payload: { status?: string; action?: string; note?: string },
+) {
+  return agentRequest<ScannedContentItem & {
+    findingId?: string;
+    created?: boolean;
+    syncEnqueued?: boolean;
+  }>(`/api/agent/scanned-contents/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function approveScannedContentAsFinding(id: string, note?: string) {
+  return agentRequest<{
+    contentId: string;
+    findingId: string;
+    created: boolean;
+    syncEnqueued: boolean;
+    telegramSent?: boolean;
+    telegramReason?: string | null;
+    classification?: string;
+    actorRole?: string;
+    inboxHint?: string;
+  }>(`/api/agent/scanned-contents/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'approve_finding', note }),
+  });
+}
+
+export function deleteScannedContent(id: string) {
+  return agentRequest<{ id: string; deleted?: boolean }>(
+    `/api/agent/scanned-contents/${id}?confirm=true`,
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm: true }),
+    },
+  );
+}
+
+export function callExternalInventoryItem(
+  id: string,
+  payload: {
+    verificationStatus?: string;
+    status?: string;
+    note?: string;
+    callbackAt?: string;
+  },
+) {
+  return agentRequest<{
+    itemId: string;
+    verificationStatus: string;
+    callCount: number | null;
+  }>(`/api/agent/external-inventory/${id}/call`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function convertExternalInventoryToOfficial(id: string) {
+  return agentRequest<{
+    itemId: string;
+    propertyId: string;
+    outcome?: string;
+  }>(`/api/agent/external-inventory/${id}/convert-to-official`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 export function updateAgentFinding(
   id: string,
-  payload: { status: string; promotedLeadId?: string | null },
+  payload: {
+    status: string;
+    promotedLeadId?: string | null;
+    dismissReason?: string;
+    dismissNote?: string;
+  },
 ) {
   return agentRequest<AgentFinding>(`/api/agent/findings/${id}`, {
     method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function bulkActionAgentFindings(payload: {
+  action: 'reviewed' | 'dismissed' | 'reanalyze';
+  findingIds: string[];
+  reason?: string;
+  note?: string;
+}) {
+  return agentRequest<{ updated: number; action: string }>('/api/agent/findings/bulk-action', {
+    method: 'POST',
     body: JSON.stringify(payload),
   });
 }

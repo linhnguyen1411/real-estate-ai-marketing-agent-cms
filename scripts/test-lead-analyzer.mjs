@@ -154,7 +154,7 @@ const fallback = buildDeterministicFallback(
   },
   good,
 );
-assert(fallback.classification === 'renter', 'fallback renter for cho thuê');
+assert(fallback.classification === 'landlord', 'fallback landlord for cho thuê');
 assert(fallback.contact.phone === '0905111222', 'extracts phone from text');
 
 console.log('\nAnalyzer orchestration (skip AI)');

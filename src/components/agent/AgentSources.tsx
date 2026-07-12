@@ -109,14 +109,25 @@ export default function AgentSources({ canManage }: Props) {
   };
 
   const handleDelete = async (source: AgentSource) => {
-    if (!canManage || !window.confirm(`Xóa hoặc tạm dừng nguồn "${source.name}"?`)) return;
+    if (
+      !canManage ||
+      !window.confirm(
+        `Xóa hẳn nguồn "${source.name}"?\n\n` +
+          'Toàn bộ job đang chờ/chạy, nội dung đã quét và finding liên quan sẽ bị xóa. Không khôi phục được.',
+      )
+    ) {
+      return;
+    }
     setBusyId(source.id);
+    setMessage('');
     try {
-      await deleteAgentSource(source.id);
-      load();
-      setMessage('Đã xử lý xóa nguồn.');
+      const result = await deleteAgentSource(source.id);
+      setSources(prev => prev.filter(item => item.id !== source.id));
+      setMessage(result.meta.message);
+      await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Xóa thất bại.');
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -129,7 +140,7 @@ export default function AgentSources({ canManage }: Props) {
     <div className="space-y-6">
       <AgentPanelHeader
         title="Nguồn quét (Sources)"
-        subtitle="Facebook group, website, forum — checkpoint chống trùng"
+        subtitle="Facebook group / feed cá nhân, website, forum — checkpoint chống trùng"
         onRefresh={load}
         actions={
           canManage ? (
@@ -169,15 +180,17 @@ export default function AgentSources({ canManage }: Props) {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={form.priority}
-            onChange={e => setForm(prev => ({ ...prev, priority: Number(e.target.value) }))}
-            className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-            placeholder="Ưu tiên 1-10"
-          />
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            Ưu tiên job (1 = cao nhất, tối đa 10)
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={form.priority}
+              onChange={e => setForm(prev => ({ ...prev, priority: Number(e.target.value) }))}
+              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            />
+          </label>
           <label className="flex flex-col gap-1 text-xs text-slate-500">
             Lịch quét (phút)
             <input
@@ -192,7 +205,7 @@ export default function AgentSources({ canManage }: Props) {
           </label>
           <input
             required
-            placeholder="URL nguồn"
+            placeholder="URL (group hoặc https://www.facebook.com)"
             value={form.url}
             onChange={e => setForm(prev => ({ ...prev, url: e.target.value }))}
             className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
@@ -211,7 +224,7 @@ export default function AgentSources({ canManage }: Props) {
       {sources.length === 0 ? (
         <AgentPanelEmpty
           title="Chưa có nguồn quét"
-          description="Thêm Facebook group hoặc website để worker thu thập bài viết."
+          description="Thêm Facebook group, feed cá nhân (facebook.com), hoặc website để worker thu thập bài viết."
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-800">

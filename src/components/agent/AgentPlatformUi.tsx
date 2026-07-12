@@ -130,7 +130,7 @@ export function formatAgentDate(value?: string | null) {
 }
 
 export const AGENT_SOURCE_TYPE_OPTIONS = [
-  { value: 'facebook_group', label: 'Facebook Group' },
+  { value: 'facebook_group', label: 'Facebook Group / Feed' },
   { value: 'website', label: 'Website' },
   { value: 'forum', label: 'Forum' },
   { value: 'search', label: 'Search' },

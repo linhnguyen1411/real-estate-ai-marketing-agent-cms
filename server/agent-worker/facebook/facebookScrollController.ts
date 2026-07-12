@@ -1,4 +1,4 @@
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 
 export type FacebookScrollStopReason =
   | 'max_scrolls'
@@ -7,6 +7,9 @@ export type FacebookScrollStopReason =
   | 'consecutive_empty_passes'
   | 'max_posts'
   | 'manual';
+
+const WRONG_SCROLL_TARGET_ERROR_CODE = 'FACEBOOK_WRONG_SCROLL_TARGET';
+const WRONG_SCROLL_TARGET_STOP_REASON = 'wrong_scroll_target';
 
 export interface FacebookScrollConfig {
   maxScrolls: number;
@@ -30,7 +33,18 @@ export interface FeedFingerprint {
 
 const FEED_FINGERPRINT_SCRIPT = `
 (() => {
-  const articles = Array.from(document.querySelectorAll('[role="article"]'));
+  // Scope to the group feed and count only top-level posts (never comments or
+  // dialog articles), so the fingerprint reflects feed progress — not comments
+  // loading inside an accidental modal.
+  const feed = document.querySelector('[role="feed"]');
+  const articles = feed
+    ? Array.from(feed.querySelectorAll('[role="article"]')).filter(article => {
+        if (article.closest('[role="dialog"]')) return false;
+        const parent = article.parentElement;
+        if (parent && parent.closest('[role="article"]')) return false;
+        return true;
+      })
+    : [];
   const externalIds = [];
   const canonicalUrls = [];
   let lastText = '';
@@ -127,6 +141,225 @@ export async function waitForFeedLoad(
   return { changed: false, after };
 }
 
+/**
+ * Targeted feed scroll.
+ *
+ * Unlike `page.mouse.wheel`, this never scrolls whatever happens to be under the
+ * cursor (e.g. a comment area inside a modal). It drives the group feed's own
+ * scroll container and brings the last feed post into view to trigger lazy load.
+ * Callers MUST ensure the tab is on the group feed (no dialog) before calling.
+ */
+export async function scrollGroupFeed(page: Page): Promise<void> {
+  await performFeedScroll(page, 1600);
+}
+
+export interface FeedScrollMeasurement {
+  feedScrollTop: number;
+  feedScrollHeight: number;
+  commentScrollTop: number;
+  documentScrollTop: number;
+}
+
+// STRING script (tsx/esbuild keepNames safe — see facebookNavigationState note).
+const MEASURE_FEED_SCROLL_SCRIPT = `(() => {
+  function scrollTopOf(el) {
+    var cur = el;
+    while (cur && cur !== document.body) {
+      var oy = getComputedStyle(cur).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && cur.scrollHeight > cur.clientHeight) return cur.scrollTop;
+      cur = cur.parentElement;
+    }
+    return 0;
+  }
+  var feed = document.querySelector('[role="feed"]');
+  var dialog = document.querySelector('[role="dialog"]');
+  var commentScrollTop = 0;
+  if (dialog) {
+    var nodes = dialog.querySelectorAll('*');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (n.scrollHeight > n.clientHeight && n.scrollTop > commentScrollTop) commentScrollTop = n.scrollTop;
+    }
+  }
+  var de = document.scrollingElement || document.documentElement;
+  return {
+    feedScrollTop: feed ? scrollTopOf(feed) : 0,
+    feedScrollHeight: feed ? feed.scrollHeight : 0,
+    commentScrollTop: commentScrollTop,
+    documentScrollTop: de ? de.scrollTop : 0,
+  };
+})()`;
+
+export async function measureFeedScroll(page: Page): Promise<FeedScrollMeasurement> {
+  return page
+    .evaluate(MEASURE_FEED_SCROLL_SCRIPT)
+    .then(r => r as FeedScrollMeasurement)
+    .catch(() => ({ feedScrollTop: 0, feedScrollHeight: 0, commentScrollTop: 0, documentScrollTop: 0 }));
+}
+
+export type FeedScrollOutcome = 'success' | 'wrong_target' | 'no_change';
+
+/**
+ * Pure scroll-outcome classifier (unit-testable).
+ * - success: feed scrollTop/height advanced, document advanced, or accepted-post
+ *   fingerprint changed.
+ * - wrong_target: only a comment/dialog scroll container advanced.
+ * - no_change: nothing moved.
+ */
+export function classifyScrollOutcome(input: {
+  feedScrollTopBefore: number;
+  feedScrollTopAfter: number;
+  feedScrollHeightBefore: number;
+  feedScrollHeightAfter: number;
+  documentScrollTopBefore: number;
+  documentScrollTopAfter: number;
+  commentScrollTopBefore: number;
+  commentScrollTopAfter: number;
+  fingerprintChanged: boolean;
+}): FeedScrollOutcome {
+  const feedAdvanced =
+    input.feedScrollTopAfter > input.feedScrollTopBefore ||
+    input.documentScrollTopAfter > input.documentScrollTopBefore ||
+    input.feedScrollHeightAfter > input.feedScrollHeightBefore;
+
+  if (feedAdvanced || input.fingerprintChanged) return 'success';
+
+  if (input.commentScrollTopAfter > input.commentScrollTopBefore) return 'wrong_target';
+
+  return 'no_change';
+}
+
+/** Scroll the group feed / document scrolling element by `amount` (never a dialog). */
+async function performFeedScroll(page: Page, amount: number): Promise<void> {
+  const px = Number(amount) || 0;
+  // STRING script (tsx/esbuild keepNames safe); amount interpolated as a number.
+  const script = `(() => {
+    var feed = document.querySelector('[role="feed"]');
+    if (feed) {
+      var posts = Array.prototype.slice.call(feed.querySelectorAll('[role="article"]')).filter(function (article) {
+        if (article.closest('[role="dialog"]')) return false;
+        var parent = article.parentElement;
+        if (parent && parent.closest('[role="article"]')) return false;
+        return true;
+      });
+      var last = posts[posts.length - 1];
+      if (last) last.scrollIntoView({ block: 'end', behavior: 'auto' });
+    }
+    var de = document.scrollingElement || document.documentElement;
+    if (de) de.scrollBy(0, ${px});
+    window.scrollBy(0, ${px});
+  })()`;
+  await page.evaluate(script).catch(() => undefined);
+}
+
+export interface ScrollFacebookGroupFeedInput {
+  page: Page;
+  feed: Locator;
+  sourceUrl: string;
+  scrollAmount?: number;
+  pauseMs?: number;
+  loadWaitMs?: number;
+  /** Recovery hook called once before a wrong-target retry (ensureGroupFeedState) */
+  recoverFeed?: () => Promise<boolean>;
+}
+
+export interface ScrollFacebookGroupFeedResult {
+  outcome: FeedScrollOutcome;
+  attempts: number;
+  retried: boolean;
+  commentScrollDetected: boolean;
+  fingerprintChanged: boolean;
+  before: FeedScrollMeasurement;
+  after: FeedScrollMeasurement;
+  errorCode?: string;
+  stopReason?: string;
+}
+
+/**
+ * Targeted, measured feed scroll with wrong-target detection + single retry.
+ * The tab MUST be on the group feed (no dialog) before calling.
+ */
+export async function scrollFacebookGroupFeed(
+  input: ScrollFacebookGroupFeedInput,
+): Promise<ScrollFacebookGroupFeedResult> {
+  const { page } = input;
+  const scrollAmount = input.scrollAmount ?? 1600;
+  const pauseMs = input.pauseMs ?? 2000;
+  const loadWaitMs = input.loadWaitMs ?? 1500;
+
+  const runOnce = async (): Promise<{
+    before: FeedScrollMeasurement;
+    after: FeedScrollMeasurement;
+    fingerprintChanged: boolean;
+  }> => {
+    const fpBefore = await captureFeedFingerprint(page);
+    const before = await measureFeedScroll(page);
+    await performFeedScroll(page, scrollAmount);
+    await page.waitForTimeout(pauseMs);
+    const { changed } = await waitForFeedLoad(page, fpBefore, loadWaitMs);
+    const after = await measureFeedScroll(page);
+    return { before, after, fingerprintChanged: changed };
+  };
+
+  const first = await runOnce();
+  let outcome = classifyScrollOutcome({
+    feedScrollTopBefore: first.before.feedScrollTop,
+    feedScrollTopAfter: first.after.feedScrollTop,
+    feedScrollHeightBefore: first.before.feedScrollHeight,
+    feedScrollHeightAfter: first.after.feedScrollHeight,
+    documentScrollTopBefore: first.before.documentScrollTop,
+    documentScrollTopAfter: first.after.documentScrollTop,
+    commentScrollTopBefore: first.before.commentScrollTop,
+    commentScrollTopAfter: first.after.commentScrollTop,
+    fingerprintChanged: first.fingerprintChanged,
+  });
+  let commentScrollDetected = first.after.commentScrollTop > first.before.commentScrollTop;
+
+  if (outcome !== 'wrong_target') {
+    return {
+      outcome,
+      attempts: 1,
+      retried: false,
+      commentScrollDetected,
+      fingerprintChanged: first.fingerprintChanged,
+      before: first.before,
+      after: first.after,
+    };
+  }
+
+  // Wrong target — recover once, then retry exactly one time.
+  if (input.recoverFeed) await input.recoverFeed().catch(() => false);
+  const second = await runOnce();
+  outcome = classifyScrollOutcome({
+    feedScrollTopBefore: second.before.feedScrollTop,
+    feedScrollTopAfter: second.after.feedScrollTop,
+    feedScrollHeightBefore: second.before.feedScrollHeight,
+    feedScrollHeightAfter: second.after.feedScrollHeight,
+    documentScrollTopBefore: second.before.documentScrollTop,
+    documentScrollTopAfter: second.after.documentScrollTop,
+    commentScrollTopBefore: second.before.commentScrollTop,
+    commentScrollTopAfter: second.after.commentScrollTop,
+    fingerprintChanged: second.fingerprintChanged,
+  });
+  commentScrollDetected =
+    commentScrollDetected || second.after.commentScrollTop > second.before.commentScrollTop;
+
+  const result: ScrollFacebookGroupFeedResult = {
+    outcome,
+    attempts: 2,
+    retried: true,
+    commentScrollDetected,
+    fingerprintChanged: second.fingerprintChanged,
+    before: first.before,
+    after: second.after,
+  };
+  if (outcome === 'wrong_target') {
+    result.errorCode = WRONG_SCROLL_TARGET_ERROR_CODE;
+    result.stopReason = WRONG_SCROLL_TARGET_STOP_REASON;
+  }
+  return result;
+}
+
 export async function scrollFacebookFeed(
   page: Page,
   config: FacebookScrollConfig,
@@ -142,7 +375,7 @@ export async function scrollFacebookFeed(
   }
 
   const before = await captureFeedFingerprint(page);
-  await page.mouse.wheel(0, 1600);
+  await scrollGroupFeed(page);
   await page.waitForTimeout(config.scrollPauseMs);
 
   const loadWaitMs = config.loadWaitMs ?? 1500;
@@ -188,6 +421,17 @@ export function shouldStopScrolling(input: {
     return 'consecutive_empty_passes';
   }
   return null;
+}
+
+export async function ensureFacebookDiscussionTab(page: Page): Promise<boolean> {
+  const tab = page.getByRole('tab', { name: /thảo luận|discussion/i }).first();
+  const selected = await tab.getAttribute('aria-selected').catch(() => null);
+  if (selected === 'true') return true;
+  const visible = await tab.isVisible().catch(() => false);
+  if (!visible) return false;
+  await tab.click({ timeout: 10_000 }).catch(() => undefined);
+  await page.waitForTimeout(2000);
+  return true;
 }
 
 export async function switchFacebookFeedTab(

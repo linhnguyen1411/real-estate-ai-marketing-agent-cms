@@ -235,13 +235,15 @@ export function validateMissionPatch(body: Record<string, unknown>): ValidationR
 export function validateFindingPatch(body: Record<string, unknown>): ValidationResult<{
   status: string;
   promotedLeadId?: string | null;
+  dismissReason?: string | null;
+  dismissNote?: string | null;
 }> {
   const status = String(body.status ?? '').trim();
   if (!AGENT_FINDING_STATUSES.includes(status as (typeof AGENT_FINDING_STATUSES)[number])) {
     return fail(`status phải là một trong: ${AGENT_FINDING_STATUSES.join(', ')}`);
   }
 
-  if (status === 'promoted') {
+  if (status === 'promoted' || status === 'promoted_to_investor_lead') {
     const promotedLeadId = body.promotedLeadId ?? body.promoted_lead_id;
     if (promotedLeadId !== undefined && promotedLeadId !== null && !String(promotedLeadId).trim()) {
       return fail('promotedLeadId không hợp lệ khi status=promoted.');
@@ -249,6 +251,8 @@ export function validateFindingPatch(body: Record<string, unknown>): ValidationR
   }
 
   const promotedLeadId = body.promotedLeadId ?? body.promoted_lead_id;
+  const dismissReason = body.dismissReason ?? body.dismiss_reason;
+  const dismissNote = body.dismissNote ?? body.dismiss_note;
   return {
     ok: true,
     value: {
@@ -258,6 +262,50 @@ export function validateFindingPatch(body: Record<string, unknown>): ValidationR
         : promotedLeadId === null
           ? null
           : String(promotedLeadId).trim() || null,
+      dismissReason:
+        dismissReason === undefined || dismissReason === null
+          ? dismissReason === null
+            ? null
+            : undefined
+          : String(dismissReason).trim().slice(0, 120) || null,
+      dismissNote:
+        dismissNote === undefined || dismissNote === null
+          ? dismissNote === null
+            ? null
+            : undefined
+          : String(dismissNote).trim().slice(0, 2000) || null,
+    },
+  };
+}
+
+export function validateFindingsBulkAction(body: Record<string, unknown>): ValidationResult<{
+  action: 'reviewed' | 'dismissed' | 'reanalyze';
+  findingIds: string[];
+  reason?: string | null;
+  note?: string | null;
+}> {
+  const action = String(body.action ?? '').trim() as 'reviewed' | 'dismissed' | 'reanalyze';
+  if (!['reviewed', 'dismissed', 'reanalyze'].includes(action)) {
+    return fail('action phải là reviewed | dismissed | reanalyze');
+  }
+  const rawIds = body.findingIds ?? body.finding_ids;
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return fail('findingIds phải là mảng không rỗng');
+  }
+  if (rawIds.length > 500) {
+    return fail('Tối đa 500 findingIds mỗi request');
+  }
+  const findingIds = rawIds.map(id => String(id).trim()).filter(Boolean);
+  if (!findingIds.length) return fail('findingIds không hợp lệ');
+
+  return {
+    ok: true,
+    value: {
+      action,
+      findingIds,
+      reason:
+        body.reason == null ? null : String(body.reason).trim().slice(0, 120) || null,
+      note: body.note == null ? null : String(body.note).trim().slice(0, 2000) || null,
     },
   };
 }

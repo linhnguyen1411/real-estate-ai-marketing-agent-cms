@@ -85,8 +85,17 @@ export class WorkerLoop {
 
         try {
           const result = await executeJob(job, this.browser);
-          await completeJob(job.id, result);
-          console.log(`[agent-worker] Completed job ${job.id}`);
+          try {
+            await completeJob(job.id, result);
+            console.log(`[agent-worker] Completed job ${job.id}`);
+          } catch (completeError) {
+            const msg = completeError instanceof Error ? completeError.message : String(completeError);
+            if (/Record to update not found|P2025/.test(msg)) {
+              console.log(`[agent-worker] Job ${job.id} removed while running — skip complete`);
+            } else {
+              throw completeError;
+            }
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Job thất bại.';
           console.error(`[agent-worker] Job ${job.id} failed:`, message);

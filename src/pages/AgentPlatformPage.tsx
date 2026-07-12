@@ -11,6 +11,7 @@ import BrowserSessions from '../components/agent/BrowserSessions';
 import AgentReports from '../components/agent/AgentReports';
 import AgentActionProposals from '../components/agent/AgentActionProposals';
 import AgentScannedContents from '../components/agent/AgentScannedContents';
+import AgentExternalInventory from '../components/agent/AgentExternalInventory';
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
@@ -18,7 +19,8 @@ const NAV_ITEMS = [
   { path: '/admin/agents/missions', label: 'Mission' },
   { path: '/admin/agents/jobs', label: 'Jobs' },
   { path: '/admin/agents/contents', label: 'Nội dung quét' },
-  { path: '/admin/agents/findings', label: 'Findings' },
+  { path: '/admin/agents/findings', label: 'Lead Intelligence' },
+  { path: '/admin/agents/external-inventory', label: 'Giỏ hàng ngoài' },
   { path: '/admin/agents/proposals', label: 'Duyệt phản hồi' },
   { path: '/admin/agents/notifications', label: 'Thông báo' },
   { path: '/admin/agents/sessions', label: 'Sessions' },
@@ -36,6 +38,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/jobs')) return 'jobs';
   if (pathname.startsWith('/admin/agents/contents')) return 'contents';
   if (pathname.startsWith('/admin/agents/findings')) return 'findings';
+  if (pathname.startsWith('/admin/agents/external-inventory')) return 'external-inventory';
   if (pathname.startsWith('/admin/agents/proposals')) return 'proposals';
   if (pathname.startsWith('/admin/agents/notifications')) return 'notifications';
   if (pathname.startsWith('/admin/agents/sessions')) return 'sessions';
@@ -73,9 +76,10 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'dashboard' && <AgentDashboard />}
         {section === 'sources' && <AgentSources canManage={canManage} />}
         {section === 'missions' && <AgentMissions canManage={canManage} />}
-        {section === 'jobs' && <AgentJobs />}
-        {section === 'contents' && <AgentScannedContents />}
+        {section === 'jobs' && <AgentJobs canManage={canManage} />}
+        {section === 'contents' && <AgentScannedContents userRole={userRole} />}
         {section === 'findings' && <AgentFindings userRole={userRole} />}
+        {section === 'external-inventory' && <AgentExternalInventory />}
         {section === 'proposals' && <AgentActionProposals />}
         {section === 'notifications' && <AgentNotifications />}
         {section === 'sessions' && <BrowserSessions />}

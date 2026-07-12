@@ -17,6 +17,11 @@ import {
 export interface GetOrCreatePageOptions {
   preferredDomain?: string;
   initialUrl?: string;
+  /**
+   * Force a fresh, worker-owned tab instead of reusing an existing (user) tab.
+   * Used by the Facebook scan so it never drives the user's own Facebook tab.
+   */
+  forceNewPage?: boolean;
 }
 
 export interface AgentBrowserConnection {
@@ -155,6 +160,20 @@ async function pickOrCreatePage(
 ): Promise<Page> {
   const pages = context.pages();
   const preferred = options?.preferredDomain?.toLowerCase();
+
+  if (options?.forceNewPage) {
+    const page = await context.newPage();
+    if (tracking.trackOwned && tracking.ownedPages) {
+      tracking.ownedPages.add(page);
+    }
+    if (options?.initialUrl) {
+      await page.goto(options.initialUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60_000,
+      });
+    }
+    return page;
+  }
 
   if (preferred) {
     for (const page of pages) {

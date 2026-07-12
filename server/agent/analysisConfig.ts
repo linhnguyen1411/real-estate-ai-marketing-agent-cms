@@ -8,6 +8,11 @@ import {
   getDefaultNegativeKeywords,
   getDefaultPositiveKeywords,
 } from './defaultKeywordSets';
+import {
+  DEFAULT_EXCLUDED_CLASSIFICATIONS,
+  DEFAULT_TARGET_CLASSIFICATIONS,
+  isLeadClassification,
+} from './leadIntelligence';
 
 export type AgentAnalysisMode = 'ai_first' | 'hybrid' | 'keyword_only';
 
@@ -21,7 +26,13 @@ export type AnalysisFilterStage =
   | 'budget_exhausted'
   | 'ai_failed'
   | 'ignored_by_rule'
+  | 'out_of_scope'
+  | 'out_of_domain'
+  | 'domain_needs_review'
+  | 'duplicate'
   | 'created_finding';
+
+export type MissionDomain = 'real_estate' | 'vehicle' | 'consumer_goods' | 'employment' | 'general';
 
 export interface LeadAnalysisConfig {
   analysisMode: AgentAnalysisMode;
@@ -37,6 +48,11 @@ export interface LeadAnalysisConfig {
   minBodyLength: number;
   deepAnalyze: boolean;
   skipAi: boolean;
+  /** Lead Intelligence: which classifications create buyer-facing findings */
+  targetClassifications: string[];
+  excludedClassifications: string[];
+  /** Vertical domain for this mission/source — default real_estate */
+  domain: MissionDomain;
 }
 
 const MODE_SET = new Set<AgentAnalysisMode>(['ai_first', 'hybrid', 'keyword_only']);
@@ -103,7 +119,40 @@ export function resolveLeadAnalysisConfig(
     deepAnalyze:
       missionRules.deepAnalyze === true || sourceConfig.deepAnalyze === true,
     skipAi: process.env.AGENT_LEAD_ANALYSIS_SKIP_AI === '1',
+    targetClassifications: resolveClassificationList(
+      missionRules.targetClassifications ?? sourceConfig.targetClassifications,
+      DEFAULT_TARGET_CLASSIFICATIONS,
+    ),
+    excludedClassifications: resolveClassificationList(
+      missionRules.excludedClassifications ?? sourceConfig.excludedClassifications,
+      DEFAULT_EXCLUDED_CLASSIFICATIONS,
+    ),
+    domain: resolveMissionDomain(
+      missionRules.domain ?? sourceConfig.domain,
+      'real_estate',
+    ),
   };
+}
+
+function resolveMissionDomain(value: unknown, fallback: MissionDomain): MissionDomain {
+  const raw = String(value || '').trim().toLowerCase();
+  const allowed: MissionDomain[] = [
+    'real_estate',
+    'vehicle',
+    'consumer_goods',
+    'employment',
+    'general',
+  ];
+  if (allowed.includes(raw as MissionDomain)) return raw as MissionDomain;
+  return fallback;
+}
+
+function resolveClassificationList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value) || value.length === 0) return [...fallback];
+  const items = value
+    .map(item => String(item).trim().toLowerCase())
+    .filter(isLeadClassification);
+  return items.length ? [...new Set(items)] : [...fallback];
 }
 
 function parseMode(value: unknown, fallback: AgentAnalysisMode): AgentAnalysisMode {

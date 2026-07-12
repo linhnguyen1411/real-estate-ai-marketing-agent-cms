@@ -114,8 +114,10 @@ export async function runAgentSchedulerTick(now = new Date()): Promise<Scheduler
   tickInFlight = true;
   try {
     const result = await prisma.$transaction(async tx => {
+      // Cast to int4 — Prisma binds JS numbers as bigint, but Postgres only
+      // exposes the two-arg overload pg_try_advisory_xact_lock(int4, int4).
       const lockRows = await tx.$queryRaw<Array<{ locked: boolean }>>`
-        SELECT pg_try_advisory_xact_lock(${AGENT_SCHEDULER_LOCK_CLASS}, ${AGENT_SCHEDULER_LOCK_ID}) AS locked
+        SELECT pg_try_advisory_xact_lock(${AGENT_SCHEDULER_LOCK_CLASS}::int, ${AGENT_SCHEDULER_LOCK_ID}::int) AS locked
       `;
       if (!lockRows[0]?.locked) {
         return {

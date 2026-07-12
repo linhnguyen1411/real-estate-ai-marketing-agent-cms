@@ -183,6 +183,44 @@ export interface AgentFinding {
   reasons: unknown[];
   status: AgentFindingStatus | string;
   promotedLeadId?: string | null;
+  classification?: string | null;
+  intent?: string | null;
+  actorRole?: string | null;
+  priority?: string | null;
+  confidence?: number | null;
+  keywordScore?: number | null;
+  aiScore?: number | null;
+  leadFitScore?: number | null;
+  finalScore?: number | null;
+  primaryPhone?: string | null;
+  primaryLocation?: string | null;
+  /** BigInt may arrive as string from JSON serialization */
+  budgetMin?: string | number | null;
+  budgetMax?: string | number | null;
+  askingPrice?: string | number | null;
+  propertyType?: string | null;
+  dismissedAt?: string | null;
+  dismissedBy?: string | null;
+  dismissReason?: string | null;
+  dismissNote?: string | null;
+  duplicateOfFindingId?: string | null;
+  dedupeStatus?: string | null;
+  similarityScore?: number | null;
+  dedupeReason?: string | null;
+  intelligenceVersion?: string | null;
+  personName?: string | null;
+  needSummary?: string | null;
+  scoreStatus?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  promotedAt?: string | null;
+  promotedBy?: string | null;
+  externalInventoryItemId?: string | null;
+  externalInventorySavedAt?: string | null;
+  externalInventorySavedBy?: string | null;
+  analysisStatus?: string;
+  consistencyWarnings?: string[];
+  resolved?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   source?: { id: string; name: string; type: string };
@@ -191,8 +229,42 @@ export interface AgentFinding {
     id: string;
     canonicalUrl: string;
     authorName?: string | null;
+    authorUrl?: string | null;
+    contentText?: string | null;
+    publishedAt?: string | null;
     collectedAt: string;
   };
+}
+
+export interface ExternalInventoryItem {
+  id: string;
+  companyId: string | null;
+  findingId?: string | null;
+  title: string;
+  description?: string | null;
+  originalContent: string;
+  propertyType?: string | null;
+  transactionType: string;
+  askingPriceMin?: string | number | null;
+  askingPriceMax?: string | number | null;
+  rentPrice?: string | number | null;
+  city?: string | null;
+  district?: string | null;
+  ward?: string | null;
+  street?: string | null;
+  project?: string | null;
+  areaMinM2?: number | null;
+  areaMaxM2?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactFacebookUrl?: string | null;
+  sourceUrl?: string | null;
+  sourceName?: string | null;
+  sourceType?: string | null;
+  verificationStatus: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ScannedContentItem {

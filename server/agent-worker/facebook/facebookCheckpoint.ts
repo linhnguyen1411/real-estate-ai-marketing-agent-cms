@@ -17,6 +17,11 @@ export type FacebookStopReason =
   | 'login_required'
   | 'checkpoint'
   | 'challenge'
+  | 'navigation_lost'
+  | 'modal_stuck'
+  | 'wrong_scroll_target'
+  | 'feed_not_recovered'
+  | 'navigation_state_unknown'
   | 'cancelled'
   | 'error'
   | 'pending';
@@ -32,6 +37,15 @@ export interface FacebookScanMetrics {
   analyzed: number;
   findingsCreated: number;
   notificationsCreated: number;
+  domainRealEstate?: number;
+  domainVehicle?: number;
+  domainConsumerGoods?: number;
+  domainEmployment?: number;
+  domainService?: number;
+  domainUnknown?: number;
+  outOfDomainRejected?: number;
+  domainNeedsReview?: number;
+  falsePositivePrevented?: number;
   /** @deprecated prefer duplicateInSession + parseFailed + ignoredByRule */
   ignored: number;
   /** @deprecated prefer uniquePostsObserved */
@@ -47,6 +61,27 @@ export interface FacebookScanMetrics {
   scrollsPerformed: number;
   seeMoreClicks: number;
   emptyPasses: number;
+  /** Times an accidental post-detail modal/navigation was recovered back to feed */
+  modalRecoveries: number;
+  // --- Navigation / classification observability (Sprint FB-nav) ---
+  articleNodesObserved: number;
+  postCandidates: number;
+  postsAccepted: number;
+  commentsRejected: number;
+  unknownArticlesRejected: number;
+  modalsDetected: number;
+  modalsOpened: number;
+  modalsClosed: number;
+  modalCloseFailures: number;
+  feedScrollAttempts: number;
+  feedScrollSuccess: number;
+  commentScrollsDetected: number;
+  wrongScrollTargetFailures: number;
+  feedStateRecoveries: number;
+  feedStateRecoveryFailures: number;
+  /** Posts extracted from GraphQL network (DOM often stays skeleton under CDP) */
+  graphqlPostsCaptured: number;
+  graphqlPostsInserted: number;
   stoppedReason: FacebookStopReason | string;
   durationMs: number;
 }
@@ -83,6 +118,15 @@ export function emptyScanMetrics(): FacebookScanMetrics {
     analyzed: 0,
     findingsCreated: 0,
     notificationsCreated: 0,
+    domainRealEstate: 0,
+    domainVehicle: 0,
+    domainConsumerGoods: 0,
+    domainEmployment: 0,
+    domainService: 0,
+    domainUnknown: 0,
+    outOfDomainRejected: 0,
+    domainNeedsReview: 0,
+    falsePositivePrevented: 0,
     ignored: 0,
     postsSeen: 0,
     postsNew: 0,
@@ -92,6 +136,24 @@ export function emptyScanMetrics(): FacebookScanMetrics {
     scrollsPerformed: 0,
     seeMoreClicks: 0,
     emptyPasses: 0,
+    modalRecoveries: 0,
+    articleNodesObserved: 0,
+    postCandidates: 0,
+    postsAccepted: 0,
+    commentsRejected: 0,
+    unknownArticlesRejected: 0,
+    modalsDetected: 0,
+    modalsOpened: 0,
+    modalsClosed: 0,
+    modalCloseFailures: 0,
+    feedScrollAttempts: 0,
+    feedScrollSuccess: 0,
+    commentScrollsDetected: 0,
+    wrongScrollTargetFailures: 0,
+    feedStateRecoveries: 0,
+    feedStateRecoveryFailures: 0,
+    graphqlPostsCaptured: 0,
+    graphqlPostsInserted: 0,
     stoppedReason: 'pending',
     durationMs: 0,
   };
@@ -263,6 +325,24 @@ function parseMetrics(raw: Record<string, unknown>): FacebookScanMetrics {
     scrollsPerformed: num(raw.scrollsPerformed),
     seeMoreClicks: num(raw.seeMoreClicks),
     emptyPasses: num(raw.emptyPasses),
+    modalRecoveries: num(raw.modalRecoveries),
+    articleNodesObserved: num(raw.articleNodesObserved),
+    postCandidates: num(raw.postCandidates),
+    postsAccepted: num(raw.postsAccepted),
+    commentsRejected: num(raw.commentsRejected),
+    unknownArticlesRejected: num(raw.unknownArticlesRejected),
+    modalsDetected: num(raw.modalsDetected),
+    modalsOpened: num(raw.modalsOpened),
+    modalsClosed: num(raw.modalsClosed),
+    modalCloseFailures: num(raw.modalCloseFailures),
+    feedScrollAttempts: num(raw.feedScrollAttempts),
+    feedScrollSuccess: num(raw.feedScrollSuccess),
+    commentScrollsDetected: num(raw.commentScrollsDetected),
+    wrongScrollTargetFailures: num(raw.wrongScrollTargetFailures),
+    feedStateRecoveries: num(raw.feedStateRecoveries),
+    feedStateRecoveryFailures: num(raw.feedStateRecoveryFailures),
+    graphqlPostsCaptured: num(raw.graphqlPostsCaptured),
+    graphqlPostsInserted: num(raw.graphqlPostsInserted),
     stoppedReason: normalizeStopReason(raw.stoppedReason ?? raw.stopReason),
     durationMs: num(raw.durationMs),
   });

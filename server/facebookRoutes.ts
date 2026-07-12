@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED from CMS nav; Graph webhook retained for compatibility; agent browser reader is separate.
+ * Prefer keeping these routes/tables; UI entry points were removed rather than deleting this module.
+ */
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { verifyFacebookWebhookChallenge } from './facebook/webhookVerify';

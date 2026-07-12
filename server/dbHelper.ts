@@ -32,6 +32,18 @@ const defaultSettings: AppSettings = {
   openai_model: process.env.OPENAI_MODEL || "gpt-5-mini",
   agent_tone: process.env.AGENT_TONE || "sang trọng và chuyên nghiệp",
   site_view_count: 0,
+  telegram_enabled: false,
+  telegram_min_score: 70,
+  telegram_classifications: ["buyer", "renter", "investor"],
+  telegram_only_with_phone: false,
+  telegram_include_phone: true,
+  telegram_include_budget: true,
+  telegram_include_location: true,
+  telegram_include_link: true,
+  agent_sync_enabled: false,
+  agent_sync_batch_size: 10,
+  agent_sync_timeout_ms: 20000,
+  agent_sync_verify_tls: true,
 };
 
 let cache: CmsDatabase | null = null;

@@ -17,6 +17,7 @@ import {
   truncateForAnalysis,
 } from './prompts/leadAnalyzerPrompt';
 import { extractJsonPayload } from './leadAnalysisSchema';
+import { detectSubjectDirection } from './subjectDirection';
 
 export interface LeadAnalyzerInput {
   title: string;
@@ -194,41 +195,58 @@ export function buildDeterministicFallback(
   input: LeadAnalyzerInput,
   prefilter: LeadPrefilterResult,
 ): LeadAnalysisResult {
-  const text = `${input.title}\n${input.bodyText}`.toLowerCase();
+  const haystack = `${input.title}\n${input.bodyText}`;
+  const direction = detectSubjectDirection(haystack);
 
-  let classification: LeadAnalysisResult['classification'] = 'unknown';
-  let intent: LeadAnalysisResult['intent'] = 'unknown';
+  let classification = direction.classification;
+  let intent = direction.intent;
+  let actorRole = direction.actorRole;
+  let representedDemand = direction.representedDemand;
+  let brokerActivity = direction.brokerActivity;
+  let confidence = direction.confidence;
 
-  if (prefilter.isHardSpam || text.includes('spam')) {
+  if (prefilter.isHardSpam || haystack.toLowerCase().includes('spam')) {
     classification = 'spam';
     intent = 'unknown';
-  } else if (text.includes('môi giới') || text.includes('moi gioi')) {
-    classification = 'broker';
-    intent = 'service';
-  } else if (text.includes('cho thuê') || text.includes('thuê căn')) {
-    classification = 'renter';
-    intent = 'rent';
-  } else if (text.includes('cần mua') || text.includes('mua căn') || text.includes('tìm mua')) {
-    classification = 'buyer';
-    intent = 'buy';
-  } else if (text.includes('cần bán') || text.includes('bán căn') || text.includes('bán nhà')) {
-    classification = 'seller';
-    intent = 'sell';
+    actorRole = 'unknown';
+    representedDemand = 'none';
+    brokerActivity = 'unknown';
+    confidence = 0.9;
   }
 
+  const text = haystack.toLowerCase();
   const propertyTypes: string[] = [];
-  if (text.includes('căn hộ')) propertyTypes.push('căn hộ');
-  if (text.includes('nhà phố')) propertyTypes.push('nhà phố');
+  if (text.includes('căn hộ') || text.includes('studio')) propertyTypes.push('căn hộ');
+  if (text.includes('nhà phố') || text.includes('nhà ')) propertyTypes.push('nhà phố');
   if (text.includes('đất nền') || text.includes('đất ')) propertyTypes.push('đất nền');
 
   const region = extractRegion(text);
   const contact = extractContactFromText(input.bodyText);
-  const score = Math.max(prefilter.score, classification === 'spam' ? 5 : prefilter.score);
-  const confidence = classification === 'unknown' ? 0.35 : 0.55;
+  const score =
+    classification === 'spam'
+      ? 5
+      : Math.max(prefilter.score, Math.round(confidence * 100 * 0.7));
+  const shortTitle =
+    classification === 'buyer'
+      ? `Khách tìm mua${region ? ` tại ${region}` : ''}`
+      : classification === 'renter'
+        ? `Khách tìm thuê${region ? ` tại ${region}` : ''}`
+        : classification === 'seller'
+          ? `Bài bán${region ? ` tại ${region}` : ''}`
+          : classification === 'landlord'
+            ? `Bài cho thuê${region ? ` tại ${region}` : ''}`
+            : classification === 'broker' && brokerActivity === 'demand_request'
+              ? `Môi giới tìm hộ khách (${representedDemand})`
+              : classification === 'broker'
+                ? 'Bài môi giới'
+                : input.title.slice(0, 90) || 'Lead signal';
 
   return validateLeadAnalysis({
     classification,
     intent,
+    actorRole,
+    representedDemand,
+    brokerActivity,
     confidence,
     score,
     region,
@@ -239,8 +257,23 @@ export function buildDeterministicFallback(
     propertyTypes,
     urgency: score >= 70 ? 'high' : score >= 45 ? 'medium' : 'low',
     contact,
-    summary: input.title.slice(0, 200) || input.bodyText.slice(0, 200),
-    reasons: ['Phân tích deterministic (fallback)', ...prefilter.reasons.slice(0, 5)],
+    title: shortTitle.slice(0, 90),
+    summary:
+      classification === 'buyer' || classification === 'renter' || classification === 'investor'
+        ? `Tín hiệu phía cầu (${classification}). ${input.bodyText.slice(0, 160)}`
+        : brokerActivity === 'demand_request'
+          ? `Môi giới đại diện nhu cầu (${representedDemand}). Cần review thủ công.`
+          : `Tín hiệu phía cung/khác (${classification}).`,
+    reasons: [
+      'Phân tích deterministic (fallback)',
+      `classification=${classification}`,
+      `actorRole=${actorRole}`,
+      `brokerActivity=${brokerActivity}`,
+      `representedDemand=${representedDemand}`,
+      ...direction.demandSignals.slice(0, 3).map(s => `demand:${s}`),
+      ...direction.supplySignals.slice(0, 3).map(s => `supply:${s}`),
+      ...prefilter.reasons.slice(0, 3),
+    ],
   });
 }
 

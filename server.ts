@@ -69,6 +69,17 @@ import { filterPublicProperties } from './server/publicPropertyMapper';
 import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
+import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
+import {
+  maskSettingsSecrets,
+  sendTestTelegram,
+} from './server/notifications/telegramNotificationService';
+import { testVpsConnection } from './server/agentSync/vpsClient';
+import {
+  startAgentSyncOutboxWorker,
+  stopAgentSyncOutboxWorker,
+} from './server/agentSync/outboxWorker';
+import { getSyncOutboxStats, processOutboxBatch } from './server/agentSync/outboxService';
 import { getAgentSchedulerStatus, startAgentScheduler, stopAgentScheduler } from './server/agent/agentScheduler';
 
 const app = express();
@@ -82,7 +93,8 @@ app.use(cacheControlMiddleware);
 app.use(express.json({
   limit: process.env.JSON_BODY_LIMIT || '25mb',
   verify: (req, _res, buf) => {
-    if (req.url?.startsWith('/webhooks/facebook')) {
+    const url = req.url || '';
+    if (url.startsWith('/webhooks/facebook') || url.startsWith('/api/agent-ingest/')) {
       (req as Request & { rawBody?: Buffer }).rawBody = buf;
     }
   },
@@ -1196,7 +1208,14 @@ registerShortLinkRedirect(app, getProperties);
 app.use('/api/public', createInvestorLeadPublicRouter());
 
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  if (req.path === '/health' || req.path === '/auth/login' || req.path.startsWith('/public/')) return next();
+  if (
+    req.path === '/health' ||
+    req.path === '/auth/login' ||
+    req.path.startsWith('/public/') ||
+    req.path.startsWith('/agent-ingest/')
+  ) {
+    return next();
+  }
 
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   const decoded = token ? verifyToken(token) : null;
@@ -1303,6 +1322,7 @@ registerBlogAdminRoutes(app);
 registerShortLinkAdminRoutes(app);
 registerFacebookAdminRoutes(app);
 registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
+registerAgentIngestRoutes(app, { getAuthUser, accessDefaults });
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);
@@ -2531,19 +2551,108 @@ app.get('/api/channels', (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/settings', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: db.settings });
+  res.json({ status: 'success', data: maskSettingsSecrets(db.settings) });
 });
 
 app.put('/api/settings', async (req: Request, res: Response) => {
   if (!requireOwner(req, res)) return;
 
   const db = readDatabase();
+  const body = { ...(req.body || {}) } as Record<string, unknown>;
+  // Do not overwrite secrets when client sends masked values back
+  const maskedLike = (v: unknown) => typeof v === 'string' && (v.includes('…') || v.includes('****'));
+  if (maskedLike(body.telegram_bot_token)) delete body.telegram_bot_token;
+  if (maskedLike(body.agent_sync_secret)) delete body.agent_sync_secret;
+
   db.settings = {
     ...db.settings,
-    ...req.body
+    ...body,
   };
   await writeDatabase(db);
-  res.json({ status: 'success', data: db.settings });
+  res.json({ status: 'success', data: maskSettingsSecrets(db.settings) });
+});
+
+app.post('/api/settings/telegram/test', async (req: Request, res: Response) => {
+  if (!requireOwner(req, res)) return;
+  const text = req.body?.text != null ? String(req.body.text) : undefined;
+  const result = await sendTestTelegram({ text });
+  if (!result.ok) {
+    res.status(400).json({ status: 'error', message: result.error || 'Telegram test failed' });
+    return;
+  }
+  res.json({ status: 'success', data: result });
+});
+
+app.post('/api/settings/agent-sync/test', async (req: Request, res: Response) => {
+  if (!requireOwner(req, res)) return;
+  const db = readDatabase();
+  const settings = { ...db.settings } as AppSettings;
+  // Allow optional overrides from request body (unsaved form values)
+  const body = (req.body || {}) as Record<string, unknown>;
+  if (typeof body.agent_sync_vps_url === 'string' && body.agent_sync_vps_url.trim()) {
+    settings.agent_sync_vps_url = body.agent_sync_vps_url.trim();
+  }
+  if (typeof body.agent_sync_key_id === 'string' && body.agent_sync_key_id.trim()) {
+    settings.agent_sync_key_id = body.agent_sync_key_id.trim();
+  }
+  if (
+    typeof body.agent_sync_secret === 'string' &&
+    body.agent_sync_secret.trim() &&
+    !body.agent_sync_secret.includes('…') &&
+    !body.agent_sync_secret.includes('****')
+  ) {
+    settings.agent_sync_secret = body.agent_sync_secret.trim();
+  }
+  if (typeof body.agent_sync_timeout_ms === 'number' && Number.isFinite(body.agent_sync_timeout_ms)) {
+    settings.agent_sync_timeout_ms = body.agent_sync_timeout_ms;
+  }
+
+  const result = await testVpsConnection(settings);
+  if (!result.ok) {
+    res.status(400).json({ status: 'error', message: result.error || 'VPS sync test failed', data: result.data });
+    return;
+  }
+  res.json({
+    status: 'success',
+    message: result.message || 'Kết nối VPS OK.',
+    data: result.data,
+  });
+});
+
+app.get('/api/settings/agent-sync/status', async (req: Request, res: Response) => {
+  if (!requireOwner(req, res)) return;
+  try {
+    const stats = await getSyncOutboxStats();
+    res.json({
+      status: 'success',
+      data: {
+        envEnabled: process.env.AGENT_LOCAL_SYNC_ENABLED?.trim().toLowerCase() === 'true',
+        settingsEnabled: Boolean(readDatabase().settings.agent_sync_enabled),
+        ...stats,
+      },
+    });
+  } catch (error: unknown) {
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Không lấy được sync status.',
+    });
+  }
+});
+
+app.post('/api/settings/agent-sync/flush', async (req: Request, res: Response) => {
+  if (!requireOwner(req, res)) return;
+  try {
+    const result = await processOutboxBatch({
+      limit: Number((req.body as { limit?: number })?.limit || 20),
+    });
+    const stats = await getSyncOutboxStats();
+    res.json({ status: 'success', data: { flush: result, stats } });
+  } catch (error: unknown) {
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Flush outbox thất bại.',
+    });
+  }
 });
 
 
@@ -3087,10 +3196,18 @@ async function setupViteDevServer() {
   app.use(handlePublicIndex);
   app.use(viteServer.middlewares);
   app.get('*', async (req: Request, res: Response, next: NextFunction) => {
-    if (req.url.startsWith('/api')) {
+    if (req.path.startsWith('/api')) {
       return next();
     }
     await sendIndexHtml(req, res, getIndexHtmlTemplate());
+  });
+
+  // Unmatched API methods (POST/PATCH/…) that fall through Vite → proper JSON, not empty 404
+  app.use('/api', (req: Request, res: Response) => {
+    res.status(404).json({
+      status: 'error',
+      message: `API không tồn tại: ${req.method} ${req.originalUrl}. Thử restart server (npm run dev).`,
+    });
   });
 }
 
@@ -3182,6 +3299,7 @@ async function main() {
 
   if (dbReady) {
     startAgentScheduler();
+    startAgentSyncOutboxWorker();
   } else {
     console.warn('[agent-scheduler] Bỏ qua — DB chưa sẵn sàng');
   }
@@ -3189,6 +3307,7 @@ async function main() {
   const shutdown = (signal: string) => {
     console.log(`[Server] ${signal} — stopping scheduler…`);
     stopAgentScheduler();
+    stopAgentSyncOutboxWorker();
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

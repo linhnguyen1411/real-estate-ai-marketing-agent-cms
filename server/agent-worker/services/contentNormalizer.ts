@@ -32,8 +32,48 @@ export interface WebsiteSourceConfig {
   prefilterMinScore?: number;
 }
 
+export function sanitizeUnicodeString(input: string): string {
+  let out = '';
+  for (let i = 0; i < input.length; i += 1) {
+    const code = input.charCodeAt(i);
+    // High surrogate must be paired with a low surrogate
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = input.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += input[i] + input[i + 1];
+        i += 1;
+      } else {
+        out += '\uFFFD';
+      }
+      continue;
+    }
+    // Lone low surrogate
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      out += '\uFFFD';
+      continue;
+    }
+    out += input[i];
+  }
+  return out;
+}
+
+/** Deep-sanitize strings so Prisma/JSON.stringify never hits lone surrogates. */
+export function sanitizeJsonValue<T>(value: T): T {
+  if (value == null) return value;
+  if (typeof value === 'string') return sanitizeUnicodeString(value) as T;
+  if (Array.isArray(value)) return value.map((item) => sanitizeJsonValue(item)) as T;
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      out[sanitizeUnicodeString(key)] = sanitizeJsonValue(child);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export function normalizeText(input: string, maxLength = 50_000): string {
-  const collapsed = input
+  const collapsed = sanitizeUnicodeString(input)
     .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

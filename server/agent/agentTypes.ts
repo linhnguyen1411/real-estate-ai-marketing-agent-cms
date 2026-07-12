@@ -4,7 +4,16 @@ export const AGENT_SOURCE_TYPES = ['facebook_group', 'website', 'forum', 'search
 export const AGENT_SOURCE_STATUSES = ['active', 'paused', 'error'] as const;
 export const AGENT_MISSION_STATUSES = ['draft', 'active', 'paused', 'completed'] as const;
 export const AGENT_JOB_STATUSES = ['queued', 'claimed', 'running', 'completed', 'failed', 'cancelled'] as const;
-export const AGENT_FINDING_STATUSES = ['new', 'reviewed', 'promoted', 'dismissed'] as const;
+export const AGENT_FINDING_STATUSES = [
+  'new',
+  'reviewed',
+  'promoted',
+  'promoted_to_investor_lead',
+  'saved_to_external_inventory',
+  'dismissed',
+  'duplicate',
+  'archived',
+] as const;
 export const AGENT_NOTIFICATION_STATUSES = ['unread', 'read', 'archived'] as const;
 export const AGENT_ACTION_TYPES = ['comment', 'message', 'save', 'follow_up'] as const;
 export const AGENT_ACTION_PROPOSAL_STATUSES = [

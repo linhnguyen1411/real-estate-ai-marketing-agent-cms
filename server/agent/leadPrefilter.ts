@@ -1,3 +1,9 @@
+import {
+  evaluateRealEstateRelevance,
+  type RealEstateRelevanceResult,
+} from './domainClassification';
+import { textHasKeyword } from './offTopicFilter';
+
 export interface LeadPrefilterInput {
   title: string;
   bodyText: string;
@@ -12,6 +18,10 @@ export interface LeadPrefilterResult {
   score: number;
   reasons: string[];
   isHardSpam: boolean;
+  /** Domain / RE relevance (set when evaluated) */
+  relevance?: RealEstateRelevanceResult;
+  outOfDomain?: boolean;
+  domainNeedsReview?: boolean;
 }
 
 const DEFAULT_MIN_BODY = 80;
@@ -32,6 +42,32 @@ export function runLeadPrefilter(input: LeadPrefilterInput): LeadPrefilterResult
     return { passed: false, score: 0, reasons, isHardSpam: false };
   }
 
+  const relevance = evaluateRealEstateRelevance(combined);
+  if (relevance.decision === 'reject') {
+    reasons.push(
+      `Ngoài lĩnh vực BĐS: ${relevance.domain.classification} (${relevance.reasonCode})`,
+    );
+    return {
+      passed: false,
+      score: 0,
+      reasons,
+      isHardSpam: true,
+      relevance,
+      outOfDomain: true,
+    };
+  }
+  if (relevance.decision === 'needs_review') {
+    reasons.push(`Domain chưa rõ: ${relevance.reasonCode}`);
+    return {
+      passed: false,
+      score: 0,
+      reasons,
+      isHardSpam: false,
+      relevance,
+      domainNeedsReview: true,
+    };
+  }
+
   if (hasSpamRepetition(body)) {
     reasons.push('Phát hiện lặp ký tự/từ spam');
     return { passed: false, score: 0, reasons, isHardSpam: true };
@@ -41,11 +77,11 @@ export function runLeadPrefilter(input: LeadPrefilterInput): LeadPrefilterResult
   for (const keyword of input.positiveKeywords) {
     const kw = keyword.toLowerCase();
     if (!kw) continue;
-    if (title.includes(kw)) {
+    if (textHasKeyword(title, kw)) {
       score += 12;
       matchedPositive.push(kw);
       reasons.push(`+12 từ khóa "${kw}" trong tiêu đề`);
-    } else if (body.includes(kw)) {
+    } else if (textHasKeyword(body, kw)) {
       score += 8;
       matchedPositive.push(kw);
       reasons.push(`+8 từ khóa "${kw}" trong nội dung`);
@@ -61,7 +97,7 @@ export function runLeadPrefilter(input: LeadPrefilterInput): LeadPrefilterResult
   for (const keyword of input.negativeKeywords) {
     const kw = keyword.toLowerCase();
     if (!kw) continue;
-    if (combined.includes(kw)) {
+    if (textHasKeyword(combined, kw)) {
       negativeHits += 1;
       score -= 15;
       reasons.push(`-15 từ khóa loại trừ "${kw}"`);
