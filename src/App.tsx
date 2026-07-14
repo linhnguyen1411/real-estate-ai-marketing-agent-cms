@@ -137,6 +137,8 @@ const EMPTY_NAV_COUNTS: NavigationCounts = {
   notifications: 0,
   jobs: 0,
   sources: 0,
+  websiteChat: 0,
+  chatHistory: 0,
 };
 
 const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: string }> = {
@@ -656,9 +658,6 @@ export default function App() {
         canManageWebsiteChat,
         canManageCmsUsers,
         extraBadges: {
-          // Chat lists live in ChatFeatureHost; sidebar badges stay 0 until a lightweight count API exists.
-          websiteChat: 0,
-          chatHistory: 0,
           users: managedUsers.length,
         },
         actionLoading,
@@ -1500,7 +1499,13 @@ export default function App() {
               {/* ==================================================== */}
               {activeTab === 'inbox' && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Inbox…" />}>
-                  <InboxPage onNotify={showToast} searchQuery={searchQuery} />
+                  <InboxPage
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                    onCountsChanged={() => {
+                      void refreshNavigationCounts();
+                    }}
+                  />
                 </Suspense>
               )}
 
@@ -1514,6 +1519,9 @@ export default function App() {
                     canManageWebsiteChat={canManageWebsiteChat}
                     settings={settings}
                     initialDraft={userChatInput}
+                    onCountsChanged={() => {
+                      void refreshNavigationCounts();
+                    }}
                     key={`chatbot-${chatDraftSeed}`}
                   />
                 </Suspense>
@@ -1528,6 +1536,9 @@ export default function App() {
                     searchQuery={searchQuery}
                     canManageWebsiteChat={canManageWebsiteChat}
                     settings={settings}
+                    onCountsChanged={() => {
+                      void refreshNavigationCounts();
+                    }}
                   />
                 </Suspense>
               )}
@@ -1541,6 +1552,9 @@ export default function App() {
                     searchQuery={searchQuery}
                     canManageWebsiteChat={canManageWebsiteChat}
                     settings={settings}
+                    onCountsChanged={() => {
+                      void refreshNavigationCounts();
+                    }}
                   />
                 </Suspense>
               )}

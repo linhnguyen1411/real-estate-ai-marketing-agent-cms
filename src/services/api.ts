@@ -189,6 +189,10 @@ export interface NavigationCounts {
   notifications: number;
   jobs: number;
   sources: number;
+  /** Public website guest conversations (count only). */
+  websiteChat: number;
+  /** Distinct chat history sessions in scope (count only). */
+  chatHistory: number;
 }
 
 export interface ListPagination {

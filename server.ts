@@ -1758,6 +1758,15 @@ app.get('/api/navigation-counts', async (req: Request, res: Response) => {
 
     const investorLeads = await countInvestorLeads({ includeConverted: false }).catch(() => 0);
 
+    // Lightweight chat badges (counts only — same semantics as pre–Batch 5 App list.length).
+    const websiteChat = getPublicChatGuests().length;
+    const chatHistoryScoped = (db.chat_history || []).filter((item: { user_id?: string; company_id?: string }) => {
+      if (user.role === 'owner') return true;
+      if (user.role === 'company') return item.company_id === user.company_id;
+      return item.user_id === user.id;
+    });
+    const chatHistory = new Set(chatHistoryScoped.map((item: { user_id?: string }) => item.user_id).filter(Boolean)).size;
+
     res.json({
       status: 'success',
       data: {
@@ -1771,6 +1780,8 @@ app.get('/api/navigation-counts', async (req: Request, res: Response) => {
         notifications,
         jobs,
         sources,
+        websiteChat,
+        chatHistory,
       },
     });
   } catch (error: any) {

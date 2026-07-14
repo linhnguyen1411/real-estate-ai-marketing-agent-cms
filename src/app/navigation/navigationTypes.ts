@@ -41,4 +41,6 @@ export interface NavigationCountsView {
   notifications: number;
   jobs: number;
   sources: number;
+  websiteChat: number;
+  chatHistory: number;
 }

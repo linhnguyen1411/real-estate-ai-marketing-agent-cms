@@ -21,8 +21,8 @@ function resolveBadge(
   extra: ExtraNavBadges,
 ): number | undefined {
   if (!item.badgeKey) return undefined;
-  if (item.badgeKey === 'websiteChat') return extra.websiteChat ?? 0;
-  if (item.badgeKey === 'chatHistory') return extra.chatHistory ?? 0;
+  if (item.badgeKey === 'websiteChat') return counts.websiteChat ?? extra.websiteChat ?? 0;
+  if (item.badgeKey === 'chatHistory') return counts.chatHistory ?? extra.chatHistory ?? 0;
   if (item.badgeKey === 'users') return extra.users ?? 0;
   return counts[item.badgeKey as keyof NavigationCountsView] ?? 0;
 }

@@ -9,9 +9,10 @@ type Notify = (message: string, type?: 'success' | 'error' | 'info') => void;
 type Props = {
   onNotify: Notify;
   searchQuery?: string;
+  onCountsChanged?: () => void;
 };
 
-export default function InboxPage({ onNotify, searchQuery = '' }: Props) {
+export default function InboxPage({ onNotify, searchQuery = '', onCountsChanged }: Props) {
   const [inbox, setInbox] = useState<InboxMessage[]>([]);
   const [selectedInboxMessage, setSelectedInboxMessage] = useState<InboxMessage | null>(null);
   const [responseReplyText, setResponseReplyText] = useState('');
@@ -70,6 +71,7 @@ export default function InboxPage({ onNotify, searchQuery = '' }: Props) {
       setInbox(prev => prev.map(m => m.id === msgId ? message : m));
       setSelectedInboxMessage(null);
       setResponseReplyText('');
+      onCountsChanged?.();
     } catch (e: any) {
       onNotify(e.message || "Lỗi gửi.", "error");
     } finally {
