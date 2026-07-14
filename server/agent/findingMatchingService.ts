@@ -5,7 +5,7 @@
 import crypto from 'crypto';
 import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
-import { resolveLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
+import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import { canAccessAgentRecord } from './agentDb';
 import { matchPropertiesForLead } from './propertyMatchingService';
 

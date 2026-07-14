@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { getSettings } from '../dbHelper';
 import { prisma } from '../prisma';
-import { resolveLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
+import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import type { AppSettings } from '../../src/types';
 import { formatFindingTelegramMessage } from './telegramFormatter';
 

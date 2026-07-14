@@ -14,7 +14,7 @@ import {
   AgentPanelLoader,
   formatAgentDate,
 } from './AgentPlatformUi';
-import { formatResolvedBudget } from '../../utils/resolveLeadIntelligence';
+import { formatResolvedBudget } from '@/shared/agent-domain';
 
 type ListFilter = 'active' | 'converted';
 type QuickFilterId = 'sell' | 'rent' | 'hasPhone' | 'unverified' | 'verified' | 'archived';

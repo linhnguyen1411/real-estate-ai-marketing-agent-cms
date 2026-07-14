@@ -1,0 +1,267 @@
+[
+  {
+    "label": "before",
+    "at": "2026-07-14T03:22:04.052Z",
+    "worker": {
+      "workerPid": 26580,
+      "workerRssMb": 364
+    },
+    "chrome": {
+      "chromeRssMb": 11746,
+      "chromeProcessCount": 65
+    },
+    "session": {
+      "workerId": "worker-LinhMSC-26580",
+      "status": "ready",
+      "lastHeartbeatAt": "2026-07-14T03:21:52.270Z",
+      "metadata": {
+        "mode": "cdp",
+        "endpointHost": "127.0.0.1",
+        "endpointPort": 9222,
+        "browserChannel": "chrome"
+      }
+    },
+    "lastJob": null,
+    "counts": {
+      "queued": 0,
+      "running": 0,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    },
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    }
+  },
+  {
+    "label": "after_job_1",
+    "at": "2026-07-14T03:22:34.846Z",
+    "worker": {
+      "workerPid": 26580,
+      "workerRssMb": 434
+    },
+    "chrome": {
+      "chromeRssMb": 12206.2,
+      "chromeProcessCount": 64
+    },
+    "session": {
+      "workerId": "worker-LinhMSC-26580",
+      "status": "ready",
+      "lastHeartbeatAt": "2026-07-14T03:22:12.270Z",
+      "metadata": {
+        "mode": "cdp",
+        "endpointHost": "127.0.0.1",
+        "endpointPort": 9222,
+        "browserChannel": "chrome"
+      }
+    },
+    "lastJob": {
+      "id": "cmrk34wco0001yd8yrmdj46t2",
+      "status": "completed",
+      "browserPageMode": "reused",
+      "contextPageCount": 10,
+      "scanMetrics": {
+        "scanPageReused": 3,
+        "scanPageCreated": 1,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "resourceDiagnostics": {
+        "cdpBusy": true,
+        "scanPageReused": 3,
+        "browserContexts": 1,
+        "scanPageCreated": 1,
+        "contextPageCount": 10,
+        "workerOwnedScanPages": 1,
+        "lastBrowserHeartbeatAt": "2026-07-14T03:22:29.023Z",
+        "userOwnedPagesEstimate": 9,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "stopReason": "known_post_streak",
+      "durationMs": 23400
+    },
+    "counts": {
+      "queued": 0,
+      "running": 0,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    },
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    }
+  },
+  {
+    "label": "after_job_5",
+    "at": "2026-07-14T03:25:35.496Z",
+    "worker": {
+      "workerPid": 26580,
+      "workerRssMb": 661
+    },
+    "chrome": {
+      "chromeRssMb": 11056.7,
+      "chromeProcessCount": 46
+    },
+    "session": {
+      "workerId": "worker-LinhMSC-26580",
+      "status": "ready",
+      "lastHeartbeatAt": "2026-07-14T03:25:12.335Z",
+      "metadata": {
+        "mode": "cdp",
+        "endpointHost": "127.0.0.1",
+        "endpointPort": 9222,
+        "browserChannel": "chrome"
+      }
+    },
+    "lastJob": {
+      "id": "cmrk389yl0009yd8yh2hdwb4g",
+      "status": "completed",
+      "browserPageMode": "reused",
+      "contextPageCount": 10,
+      "scanMetrics": {
+        "scanPageReused": 9,
+        "scanPageCreated": 1,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "resourceDiagnostics": {
+        "cdpBusy": true,
+        "scanPageReused": 9,
+        "browserContexts": 1,
+        "scanPageCreated": 1,
+        "contextPageCount": 10,
+        "workerOwnedScanPages": 1,
+        "lastBrowserHeartbeatAt": "2026-07-14T03:25:29.126Z",
+        "userOwnedPagesEstimate": 9,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "stopReason": "known_post_streak",
+      "durationMs": 24165
+    },
+    "counts": {
+      "queued": 1,
+      "running": 1,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    },
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    }
+  },
+  {
+    "label": "after_job_10",
+    "at": "2026-07-14T03:29:11.225Z",
+    "worker": {
+      "workerPid": 26580,
+      "workerRssMb": 845
+    },
+    "chrome": {
+      "chromeRssMb": 11280.9,
+      "chromeProcessCount": 46
+    },
+    "session": {
+      "workerId": "worker-LinhMSC-26580",
+      "status": "ready",
+      "lastHeartbeatAt": "2026-07-14T03:28:52.369Z",
+      "metadata": {
+        "mode": "cdp",
+        "endpointHost": "127.0.0.1",
+        "endpointPort": 9222,
+        "browserChannel": "chrome"
+      }
+    },
+    "lastJob": {
+      "id": "cmrk3dfu7000jyd8yd449iapc",
+      "status": "completed",
+      "browserPageMode": "reused",
+      "contextPageCount": 10,
+      "scanMetrics": {
+        "scanPageReused": 18,
+        "scanPageCreated": 1,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "resourceDiagnostics": {
+        "cdpBusy": true,
+        "scanPageReused": 18,
+        "browserContexts": 1,
+        "scanPageCreated": 1,
+        "contextPageCount": 10,
+        "workerOwnedScanPages": 1,
+        "lastBrowserHeartbeatAt": "2026-07-14T03:29:04.929Z",
+        "userOwnedPagesEstimate": 9,
+        "scanPageRecreatedAfterCrash": 0,
+        "facebookConcurrentJobRejected": 0
+      },
+      "stopReason": "known_post_streak",
+      "durationMs": 21188
+    },
+    "counts": {
+      "queued": 0,
+      "running": 0,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    },
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    }
+  },
+  {
+    "label": "idle_10m",
+    "at": "2026-07-14T03:39:17.021Z",
+    "worker": {
+      "workerPid": 26580,
+      "workerRssMb": 854
+    },
+    "chrome": {
+      "chromeRssMb": 11063.1,
+      "chromeProcessCount": 46
+    },
+    "session": {
+      "workerId": "worker-LinhMSC-26580",
+      "status": "ready",
+      "lastHeartbeatAt": "2026-07-14T03:38:52.552Z",
+      "metadata": {
+        "mode": "cdp",
+        "endpointHost": "127.0.0.1",
+        "endpointPort": 9222,
+        "browserChannel": "chrome"
+      }
+    },
+    "lastJob": null,
+    "counts": {
+      "queued": 1,
+      "running": 1,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    },
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    }
+  }
+]

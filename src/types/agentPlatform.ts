@@ -220,7 +220,12 @@ export interface AgentFinding {
   externalInventorySavedBy?: string | null;
   analysisStatus?: string;
   consistencyWarnings?: string[];
+  /** @deprecated Prefer `intelligence` */
   resolved?: Record<string, unknown>;
+  /** Canonical Lead Intelligence (same object as server resolver output) */
+  intelligence?: Record<string, unknown>;
+  /** List-card summary DTO */
+  intelligenceSummary?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   source?: { id: string; name: string; type: string };

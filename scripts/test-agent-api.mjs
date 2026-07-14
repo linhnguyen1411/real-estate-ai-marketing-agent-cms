@@ -3,26 +3,22 @@
  *
  * Usage:
  *   npm run dev   # terminal 1
- *   TEST_EMAIL=owner@example.com TEST_PASSWORD=secret node scripts/test-agent-api.mjs
+ *   TEST_EMAIL=owner@example.com TEST_PASSWORD=secret npm run test:agent-api
  *
- * Env:
+ * Loads .env automatically. Env:
  *   API_BASE (default http://localhost:3000)
- *   TEST_EMAIL, TEST_PASSWORD — required
+ *   TEST_EMAIL, TEST_PASSWORD — required for live HTTP smoke
  */
+
+import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const base = (process.env.API_BASE || 'http://localhost:3000').replace(/\/+$/, '');
 const email = process.env.TEST_EMAIL || '';
 const password = process.env.TEST_PASSWORD || '';
-
-async function request(path, options = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  };
-  const res = await fetch(`${base}${path}`, { ...options, headers });
-  const json = await res.json().catch(() => ({}));
-  return { res, json };
-}
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function assertOk(label, status, expected = [200]) {
   if (!expected.includes(status)) {
@@ -30,9 +26,35 @@ function assertOk(label, status, expected = [200]) {
   }
 }
 
+async function request(pathName, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  const res = await fetch(`${base}${pathName}`, { ...options, headers });
+  const json = await res.json().catch(() => ({}));
+  return { res, json };
+}
+
+function contractChecks() {
+  const routes = fs.readFileSync(path.join(ROOT, 'server/agent/agentRoutes.ts'), 'utf8');
+  if (!/export function registerAgentAdminRoutes/.test(routes)) {
+    throw new Error('registerAgentAdminRoutes missing');
+  }
+  for (const needle of ['/dashboard', '/sources', '/findings', '/jobs']) {
+    if (!routes.includes(needle)) throw new Error(`agentRoutes missing path marker ${needle}`);
+  }
+  console.log('✓ offline contract: agentRoutes surface');
+}
+
 async function main() {
+  contractChecks();
+
   if (!email || !password) {
-    throw new Error('Set TEST_EMAIL and TEST_PASSWORD');
+    console.log(
+      'NOTE: TEST_EMAIL/TEST_PASSWORD unset — offline contract only (live HTTP smoke skipped).',
+    );
+    return;
   }
 
   console.log('==> Login');

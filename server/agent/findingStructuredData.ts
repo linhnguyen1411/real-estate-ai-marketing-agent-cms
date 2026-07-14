@@ -5,7 +5,7 @@
 import {
   resolveLeadIntelligence,
   type FindingLike,
-} from '../../src/utils/resolveLeadIntelligence';
+} from '../../shared/agent-domain';
 import {
   actorRoleFromClassification,
   computeIntelligenceFinalScore,

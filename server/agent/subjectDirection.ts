@@ -232,10 +232,20 @@ export function detectSubjectDirection(rawText: string): SubjectDirectionResult 
 
   // Strong supply without demand
   if (hasSupply && !hasDemand) {
-    if (
+    // Asset type "dãy/phòng trọ" alone is NOT landlord — many sale listings
+    // describe a cashflowing boarding house with asking price (nhỉnh X tỷ).
+    const hasSaleAsking =
+      /nhỉnh\s*[\d.,]+\s*t[yỷ]/i.test(text) ||
+      /giá\s*bán/i.test(text) ||
+      (/giá\s*[:：]?\s*[\d.,]+\s*t[yỷ]/i.test(text) && !/\/\s*tháng|tháng/i.test(text));
+    const leaseOutOnly =
       isLeaseSupply ||
-      /phòng\s*trọ|dãy\s*trọ|giá\s*thuê/i.test(text)
-    ) {
+      (/giá\s*thuê/i.test(text) && !hasSaleAsking) ||
+      ((/phòng\s*trọ|dãy\s*trọ/i.test(text) || /đang\s*khai\s*thác|dòng\s*tiền\s*sẵn/i.test(text)) &&
+        /cho\s*thuê/i.test(text) &&
+        !hasSaleAsking);
+
+    if (leaseOutOnly && !hasSaleAsking) {
       classification = 'landlord';
       intent = 'lease_out';
     } else {

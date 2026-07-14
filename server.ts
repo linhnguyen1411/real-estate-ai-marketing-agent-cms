@@ -82,6 +82,17 @@ import {
 import { getSyncOutboxStats, processOutboxBatch } from './server/agentSync/outboxService';
 import { getAgentSchedulerStatus, startAgentScheduler, stopAgentScheduler } from './server/agent/agentScheduler';
 
+/** Env truthy when unset uses `defaultWhenUnset` (production-safe defaults). */
+function envFlagEnabled(name: string, defaultWhenUnset: boolean): boolean {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === '') return defaultWhenUnset;
+  const v = String(raw).trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes' || v === 'on';
+}
+
+const FACEBOOK_GRAPH_LEGACY_ENABLED = envFlagEnabled('FACEBOOK_GRAPH_LEGACY_ENABLED', true);
+const AGENT_ENABLED = envFlagEnabled('AGENT_ENABLED', true);
+
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -100,7 +111,11 @@ app.use(express.json({
   },
 }));
 
-registerFacebookWebhookRoutes(app);
+if (FACEBOOK_GRAPH_LEGACY_ENABLED) {
+  registerFacebookWebhookRoutes(app);
+} else {
+  console.warn('[facebook] Graph webhook routes disabled (FACEBOOK_GRAPH_LEGACY_ENABLED=false)');
+}
 
 const publicAssetsPath = path.join(process.cwd(), 'public');
 app.get('/favicon.ico', (_req: Request, res: Response) => {
@@ -1320,8 +1335,14 @@ app.put('/api/auth/profile', async (req: Request, res: Response) => {
 registerInvestorLeadAdminRoutes(app);
 registerBlogAdminRoutes(app);
 registerShortLinkAdminRoutes(app);
-registerFacebookAdminRoutes(app);
-registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
+if (FACEBOOK_GRAPH_LEGACY_ENABLED) {
+  registerFacebookAdminRoutes(app);
+}
+if (AGENT_ENABLED) {
+  registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
+} else {
+  console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
+}
 registerAgentIngestRoutes(app, { getAuthUser, accessDefaults });
 
 function canManageUsers(req: Request, res: Response): boolean {
@@ -3298,8 +3319,12 @@ async function main() {
   const dbReady = await bootstrap();
 
   if (dbReady) {
-    startAgentScheduler();
-    startAgentSyncOutboxWorker();
+    if (AGENT_ENABLED) {
+      startAgentScheduler();
+      startAgentSyncOutboxWorker();
+    } else {
+      console.warn('[agent] Scheduler/outbox worker skipped (AGENT_ENABLED=false)');
+    }
   } else {
     console.warn('[agent-scheduler] Bỏ qua — DB chưa sẵn sàng');
   }

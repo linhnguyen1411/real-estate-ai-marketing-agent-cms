@@ -220,6 +220,79 @@ Zalo: 0901989133 Ms Tú`;
 }
 
 {
+  // Symmetric cashflow: demand investor vs supply seller / broker
+  const demandPatch = buildStructuredFindingPatch({
+    title: 'Cần mua',
+    summary: 'Cần mua tài sản dòng tiền 5 tỷ Đà Nẵng',
+    score: 80,
+    scannedContent: {
+      contentText: 'Cần mua tài sản dòng tiền 5 tỷ Đà Nẵng',
+      authorName: null,
+    },
+    extractedData: {},
+  });
+  ok(
+    'demand cashflow → investor or buyer',
+    demandPatch.classification === 'investor' || demandPatch.classification === 'buyer',
+  );
+  ok('demand cashflow actor demand_side', demandPatch.actorRole === 'demand_side');
+
+  const supplySale = buildStructuredFindingPatch({
+    title: 'Bán nhà',
+    summary: 'Bán nhà dòng tiền 20 triệu/tháng, giá 5 tỷ. Hotline 0905111222',
+    score: 80,
+    scannedContent: {
+      contentText: 'Bán nhà dòng tiền 20 triệu/tháng, giá 5 tỷ. Hotline 0905111222',
+      authorName: null,
+    },
+    extractedData: {},
+  });
+  ok('sale cashflow → seller', supplySale.classification === 'seller');
+  ok('sale cashflow supply_side', supplySale.actorRole === 'supply_side');
+  ok('sale cashflow intent sell', supplySale.intent === 'sell');
+
+  const brokerDemand = buildStructuredFindingPatch({
+    title: 'Khách cần',
+    summary: 'Khách cần tìm toà căn hộ đang khai thác Đà Nẵng',
+    score: 80,
+    scannedContent: {
+      contentText: 'Khách cần tìm toà căn hộ đang khai thác Đà Nẵng',
+      authorName: null,
+    },
+    extractedData: {},
+  });
+  ok(
+    'broker demand cashflow',
+    brokerDemand.classification === 'broker' ||
+      brokerDemand.classification === 'investor' ||
+      brokerDemand.classification === 'buyer',
+  );
+  ok(
+    'broker demand not supply',
+    brokerDemand.actorRole === 'broker' || brokerDemand.actorRole === 'demand_side',
+  );
+
+  const brokerSupply = buildStructuredFindingPatch({
+    title: 'Em có',
+    summary: 'Em có toà căn hộ dòng tiền tốt giá 8 tỷ ib em',
+    score: 80,
+    scannedContent: {
+      contentText: 'Em có toà căn hộ dòng tiền tốt giá 8 tỷ ib em',
+      authorName: null,
+    },
+    extractedData: {},
+  });
+  ok(
+    'broker supply cashflow',
+    brokerSupply.classification === 'broker' || brokerSupply.classification === 'seller',
+  );
+  ok(
+    'broker supply not demand_side alone',
+    brokerSupply.actorRole === 'broker' || brokerSupply.actorRole === 'supply_side',
+  );
+}
+
+{
   const r = resolveLeadIntelligence({
     title: 'x',
     summary: 'y',

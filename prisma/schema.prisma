@@ -780,11 +780,11 @@ model AgentFinding {
   consumedResourceType String?   @map("consumed_resource_type")
 
   /// Local→VPS sync state
-  syncStatus String    @default("local_only") @map("sync_status")
-  remoteId   String?   @map("remote_id")
-  lastSyncAt DateTime? @map("last_sync_at")
-  syncError  String?   @map("sync_error") @db.Text
-  syncVersion String?  @map("sync_version")
+  syncStatus  String    @default("local_only") @map("sync_status")
+  remoteId    String?   @map("remote_id")
+  lastSyncAt  DateTime? @map("last_sync_at")
+  syncError   String?   @map("sync_error") @db.Text
+  syncVersion String?   @map("sync_version")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -9,6 +9,12 @@ param(
   [switch]$SkipLint
 )
 
+# DEPRECATED — uses prisma db push --accept-data-loss. Do NOT use for production.
+# Prefer: npm run deploy:safe  →  scripts/deploy-safe.ps1 + tmp-vps-safe-deploy.sh
+Write-Host "DEPRECATED: scripts/deploy.ps1 uses prisma db push --accept-data-loss." -ForegroundColor Red
+Write-Host "Use npm run deploy:safe instead." -ForegroundColor Yellow
+throw "Refusing to run deprecated deploy.ps1. Use npm run deploy:safe."
+
 $ErrorActionPreference = "Stop"
 
 function Run-Step {
