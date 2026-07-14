@@ -1,88 +1,38 @@
 /**
  * Lead Intelligence classification / scoring helpers (buyer-first).
+ * Enums live in shared/agent-domain; scoring helpers stay server-side.
  */
 
-export const LEAD_CLASSIFICATIONS = [
-  'buyer',
-  'renter',
-  'investor',
-  'seller',
-  'landlord',
-  'broker',
-  'service',
-  'discussion',
-  'spam',
-  'unknown',
-] as const;
-
-export const LEAD_INTENTS = [
-  'buy',
-  'rent',
-  'invest',
-  'sell',
-  'lease_out',
-  'service',
-  'unknown',
-] as const;
-
-export const ACTOR_ROLES = ['demand_side', 'supply_side', 'broker', 'unknown'] as const;
-
-export type LeadClassification = (typeof LEAD_CLASSIFICATIONS)[number];
-export type LeadIntent = (typeof LEAD_INTENTS)[number];
-export type ActorRole = (typeof ACTOR_ROLES)[number];
-
-export const DEFAULT_TARGET_CLASSIFICATIONS: LeadClassification[] = [
-  'buyer',
-  'renter',
-  'investor',
-];
-
-export const DEFAULT_EXCLUDED_CLASSIFICATIONS: LeadClassification[] = [
-  'seller',
-  'landlord',
-  'broker',
-  'spam',
-  'discussion',
-  'unknown',
-];
-
-export const INTELLIGENCE_VERSION = 'lead-intelligence@v1';
-
-export function isLeadClassification(value: unknown): value is LeadClassification {
-  return LEAD_CLASSIFICATIONS.includes(String(value || '') as LeadClassification);
-}
-
-export function normalizeClassification(value: unknown): LeadClassification {
-  const raw = String(value || 'unknown').toLowerCase().trim();
-  return isLeadClassification(raw) ? raw : 'unknown';
-}
-
-export function normalizeIntent(value: unknown): LeadIntent {
-  const raw = String(value || 'unknown').toLowerCase().trim();
-  return (LEAD_INTENTS as readonly string[]).includes(raw)
-    ? (raw as LeadIntent)
-    : 'unknown';
-}
-
-export function normalizeActorRole(value: unknown): ActorRole {
-  const raw = String(value || 'unknown').toLowerCase().trim();
-  return (ACTOR_ROLES as readonly string[]).includes(raw) ? (raw as ActorRole) : 'unknown';
-}
-
-/** Infer actor role from classification when AI omitted it. */
-export function actorRoleFromClassification(classification: LeadClassification): ActorRole {
-  if (classification === 'buyer' || classification === 'renter' || classification === 'investor') {
-    return 'demand_side';
-  }
-  if (classification === 'seller' || classification === 'landlord') return 'supply_side';
-  if (classification === 'broker') return 'broker';
-  return 'unknown';
-}
+export {
+  LEAD_CLASSIFICATIONS,
+  LEAD_INTENTS,
+  ACTOR_ROLES,
+  LEAD_INTELLIGENCE_CLASSIFICATIONS,
+  LEAD_INTELLIGENCE_INTENTS,
+  LEAD_INTELLIGENCE_ACTOR_ROLES,
+  DEFAULT_TARGET_CLASSIFICATIONS,
+  DEFAULT_EXCLUDED_CLASSIFICATIONS,
+  INTELLIGENCE_VERSION,
+  isLeadClassification,
+  isLeadIntelligenceClassification,
+  isLeadIntelligenceIntent,
+  isLeadIntelligenceActorRole,
+  normalizeClassification,
+  normalizeIntent,
+  normalizeActorRole,
+  actorRoleFromClassification,
+  type LeadClassification,
+  type LeadIntent,
+  type ActorRole,
+  type LeadIntelligenceClassification,
+  type LeadIntelligenceIntent,
+  type LeadIntelligenceActorRole,
+} from '../../shared/agent-domain/leadIntelligence';
 
 export function computeLeadFitScore(input: {
-  classification: LeadClassification;
-  actorRole: ActorRole;
-  targetClassifications: LeadClassification[];
+  classification: string;
+  actorRole: string;
+  targetClassifications: string[];
   hasPhone: boolean;
   hasBudget: boolean;
   hasLocation: boolean;
