@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { 
   LayoutDashboard, 
   Users, 
@@ -39,25 +38,14 @@ import {
   Clock,
   Eye,
   Globe,
-  FileBarChart,
   ShieldCheck,
   UserPlus,
   Building2,
-  Menu,
   GripVertical,
-  Newspaper,
-  FolderOpen,
-  Tags,
   FileSearch,
-  ClipboardCheck,
-  Package,
-  Link2,
-  UserCircle,
-  ScanSearch,
 } from 'lucide-react';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
-import { SITE } from './seo/siteConfig';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
 import { uploadContentImage } from './services/blogApi';
@@ -119,6 +107,18 @@ import {
 } from './services/api';
 import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
+import AppProviders from './app/AppProviders';
+import AdminLayout from './app/layouts/AdminLayout';
+import LoginPage, { AuthLoadingScreen } from './features/auth/LoginPage';
+import {
+  AGENT_PATH_TO_TAB,
+  AGENT_TAB_TO_PATH,
+  ACTIVE_TAB_STORAGE_KEY,
+  MXH_POSTS_ENABLED,
+  normalizeStoredTab,
+  SEO_PATH_TO_TAB,
+  SEO_TAB_TO_PATH,
+} from './app/navigation/tabPaths';
 
 const InvestorLeadsPanel = React.lazy(() => import('./components/admin/InvestorLeadsPanel'));
 const ShortLinksPanel = React.lazy(() => import('./components/admin/ShortLinksPanel'));
@@ -127,7 +127,6 @@ const AdminProjectsPanel = React.lazy(() => import('./components/admin/AdminProj
 const LeadMagnetContentAdmin = React.lazy(() => import('./components/admin/LeadMagnetContentAdmin'));
 const SeoContentAdmin = React.lazy(() => import('./components/admin/SeoContentAdmin'));
 const AgentPlatformPage = React.lazy(() => import('./pages/AgentPlatformPage'));
-const AgentNotificationBell = React.lazy(() => import('./components/agent/AgentNotificationBell'));
 
 function ModuleFallback({ label = 'Đang tải module…' }: { label?: string }) {
   return (
@@ -200,81 +199,24 @@ const createEmptyPropertyForm = () => ({
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
 
-const SEO_TAB_TO_PATH: Record<string, string> = {
-  'seo-posts': '/admin/seo/posts',
-  'seo-categories': '/admin/seo/categories',
-  'seo-tags': '/admin/seo/tags',
-  'seo-audit': '/admin/seo/audit',
-};
-
-const SEO_PATH_TO_TAB: Record<string, string> = Object.fromEntries(
-  Object.entries(SEO_TAB_TO_PATH).map(([tab, path]) => [path, tab])
-);
-
-const SEO_SUBMENU = [
-  { id: 'seo-posts', label: 'Bài viết', icon: Newspaper },
-  { id: 'seo-categories', label: 'Chuyên mục', icon: FolderOpen },
-  { id: 'seo-tags', label: 'Tags', icon: Tags },
-  { id: 'seo-audit', label: 'SEO Audit', icon: FileSearch },
-] as const;
-
-const AGENT_TAB_TO_PATH: Record<string, string> = {
-  'agent-dashboard': '/admin/agents',
-  'agent-sources': '/admin/agents/sources',
-  'agent-missions': '/admin/agents/missions',
-  'agent-jobs': '/admin/agents/jobs',
-  'agent-contents': '/admin/agents/contents',
-  'agent-findings': '/admin/agents/findings',
-  'agent-external-inventory': '/admin/agents/external-inventory',
-  'agent-proposals': '/admin/agents/proposals',
-  'agent-notifications': '/admin/agents/notifications',
-  'agent-sessions': '/admin/agents/sessions',
-  'agent-reports': '/admin/agents/reports',
-};
-
-const AGENT_PATH_TO_TAB: Record<string, string> = Object.fromEntries(
-  Object.entries(AGENT_TAB_TO_PATH).map(([tab, path]) => [path, tab])
-);
-
-const AGENT_SUBMENU = [
-  { id: 'agent-dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'agent-sources', label: 'Nguồn', icon: Globe },
-  { id: 'agent-missions', label: 'Mission', icon: Sparkles },
-  { id: 'agent-jobs', label: 'Jobs', icon: Clock },
-  { id: 'agent-contents', label: 'Nội dung quét', icon: ScanSearch },
-  { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch },
-  { id: 'agent-external-inventory', label: 'Giỏ hàng ngoài', icon: Package },
-  { id: 'agent-proposals', label: 'Duyệt phản hồi', icon: ClipboardCheck },
-  { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare },
-  { id: 'agent-sessions', label: 'Sessions', icon: Cpu },
-  { id: 'agent-reports', label: 'Báo cáo', icon: FileBarChart },
-] as const;
-
 const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string }> = {
   facebook: { label: 'Facebook 3:4' },
   zalo: { label: 'Zalo 1:1' },
   tiktok: { label: 'TikTok 9:16' }
 };
 
-/** Tạm tắt — tính năng bài đăng MXH chưa sử dụng được */
-const MXH_POSTS_ENABLED = false;
-
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const tab = localStorage.getItem('real_estate_ai_active_tab') || 'dashboard';
-    if (!MXH_POSTS_ENABLED && tab === 'posts') return 'dashboard';
-    // Graph channel UI removed from nav — redirect stale tab
-    if (tab === 'facebook') return 'dashboard';
-    return tab;
-  });
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    normalizeStoredTab(localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || 'dashboard'),
+  );
   const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
-    const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
+    const tab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
     return tab.startsWith('seo-');
   });
   const [agentMenuOpen, setAgentMenuOpen] = useState(() => {
-    const tab = localStorage.getItem('real_estate_ai_active_tab') || '';
+    const tab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
     return tab.startsWith('agent-');
   });
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -695,7 +637,7 @@ export default function App() {
   }, [currentUser, activeTab, selectedChatGuestId]);
 
   useEffect(() => {
-    localStorage.setItem('real_estate_ai_active_tab', activeTab);
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
 
   const handleLogin = async (e: FormEvent) => {
@@ -717,7 +659,7 @@ export default function App() {
 
   const handleLogout = () => {
     logout();
-    localStorage.removeItem('real_estate_ai_active_tab');
+    localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
     setCurrentUser(null);
     setCustomers([]);
     setProperties([]);
@@ -1736,385 +1678,80 @@ export default function App() {
     : undefined;
 
   if (authLoading && !currentUser) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
-        <div className="text-sm text-slate-400">Đang kiểm tra phiên đăng nhập...</div>
-      </div>
-    );
+    return <AuthLoadingScreen />;
   }
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8 items-stretch">
-          <section className="flex flex-col justify-center">
-            <div className="inline-flex items-center gap-2 text-rose-300 text-xs font-bold uppercase tracking-wider mb-5">
-              <Sparkles className="w-4 h-4" />
-              Real Estate AI Marketing Agent CMS
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-4">Đăng nhập để quản lý CRM, tài nguyên team và AI Assistant</h1>
-            <p className="text-slate-400 text-sm leading-7 max-w-2xl">
-              Owner có toàn quyền. Company Admin chỉ quản lý dữ liệu của company/team. Member chỉ truy cập tài nguyên được admin client cấp phát.
-            </p>
-          </section>
-
-          <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-5">
-            <div>
-              <h2 className="text-xl font-bold text-white">Login</h2>
-              <p className="text-xs text-slate-500 mt-1">Nhập tài khoản đã được cấp để truy cập CMS.</p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400">Email</label>
-              <input
-                type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm outline-none focus:border-rose-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400">Password</label>
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm outline-none focus:border-rose-500"
-              />
-            </div>
-
-            {loginError && (
-              <div className="text-xs text-rose-200 bg-rose-950/50 border border-rose-900 rounded-lg px-3 py-2">{loginError}</div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-sm py-3 rounded-lg transition-colors"
-            >
-              {authLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-            </button>
-          </form>
-        </div>
-      </div>
+      <LoginPage
+        loginEmail={loginEmail}
+        loginPassword={loginPassword}
+        loginError={loginError}
+        authLoading={authLoading}
+        onEmailChange={setLoginEmail}
+        onPasswordChange={setLoginPassword}
+        onSubmit={handleLogin}
+      />
     );
   }
 
+  const handleSelectNavTab = (
+    id: string,
+    opts?: { path?: string; openSeo?: boolean; openAgent?: boolean },
+  ) => {
+    setActiveTab(id);
+    setSearchQuery('');
+    if (opts?.openSeo) {
+      setSeoMenuOpen(true);
+      setAgentMenuOpen(false);
+    } else if (opts?.openAgent) {
+      setAgentMenuOpen(true);
+      setSeoMenuOpen(false);
+    }
+    navigate(opts?.path || '/admin/dashboard');
+  };
+
   return (
-    <div className="h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
-      
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed bottom-4 left-3 right-3 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 sm:bottom-6 sm:left-auto sm:right-6 sm:px-5 sm:py-4 ${
-          toast.type === 'success' ? 'bg-emerald-950/95 border border-emerald-500 text-emerald-200' :
-          toast.type === 'error' ? 'bg-rose-950/95 border border-rose-500 text-rose-200' :
-          'bg-slate-900 border border-indigo-500 text-indigo-200'
-        }`}>
-          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-rose-400" />}
-          <span className="font-medium text-sm leading-relaxed">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-200 ml-2">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+    <AppProviders>
+    <>
+    <AdminLayout
+      toast={toast}
+      onDismissToast={() => setToast(null)}
+      header={{
+        currentUser,
+        settings,
+        refreshing,
+        onOpenMenu: () => setAdminMenuOpen(true),
+        onOpenProfile: () => {
+          setActiveTab('profile');
+          setAdminMenuOpen(false);
+          navigate('/admin/dashboard');
+        },
+        onRefresh: fetchAllData,
+        onLogout: handleLogout,
+      }}
+      sidebar={{
+        activeTab,
+        adminMenuOpen,
+        seoMenuOpen,
+        agentMenuOpen,
+        navigationCounts,
+        canManageWebsiteChat,
+        canManageCmsUsers,
+        extraBadges: {
+          websiteChat: publicChatGuests.length,
+          chatHistory: chatHistoryRecords.length,
+          users: managedUsers.length,
+        },
+        actionLoading,
+        onCloseMenu: () => setAdminMenuOpen(false),
+        onSelectTab: handleSelectNavTab,
+        onToggleSeoMenu: () => setSeoMenuOpen(prev => !prev),
+        onToggleAgentMenu: () => setAgentMenuOpen(prev => !prev),
+        onRunDemoAutomations: handleRunDemoAutomations,
+      }}
+    >
 
-      {/* Top Banner Alert / Workspace Header */}
-      <header className="shrink-0 border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setAdminMenuOpen(true)}
-            className="lg:hidden p-2 text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-slate-700"
-            aria-label="Má»Ÿ menu CMS"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <img
-            src={SITE.logo}
-            alt={SITE.name}
-            className="h-9 w-auto max-w-[110px] rounded-lg object-contain bg-white/95 p-1"
-          />
-          <div className="min-w-0">
-            <h1 className="truncate text-sm sm:text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-              Real Estate AI Marketing Agent CMS
-            </h1>
-            <p className="hidden sm:block text-xs text-slate-500 font-mono">MVP Production Framework v1.0 • Connected • Việt Nam</p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('profile');
-              setAdminMenuOpen(false);
-              navigate('/admin/dashboard');
-            }}
-            className="hidden lg:flex flex-col items-end leading-tight rounded-lg px-2 py-1 transition-colors hover:bg-slate-900/60"
-            title="Hồ sơ cá nhân"
-          >
-            <span className="text-xs font-bold text-slate-200">{currentUser.name}</span>
-            <span className="text-[11px] text-slate-500 uppercase">
-              {currentUser.role}{currentUser.company_name ? ` · ${currentUser.company_name}` : ''}
-            </span>
-          </button>
-
-          <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-slate-300">
-              AI Powered: <span className="text-rose-400 uppercase font-bold">{settings.ai_mode} ({settings.ai_mode === 'openai' ? settings.openai_model : settings.ollama_model})</span>
-            </span>
-          </div>
-
-          <Suspense fallback={null}>
-            <AgentNotificationBell />
-          </Suspense>
-
-          <button 
-            onClick={fetchAllData}
-            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
-            disabled={refreshing}
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="px-3 py-2 text-xs font-bold text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-rose-500/60 transition-all"
-          >
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <div className="relative flex flex-1 min-h-0 overflow-hidden">
-        {adminMenuOpen && (
-          <button
-            type="button"
-            aria-label="ÄÃ³ng menu CMS"
-            onClick={() => setAdminMenuOpen(false)}
-            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden"
-          />
-        )}
-        
-        {/* Navigation Sidebar */}
-        <aside className={`fixed inset-y-0 left-0 z-50 w-72 min-h-0 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
-          adminMenuOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}>
-          <div className="space-y-1">
-            <div className="px-3 py-2 text-xs font-semibold text-slate-600 tracking-wider uppercase">Menu chính</div>
-            {[
-              { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
-              { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: navigationCounts.crm },
-              { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp, badge: navigationCounts.investorLeads },
-              // Graph channel UI deprecated from nav (FacebookPanel kept on disk).
-              { id: 'short-links', label: 'Short Links', icon: Link2 },
-              { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
-              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: navigationCounts.properties },
-              { id: 'projects', label: 'Quản trị dự án', icon: Building2 },
-              { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
-              ...(MXH_POSTS_ENABLED ? [{ id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: navigationCounts.posts }] : []),
-            ].map(item => {
-              const IconComp = item.icon;
-              const isSelected = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSearchQuery('');
-                    setAdminMenuOpen(false);
-                    navigate('/admin/dashboard');
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
-                    isSelected 
-                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold' 
-                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <IconComp className={`w-4 h-4 transition-transform group-hover:scale-110 ${isSelected ? 'text-rose-500' : 'text-slate-500'}`} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setSeoMenuOpen(prev => !prev)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  activeTab.startsWith('seo-')
-                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
-                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Newspaper className={`w-4 h-4 ${activeTab.startsWith('seo-') ? 'text-rose-500' : 'text-slate-500'}`} />
-                  <span>Nội dung SEO</span>
-                </div>
-                {seoMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              </button>
-              {seoMenuOpen && (
-                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
-                  {SEO_SUBMENU.map(item => {
-                    const IconComp = item.icon;
-                    const isSelected = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setSeoMenuOpen(true);
-                          setAgentMenuOpen(false);
-                          setSearchQuery('');
-                          setAdminMenuOpen(false);
-                          navigate(SEO_TAB_TO_PATH[item.id] || '/admin/seo/posts');
-                        }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                          isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
-                        }`}
-                      >
-                        <IconComp className="w-3.5 h-3.5" />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setAgentMenuOpen(prev => !prev)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  activeTab.startsWith('agent-')
-                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
-                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <ScanSearch className={`w-4 h-4 ${activeTab.startsWith('agent-') ? 'text-rose-500' : 'text-slate-500'}`} />
-                  <span>AI Agent</span>
-                </div>
-                {agentMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              </button>
-              {agentMenuOpen && (
-                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
-                  {AGENT_SUBMENU.map(item => {
-                    const IconComp = item.icon;
-                    const isSelected = activeTab === item.id;
-                    const badge =
-                      item.id === 'agent-findings' ? navigationCounts.leadIntelligence
-                      : item.id === 'agent-external-inventory' ? navigationCounts.externalInventory
-                      : item.id === 'agent-notifications' ? navigationCounts.notifications
-                      : item.id === 'agent-jobs' ? navigationCounts.jobs
-                      : item.id === 'agent-sources' ? navigationCounts.sources
-                      : 0;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setAgentMenuOpen(true);
-                          setSeoMenuOpen(false);
-                          setSearchQuery('');
-                          setAdminMenuOpen(false);
-                          navigate(AGENT_TAB_TO_PATH[item.id] || '/admin/agents');
-                        }}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                          isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <IconComp className="w-3.5 h-3.5" />
-                          {item.label}
-                        </span>
-                        {badge > 0 && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
-                            {badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {[
-              { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: navigationCounts.pendingInbox },
-              { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
-              ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
-              { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
-              { id: 'automations', label: 'Automation AI Center', icon: Cpu },
-              ...(canManageCmsUsers ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badge: managedUsers.length }] : []),
-              { id: 'profile', label: 'Hồ sơ cá nhân', icon: UserCircle },
-              { id: 'integrations', label: 'Tích hợp tài khoản', icon: Layers },
-              { id: 'settings', label: 'Cấu hình hệ thống', icon: SettingsIcon },
-            ].map(item => {
-              const IconComp = item.icon;
-              const isSelected = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSearchQuery('');
-                    setAdminMenuOpen(false);
-                    navigate('/admin/dashboard');
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
-                    isSelected 
-                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold' 
-                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <IconComp className={`w-4 h-4 transition-transform group-hover:scale-110 ${isSelected ? 'text-rose-500' : 'text-slate-500'}`} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-900 text-center space-y-3 mt-4">
-            <h4 className="text-xs font-semibold text-rose-400">Sandbox Developer</h4>
-            <p className="text-2xs text-slate-400 leading-relaxed">
-              Tích hợp hệ thống Ollama cục bộ qua endpoint http://localhost:11434 với các model chất lượng Llama3.1 hoặc Qwen2.5.
-            </p>
-            <button
-              onClick={handleRunDemoAutomations}
-              disabled={actionLoading === 'run-automations'}
-              className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
-            >
-              <Cpu className="w-3.5 h-3.5 text-rose-500" />
-              <span>Chạy Thử Nghiệm Automation</span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Outer Content Area */}
-        <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-6 app-scroll">
 
           {location.pathname.startsWith('/admin/agents') ? (
             <Suspense fallback={<ModuleFallback label="Đang tải AI Agent…" />}>
@@ -4670,8 +4307,8 @@ export default function App() {
           </>
           )}
 
-        </main>
-      </div>
+
+    </AdminLayout>
 
       {/* ==================================================== */}
       {/* MODAL WORKSPACES */}
@@ -5458,6 +5095,7 @@ export default function App() {
         </div>
       )}
 
-    </div>
+    </>
+    </AppProviders>
   );
 }
