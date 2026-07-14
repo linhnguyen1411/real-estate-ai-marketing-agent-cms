@@ -143,8 +143,35 @@ export function registerInvestorLeadAdminRoutes(app: import('express').Express) 
       req.query.includeConverted === '1' ||
       req.query.includeConverted === 'true' ||
       req.query.include_converted === '1';
-    const leads = await listInvestorLeads(300, { includeConverted });
-    res.json({ status: 'success', data: leads });
+    const search = String(req.query.search || '').trim();
+    const hasPage = req.query.page !== undefined && String(req.query.page).trim() !== '';
+    const page = hasPage ? Math.max(1, Number.parseInt(String(req.query.page), 10) || 1) : 1;
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(req.query.limit || (hasPage ? '50' : '300')), 10) || (hasPage ? 50 : 300)),
+    );
+    const { items, total } = await listInvestorLeads(limit, {
+      includeConverted,
+      search: search || undefined,
+      page,
+    });
+    if (hasPage) {
+      res.json({
+        status: 'success',
+        data: {
+          items,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+          },
+        },
+      });
+      return;
+    }
+    // Legacy clients: keep array payload (capped page-1).
+    res.json({ status: 'success', data: items });
   });
 
   app.patch('/api/investor-leads/:id/status', async (req: Request, res: Response) => {

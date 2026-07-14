@@ -275,33 +275,68 @@ export async function getLeadByAccessToken(magnetSlug: string, token: string): P
   return rowToLead(row, await getLeadTags(row.id));
 }
 
+function investorLeadWhere(options?: { includeConverted?: boolean; search?: string }) {
+  const where: {
+    status?: { not: string };
+    OR?: Array<Record<string, unknown>>;
+  } = {};
+  if (!options?.includeConverted) {
+    where.status = { not: 'converted_to_customer' };
+  }
+  const search = options?.search?.trim();
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search, mode: 'insensitive' } },
+      { needSummary: { contains: search, mode: 'insensitive' } },
+      { city: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+  return where;
+}
+
+export async function countInvestorLeads(options?: { includeConverted?: boolean }): Promise<number> {
+  return prisma.lead.count({ where: investorLeadWhere(options) });
+}
+
 export async function listInvestorLeads(
   limit = 200,
-  options?: { includeConverted?: boolean },
-): Promise<InvestorLead[]> {
-  const rows = await prisma.lead.findMany({
-    where: options?.includeConverted
-      ? undefined
-      : { status: { not: 'converted_to_customer' } },
-    orderBy: [{ investorScore: 'desc' }, { createdAt: 'desc' }],
-    take: limit,
-    include: {
-      tags: { orderBy: { createdAt: 'asc' } },
-      events: {
-        where: { eventType: 'agent_promote' },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-  });
+  options?: { includeConverted?: boolean; search?: string; page?: number },
+): Promise<{ items: InvestorLead[]; total: number }> {
+  const where = investorLeadWhere(options);
+  const page = Math.max(1, options?.page || 1);
+  const take = Math.min(100, Math.max(1, limit));
+  const skip = (page - 1) * take;
 
-  return rows.map(row =>
-    rowToLead(
-      row,
-      row.tags.map(tag => tag.tag),
-      asPromoteDetail(row.events[0]?.eventData),
+  const [total, rows] = await Promise.all([
+    prisma.lead.count({ where }),
+    prisma.lead.findMany({
+      where,
+      orderBy: [{ investorScore: 'desc' }, { createdAt: 'desc' }],
+      skip,
+      take,
+      include: {
+        tags: { orderBy: { createdAt: 'asc' } },
+        events: {
+          where: { eventType: 'agent_promote' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    }),
+  ]);
+
+  return {
+    total,
+    items: rows.map(row =>
+      rowToLead(
+        row,
+        row.tags.map(tag => tag.tag),
+        asPromoteDetail(row.events[0]?.eventData),
+      ),
     ),
-  );
+  };
 }
 
 export async function updateLeadStatus(id: string, status: InvestorLead['status']) {

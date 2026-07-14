@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, FormEvent } from 'react';
+import React, { useState, useEffect, useMemo, useRef, FormEvent, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { 
@@ -62,20 +62,12 @@ import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
 import { uploadContentImage } from './services/blogApi';
 import { resizeImageFile } from './utils/resizeImageFile';
-import InvestorLeadsPanel from './components/admin/InvestorLeadsPanel';
-import ShortLinksPanel from './components/admin/ShortLinksPanel';
-// Graph channel UI (FacebookPanel) deprecated from nav — keep file/server for now.
-import AdminPropertyDirectory from './components/admin/AdminPropertyDirectory';
 import AdminProfilePanel from './components/admin/AdminProfilePanel';
-import AdminProjectsPanel from './components/admin/AdminProjectsPanel';
 import {
   countPropertyStatuses,
   getPropertySaleStatus,
-  isPublicProperty,
   matchesAdminPropertyStatusFilter,
 } from './utils/propertyStatus';
-import LeadMagnetContentAdmin from './components/admin/LeadMagnetContentAdmin';
-import { getPublicPropertyUrl } from './utils/propertyShare';
 import { sortByCreatedAtDesc } from './utils/propertySort';
 import { getPropertyCreatorId, getPropertyCreatorName } from './utils/propertyCreator';
 import { AGENT_TIER_ORDER, AGENT_TIER_META } from './utils/agentTier';
@@ -87,6 +79,7 @@ import {
   deleteProperty,
   createUser,
   DashboardData,
+  NavigationCounts,
   generateInboxReply,
   generatePropertyMarketing,
   getAuthToken,
@@ -95,7 +88,14 @@ import {
   getPublicChatGuests,
   getCurrentUser,
   getGeneratedContents,
-  getInitialAppData,
+  getBootstrapData,
+  getNavigationCounts,
+  getAutomations,
+  getChannels,
+  listCustomers,
+  listProperties,
+  listPosts,
+  listInbox,
   getUsers,
   login,
   logout,
@@ -114,11 +114,63 @@ import {
   updateUser,
   verifyContent,
   bulkMemberPermissions,
+  invalidateCrmModule,
+  cacheInvalidate,
 } from './services/api';
-import SeoContentAdmin from './components/admin/SeoContentAdmin';
-import AgentPlatformPage from './pages/AgentPlatformPage';
-import AgentNotificationBell from './components/agent/AgentNotificationBell';
 import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
+import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
+
+const InvestorLeadsPanel = React.lazy(() => import('./components/admin/InvestorLeadsPanel'));
+const ShortLinksPanel = React.lazy(() => import('./components/admin/ShortLinksPanel'));
+const AdminPropertyDirectory = React.lazy(() => import('./components/admin/AdminPropertyDirectory'));
+const AdminProjectsPanel = React.lazy(() => import('./components/admin/AdminProjectsPanel'));
+const LeadMagnetContentAdmin = React.lazy(() => import('./components/admin/LeadMagnetContentAdmin'));
+const SeoContentAdmin = React.lazy(() => import('./components/admin/SeoContentAdmin'));
+const AgentPlatformPage = React.lazy(() => import('./pages/AgentPlatformPage'));
+const AgentNotificationBell = React.lazy(() => import('./components/agent/AgentNotificationBell'));
+
+function ModuleFallback({ label = 'Đang tải module…' }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 space-y-3">
+      <div className="w-10 h-10 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin" />
+      <p className="text-slate-400 text-sm">{label}</p>
+    </div>
+  );
+}
+
+const EMPTY_DASHBOARD: DashboardData = {
+  stats: {
+    totalCustomers: 0,
+    leads: { hot: 0, warm: 0, cold: 0 },
+    totalProperties: 0,
+    totalPosts: 0,
+    pendingInbox: 0,
+    todayTasksCount: 0,
+    siteViews: 0,
+    propertyViews: 0,
+    postViews: 0,
+  },
+  metrics: [
+    { platform: 'facebook', reach: 0, engagement: 0, leads: 0 },
+    { platform: 'zalo', reach: 0, engagement: 0, leads: 0 },
+    { platform: 'tiktok', reach: 0, engagement: 0, leads: 0 },
+    { platform: 'website', reach: 0, engagement: 0, leads: 0 },
+  ],
+  traffic: { topProperties: [], topPosts: [] },
+};
+
+const EMPTY_NAV_COUNTS: NavigationCounts = {
+  crm: 0,
+  properties: 0,
+  posts: 0,
+  pendingInbox: 0,
+  leadIntelligence: 0,
+  investorLeads: 0,
+  externalInventory: 0,
+  notifications: 0,
+  jobs: 0,
+  sources: 0,
+};
 
 const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
 const TRANSACTION_TYPE_OPTIONS = ['Bán', 'Cho thuê'];
@@ -309,83 +361,27 @@ export default function App() {
     agent_tier: 'normal' as User['agent_tier'],
   });
 
+  const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD);
+  const [navigationCounts, setNavigationCounts] = useState<NavigationCounts>(EMPTY_NAV_COUNTS);
+  const [customersPage, setCustomersPage] = useState(1);
+  const [customersTotal, setCustomersTotal] = useState(0);
+  const [propertiesPage, setPropertiesPage] = useState(1);
+  const [propertiesTotal, setPropertiesTotal] = useState(0);
+  const [moduleLoading, setModuleLoading] = useState(false);
+  const loadedModulesRef = useRef<Set<string>>(new Set());
+
   const detectedPropertyHashtags = useMemo(
     () => extractHashtagsFromText(`${newPropertyForm.rich_description}\n${newPropertyForm.selling_points}`),
     [newPropertyForm.rich_description, newPropertyForm.selling_points]
   );
 
-  const dashboardData = useMemo<DashboardData>(() => {
-    const platforms: Post['platform'][] = ['facebook', 'zalo', 'tiktok', 'website'];
-    const postViews = posts.reduce((sum, post) => sum + Number(post.engagement?.views || 0), 0);
-    const topProperties = properties
-      .filter(isPublicProperty)
-      .slice()
-      .sort((a, b) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
-      .slice(0, 10)
-      .map(property => ({
-        id: property.id,
-        title: property.title,
-        views: Number(property.public_view_count || 0),
-        lastViewAt: property.last_public_view_at,
-        url: getPublicPropertyUrl(property)
-      }));
-    const topPosts = posts
-      .slice()
-      .sort((a, b) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0))
-      .slice(0, 10)
-      .map(post => ({
-        id: post.id,
-        title: post.title,
-        platform: post.platform,
-        views: Number(post.engagement?.views || 0)
-      }));
-
-    return {
-      stats: {
-        totalCustomers: customers.length,
-        leads: {
-          hot: customers.filter(customer => customer.status === 'hot').length,
-          warm: customers.filter(customer => customer.status === 'warm').length,
-          cold: customers.filter(customer => customer.status === 'new').length
-        },
-        totalProperties: properties.filter(isPublicProperty).length,
-        totalPosts: posts.length,
-        pendingInbox: inbox.filter(message => message.status === 'pending').length,
-        siteViews: Number(settings.site_view_count || 0),
-        propertyViews: properties.reduce((sum, property) => sum + Number(property.public_view_count || 0), 0),
-        postViews,
-        todayTasksCount: customers.filter(customer => customer.status === 'hot' && customer.lead_score > 80).length
-      },
-      metrics: platforms.map(platform => {
-        const platformPosts = posts.filter(post => post.platform === platform);
-        return {
-          platform,
-          reach: platformPosts.reduce((sum, post) => sum + (post.engagement?.views || 0), 0),
-          engagement: platformPosts.reduce(
-            (sum, post) => sum
-              + (post.engagement?.likes || 0)
-              + (post.engagement?.shares || 0)
-              + (post.engagement?.comments || 0),
-            0
-          ),
-          leads: customers.filter(customer => customer.source === platform).length
-        };
-      }),
-      traffic: {
-        lastSiteViewAt: settings.last_site_view_at,
-        topProperties,
-        topPosts
-      }
-    };
-  }, [customers, properties, posts, inbox, settings.site_view_count, settings.last_site_view_at]);
-
   React.useEffect(() => {
-    if (!currentUser || !['dashboard', 'properties'].includes(activeTab)) return;
+    if (!currentUser || activeTab !== 'dashboard') return;
 
     const syncTraffic = () => {
       refreshTrafficData()
-        .then(({ properties: nextProperties, settings: nextSettings }) => {
-          setProperties(nextProperties);
+        .then(({ dashboard, settings: nextSettings }) => {
+          setDashboardData(dashboard);
           setSettings(nextSettings);
         })
         .catch(() => undefined);
@@ -399,7 +395,7 @@ export default function App() {
   const maxDashboardReach = Math.max(1, ...dashboardData.metrics.map(metric => metric.reach));
   const topDashboardMetric = dashboardData.metrics.reduce(
     (top, metric) => metric.reach > top.reach ? metric : top,
-    dashboardData.metrics[0]
+    dashboardData.metrics[0] || EMPTY_DASHBOARD.metrics[0]
   );
 
   // Toast auto-dismiss
@@ -473,6 +469,16 @@ export default function App() {
     }
   }, [location.pathname, location.state]);
 
+  const refreshNavigationCounts = async () => {
+    try {
+      const counts = await getNavigationCounts(true);
+      setNavigationCounts(counts);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** Chat / users / generated — only when those menus open. */
   const loadSecondaryData = async () => {
     const [chatHistoryRecords, guests, myChatHistory, generatedContents, users] = await Promise.all([
       getChatHistory().catch(() => []),
@@ -510,22 +516,126 @@ export default function App() {
     }
   };
 
-  // Core CRM data first (fast path); chat/history/users load in background
+  const loadCrmModule = async (page = customersPage, search = searchQuery) => {
+    const result = await listCustomers({
+      page,
+      limit: DEFAULT_PAGE_SIZE,
+      search: search.trim() || undefined,
+      sort: 'created_at_desc',
+    });
+    setCustomers(result.items);
+    setCustomersPage(result.pagination.page);
+    setCustomersTotal(result.pagination.total);
+  };
+
+  const loadPropertiesModule = async (page = propertiesPage, search = searchQuery) => {
+    const result = await listProperties({
+      page,
+      limit: 100,
+      search: search.trim() || undefined,
+      status: propertyFilters.status,
+      type: propertyFilters.type !== 'all' ? propertyFilters.type : undefined,
+      transactionType: propertyFilters.transactionType !== 'all' ? propertyFilters.transactionType : undefined,
+      sort: 'created_at_desc',
+    });
+    setProperties(result.items);
+    setPropertiesPage(result.pagination.page);
+    setPropertiesTotal(result.pagination.total);
+  };
+
+  const loadModuleForTab = async (tab: string, opts?: { force?: boolean }) => {
+    if (!currentUser) return;
+    const force = opts?.force === true;
+    const mark = (key: string) => {
+      if (!force && loadedModulesRef.current.has(key)) return false;
+      loadedModulesRef.current.add(key);
+      return true;
+    };
+
+    try {
+      if (tab === 'crm') {
+        if (!force && loadedModulesRef.current.has('crm') && customers.length > 0) return;
+        setModuleLoading(true);
+        loadedModulesRef.current.add('crm');
+        await loadCrmModule(1, searchQuery);
+        return;
+      }
+      if (tab === 'properties' || tab === 'ai-content' || tab === 'projects') {
+        const key = 'properties';
+        if (!force && loadedModulesRef.current.has(key) && properties.length > 0 && tab !== 'properties') return;
+        if (tab === 'properties' || mark(key) || force || properties.length === 0) {
+          setModuleLoading(true);
+          loadedModulesRef.current.add(key);
+          await loadPropertiesModule(tab === 'properties' ? 1 : propertiesPage, searchQuery);
+        }
+        return;
+      }
+      if (tab === 'posts' && MXH_POSTS_ENABLED) {
+        if (!mark('posts') && !force) return;
+        setModuleLoading(true);
+        const result = await listPosts({ page: 1, limit: DEFAULT_PAGE_SIZE, search: searchQuery.trim() || undefined });
+        setPosts(result.items);
+        return;
+      }
+      if (tab === 'inbox') {
+        if (!mark('inbox') && !force) return;
+        setModuleLoading(true);
+        const result = await listInbox({ page: 1, limit: DEFAULT_PAGE_SIZE, search: searchQuery.trim() || undefined });
+        setInbox(result.items);
+        return;
+      }
+      if (tab === 'automations') {
+        if (!mark('automations') && !force) return;
+        setModuleLoading(true);
+        setAutomations(await getAutomations());
+        return;
+      }
+      if (tab === 'integrations') {
+        if (!mark('channels') && !force) return;
+        setModuleLoading(true);
+        setChannels(await getChannels());
+        return;
+      }
+      if (['website-chat', 'chat-history', 'chatbot', 'users', 'ai-content'].includes(tab)) {
+        const key = tab === 'ai-content' ? 'generated' : 'secondary';
+        if (!mark(key) && !force) return;
+        setModuleLoading(true);
+        await loadSecondaryData();
+        if (tab === 'ai-content' && properties.length === 0) {
+          await loadPropertiesModule(1, '');
+        }
+        return;
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Không tải được dữ liệu module.', 'error');
+    } finally {
+      setModuleLoading(false);
+    }
+  };
+
+  // Bootstrap only: auth shell + dashboard metrics + navigation counts (+ settings once).
   const fetchAllData = async () => {
     const isFirstLoad = !hasLoadedCoreData.current;
     if (isFirstLoad) setInitialLoading(true);
     else setRefreshing(true);
 
     try {
-      const data = await getInitialAppData();
-      setCustomers(data.customers);
-      setProperties(data.properties);
-      setPosts(data.posts);
-      setInbox(data.inbox);
-      setAutomations(data.automations);
+      invalidateCrmModule();
+      cacheInvalidate('dashboard');
+      cacheInvalidate('navigation-counts');
+      const data = await getBootstrapData();
+      setDashboardData(data.dashboard);
+      setNavigationCounts(data.navigationCounts);
       setSettings(data.settings);
-      setChannels(data.channels);
       hasLoadedCoreData.current = true;
+      // Drop stale full-list caches when user explicitly refreshes.
+      if (!isFirstLoad) {
+        loadedModulesRef.current.clear();
+        setCustomers([]);
+        setProperties([]);
+        setPosts([]);
+        setInbox([]);
+      }
     } catch (e: any) {
       console.error('Connection to APIs failed', e);
       showToast(e.message || 'Lỗi kết nối API Server. Hãy kiểm tra logs backend hoặc reload trang.', 'error');
@@ -533,8 +643,6 @@ export default function App() {
       setInitialLoading(false);
       setRefreshing(false);
     }
-
-    void loadSecondaryData().catch(() => undefined);
   };
 
   useEffect(() => {
@@ -542,6 +650,22 @@ export default function App() {
       fetchAllData();
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || initialLoading) return;
+    void loadModuleForTab(activeTab);
+  }, [currentUser, activeTab, initialLoading]);
+
+  // Server-side search when staying on CRM / properties tabs.
+  useEffect(() => {
+    if (!currentUser || initialLoading) return;
+    if (!['crm', 'properties', 'posts', 'inbox'].includes(activeTab)) return;
+    const timer = window.setTimeout(() => {
+      loadedModulesRef.current.delete(activeTab === 'properties' ? 'properties' : activeTab);
+      void loadModuleForTab(activeTab, { force: true });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, propertyFilters.status, propertyFilters.type, propertyFilters.transactionType]);
 
   const refreshPublicGuestChats = async (sessionId = selectedChatGuestId) => {
     const guests = await getPublicChatGuests().catch(() => publicChatGuests);
@@ -1149,6 +1273,8 @@ export default function App() {
     try {
       const customer = await createCustomer(newCustomerForm);
       showToast("Đã thêm khách hàng mới thành công!", "success");
+      invalidateCrmModule();
+      void refreshNavigationCounts();
       setCustomers(prev => [customer, ...prev]);
       setShowAddCustomerModal(false);
       setNewCustomerForm({
@@ -1197,7 +1323,10 @@ export default function App() {
         showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
       }
 
+      invalidateCrmModule();
+      void refreshNavigationCounts();
       const refreshed = await refreshTrafficData();
+      setDashboardData(refreshed.dashboard);
       setSettings(refreshed.settings);
       closePropertyModal();
     } catch (e: any) {
@@ -1741,7 +1870,9 @@ export default function App() {
             </span>
           </div>
 
-          <AgentNotificationBell />
+          <Suspense fallback={null}>
+            <AgentNotificationBell />
+          </Suspense>
 
           <button 
             onClick={fetchAllData}
@@ -1778,15 +1909,15 @@ export default function App() {
             <div className="px-3 py-2 text-xs font-semibold text-slate-600 tracking-wider uppercase">Menu chính</div>
             {[
               { id: 'dashboard', label: 'Dashboard tổng quan', icon: LayoutDashboard },
-              { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: customers.length },
-              { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp },
+              { id: 'crm', label: 'Khách hàng CRM', icon: Users, badge: navigationCounts.crm },
+              { id: 'investor-leads', label: 'Leads đầu tư', icon: TrendingUp, badge: navigationCounts.investorLeads },
               // Graph channel UI deprecated from nav (FacebookPanel kept on disk).
               { id: 'short-links', label: 'Short Links', icon: Link2 },
               { id: 'lead-magnet-content', label: 'Lead Magnet Content', icon: FileText },
-              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: propertyStatusCounts.adminVisible },
+              { id: 'properties', label: 'Danh sách Bất động sản', icon: Home, badge: navigationCounts.properties },
               { id: 'projects', label: 'Quản trị dự án', icon: Building2 },
               { id: 'ai-content', label: 'AI Content Generator', icon: Sparkles },
-              ...(MXH_POSTS_ENABLED ? [{ id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: posts.length }] : []),
+              ...(MXH_POSTS_ENABLED ? [{ id: 'posts', label: 'Danh sách bài đăng CMS', icon: FileText, badge: navigationCounts.posts }] : []),
             ].map(item => {
               const IconComp = item.icon;
               const isSelected = activeTab === item.id;
@@ -1885,6 +2016,13 @@ export default function App() {
                   {AGENT_SUBMENU.map(item => {
                     const IconComp = item.icon;
                     const isSelected = activeTab === item.id;
+                    const badge =
+                      item.id === 'agent-findings' ? navigationCounts.leadIntelligence
+                      : item.id === 'agent-external-inventory' ? navigationCounts.externalInventory
+                      : item.id === 'agent-notifications' ? navigationCounts.notifications
+                      : item.id === 'agent-jobs' ? navigationCounts.jobs
+                      : item.id === 'agent-sources' ? navigationCounts.sources
+                      : 0;
                     return (
                       <button
                         key={item.id}
@@ -1897,12 +2035,19 @@ export default function App() {
                           setAdminMenuOpen(false);
                           navigate(AGENT_TAB_TO_PATH[item.id] || '/admin/agents');
                         }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           isSelected ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
                         }`}
                       >
-                        <IconComp className="w-3.5 h-3.5" />
-                        {item.label}
+                        <span className="flex items-center gap-2">
+                          <IconComp className="w-3.5 h-3.5" />
+                          {item.label}
+                        </span>
+                        {badge > 0 && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'}`}>
+                            {badge}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -1911,7 +2056,7 @@ export default function App() {
             </div>
 
             {[
-              { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: inbox.filter(i => i.status === 'pending').length },
+              { id: 'inbox', label: 'Hòm hòm inbox đa kênh', icon: MessageSquare, badge: navigationCounts.pendingInbox },
               { id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot },
               ...(canManageWebsiteChat ? [{ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badge: publicChatGuests.length }] : []),
               { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badge: chatHistoryRecords.length },
@@ -1972,7 +2117,9 @@ export default function App() {
         <main className="flex-1 min-w-0 min-h-0 bg-slate-950/40 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-6 app-scroll">
 
           {location.pathname.startsWith('/admin/agents') ? (
-            <AgentPlatformPage userRole={currentUser.role} />
+            <Suspense fallback={<ModuleFallback label="Đang tải AI Agent…" />}>
+              <AgentPlatformPage userRole={currentUser.role} />
+            </Suspense>
           ) : (
           <>
 
@@ -2031,7 +2178,14 @@ export default function App() {
           {initialLoading && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4">
               <div className="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-              <p className="text-slate-400 text-sm">Đang tải dữ liệu CRM...</p>
+              <p className="text-slate-400 text-sm">Đang tải dashboard…</p>
+            </div>
+          )}
+
+          {!initialLoading && moduleLoading && (
+            <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-xs text-slate-400">
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-500/30 border-t-rose-500" />
+              Đang tải dữ liệu menu…
             </div>
           )}
 
@@ -2537,35 +2691,54 @@ export default function App() {
                       </table>
                     </div>
                   </div>
+                  {customersTotal > DEFAULT_PAGE_SIZE && (
+                    <PaginationBar
+                      page={customersPage}
+                      pageSize={DEFAULT_PAGE_SIZE}
+                      totalItems={customersTotal}
+                      onPageChange={(page) => {
+                        void loadCrmModule(page, searchQuery);
+                      }}
+                      variant="dark"
+                    />
+                  )}
                 </div>
               )}
 
               {activeTab === 'investor-leads' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <InvestorLeadsPanel />
+                  <Suspense fallback={<ModuleFallback label="Đang tải Leads đầu tư…" />}>
+                    <InvestorLeadsPanel />
+                  </Suspense>
                 </div>
               )}
 
               {activeTab === 'short-links' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <ShortLinksPanel />
+                  <Suspense fallback={<ModuleFallback label="Đang tải Short Links…" />}>
+                    <ShortLinksPanel />
+                  </Suspense>
                 </div>
               )}
 
               {activeTab === 'lead-magnet-content' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <LeadMagnetContentAdmin />
+                  <Suspense fallback={<ModuleFallback label="Đang tải Lead Magnet…" />}>
+                    <LeadMagnetContentAdmin />
+                  </Suspense>
                 </div>
               )}
 
               {activeTab === 'projects' && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <AdminProjectsPanel
-                    properties={properties}
-                    settings={settings}
-                    saving={actionLoading === 'save-projects'}
-                    onSave={handleSaveProjectCatalog}
-                  />
+                  <Suspense fallback={<ModuleFallback label="Đang tải dự án…" />}>
+                    <AdminProjectsPanel
+                      properties={properties}
+                      settings={settings}
+                      saving={actionLoading === 'save-projects'}
+                      onSave={handleSaveProjectCatalog}
+                    />
+                  </Suspense>
                 </div>
               )}
 
@@ -2697,25 +2870,38 @@ export default function App() {
                     </div>
                   </div>
 
-                  <AdminPropertyDirectory
-                    properties={filteredProperties}
-                    creatorNameById={propertyCreatorNameById}
-                    propertyGalleryIndex={propertyGalleryIndex}
-                    setPropertyGalleryIndex={setPropertyGalleryIndex}
-                    actionLoading={actionLoading}
-                    onToggleFeatured={handleTogglePropertyFeatured}
-                    onEdit={openEditPropertyModal}
-                    onImageUpload={handlePropertyImageUpload}
-                    onCopyDescription={prop => handleCopyText(buildPropertyCopyText(prop))}
-                    onToggleSold={handleTogglePropertySold}
-                    onHide={handleSoftDeleteProperty}
-                    onRestore={handleRestoreProperty}
-                    onOpenAiContent={prop => {
-                      setSelectedPropertyForAI(prop);
-                      setAiGeneratingTone('sang trọng và chuyên nghiệp');
-                      setActiveTab('ai-content');
-                    }}
-                  />
+                  <Suspense fallback={<ModuleFallback label="Đang tải danh sách BĐS…" />}>
+                    <AdminPropertyDirectory
+                      properties={filteredProperties}
+                      creatorNameById={propertyCreatorNameById}
+                      propertyGalleryIndex={propertyGalleryIndex}
+                      setPropertyGalleryIndex={setPropertyGalleryIndex}
+                      actionLoading={actionLoading}
+                      onToggleFeatured={handleTogglePropertyFeatured}
+                      onEdit={openEditPropertyModal}
+                      onImageUpload={handlePropertyImageUpload}
+                      onCopyDescription={prop => handleCopyText(buildPropertyCopyText(prop))}
+                      onToggleSold={handleTogglePropertySold}
+                      onHide={handleSoftDeleteProperty}
+                      onRestore={handleRestoreProperty}
+                      onOpenAiContent={prop => {
+                        setSelectedPropertyForAI(prop);
+                        setAiGeneratingTone('sang trọng và chuyên nghiệp');
+                        setActiveTab('ai-content');
+                      }}
+                    />
+                  </Suspense>
+                  {propertiesTotal > 100 && (
+                    <PaginationBar
+                      page={propertiesPage}
+                      pageSize={100}
+                      totalItems={propertiesTotal}
+                      onPageChange={(page) => {
+                        void loadPropertiesModule(page, searchQuery);
+                      }}
+                      variant="dark"
+                    />
+                  )}
                 </div>
               )}
 
@@ -3063,15 +3249,17 @@ export default function App() {
               )}
 
               {activeTab.startsWith('seo-') && getAuthToken() && (
-                <SeoContentAdmin
-                  token={getAuthToken()!}
-                  section={
-                    activeTab === 'seo-categories' ? 'categories'
-                    : activeTab === 'seo-tags' ? 'tags'
-                    : activeTab === 'seo-audit' ? 'audit'
-                    : 'posts'
-                  }
-                />
+                <Suspense fallback={<ModuleFallback label="Đang tải SEO CMS…" />}>
+                  <SeoContentAdmin
+                    token={getAuthToken()!}
+                    section={
+                      activeTab === 'seo-categories' ? 'categories'
+                      : activeTab === 'seo-tags' ? 'tags'
+                      : activeTab === 'seo-audit' ? 'audit'
+                      : 'posts'
+                    }
+                  />
+                </Suspense>
               )}
 
               {/* ==================================================== */}

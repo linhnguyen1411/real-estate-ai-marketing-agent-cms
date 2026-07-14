@@ -323,7 +323,11 @@ export default function InvestorLeadsPanel() {
 
   const load = () => {
     setLoading(true);
-    fetchInvestorLeads({ includeConverted: listFilter === 'converted' })
+    fetchInvestorLeads({
+      includeConverted: listFilter === 'converted',
+      page: 1,
+      limit: 50,
+    })
       .then(data => {
         if (listFilter === 'converted') {
           setLeads(data.filter(l => l.status === 'converted_to_customer'));

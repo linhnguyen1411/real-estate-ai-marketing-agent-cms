@@ -52,6 +52,11 @@ import {
 } from './src/seo/schemas';
 import { isReservedSlug } from './src/seo/routes';
 import { sortByCreatedAtDesc } from './src/utils/propertySort';
+import { parseListQuery, paginateItems, matchesSearchText } from './server/listPagination';
+import { buildCompanyScopeFilter, getAgentDashboardCounts } from './server/agent/agentDb';
+import { prisma } from './server/prisma';
+import { getPropertySaleStatus } from './src/utils/propertyStatus';
+import { countInvestorLeads } from './server/investorLeadDb';
 import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from './server/investorLeadRoutes';
 import { registerBlogAdminRoutes, registerBlogPublicRoutes } from './server/blogRoutes';
 import { getBlogPostBySlug, getPublishedBlogPostsForSitemap } from './server/blogDb';
@@ -1717,12 +1722,94 @@ app.get('/api/dashboard', (req: Request, res: Response) => {
   });
 });
 
+// Lightweight sidebar badges — counts only, no entity lists.
+app.get('/api/navigation-counts', async (req: Request, res: Response) => {
+  try {
+    const db = readDatabase();
+    const customers = scopeCollection(db.customers, req);
+    const properties = scopeCollection(db.properties, req);
+    const posts = scopeCollection(db.posts, req);
+    const inbox = scopeCollection(db.inbox, req);
+    const user = getAuthUser(req);
+
+    const adminVisibleProperties = properties.filter(p => getPropertySaleStatus(p) !== 'hidden').length;
+    const pendingInbox = inbox.filter(i => i.status === 'pending').length;
+
+    let leadIntelligence = 0;
+    let externalInventory = 0;
+    let notifications = 0;
+    let jobs = 0;
+    let sources = 0;
+
+    if (AGENT_ENABLED) {
+      const agentCounts = await getAgentDashboardCounts(user);
+      leadIntelligence = agentCounts.newFindings;
+      notifications = agentCounts.unreadNotifications;
+      jobs = agentCounts.queuedJobs + agentCounts.runningJobs;
+      sources = agentCounts.activeSources;
+      const companyScope = buildCompanyScopeFilter(user);
+      externalInventory = await prisma.externalInventoryItem.count({
+        where: {
+          ...companyScope,
+          status: { notIn: ['archived', 'converted'] },
+        },
+      }).catch(() => 0);
+    }
+
+    const investorLeads = await countInvestorLeads({ includeConverted: false }).catch(() => 0);
+
+    res.json({
+      status: 'success',
+      data: {
+        crm: customers.length,
+        properties: adminVisibleProperties,
+        posts: posts.length,
+        pendingInbox,
+        leadIntelligence,
+        investorLeads,
+        externalInventory,
+        notifications,
+        jobs,
+        sources,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error?.message || 'Không lấy được navigation counts.' });
+  }
+});
+
 // ----------------------------------------------------
 // Customers API (CRUD)
 // ----------------------------------------------------
 app.get('/api/customers', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeCollection(db.customers, req) });
+  let items = scopeCollection(db.customers, req);
+  const { hasPage, page, limit, search, status, sort } = parseListQuery(req.query as Record<string, unknown>);
+
+  if (search) {
+    items = items.filter(c =>
+      matchesSearchText(
+        [c.name, c.phone, c.email, c.interested_area, c.property_type, c.notes, c.ai_summary].join(' '),
+        search,
+      ),
+    );
+  }
+  if (status) {
+    items = items.filter(c => String(c.status || '') === status);
+  }
+  if (sort === 'score_desc') {
+    items = items.slice().sort((a, b) => Number(b.lead_score || 0) - Number(a.lead_score || 0));
+  } else if (sort === 'created_at_asc') {
+    items = items.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  } else if (sort === 'created_at_desc' || sort) {
+    items = items.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  }
+
+  if (!hasPage) {
+    res.json({ status: 'success', data: items });
+    return;
+  }
+  res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
 app.post('/api/customers', async (req: Request, res: Response) => {
@@ -1847,7 +1934,55 @@ app.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/properties', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeCollection(sortByCreatedAtDesc(db.properties), req) });
+  let items = scopeCollection(sortByCreatedAtDesc(db.properties), req);
+  const { hasPage, page, limit, search, status, sort } = parseListQuery(req.query as Record<string, unknown>);
+  const type = String(req.query.type || '').trim();
+  const transactionType = String(req.query.transactionType || req.query.transaction_type || '').trim();
+
+  if (search) {
+    items = items.filter(p =>
+      matchesSearchText(
+        [
+          p.title,
+          p.location,
+          p.type,
+          p.transaction_type || '',
+          p.legal_status,
+          p.direction,
+          p.rich_description || p.description || '',
+          p.internal_notes || '',
+          getPropertySaleStatus(p),
+        ].join(' '),
+        search,
+      ),
+    );
+  }
+  if (status && status !== 'all') {
+    if (status === 'visible') {
+      items = items.filter(p => getPropertySaleStatus(p) !== 'hidden');
+    } else {
+      items = items.filter(p => getPropertySaleStatus(p) === status);
+    }
+  }
+  if (type && type !== 'all') {
+    items = items.filter(p => p.type === type);
+  }
+  if (transactionType && transactionType !== 'all') {
+    items = items.filter(p => (p.transaction_type || 'Bán') === transactionType);
+  }
+  if (sort === 'price_asc') {
+    items = items.slice().sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+  } else if (sort === 'price_desc') {
+    items = items.slice().sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  } else if (sort === 'created_at_asc') {
+    items = items.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  }
+
+  if (!hasPage) {
+    res.json({ status: 'success', data: items });
+    return;
+  }
+  res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
 app.post('/api/properties', async (req: Request, res: Response) => {
@@ -2058,7 +2193,22 @@ app.post('/api/ai/generate-content', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/posts', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeCollection(db.posts, req) });
+  let items = scopeCollection(db.posts, req);
+  const { hasPage, page, limit, search, status, sort } = parseListQuery(req.query as Record<string, unknown>);
+  if (search) {
+    items = items.filter(p => matchesSearchText([p.title, p.content, p.platform].join(' '), search));
+  }
+  if (status) {
+    items = items.filter(p => String((p as any).status || '') === status);
+  }
+  if (sort === 'views_desc') {
+    items = items.slice().sort((a, b) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0));
+  }
+  if (!hasPage) {
+    res.json({ status: 'success', data: items });
+    return;
+  }
+  res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
 app.post('/api/posts', async (req: Request, res: Response) => {
@@ -2145,7 +2295,26 @@ app.delete('/api/posts/:id', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/inbox', (req: Request, res: Response) => {
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeCollection(db.inbox, req) });
+  let items = scopeCollection(db.inbox, req);
+  const { hasPage, page, limit, search, status, sort } = parseListQuery(req.query as Record<string, unknown>);
+  if (search) {
+    items = items.filter(i =>
+      matchesSearchText([i.sender_name, i.message, i.platform, i.intent || ''].join(' '), search),
+    );
+  }
+  if (status) {
+    items = items.filter(i => String(i.status || '') === status);
+  }
+  if (sort === 'created_at_asc') {
+    items = items.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  } else {
+    items = items.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  }
+  if (!hasPage) {
+    res.json({ status: 'success', data: items });
+    return;
+  }
+  res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
 // POST /api/ai/generate-reply - Draft reply suggestion for a single message

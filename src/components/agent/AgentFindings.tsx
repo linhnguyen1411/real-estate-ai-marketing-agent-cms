@@ -423,6 +423,8 @@ export default function AgentFindings({ userRole }: Props) {
     try {
       const result = await promoteAgentFinding(id);
       // Đã promote → rời Lead Intelligence, vào Leads đầu tư
+      const { invalidateAfterLeadPromote } = await import('../../services/queryCache');
+      invalidateAfterLeadPromote();
       setFindings(prev => prev.filter(f => f.id !== id));
       setTotal(t => Math.max(0, t - 1));
       setSelectedFinding(prev => (prev?.id === id ? null : prev));
