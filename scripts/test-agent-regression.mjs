@@ -13,6 +13,7 @@ const SUITE = [
   'test:real-estate-domain-gate',
   'test:finding-classification',
   'test:lead-intelligence-resolver',
+  'test:lead-intelligence-domain',
   'test:finding-structured-data',
   'test:facebook-dom-parser',
   'test:facebook-checkpoint',

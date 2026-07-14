@@ -41,6 +41,7 @@
     "test:finding-classification": "tsx scripts/test-finding-classification.ts",
     "test:real-estate-domain-gate": "tsx scripts/test-real-estate-domain-gate.mjs",
     "test:lead-intelligence-resolver": "tsx scripts/test-lead-intelligence-resolver.ts",
+    "test:lead-intelligence-domain": "tsx scripts/test-lead-intelligence-domain.ts",
     "test:finding-structured-data": "tsx scripts/test-finding-structured-data.ts",
     "test:finding-promotion": "tsx scripts/test-finding-promotion.ts",
     "test:external-inventory": "tsx scripts/test-external-inventory.ts",
