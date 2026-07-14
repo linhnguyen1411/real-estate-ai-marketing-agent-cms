@@ -1,5 +1,5 @@
-import type { ResolvedLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
-import { formatResolvedBudget } from '../../src/utils/resolveLeadIntelligence';
+import type { ResolvedLeadIntelligence } from '../../shared/agent-domain';
+import { formatResolvedBudget } from '../../shared/agent-domain';
 
 export type TelegramFormatOptions = {
   includePhone?: boolean;

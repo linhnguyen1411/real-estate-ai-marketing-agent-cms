@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
-import { resolveLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
+import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import { markFindingConsumed } from '../dataLifecycle/entityTransitionService';
 import { buildCompanyScopeFilter, canAccessAgentRecord } from './agentDb';
 import type { PaginationInput } from './agentTypes';

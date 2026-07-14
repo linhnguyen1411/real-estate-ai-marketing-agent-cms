@@ -5,8 +5,8 @@
 import crypto from 'crypto';
 import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
-import { resolveLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
-import { formatResolvedBudget } from '../../src/utils/resolveLeadIntelligence';
+import { resolveLeadIntelligence } from '../../shared/agent-domain';
+import { formatResolvedBudget } from '../../shared/agent-domain';
 import { markFindingConsumed } from '../dataLifecycle/entityTransitionService';
 import { canAccessAgentRecord } from './agentDb';
 
