@@ -56,8 +56,8 @@ console.log('Config defaults + validation');
   assert(d.maxPosts === 100, 'default maxPosts 100');
   assert(d.maxScrolls === 20, 'default maxScrolls 20');
   assert(d.maxEmptyPasses === 4, 'default maxEmptyPasses 4');
-  assert(d.scrollPauseMs === 2500, 'default scrollPauseMs 2500');
-  assert(d.loadWaitMs === 1500, 'default loadWaitMs 1500');
+  assert(d.scrollPauseMs === 4000, 'default scrollPauseMs 4000');
+  assert(d.loadWaitMs === 3000, 'default loadWaitMs 3000');
   assert(d.knownPostStopStreak === 8, 'default knownPostStopStreak 8');
   assert(d.maxDurationSeconds === 180, 'default maxDurationSeconds 180');
 
