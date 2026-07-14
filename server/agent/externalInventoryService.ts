@@ -8,8 +8,15 @@ import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
 import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import { markFindingConsumed } from '../dataLifecycle/entityTransitionService';
+import {
+  EntityNotFoundError,
+  TenantScopeError,
+} from '../dataLifecycle/domainErrors';
 import { buildCompanyScopeFilter, canAccessAgentRecord } from './agentDb';
 import type { PaginationInput } from './agentTypes';
+import { runInTransaction } from '../repositories/shared/repositoryTypes';
+import * as findingRepo from '../repositories/agent/agentFindingRepository';
+import * as inventoryRepo from '../repositories/inventory/externalInventoryRepository';
 
 export type SaveExternalInventoryResult = {
   outcome: 'created' | 'existing';
@@ -137,16 +144,13 @@ export async function saveFindingToExternalInventory(input: {
   user: AuthUser;
   force?: boolean;
 }): Promise<SaveExternalInventoryResult> {
-  const finding = await prisma.agentFinding.findUnique({
-    where: { id: input.findingId },
-    include: {
-      source: { select: { id: true, name: true, type: true } },
-      scannedContent: true,
-    },
+  const finding = await findingRepo.findFindingById(input.findingId, undefined, {
+    source: { select: { id: true, name: true, type: true } },
+    scannedContent: true,
   });
-  if (!finding) throw new Error('Không tìm thấy finding.');
+  if (!finding) throw new EntityNotFoundError('Không tìm thấy finding.');
   if (!canAccessAgentRecord(input.user, finding.companyId)) {
-    throw new Error('Không có quyền truy cập finding này.');
+    throw new TenantScopeError('Không có quyền truy cập finding này.');
   }
 
   if (finding.externalInventoryItemId) {
@@ -195,119 +199,134 @@ export async function saveFindingToExternalInventory(input: {
     areaMinM2: resolved.property.areaMinM2,
   });
 
-  if (dup) {
-    await markFindingConsumed(prisma, {
+  return runInTransaction(async tx => {
+    // Re-check already saved inside tx
+    const fresh = await findingRepo.findFindingById(finding.id, tx);
+    if (fresh?.externalInventoryItemId) {
+      return {
+        outcome: 'existing' as const,
+        itemId: fresh.externalInventoryItemId,
+        duplicateReason: 'already_saved',
+      };
+    }
+
+    if (dup) {
+      await markFindingConsumed(tx, {
+        findingId: finding.id,
+        status: 'saved_to_external_inventory',
+        consumptionType: 'external_inventory',
+        resourceId: dup.id,
+        resourceType: 'external_inventory',
+        userId: input.user.id,
+      });
+      await inventoryRepo.createExternalInventoryEvent(
+        {
+          id: newId('eie'),
+          itemId: dup.id,
+          eventType: 'linked_finding',
+          note: `Linked finding ${finding.id}`,
+          userId: input.user.id,
+          metadata: { findingId: finding.id, duplicateReason: dup.reason },
+        },
+        tx,
+      );
+      return { outcome: 'existing' as const, itemId: dup.id, duplicateReason: dup.reason };
+    }
+
+    const itemId = newId('extinv');
+    await inventoryRepo.createExternalInventoryItem(
+      {
+        id: itemId,
+        companyId: finding.companyId,
+        findingId: finding.id,
+        scannedContentId: finding.scannedContentId,
+        title: inventoryTitle,
+        description: resolved.demand.needSummary || resolved.content.shortDescription,
+        originalContent: original || '',
+        propertyType: mapInventoryPropertyType(resolved.propertyTypes),
+        transactionType: inferTransactionType(resolved),
+        askingPriceMin: askingMin,
+        askingPriceMax: askingMax,
+        rentPrice,
+        city: resolved.location.city,
+        district: resolved.location.district,
+        ward: resolved.location.ward,
+        street: resolved.location.street,
+        project: resolved.location.project,
+        areaMinM2: resolved.property.areaMinM2,
+        areaMaxM2: resolved.property.areaMaxM2,
+        frontageMeters: resolved.property.frontageMeters,
+        depthMeters: resolved.property.depthMeters,
+        bedrooms: resolved.property.bedrooms,
+        floors: resolved.property.floors,
+        legalStatus: resolved.property.legalStatus,
+        direction: resolved.property.direction,
+        contactName:
+          resolved.contact.displayName ||
+          (resolved.person.name === 'Chưa xác định' ? null : resolved.person.name),
+        contactPhone: resolved.primaryPhone,
+        contactFacebookUrl: resolved.person.facebookProfileUrl,
+        sourceUrl: resolved.source.canonicalUrl,
+        sourceName: resolved.source.sourceName,
+        sourceType: resolved.source.sourceType,
+        contentHash: hash,
+        verificationStatus: 'unverified',
+        status: 'active',
+        rawData: {
+          findingId: finding.id,
+          classification: resolved.classification,
+          priceDisplay: resolved.displayBudgetLabel,
+          additionalPhones,
+          roadWidthMeters: resolved.property.roadWidthMeters,
+          pavementWidthMeters: resolved.property.pavementWidthMeters,
+          features: resolved.property.features,
+          resolvedSnippet: {
+            needSummary: resolved.demand.needSummary,
+            scoreStatus: resolved.scoreStatus,
+          },
+        },
+      },
+      tx,
+    );
+
+    await inventoryRepo.createExternalInventorySource(
+      {
+        id: newId('eis'),
+        itemId,
+        sourceUrl: resolved.source.canonicalUrl,
+        sourceName: resolved.source.sourceName,
+        authorName: resolved.source.authorName,
+        authorUrl: resolved.source.authorUrl,
+        publishedAt: finding.scannedContent?.publishedAt ?? null,
+        collectedAt: finding.scannedContent?.collectedAt ?? null,
+        rawContent: original,
+      },
+      tx,
+    );
+
+    await inventoryRepo.createExternalInventoryEvent(
+      {
+        id: newId('eie'),
+        itemId,
+        eventType: 'created_from_finding',
+        note: 'Lưu từ Lead Intelligence',
+        userId: input.user.id,
+        metadata: { findingId: finding.id },
+      },
+      tx,
+    );
+
+    await markFindingConsumed(tx, {
       findingId: finding.id,
       status: 'saved_to_external_inventory',
       consumptionType: 'external_inventory',
-      resourceId: dup.id,
+      resourceId: itemId,
       resourceType: 'external_inventory',
       userId: input.user.id,
     });
-    await prisma.externalInventoryEvent.create({
-      data: {
-        id: newId('eie'),
-        itemId: dup.id,
-        eventType: 'linked_finding',
-        note: `Linked finding ${finding.id}`,
-        userId: input.user.id,
-        metadata: { findingId: finding.id, duplicateReason: dup.reason },
-      },
-    });
-    return { outcome: 'existing', itemId: dup.id, duplicateReason: dup.reason };
-  }
 
-  const now = new Date();
-  const itemId = newId('extinv');
-  await prisma.externalInventoryItem.create({
-    data: {
-      id: itemId,
-      companyId: finding.companyId,
-      findingId: finding.id,
-      scannedContentId: finding.scannedContentId,
-      title: inventoryTitle,
-      description: resolved.demand.needSummary || resolved.content.shortDescription,
-      originalContent: original || '',
-      propertyType: mapInventoryPropertyType(resolved.propertyTypes),
-      transactionType: inferTransactionType(resolved),
-      askingPriceMin: askingMin,
-      askingPriceMax: askingMax,
-      rentPrice,
-      city: resolved.location.city,
-      district: resolved.location.district,
-      ward: resolved.location.ward,
-      street: resolved.location.street,
-      project: resolved.location.project,
-      areaMinM2: resolved.property.areaMinM2,
-      areaMaxM2: resolved.property.areaMaxM2,
-      frontageMeters: resolved.property.frontageMeters,
-      depthMeters: resolved.property.depthMeters,
-      bedrooms: resolved.property.bedrooms,
-      floors: resolved.property.floors,
-      legalStatus: resolved.property.legalStatus,
-      direction: resolved.property.direction,
-      contactName:
-        resolved.contact.displayName ||
-        (resolved.person.name === 'Chưa xác định' ? null : resolved.person.name),
-      contactPhone: resolved.primaryPhone,
-      contactFacebookUrl: resolved.person.facebookProfileUrl,
-      sourceUrl: resolved.source.canonicalUrl,
-      sourceName: resolved.source.sourceName,
-      sourceType: resolved.source.sourceType,
-      contentHash: hash,
-      verificationStatus: 'unverified',
-      status: 'active',
-      rawData: {
-        findingId: finding.id,
-        classification: resolved.classification,
-        priceDisplay: resolved.displayBudgetLabel,
-        additionalPhones,
-        roadWidthMeters: resolved.property.roadWidthMeters,
-        pavementWidthMeters: resolved.property.pavementWidthMeters,
-        features: resolved.property.features,
-        resolvedSnippet: {
-          needSummary: resolved.demand.needSummary,
-          scoreStatus: resolved.scoreStatus,
-        },
-      },
-    },
+    return { outcome: 'created' as const, itemId, duplicateReason: null };
   });
-
-  await prisma.externalInventorySource.create({
-    data: {
-      id: newId('eis'),
-      itemId,
-      sourceUrl: resolved.source.canonicalUrl,
-      sourceName: resolved.source.sourceName,
-      authorName: resolved.source.authorName,
-      authorUrl: resolved.source.authorUrl,
-      publishedAt: finding.scannedContent?.publishedAt ?? null,
-      collectedAt: finding.scannedContent?.collectedAt ?? null,
-      rawContent: original,
-    },
-  });
-
-  await prisma.externalInventoryEvent.create({
-    data: {
-      id: newId('eie'),
-      itemId,
-      eventType: 'created_from_finding',
-      note: 'Lưu từ Lead Intelligence',
-      userId: input.user.id,
-      metadata: { findingId: finding.id },
-    },
-  });
-
-  await markFindingConsumed(prisma, {
-    findingId: finding.id,
-    status: 'saved_to_external_inventory',
-    consumptionType: 'external_inventory',
-    resourceId: itemId,
-    resourceType: 'external_inventory',
-    userId: input.user.id,
-  });
-
-  return { outcome: 'created', itemId, duplicateReason: null };
 }
 
 function serializeExternalItem<T extends Record<string, any>>(row: T) {
