@@ -1349,6 +1349,15 @@ if (AGENT_ENABLED) {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
 registerAgentIngestRoutes(app, { getAuthUser, accessDefaults });
+if (!AGENT_ENABLED) {
+  // Never fall through to Vite HTML for /api/agent/* — frontend expects JSON.
+  app.use('/api/agent', (_req: Request, res: Response) => {
+    res.status(503).json({
+      status: 'error',
+      message: 'AI Agent API đang tắt (AGENT_ENABLED=false). Bật flag trong .env rồi restart server.',
+    });
+  });
+}
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);

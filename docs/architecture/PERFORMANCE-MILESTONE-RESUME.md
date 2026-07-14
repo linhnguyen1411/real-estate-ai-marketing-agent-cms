@@ -1,30 +1,31 @@
-# PERFORMANCE MILESTONE — RESUME PLAN
+# Performance Milestone — Resume Gate
 
-Performance work remains **paused** after Batch 2 architecture. Do not claim complete.
+**Date:** 2026-07-14  
+**Frontend architecture verdict:** **FRONTEND ARCHITECTURE COMPLETE** (Batch 6)  
+**Resume Performance Milestone:** **YES**
 
-## Already kept (still wired)
+## Allowed next phase
+Resume **Milestone 2** performance work with KPIs:
 
-- `getBootstrapData` / dashboard + navigation-counts + settings bootstrap
-- `navigationCounts` sidebar badges
-- `loadModuleForTab` for CRM/properties/etc.
-- `queryCache` + invalidate helpers
-- Lazy admin panels (investor leads, SEO, property directory, …)
-- List pagination query params on CRM APIs
-- Batch 2 feature lazy pages (settings/automations/integrations/profile + agent sections)
+- F5 dashboard usable &lt; 2s
+- Only necessary bootstrap APIs on load
+- Load data per active menu
+- Server-side pagination / filter / search / sort
+- Cache / reopen menu near-instant
+- No unnecessary background APIs
+- Memory plateau when switching menus
 
-## Needs rewire after further architecture
+## Preserve from architecture batches
+- `getBootstrapData`
+- `navigationCounts` (including `websiteChat` / `chatHistory`)
+- `loadModuleForTab`
+- `queryCache`
+- Lazy route chunks for Properties / Inbox / Chat / CRM / Agent sections
 
-- When Users / CRM leave App, keep permission assignment APIs unchanged
-- Move remaining bootstrap `loadModuleForTab` owners into page hooks
-- Ensure Notifications bell continues to use count-only endpoint
+## Do not regress
+- F5 must not preload properties list, inbox list, chat messages, findings, CRM, jobs, or inventory.
+- Chat polling must remain mode-scoped with cleanup (`useChatPolling`).
+- Sidebar badges must continue to use lightweight `/api/navigation-counts`, not full list bootstrap.
 
-## Not done (Performance Milestone)
-
-- Full CRM server-side search UX polish
-- Virtual tables for lists >100
-- Dedicated AppRouter composition (routes still via tab state in AdminApp)
-- F5 → only auth/layout/dashboard/nav-counts as exclusive guaranteed set for all menus
-
-## KPI still apply
-
-Same as PERFORMANCE-REPORT.md: F5 API count, transfer, lazy chunks, no preload of Sources/Jobs/Notifications list/Reports/Sessions.
+## Note
+Batch 6 did **not** implement Performance Milestone work — it only reopened the gate.
