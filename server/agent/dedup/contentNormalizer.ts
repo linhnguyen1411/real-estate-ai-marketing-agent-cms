@@ -1,6 +1,9 @@
 /**
  * Content normalization for Lead Intelligence dedupe (exact hash layer).
  * Preserves phones, money, addresses, and property info.
+ *
+ * Purpose: normalizeContentForDedup — DO NOT merge with website scrape normalizer
+ * in server/agent-worker/services/contentNormalizer.ts.
  */
 
 import crypto from 'crypto';
@@ -50,3 +53,6 @@ export function normalizeLeadContent(raw: string, title?: string | null): string
 export function hashNormalizedContent(normalized: string): string {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
+
+/** Purpose-explicit alias — same implementation; do not change hash semantics in R1. */
+export const normalizeContentForDedup = normalizeLeadContent;

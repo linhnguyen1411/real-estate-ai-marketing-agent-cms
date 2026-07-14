@@ -1,6 +1,11 @@
 import crypto from 'crypto';
 import { URL } from 'url';
 
+/**
+ * Website / Facebook scrape text + URL sanitization (matching / display prep).
+ * NOT the lead-dedupe normalizer (see server/agent/dedup/contentNormalizer.ts).
+ */
+
 const BLOCKED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 
 const BINARY_EXTENSIONS = new Set([
@@ -80,6 +85,10 @@ export function normalizeText(input: string, maxLength = 50_000): string {
   if (collapsed.length <= maxLength) return collapsed;
   return `${collapsed.slice(0, maxLength)}…`;
 }
+
+/** Purpose-explicit alias for scrape/search matching prep — same as normalizeText. */
+export const normalizeTextForMatching = normalizeText;
+export const normalizeTextForDisplay = normalizeText;
 
 export function isPrivateIpv4(host: string): boolean {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
