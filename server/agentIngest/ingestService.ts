@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { notifyFindingHighScore } from '../agent/agentNotificationService';
 import { notifyFindingIfEligible } from '../notifications/telegramNotificationService';
+import { runInTransaction, asDb, type DbClient } from '../repositories/shared/repositoryTypes';
 
 export type IngestFindingPayload = {
   ingestionId?: string;
@@ -132,7 +133,9 @@ async function upsertSource(input: {
     config?: unknown;
   };
   warnings: string[];
+  db?: DbClient;
 }): Promise<{ id: string }> {
+  const client = asDb(input.db);
   const src = input.source || {};
   const url = String(src.url || src.externalKey || src.externalSourceKey || '').trim();
   const name = String(src.name || 'Ingested source').trim() || 'Ingested source';
@@ -140,20 +143,20 @@ async function upsertSource(input: {
   const externalSourceKey = String(src.externalSourceKey || src.externalKey || '').trim() || null;
 
   if (src.remoteSourceId) {
-    const byRemote = await prisma.agentSource.findUnique({ where: { id: String(src.remoteSourceId) } });
+    const byRemote = await client.agentSource.findUnique({ where: { id: String(src.remoteSourceId) } });
     if (byRemote) return { id: byRemote.id };
   }
   if (src.id) {
-    const byId = await prisma.agentSource.findUnique({ where: { id: src.id } });
+    const byId = await client.agentSource.findUnique({ where: { id: src.id } });
     if (byId) return { id: byId.id };
   }
 
   if (externalSourceKey && input.companyId) {
-    const byKey = await prisma.agentSource.findFirst({
+    const byKey = await client.agentSource.findFirst({
       where: { companyId: input.companyId, externalSourceKey },
     });
     if (byKey) {
-      await prisma.agentSource.update({
+      await client.agentSource.update({
         where: { id: byKey.id },
         data: {
           name: name || byKey.name,
@@ -167,14 +170,14 @@ async function upsertSource(input: {
   }
 
   if (url) {
-    const existing = await prisma.agentSource.findFirst({
+    const existing = await client.agentSource.findFirst({
       where: {
         url,
         ...(input.companyId ? { companyId: input.companyId } : {}),
       },
     });
     if (existing) {
-      await prisma.agentSource.update({
+      await client.agentSource.update({
         where: { id: existing.id },
         data: {
           name: existing.name || name,
@@ -189,7 +192,7 @@ async function upsertSource(input: {
     }
 
     try {
-      const created = await prisma.agentSource.create({
+      const created = await client.agentSource.create({
         data: {
           companyId: input.companyId,
           name,
@@ -207,7 +210,7 @@ async function upsertSource(input: {
       return { id: created.id };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const again = await prisma.agentSource.findFirst({
+        const again = await client.agentSource.findFirst({
           where: {
             ...(externalSourceKey && input.companyId
               ? { companyId: input.companyId, externalSourceKey }
@@ -222,7 +225,7 @@ async function upsertSource(input: {
 
   input.warnings.push('source_url_missing_created_placeholder');
   const placeholderUrl = `ingest://local/${crypto.randomBytes(8).toString('hex')}`;
-  const created = await prisma.agentSource.create({
+  const created = await client.agentSource.create({
     data: {
       companyId: input.companyId,
       name,
@@ -241,7 +244,9 @@ async function upsertScannedContent(input: {
   sourceId: string;
   payload: IngestFindingPayload;
   warnings: string[];
+  db?: DbClient;
 }): Promise<{ id: string; created: boolean }> {
+  const client = asDb(input.db);
   const sc = input.payload.scannedContent || {};
   const canonicalUrl = String(sc.canonicalUrl || '').trim();
   const contentText = String(sc.contentText || '').trim();
@@ -254,21 +259,21 @@ async function upsertScannedContent(input: {
 
   let existing =
     (externalId
-      ? await prisma.scannedContent.findFirst({
+      ? await client.scannedContent.findFirst({
           where: { sourceId: input.sourceId, externalId },
         })
       : null) ||
-    (await prisma.scannedContent.findFirst({
+    (await client.scannedContent.findFirst({
       where: { sourceId: input.sourceId, contentHash: hash },
     })) ||
     (canonicalUrl
-      ? await prisma.scannedContent.findFirst({
+      ? await client.scannedContent.findFirst({
           where: { sourceId: input.sourceId, canonicalUrl },
         })
       : null);
 
   if (sc.normalizedContentHash) {
-    const byNorm = await prisma.scannedContent.findFirst({
+    const byNorm = await client.scannedContent.findFirst({
       where: {
         sourceId: input.sourceId,
         normalizedContentHash: String(sc.normalizedContentHash),
@@ -285,7 +290,7 @@ async function upsertScannedContent(input: {
       asRecord(existing.rawData),
       asRecord(sc.rawData),
     );
-    await prisma.scannedContent.update({
+    await client.scannedContent.update({
       where: { id: existing.id },
       data: {
         contentText: contentText || existing.contentText,
@@ -305,7 +310,7 @@ async function upsertScannedContent(input: {
     return { id: existing.id, created: false };
   }
 
-  const created = await prisma.scannedContent.create({
+  const created = await client.scannedContent.create({
     data: {
       companyId: input.companyId,
       sourceId: input.sourceId,
@@ -454,159 +459,221 @@ export async function ingestFindingPayload(input: {
       };
     }
 
-    const source = await upsertSource({
-      companyId: input.companyId,
-      source: input.payload.source,
-      warnings,
-    });
-    const content = await upsertScannedContent({
-      companyId: input.companyId,
-      sourceId: source.id,
-      payload: input.payload,
-      warnings,
-    });
+    const persisted = await runInTransaction(async tx => {
+      const source = await upsertSource({
+        companyId: input.companyId,
+        source: input.payload.source,
+        warnings,
+        db: tx,
+      });
+      const content = await upsertScannedContent({
+        companyId: input.companyId,
+        sourceId: source.id,
+        payload: input.payload,
+        warnings,
+        db: tx,
+      });
 
-    // Content-only ingest (no Finding required)
-    if (input.contentOnly || !input.payload.finding) {
-      const hasFindingFields =
-        input.payload.finding &&
-        Object.values(input.payload.finding).some((v) => v != null && v !== '');
-      if (input.contentOnly || !hasFindingFields) {
-        await prisma.agentIngestionEvent.upsert({
-          where: {
-            companyId_ingestionId: {
-              companyId: input.companyId,
-              ingestionId,
-            },
-          },
-          create: {
-            companyId: input.companyId,
-            ingestionId,
-            idempotencyKey,
-            localWorkerId: input.payload.localWorkerId || null,
-            keyId: input.keyId || null,
-            status: content.created ? 'accepted' : 'duplicate',
-            sourceId: source.id,
-            scannedContentId: content.id,
-            findingId: null,
-            requestHash: input.requestHash || null,
-            payloadMeta: {
-              parserVersion: input.payload.parserVersion,
-              analysisVersion: input.payload.analysisVersion,
-              capturedAt: input.payload.capturedAt,
-              contentOnly: true,
-            },
-            warnings,
-            telegramQueued: false,
-          },
-          update: {
-            status: content.created ? 'accepted' : 'duplicate',
-            sourceId: source.id,
-            scannedContentId: content.id,
-            warnings,
-            errorMessage: null,
-          },
-        });
-        return {
-          status: content.created ? 'accepted' : 'duplicate',
-          ingestionId,
-          sourceId: source.id,
-          scannedContentId: content.id,
-          findingId: null,
-          telegramQueued: false,
-          warnings,
-        };
-      }
-    }
-
-    const fields = pickFindingFields(input.payload);
-    let finding = await prisma.agentFinding.findUnique({
-      where: {
-        scannedContentId_type: {
-          scannedContentId: content.id,
-          type: fields.type,
-        },
-      },
-    });
-
-    let created = false;
-    if (!finding) {
-      try {
-        finding = await prisma.agentFinding.create({
-          data: {
-            companyId: input.companyId,
-            sourceId: source.id,
-            scannedContentId: content.id,
-            status: 'new',
-            dedupeStatus: 'unique',
-            ...fields,
-          },
-        });
-        created = true;
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          finding = await prisma.agentFinding.findUnique({
+      // Content-only ingest (no Finding required)
+      if (input.contentOnly || !input.payload.finding) {
+        const hasFindingFields =
+          input.payload.finding &&
+          Object.values(input.payload.finding).some((v) => v != null && v !== '');
+        if (input.contentOnly || !hasFindingFields) {
+          await tx.agentIngestionEvent.upsert({
             where: {
-              scannedContentId_type: {
-                scannedContentId: content.id,
-                type: fields.type,
+              companyId_ingestionId: {
+                companyId: input.companyId,
+                ingestionId,
               },
             },
+            create: {
+              companyId: input.companyId,
+              ingestionId,
+              idempotencyKey,
+              localWorkerId: input.payload.localWorkerId || null,
+              keyId: input.keyId || null,
+              status: content.created ? 'accepted' : 'duplicate',
+              sourceId: source.id,
+              scannedContentId: content.id,
+              findingId: null,
+              requestHash: input.requestHash || null,
+              payloadMeta: {
+                parserVersion: input.payload.parserVersion,
+                analysisVersion: input.payload.analysisVersion,
+                capturedAt: input.payload.capturedAt,
+                contentOnly: true,
+              },
+              warnings,
+              telegramQueued: false,
+            },
+            update: {
+              status: content.created ? 'accepted' : 'duplicate',
+              sourceId: source.id,
+              scannedContentId: content.id,
+              warnings,
+              errorMessage: null,
+            },
           });
-        } else {
-          throw error;
+          return {
+            kind: 'content_only' as const,
+            status: content.created ? ('accepted' as const) : ('duplicate' as const),
+            sourceId: source.id,
+            scannedContentId: content.id,
+            findingId: null as string | null,
+            created: content.created,
+          };
         }
       }
-    } else {
-      // Merge — do not overwrite newer/non-null with empty
-      await prisma.agentFinding.update({
-        where: { id: finding.id },
-        data: {
-          title: fields.title || finding.title,
-          summary: fields.summary || finding.summary,
-          score: Math.max(finding.score, fields.score),
-          finalScore: Math.max(finding.finalScore ?? 0, fields.finalScore),
-          classification: fields.classification || finding.classification,
-          intent: fields.intent || finding.intent,
-          actorRole: fields.actorRole || finding.actorRole,
-          priority: fields.priority || finding.priority,
-          primaryPhone: fields.primaryPhone || finding.primaryPhone,
-          primaryLocation: fields.primaryLocation || finding.primaryLocation,
-          needSummary: fields.needSummary || finding.needSummary,
-          personName: fields.personName || finding.personName,
-          budgetMin: fields.budgetMin ?? finding.budgetMin,
-          budgetMax: fields.budgetMax ?? finding.budgetMax,
-          askingPrice: fields.askingPrice ?? finding.askingPrice,
-          propertyType: fields.propertyType || finding.propertyType,
-          keywordScore: fields.keywordScore ?? finding.keywordScore,
-          aiScore: fields.aiScore ?? finding.aiScore,
-          leadFitScore: fields.leadFitScore ?? finding.leadFitScore,
-          scoreStatus: fields.scoreStatus || finding.scoreStatus,
-          extractedData: fields.extractedData,
-          reasons: fields.reasons,
-          intelligenceVersion: fields.intelligenceVersion || finding.intelligenceVersion,
+
+      const fields = pickFindingFields(input.payload);
+      let finding = await tx.agentFinding.findUnique({
+        where: {
+          scannedContentId_type: {
+            scannedContentId: content.id,
+            type: fields.type,
+          },
         },
       });
-      finding = await prisma.agentFinding.findUnique({ where: { id: finding.id } });
-    }
 
-    if (!finding) {
-      throw new Error('Finding upsert failed.');
+      let created = false;
+      if (!finding) {
+        try {
+          finding = await tx.agentFinding.create({
+            data: {
+              companyId: input.companyId,
+              sourceId: source.id,
+              scannedContentId: content.id,
+              status: 'new',
+              dedupeStatus: 'unique',
+              ...fields,
+            },
+          });
+          created = true;
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            finding = await tx.agentFinding.findUnique({
+              where: {
+                scannedContentId_type: {
+                  scannedContentId: content.id,
+                  type: fields.type,
+                },
+              },
+            });
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        await tx.agentFinding.update({
+          where: { id: finding.id },
+          data: {
+            title: fields.title || finding.title,
+            summary: fields.summary || finding.summary,
+            score: Math.max(finding.score, fields.score),
+            finalScore: Math.max(finding.finalScore ?? 0, fields.finalScore),
+            classification: fields.classification || finding.classification,
+            intent: fields.intent || finding.intent,
+            actorRole: fields.actorRole || finding.actorRole,
+            priority: fields.priority || finding.priority,
+            primaryPhone: fields.primaryPhone || finding.primaryPhone,
+            primaryLocation: fields.primaryLocation || finding.primaryLocation,
+            needSummary: fields.needSummary || finding.needSummary,
+            personName: fields.personName || finding.personName,
+            budgetMin: fields.budgetMin ?? finding.budgetMin,
+            budgetMax: fields.budgetMax ?? finding.budgetMax,
+            askingPrice: fields.askingPrice ?? finding.askingPrice,
+            propertyType: fields.propertyType || finding.propertyType,
+            keywordScore: fields.keywordScore ?? finding.keywordScore,
+            aiScore: fields.aiScore ?? finding.aiScore,
+            leadFitScore: fields.leadFitScore ?? finding.leadFitScore,
+            scoreStatus: fields.scoreStatus || finding.scoreStatus,
+            extractedData: fields.extractedData,
+            reasons: fields.reasons,
+            intelligenceVersion: fields.intelligenceVersion || finding.intelligenceVersion,
+          },
+        });
+        finding = await tx.agentFinding.findUnique({ where: { id: finding.id } });
+      }
+
+      if (!finding) {
+        throw new Error('Finding upsert failed.');
+      }
+
+      await tx.agentIngestionEvent.upsert({
+        where: {
+          companyId_ingestionId: {
+            companyId: input.companyId,
+            ingestionId,
+          },
+        },
+        create: {
+          companyId: input.companyId,
+          ingestionId,
+          idempotencyKey,
+          localWorkerId: input.payload.localWorkerId || null,
+          keyId: input.keyId || null,
+          status: created ? 'accepted' : 'duplicate',
+          sourceId: source.id,
+          scannedContentId: content.id,
+          findingId: finding.id,
+          requestHash: input.requestHash || null,
+          payloadMeta: {
+            parserVersion: input.payload.parserVersion,
+            analysisVersion: input.payload.analysisVersion,
+            capturedAt: input.payload.capturedAt,
+          },
+          warnings,
+          telegramQueued: false,
+        },
+        update: {
+          status: created ? 'accepted' : 'duplicate',
+          sourceId: source.id,
+          scannedContentId: content.id,
+          findingId: finding.id,
+          warnings,
+          telegramQueued: false,
+          errorMessage: null,
+        },
+      });
+
+      return {
+        kind: 'finding' as const,
+        status: created ? ('accepted' as const) : ('duplicate' as const),
+        sourceId: source.id,
+        scannedContentId: content.id,
+        findingId: finding.id,
+        created,
+        findingScore: finding.finalScore ?? finding.score,
+        findingTitle: finding.title,
+      };
+    });
+
+    if (persisted.kind === 'content_only') {
+      return {
+        status: persisted.status,
+        ingestionId,
+        sourceId: persisted.sourceId,
+        scannedContentId: persisted.scannedContentId,
+        findingId: null,
+        telegramQueued: false,
+        warnings,
+      };
     }
 
     let telegramQueued = false;
-    if (created) {
+    if (persisted.created && persisted.findingId) {
       void notifyFindingHighScore({
         companyId: input.companyId,
-        findingId: finding.id,
-        score: finding.finalScore ?? finding.score,
-        title: finding.title,
+        findingId: persisted.findingId,
+        score: persisted.findingScore,
+        title: persisted.findingTitle,
         canonicalUrl: input.payload.scannedContent?.canonicalUrl,
-        sourceId: source.id,
+        sourceId: persisted.sourceId,
       }).catch(() => undefined);
 
-      // Non-blocking telegram — never fail ingest; only mark queued when send actually ok
-      void notifyFindingIfEligible({ findingId: finding.id })
+      // Network side effect AFTER commit — never rollback ingest on Telegram failure
+      void notifyFindingIfEligible({ findingId: persisted.findingId })
         .then(r => {
           if (r.ok) {
             void prisma.agentIngestionEvent
@@ -621,49 +688,12 @@ export async function ingestFindingPayload(input: {
       telegramQueued = false;
     }
 
-    await prisma.agentIngestionEvent.upsert({
-      where: {
-        companyId_ingestionId: {
-          companyId: input.companyId,
-          ingestionId,
-        },
-      },
-      create: {
-        companyId: input.companyId,
-        ingestionId,
-        idempotencyKey,
-        localWorkerId: input.payload.localWorkerId || null,
-        keyId: input.keyId || null,
-        status: created ? 'accepted' : 'duplicate',
-        sourceId: source.id,
-        scannedContentId: content.id,
-        findingId: finding.id,
-        requestHash: input.requestHash || null,
-        payloadMeta: {
-          parserVersion: input.payload.parserVersion,
-          analysisVersion: input.payload.analysisVersion,
-          capturedAt: input.payload.capturedAt,
-        },
-        warnings,
-        telegramQueued,
-      },
-      update: {
-        status: created ? 'accepted' : 'duplicate',
-        sourceId: source.id,
-        scannedContentId: content.id,
-        findingId: finding.id,
-        warnings,
-        telegramQueued,
-        errorMessage: null,
-      },
-    });
-
     return {
-      status: created ? 'accepted' : 'duplicate',
+      status: persisted.status,
       ingestionId,
-      sourceId: source.id,
-      scannedContentId: content.id,
-      findingId: finding.id,
+      sourceId: persisted.sourceId,
+      scannedContentId: persisted.scannedContentId,
+      findingId: persisted.findingId,
       telegramQueued,
       warnings,
     };
