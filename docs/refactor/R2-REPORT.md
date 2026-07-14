@@ -87,7 +87,18 @@ Repositories, domain errors, promote/inventory/ingest transactional paths, local
 
 ## 18. Commits
 
-See git log after R2 close on `feature/refactor`.
+```
+0b3fbfe docs(refactor): capture R2 baseline and Prisma access inventory
+3b03b13 refactor(db): add transaction context and agent repositories
+1653a46 refactor(lifecycle): transaction-safe finding to investor lead promote
+85e75c5 refactor(inventory): transaction-safe finding to external inventory
+36baa27 refactor(sync): transactional local outbox persistence helpers
+a8786fd refactor(ingest): atomic source content finding upsert
+156a5f7 test(db): add repository and transaction rollback coverage
+2765ff3 docs(refactor): document R2 boundaries and R3 kickoff
+```
+
+HEAD: `2765ff3`
 
 ## 19. Remaining direct Prisma callers
 

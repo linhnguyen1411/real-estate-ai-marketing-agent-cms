@@ -82,3 +82,4 @@ runtime/outbox-dumps/
 runtime/logs/
 *.bak
 desktop.ini
+docs/
