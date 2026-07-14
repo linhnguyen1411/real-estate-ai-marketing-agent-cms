@@ -31,6 +31,8 @@ const SUITE = [
   'test:agent-scheduler',
   'test:agent-api',
   'test:agent-tenant-isolation',
+  'test:agent-repositories',
+  'test:agent-transactions',
   'test:deploy-safety',
 ];
 

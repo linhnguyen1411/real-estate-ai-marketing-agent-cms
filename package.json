@@ -72,6 +72,8 @@
     "test:agent-regression": "node scripts/test-agent-regression.mjs",
     "test:deploy-safety": "node scripts/test-deploy-safety.mjs",
     "test:agent-tenant-isolation": "tsx scripts/test-agent-tenant-isolation.ts",
+    "test:agent-repositories": "tsx scripts/test-agent-repositories.ts",
+    "test:agent-transactions": "tsx scripts/test-agent-transactions.ts",
     "fb:test": "tsx scripts/fb-test.mjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
