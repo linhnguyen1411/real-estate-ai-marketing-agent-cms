@@ -136,7 +136,32 @@ export class BrowserManager {
       meta.endpointHost = this.config.cdpEndpoint.host;
       meta.endpointPort = this.config.cdpEndpoint.port;
     }
+    Object.assign(meta, this.getResourceDiagnostics());
     return meta;
+  }
+
+  /**
+   * Lightweight resource snapshot for heartbeat / job results / ops diagnose.
+   * Does not touch user tabs; counts only.
+   */
+  getResourceDiagnostics(): Record<string, unknown> {
+    const contexts =
+      (this.cdp ? 1 : 0) + (this.managed ? 1 : 0);
+    const pageCount = this.currentContextPageCount();
+    const workerOwned =
+      this.scanPage && !this.scanPage.isClosed() ? 1 : 0;
+    return {
+      browserContexts: contexts,
+      contextPageCount: pageCount,
+      workerOwnedScanPages: workerOwned,
+      userOwnedPagesEstimate: Math.max(0, pageCount - workerOwned),
+      scanPageCreated: this.scanMetrics.scanPageCreated,
+      scanPageReused: this.scanMetrics.scanPageReused,
+      scanPageRecreatedAfterCrash: this.scanMetrics.scanPageRecreatedAfterCrash,
+      facebookConcurrentJobRejected: this.scanMetrics.facebookConcurrentJobRejected,
+      cdpBusy: this.cdpBusy,
+      lastBrowserHeartbeatAt: new Date().toISOString(),
+    };
   }
 
   async launch(): Promise<BrowserContext | null> {
