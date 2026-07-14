@@ -137,6 +137,41 @@ function main() {
   assert.doesNotMatch(app, /import\s+AutomationsPage\s+from/, 'AutomationsPage must be lazy');
   checks.push('Batch 2 pages are lazy-imported from App');
 
+  // Batch 3 core sales + agent workflow modules
+  for (const rel of [
+    'src/features/agent/scanned-content/pages/ScannedContentPage.tsx',
+    'src/features/agent/lead-intelligence/pages/LeadIntelligencePage.tsx',
+    'src/features/agent/lead-intelligence/components/FindingDetailDrawer.tsx',
+    'src/features/agent/lead-intelligence/matching/MatchingPanel.tsx',
+    'src/features/agent/action-proposals/pages/ActionProposalsPage.tsx',
+    'src/features/agent/external-inventory/pages/ExternalInventoryPage.tsx',
+    'src/features/investor-leads/pages/InvestorLeadsPage.tsx',
+    'src/features/crm/pages/CustomersPage.tsx',
+  ]) {
+    mustExist(rel);
+    checks.push(`exists ${rel}`);
+  }
+
+  assert.match(app, /CustomersPage/, 'App must lazy-mount CRM CustomersPage');
+  assert.match(app, /InvestorLeadsPage/, 'App must lazy-mount InvestorLeadsPage');
+  assert.doesNotMatch(app, /Quản lý khách hàng CRM/, 'CRM table JSX must leave App');
+  assert.doesNotMatch(app, /handleAddCustomer/, 'CRM add handler must leave App');
+  assert.doesNotMatch(app, /showAddCustomerModal/, 'CRM modal state must leave App');
+  checks.push('Batch 3 App no longer owns CRM list/modal');
+
+  assert.match(agentPlatform, /features\/agent\/scanned-content\/pages\/ScannedContentPage/);
+  assert.match(agentPlatform, /features\/agent\/lead-intelligence\/pages\/LeadIntelligencePage/);
+  assert.match(agentPlatform, /features\/agent\/action-proposals\/pages\/ActionProposalsPage/);
+  assert.match(agentPlatform, /features\/agent\/external-inventory\/pages\/ExternalInventoryPage/);
+  assert.doesNotMatch(agentPlatform, /import AgentFindings from/);
+  assert.doesNotMatch(agentPlatform, /import AgentScannedContents from/);
+  assert.doesNotMatch(agentPlatform, /import AgentExternalInventory from/);
+  checks.push('AgentPlatformPage lazy Batch 3 sections');
+
+  const leadPage = read('src/features/agent/lead-intelligence/pages/LeadIntelligencePage.tsx');
+  assert.match(leadPage, /intelligenceOf|ResolvedLeadIntelligence|intelligence/, 'canonical intelligence retained');
+  checks.push('Lead Intelligence keeps canonical DTO usage');
+
   console.log('frontend-architecture checks passed:');
   for (const c of checks) console.log('  ✓', c);
 }
