@@ -40,57 +40,31 @@ import {
   GripVertical,
   FileSearch,
 } from 'lucide-react';
-import { AuthUser, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, GeneratedContentRecord, User } from './types';
-import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
+import { AuthUser, Property, Post, AutomationTask, AppSettings, GeneratedContentRecord, User } from './types';
+import { DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
-import MarkdownEditor from './components/MarkdownEditor';
-import { uploadContentImage } from './services/blogApi';
-import { resizeImageFile } from './utils/resizeImageFile';
 import {
-  countPropertyStatuses,
-  getPropertySaleStatus,
-  matchesAdminPropertyStatusFilter,
-} from './utils/propertyStatus';
-import { sortByCreatedAtDesc } from './utils/propertySort';
-import { getPropertyCreatorId, getPropertyCreatorName } from './utils/propertyCreator';
-import { AGENT_TIER_ORDER, AGENT_TIER_META } from './utils/agentTier';
-import { extractHashtagsFromText, hashtagsToKeywords } from './utils/hashtags';
-import {
-  createProperty,
-  deleteProperty,
   DashboardData,
   NavigationCounts,
-  generateInboxReply,
   generatePropertyMarketing,
   getAuthToken,
-  getChatHistory,
-  getPublicChatGuestHistory,
-  getPublicChatGuests,
   getCurrentUser,
   getGeneratedContents,
   getBootstrapData,
   getNavigationCounts,
   listProperties,
   listPosts,
-  listInbox,
   getUsers,
   login,
   logout,
   refreshTrafficData,
   runDemoAutomations,
   saveSettings,
-  sendAssistantMessage,
-  sendPublicChatGuestMessage,
-  sendInboxReply,
-  updatePublicChatGuestAi,
-  deleteChatSession,
   updatePost,
-  updateProperty,
   verifyContent,
   invalidateCrmModule,
   cacheInvalidate,
 } from './services/api';
-import { MARKET_ZONE_OPTIONS, getEffectiveProjectGroups, normalizeProjectName } from './seo/propertyCatalog';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
 import AppProviders from './app/AppProviders';
 import AdminLayout from './app/layouts/AdminLayout';
@@ -107,7 +81,6 @@ import {
 
 const InvestorLeadsPage = React.lazy(() => import('./features/investor-leads/pages/InvestorLeadsPage'));
 const ShortLinksPanel = React.lazy(() => import('./components/admin/ShortLinksPanel'));
-const AdminPropertyDirectory = React.lazy(() => import('./components/admin/AdminPropertyDirectory'));
 const AdminProjectsPanel = React.lazy(() => import('./components/admin/AdminProjectsPanel'));
 const LeadMagnetContentAdmin = React.lazy(() => import('./components/admin/LeadMagnetContentAdmin'));
 const SeoContentAdmin = React.lazy(() => import('./components/admin/SeoContentAdmin'));
@@ -117,6 +90,9 @@ const AutomationsPage = React.lazy(() => import('./features/automations/pages/Au
 const IntegrationsPage = React.lazy(() => import('./features/integrations/pages/IntegrationsPage'));
 const ProfilePage = React.lazy(() => import('./features/profile/pages/ProfilePage'));
 const CustomersPage = React.lazy(() => import('./features/crm/pages/CustomersPage'));
+const PropertiesPage = React.lazy(() => import('./features/properties/pages/PropertiesPage'));
+const InboxPage = React.lazy(() => import('./features/inbox/pages/InboxPage'));
+const ChatFeatureHost = React.lazy(() => import('./features/chat/pages/ChatFeatureHost'));
 const UsersPage = React.lazy(() => import('./features/users/pages/UsersPage'));
 const DashboardHotLeads = React.lazy(() => import('./features/dashboard/components/DashboardHotLeads'));
 
@@ -163,31 +139,12 @@ const EMPTY_NAV_COUNTS: NavigationCounts = {
   sources: 0,
 };
 
-const PROPERTY_TYPE_OPTIONS = ['Đất nền', 'Nhà Phố', 'Căn Hộ', 'Shophouse', 'Kho xưởng', 'Nhà hàng', 'Khách sạn', 'Biệt thự', 'Villa', 'Khác'];
-const TRANSACTION_TYPE_OPTIONS = ['Bán', 'Cho thuê'];
-const DIRECTION_OPTIONS = ['Đông', 'Tây', 'Nam', 'Bắc', 'Đông Nam', 'Đông Bắc', 'Tây Nam', 'Tây Bắc'];
-const LEGAL_STATUS_OPTIONS = ['Sổ đỏ', 'Sổ hồng', 'Sổ hồng riêng', 'Sổ hồng hoàn công', 'Sở hữu lâu dài', 'Sở hữu 50 năm', 'Hợp đồng mua bán', 'Đang chờ sổ'];
-const PROPERTY_STATUS_OPTIONS = [
-  { value: 'available', label: 'Đang bán/cho thuê' },
-  { value: 'sold', label: 'Đã bán/đã thuê' },
-  { value: 'hidden', label: 'Đã ẩn' }
-];
-
 const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: string }> = {
   facebook: { name: 'Facebook', color: 'bg-indigo-500' },
   zalo: { name: 'Zalo', color: 'bg-blue-400' },
   tiktok: { name: 'TikTok', color: 'bg-rose-500' },
   website: { name: 'Website', color: 'bg-emerald-400' }
 };
-
-const createEmptyPropertyForm = () => ({
-  title: '', transaction_type: 'Bán', type: 'Đất nền', location: '', area: '100', floor_area: '', price: '4.5',
-  legal_status: 'Sổ hồng', direction: 'Đông Nam', road_width: '7.5',
-  floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
-  description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
-  sale_status: 'available', is_featured: false, selling_points: '',
-  market_zone: '', project_name: '',
-});
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
 
@@ -218,67 +175,37 @@ export default function App() {
   const [loginError, setLoginError] = useState<string>('');
   
   // App variables states
-  const [properties, setProperties] = useState<Property[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [inbox, setInbox] = useState<InboxMessage[]>([]);
   const [automations, setAutomations] = useState<AutomationTask[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
   const [managedUsers, setManagedUsers] = useState<User[]>([]);
-  const [chatHistoryRecords, setChatHistoryRecords] = useState<ChatHistoryRecord[]>([]);
-  const [selectedChatHistorySessionId, setSelectedChatHistorySessionId] = useState<string | undefined>(undefined);
-  const [publicChatGuests, setPublicChatGuests] = useState<PublicChatGuest[]>([]);
-  const [selectedChatGuestId, setSelectedChatGuestId] = useState<string>('');
-  const [selectedGuestChatHistory, setSelectedGuestChatHistory] = useState<ChatHistoryRecord[]>([]);
-  const [guestReplyInput, setGuestReplyInput] = useState('');
   // Loading & interactive states
   const [initialLoading, setInitialLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoadedCoreData = useRef(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [propertyFilters, setPropertyFilters] = useState({
-    price: 'all',
-    area: 'all',
-    type: 'all',
-    transactionType: 'all',
-    status: 'visible',
-    creator: 'all',
-  });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const [userChatInput, setUserChatInput] = useState<string>('');
+  const [chatDraftSeed, setChatDraftSeed] = useState(0);
 
   // Chatbot states
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([ASSISTANT_WELCOME_MESSAGE]);
-  const [userChatInput, setUserChatInput] = useState<string>('');
 
   // Gallery carousel state for properties
-  const [propertyGalleryIndex, setPropertyGalleryIndex] = useState<{ [key: string]: number }>({});
 
   // Modals & form fields state
-  const [showAddPropertyModal, setShowAddPropertyModal] = useState<boolean>(false);
-  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
-  const [customProjectMode, setCustomProjectMode] = useState(false);
-  const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
 
   const [selectedPropertyForAI, setSelectedPropertyForAI] = useState<Property | null>(null);
+  const [aiPropertyOptions, setAiPropertyOptions] = useState<Property[]>([]);
   const [aiGeneratingTone, setAiGeneratingTone] = useState<string>('sang trọng và chuyên nghiệp');
 
-  const [selectedInboxMessage, setSelectedInboxMessage] = useState<InboxMessage | null>(null);
-  const [responseReplyText, setResponseReplyText] = useState<string>('');
 
   const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD);
   const [navigationCounts, setNavigationCounts] = useState<NavigationCounts>(EMPTY_NAV_COUNTS);
-  const [propertiesPage, setPropertiesPage] = useState(1);
-  const [propertiesTotal, setPropertiesTotal] = useState(0);
   const [moduleLoading, setModuleLoading] = useState(false);
   const loadedModulesRef = useRef<Set<string>>(new Set());
-
-  const detectedPropertyHashtags = useMemo(
-    () => extractHashtagsFromText(`${newPropertyForm.rich_description}\n${newPropertyForm.selling_points}`),
-    [newPropertyForm.rich_description, newPropertyForm.selling_points]
-  );
 
   React.useEffect(() => {
     if (!currentUser || activeTab !== 'dashboard') return;
@@ -383,33 +310,14 @@ export default function App() {
     }
   };
 
-  /** Chat / users / generated — only when those menus open. */
+  /** Generated contents + users for creator labels — chat loads in ChatFeatureHost. */
   const loadSecondaryData = async () => {
-    const [chatHistoryRecords, guests, myChatHistory, generatedContents, users] = await Promise.all([
-      getChatHistory().catch(() => []),
-      getPublicChatGuests().catch(() => []),
-      getChatHistory('mine').catch(() => []),
+    const [generatedContents, users] = await Promise.all([
       getGeneratedContents().catch(() => []),
       currentUser?.role === 'owner' || currentUser?.role === 'company'
         ? getUsers().catch(() => [])
         : Promise.resolve([] as AuthUser[]),
     ]);
-
-    setChatHistoryRecords(chatHistoryRecords);
-    setPublicChatGuests(guests);
-    setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
-    if (myChatHistory.length > 0) {
-      setChatMessages(
-        myChatHistory
-          .slice()
-          .reverse()
-          .map(item => ({
-            role: item.role,
-            content: item.message,
-            timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          }))
-      );
-    }
     setGeneratedContents(generatedContents);
     if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
       setManagedUsers(users);
@@ -418,20 +326,6 @@ export default function App() {
     }
   };
 
-  const loadPropertiesModule = async (page = propertiesPage, search = searchQuery) => {
-    const result = await listProperties({
-      page,
-      limit: 100,
-      search: search.trim() || undefined,
-      status: propertyFilters.status,
-      type: propertyFilters.type !== 'all' ? propertyFilters.type : undefined,
-      transactionType: propertyFilters.transactionType !== 'all' ? propertyFilters.transactionType : undefined,
-      sort: 'created_at_desc',
-    });
-    setProperties(result.items);
-    setPropertiesPage(result.pagination.page);
-    setPropertiesTotal(result.pagination.total);
-  };
 
   const loadModuleForTab = async (tab: string, opts?: { force?: boolean }) => {
     if (!currentUser) return;
@@ -446,18 +340,25 @@ export default function App() {
       if (tab === 'crm' || tab === 'users') {
         return;
       }
-      if (tab === 'properties' || tab === 'ai-content' || tab === 'projects') {
-        const key = 'properties';
-        if (!force && loadedModulesRef.current.has(key) && properties.length > 0 && tab !== 'properties') return;
-        if (tab === 'properties' || mark(key) || force || properties.length === 0) {
-          setModuleLoading(true);
-          loadedModulesRef.current.add(key);
-          await loadPropertiesModule(tab === 'properties' ? 1 : propertiesPage, searchQuery);
-          if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
-            const users = await getUsers().catch(() => [] as User[]);
-            setManagedUsers(users);
+      if (tab === 'properties' || tab === 'projects') {
+        return;
+      }
+      if (tab === 'ai-content') {
+        setModuleLoading(true);
+        if (mark('ai-properties') || force || aiPropertyOptions.length === 0) {
+          const result = await listProperties({ page: 1, limit: 100, sort: 'created_at_desc' });
+          setAiPropertyOptions(result.items);
+          if (selectedPropertyForAI) {
+            const fresh = result.items.find(p => p.id === selectedPropertyForAI.id);
+            if (fresh) setSelectedPropertyForAI(fresh);
           }
         }
+        if (mark('generated') || force) {
+          await loadSecondaryData();
+        }
+        return;
+      }
+      if (['website-chat', 'chat-history', 'chatbot', 'inbox'].includes(tab)) {
         return;
       }
       if (tab === 'posts' && MXH_POSTS_ENABLED) {
@@ -468,10 +369,6 @@ export default function App() {
         return;
       }
       if (tab === 'inbox') {
-        if (!mark('inbox') && !force) return;
-        setModuleLoading(true);
-        const result = await listInbox({ page: 1, limit: DEFAULT_PAGE_SIZE, search: searchQuery.trim() || undefined });
-        setInbox(result.items);
         return;
       }
       if (tab === 'automations') {
@@ -481,16 +378,6 @@ export default function App() {
         return;
       }
       if (tab === 'settings' || tab === 'profile') {
-        return;
-      }
-      if (['website-chat', 'chat-history', 'chatbot', 'ai-content'].includes(tab)) {
-        const key = tab === 'ai-content' ? 'generated' : 'secondary';
-        if (!mark(key) && !force) return;
-        setModuleLoading(true);
-        await loadSecondaryData();
-        if (tab === 'ai-content' && properties.length === 0) {
-          await loadPropertiesModule(1, '');
-        }
         return;
       }
     } catch (e: any) {
@@ -518,10 +405,8 @@ export default function App() {
       // Drop stale full-list caches when user explicitly refreshes.
       if (!isFirstLoad) {
         loadedModulesRef.current.clear();
-        setProperties([]);
         setPosts([]);
-        setInbox([]);
-      }
+          }
     } catch (e: any) {
       console.error('Connection to APIs failed', e);
       showToast(e.message || 'Lỗi kết nối API Server. Hãy kiểm tra logs backend hoặc reload trang.', 'error');
@@ -542,44 +427,16 @@ export default function App() {
     void loadModuleForTab(activeTab);
   }, [currentUser, activeTab, initialLoading]);
 
-  // Server-side search when staying on properties / posts / inbox tabs.
-  // CRM search lives in CustomersPage.
+  // Server-side search for posts tab (properties/inbox/CRM own their search).
   useEffect(() => {
     if (!currentUser || initialLoading) return;
-    if (!['properties', 'posts', 'inbox'].includes(activeTab)) return;
+    if (activeTab !== 'posts') return;
     const timer = window.setTimeout(() => {
-      loadedModulesRef.current.delete(activeTab === 'properties' ? 'properties' : activeTab);
+      loadedModulesRef.current.delete('posts');
       void loadModuleForTab(activeTab, { force: true });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [searchQuery, propertyFilters.status, propertyFilters.type, propertyFilters.transactionType]);
-
-  const refreshPublicGuestChats = async (sessionId = selectedChatGuestId) => {
-    const guests = await getPublicChatGuests().catch(() => publicChatGuests);
-    setPublicChatGuests(guests);
-    if (!sessionId && guests[0]?.session_id) {
-      setSelectedChatGuestId(guests[0].session_id);
-      sessionId = guests[0].session_id;
-    }
-    if (sessionId) {
-      setSelectedGuestChatHistory(await getPublicChatGuestHistory(sessionId).catch(() => []));
-    }
-  };
-
-  const refreshChatHistoryRecords = async () => {
-    setChatHistoryRecords(await getChatHistory().catch(() => chatHistoryRecords));
-  };
-
-  useEffect(() => {
-    if (!currentUser || !['website-chat', 'chat-history'].includes(activeTab)) return;
-    refreshPublicGuestChats(selectedChatGuestId);
-    refreshChatHistoryRecords();
-    const timer = window.setInterval(() => {
-      refreshPublicGuestChats(selectedChatGuestId);
-      refreshChatHistoryRecords();
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [currentUser, activeTab, selectedChatGuestId]);
+  }, [searchQuery]);
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
@@ -606,17 +463,10 @@ export default function App() {
     logout();
     localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
     setCurrentUser(null);
-    setProperties([]);
     setPosts([]);
-    setInbox([]);
     setAutomations([]);
     setGeneratedContents([]);
     setManagedUsers([]);
-    setChatHistoryRecords([]);
-    setPublicChatGuests([]);
-    setSelectedChatGuestId('');
-    setSelectedGuestChatHistory([]);
-    setGuestReplyInput('');
     setAdminMenuOpen(false);
     navigate('/admin/login', { replace: true });
   };
@@ -669,163 +519,12 @@ export default function App() {
     }
   };
 
-  const readImageFiles = async (files: FileList | null): Promise<string[]> => {
-    if (!files?.length) return [];
-
-    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/')).slice(0, 6);
-    return Promise.all(imageFiles.map(file => resizeImageFile(file)));
-  };
-
-  const openAddPropertyModal = () => {
-    setEditingProperty(null);
-    setNewPropertyForm(createEmptyPropertyForm());
-    setCustomProjectMode(false);
-    setShowAddPropertyModal(true);
-  };
-
-  const openEditPropertyModal = (property: Property) => {
-    setEditingProperty(property);
-    const knownProjects = getEffectiveProjectGroups(settings).flatMap(group => group.projects);
-    const hasKnownProject = property.project_name ? knownProjects.includes(property.project_name) : false;
-    setCustomProjectMode(Boolean(property.project_name && !hasKnownProject));
-    setNewPropertyForm({
-      title: property.title,
-      transaction_type: property.transaction_type || 'Bán',
-      type: property.type,
-      location: property.location,
-      area: String(property.area),
-      floor_area: property.floor_area ? String(property.floor_area) : '',
-      price: String(property.price),
-      legal_status: property.legal_status,
-      direction: property.direction,
-      road_width: String(property.road_width),
-      floors: property.floors ? String(property.floors) : '',
-      bedrooms: property.bedrooms ? String(property.bedrooms) : '',
-      bathrooms: property.bathrooms ? String(property.bathrooms) : '',
-      garage: Boolean(property.garage),
-      pool: Boolean(property.pool),
-      description: property.description,
-      rich_description: property.rich_description || '',
-      internal_notes: property.internal_notes || '',
-      images: property.images || '',
-      gallery_images: [...(property.gallery_images || [])],
-      sale_status: property.sale_status || 'available',
-      is_featured: Boolean(property.is_featured),
-      selling_points: (property.selling_points || []).join('\n'),
-      market_zone: property.market_zone || '',
-      project_name: normalizeProjectName(property.project_name) || property.project_name || '',
-    });
-    setShowAddPropertyModal(true);
-  };
-
-  const closePropertyModal = () => {
-    setShowAddPropertyModal(false);
-    setEditingProperty(null);
-    setDraggedGalleryIndex(null);
-    setCustomProjectMode(false);
-    setNewPropertyForm(createEmptyPropertyForm());
-  };
-
-  const reorderGalleryImages = (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    setNewPropertyForm(prev => {
-      const gallery = [...prev.gallery_images];
-      const [moved] = gallery.splice(fromIndex, 1);
-      gallery.splice(toIndex, 0, moved);
-      return {
-        ...prev,
-        gallery_images: gallery,
-        images: gallery[0] || ''
-      };
-    });
-  };
-
-  const handlePropertyImageUpload = async (prop: Property, files: FileList | null) => {
-    setActionLoading(`upload-prop-${prop.id}`);
-    try {
-      const uploadedImages = await readImageFiles(files);
-      if (!uploadedImages.length) {
-        showToast("Vui lòng chọn file ảnh hợp lệ.", "error");
-        return;
-      }
-
-      const gallery = [...(prop.gallery_images || []), ...uploadedImages].slice(0, 8);
-      const updated = await updateProperty(prop.id, {
-        images: prop.images || uploadedImages[0],
-        gallery_images: gallery
-      });
-      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
-      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
-      showToast("Đã upload và lưu ảnh bất động sản.", "success");
-    } catch (e: any) {
-      showToast(e.message || "Lỗi upload ảnh.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleTogglePropertySold = async (prop: Property) => {
-    setActionLoading(`sold-prop-${prop.id}`);
-    try {
-      const updated = await updateProperty(prop.id, {
-        sale_status: prop.sale_status === 'sold' ? 'available' : 'sold'
-      });
-      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
-      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
-      showToast(updated.sale_status === 'sold' ? "Đã đánh dấu bất động sản là đã bán." : "Đã chuyển bất động sản về trạng thái đang bán.", "success");
-    } catch (e: any) {
-      showToast(e.message || "Lỗi cập nhật trạng thái bán.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleTogglePropertyFeatured = async (prop: Property) => {
-    setActionLoading(`featured-prop-${prop.id}`);
-    try {
-      const updated = await updateProperty(prop.id, {
-        is_featured: !prop.is_featured
-      });
-      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
-      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
-      showToast(updated.is_featured ? "Đã gán BĐS nổi bật." : "Đã bỏ gán BĐS nổi bật.", "success");
-    } catch (e: any) {
-      showToast(e.message || "Lỗi cập nhật BĐS nổi bật.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const buildPropertyCopyText = (prop: Property) => [
-    prop.title,
-    `Hình thức: ${prop.transaction_type || 'Bán'}`,
-    `Loại hình: ${prop.type}`,
-    `Vị trí: ${prop.location}`,
-    `Giá: ${prop.price} tỷ VND`,
-    `Diện tích: ${prop.area} m2`,
-    prop.floor_area ? `Diện tích sàn: ${prop.floor_area} m2` : '',
-    `Pháp lý: ${prop.legal_status}`,
-    `Hướng: ${prop.direction}`,
-    `Đường: ${prop.road_width} m`,
-    prop.floors ? `Số tầng: ${prop.floors}` : '',
-    prop.bedrooms ? `Phòng ngủ: ${prop.bedrooms}` : '',
-    prop.bathrooms ? `Phòng tắm: ${prop.bathrooms}` : '',
-    prop.garage ? 'Có gara' : '',
-    prop.pool ? 'Có hồ bơi' : '',
-    `Trạng thái: ${prop.sale_status === 'sold' ? 'Đã bán' : 'Đang bán'}`,
-    '',
-    prop.rich_description || prop.description,
-    '',
-    `Điểm nổi bật: ${(prop.selling_points || []).join(', ')}`,
-    prop.internal_notes ? `Ghi chú nội bộ: ${prop.internal_notes}` : ''
-  ].filter(Boolean).join('\n');
-
   // AI property marketing content generator
   const handleAIGeneratePropertyMarketing = async (propId: string) => {
     setActionLoading(`gen-prop-${propId}`);
     try {
       const property = await generatePropertyMarketing(propId, aiGeneratingTone);
-      setProperties(prev => prev.map(p => p.id === propId ? property : p));
+      setAiPropertyOptions(prev => prev.map(p => (p.id === propId ? property : p)));
       setSelectedPropertyForAI(property);
       showToast("Đã tạo campaign brief và nội dung đa kênh.", "success");
     } catch (e: any) {
@@ -836,90 +535,10 @@ export default function App() {
   };
 
   // AI Inbox reply smart suggestion
-  const handleAILiveReplySuggestion = async (msgId: string) => {
-    setActionLoading(`reply-sugg-${msgId}`);
-    try {
-      const message = await generateInboxReply(msgId);
-      showToast("AI đã soạn thành công kịch bản trả lời khách!", "success");
-      setInbox(prev => prev.map(m => m.id === msgId ? message : m));
-      setResponseReplyText(message.ai_reply_suggestion || '');
-    } catch (e: any) {
-      showToast(e.message || "Lỗi soạn kịch bản từ Ollama/Gemini.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
 
   // Submit reply message simulated
-  const handleSendManualReply = async (msgId: string) => {
-    if (!responseReplyText.trim()) {
-      showToast("Vui lòng điền nội dung câu trả lời", "error");
-      return;
-    }
-    setActionLoading(`send-reply-${msgId}`);
-    try {
-      const message = await sendInboxReply(msgId, responseReplyText);
-      showToast("Đã gửi phản hồi thành công và cập nhật trạng thái đã xử lý!", "success");
-      setInbox(prev => prev.map(m => m.id === msgId ? message : m));
-      setSelectedInboxMessage(null);
-      setResponseReplyText('');
-    } catch (e: any) {
-      showToast(e.message || "Lỗi gửi.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
 
   // Submit add/edit property
-  const handleSaveProperty = async (e: FormEvent) => {
-    e.preventDefault();
-    setActionLoading(editingProperty ? `edit-prop-${editingProperty.id}` : 'add-property');
-    try {
-      const sellingPoints = newPropertyForm.selling_points.split('\n').map(line => line.trim()).filter(Boolean);
-      const fallbackDescription = sellingPoints.join('. ') || newPropertyForm.rich_description || '';
-      const payload = {
-        ...newPropertyForm,
-        area: Number(newPropertyForm.area),
-        floor_area: newPropertyForm.floor_area ? Number(newPropertyForm.floor_area) : undefined,
-        price: Number(newPropertyForm.price),
-        road_width: Number(newPropertyForm.road_width),
-        floors: newPropertyForm.floors ? Number(newPropertyForm.floors) : undefined,
-        bedrooms: newPropertyForm.bedrooms ? Number(newPropertyForm.bedrooms) : undefined,
-        bathrooms: newPropertyForm.bathrooms ? Number(newPropertyForm.bathrooms) : undefined,
-        garage: Boolean(newPropertyForm.garage),
-        pool: Boolean(newPropertyForm.pool),
-        description: fallbackDescription,
-        rich_description: newPropertyForm.rich_description || fallbackDescription,
-        selling_points: sellingPoints,
-        market_zone: newPropertyForm.market_zone || undefined,
-        project_name: newPropertyForm.project_name?.trim() || undefined,
-      };
-
-      if (editingProperty) {
-        const property = await updateProperty(editingProperty.id, payload);
-        setProperties(prev => prev.map(item => item.id === property.id ? property : item));
-        setPropertyGalleryIndex(prev => ({ ...prev, [property.id]: 0 }));
-        if (selectedPropertyForAI?.id === property.id) setSelectedPropertyForAI(property);
-        showToast("Đã cập nhật bất động sản thành công!", "success");
-      } else {
-        const property = await createProperty(payload);
-        setProperties(prev => [property, ...prev]);
-        showToast("Thêm bất động sản mới thành công! Tự động chạy chiến dịch marketing.", "success");
-      }
-
-      invalidateCrmModule();
-      void refreshNavigationCounts();
-      const refreshed = await refreshTrafficData();
-      setDashboardData(refreshed.dashboard);
-      setSettings(refreshed.settings);
-      closePropertyModal();
-    } catch (e: any) {
-      showToast(e.message || "Không thể lưu bất động sản.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   // Run manually test automation reports (sidebar sandbox button)
   const handleRunDemoAutomations = async () => {
     setActionLoading('run-automations');
@@ -935,175 +554,6 @@ export default function App() {
   };
 
   // Send direct chat message to Assistant Chatbot
-  const handleSendChatbotMessage = async () => {
-    if (!userChatInput.trim()) return;
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content: userChatInput,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setChatMessages(prev => [...prev, userMsg]);
-    setUserChatInput('');
-    setActionLoading('chatbot-chat');
-    
-    try {
-      const assistantReply = await sendAssistantMessage(userMsg.content);
-      setChatMessages(prev => [...prev, {
-        role: 'model',
-        content: assistantReply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-    } catch (e: any) {
-      showToast(e.message || "Lỗi kết nối server AI.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleToggleGuestAi = async (guest: PublicChatGuest) => {
-    setActionLoading(`guest-ai-${guest.session_id}`);
-    try {
-      const nextEnabled = !Boolean(guest.ai_enabled);
-      const updated = await updatePublicChatGuestAi(guest.session_id, nextEnabled);
-      setPublicChatGuests(prev => prev.map(item => item.session_id === updated.session_id ? updated : item));
-      showToast(nextEnabled ? 'Đã bật lại AI cho khách này.' : 'Đã tắt AI, admin sẽ tự chat với khách.', 'success');
-    } catch (error: any) {
-      showToast(error.message || 'Không thể cập nhật trạng thái AI.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSendGuestReply = async () => {
-    const message = guestReplyInput.trim();
-    if (!selectedChatGuestId || !message) return;
-    setActionLoading(`guest-reply-${selectedChatGuestId}`);
-    try {
-      const saved = await sendPublicChatGuestMessage(selectedChatGuestId, message);
-      setSelectedGuestChatHistory(prev => [...prev, saved]);
-      setGuestReplyInput('');
-      await refreshPublicGuestChats(selectedChatGuestId);
-    } catch (error: any) {
-      showToast(error.message || 'Không thể gửi tin nhắn cho khách.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSendHistoryGuestReply = async () => {
-    const message = guestReplyInput.trim();
-    if (!selectedHistoryGuest || !message) return;
-    setActionLoading(`guest-reply-${selectedHistoryGuest.session_id}`);
-    try {
-      await sendPublicChatGuestMessage(selectedHistoryGuest.session_id, message);
-      setGuestReplyInput('');
-      await refreshPublicGuestChats(selectedHistoryGuest.session_id);
-      await refreshChatHistoryRecords();
-    } catch (error: any) {
-      showToast(error.message || 'Không thể gửi tin nhắn cho khách.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const canDeleteChatSession = (sessionUserId: string) => {
-    if (!currentUser) return false;
-    if (sessionUserId.startsWith('public-')) {
-      return currentUser.role === 'owner' || currentUser.role === 'company';
-    }
-    if (currentUser.role === 'owner') return true;
-    if (currentUser.role === 'company') {
-      if (sessionUserId === currentUser.id) return true;
-      const sessionRecords = chatHistoryRecords.filter(record => record.user_id === sessionUserId);
-      const companyId = sessionRecords[0]?.company_id;
-      return !companyId || companyId === currentUser.company_id;
-    }
-    return sessionUserId === currentUser.id;
-  };
-
-  const applyDeletedChatSession = (sessionUserId: string) => {
-    setChatHistoryRecords(prev => prev.filter(record => record.user_id !== sessionUserId));
-
-    if (selectedChatHistorySessionId === sessionUserId) {
-      setSelectedChatHistorySessionId('');
-    }
-
-    if (sessionUserId.startsWith('public-')) {
-      const sessionId = sessionUserId.slice('public-'.length);
-      setPublicChatGuests(prev => prev.filter(guest => guest.session_id !== sessionId));
-      if (selectedChatGuestId === sessionId) {
-        setSelectedChatGuestId('');
-        setSelectedGuestChatHistory([]);
-      }
-    }
-
-    if (sessionUserId === currentUser?.id) {
-      setChatMessages([ASSISTANT_WELCOME_MESSAGE]);
-    }
-  };
-
-  const handleDeleteChatSession = async (sessionUserId: string, label = 'hội thoại này') => {
-    if (!canDeleteChatSession(sessionUserId)) {
-      showToast('Bạn không có quyền xóa lịch sử chat này.', 'error');
-      return;
-    }
-
-    if (!window.confirm(`Xóa toàn bộ lịch sử của ${label}? Thao tác này không thể hoàn tác.`)) {
-      return;
-    }
-
-    setActionLoading(`delete-chat-${sessionUserId}`);
-    try {
-      const result = await deleteChatSession(sessionUserId);
-      applyDeletedChatSession(sessionUserId);
-      await refreshChatHistoryRecords();
-      await refreshPublicGuestChats(selectedChatGuestId);
-      showToast(
-        result.deletedMessages > 0 || result.guestDeleted
-          ? 'Đã xóa lịch sử chat.'
-          : 'Không còn tin nhắn để xóa trong phiên này.',
-        'success'
-      );
-    } catch (error: any) {
-      const message = error.message || 'Không thể xóa lịch sử chat.';
-      showToast(
-        message.includes('404') || message.includes('rỗng')
-          ? 'API xóa chat chưa sẵn sàng. Hãy restart dev server: npm run dev'
-          : message,
-        'error'
-      );
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSoftDeleteProperty = async (prop: Property) => {
-    setActionLoading(`hide-prop-${prop.id}`);
-    try {
-      const updated = await deleteProperty(prop.id);
-      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
-      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
-      showToast('Đã ẩn sản phẩm khỏi listing công khai. Có thể khôi phục trong CMS.', 'success');
-    } catch (e: any) {
-      showToast(e.message || 'Không thể ẩn sản phẩm.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleRestoreProperty = async (prop: Property) => {
-    setActionLoading(`restore-prop-${prop.id}`);
-    try {
-      const updated = await updateProperty(prop.id, { sale_status: 'available' });
-      setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
-      if (selectedPropertyForAI?.id === prop.id) setSelectedPropertyForAI(updated);
-      showToast('Đã khôi phục sản phẩm về listing công khai.', 'success');
-    } catch (e: any) {
-      showToast(e.message || 'Không thể khôi phục sản phẩm.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
 
   const handleSaveProjectCatalog = async (patch: Partial<AppSettings>) => {
     setActionLoading('save-projects');
@@ -1119,67 +569,9 @@ export default function App() {
     }
   };
 
-  const propertyStatusCounts = useMemo(() => countPropertyStatuses(properties), [properties]);
-  const projectCatalogGroups = useMemo(() => getEffectiveProjectGroups(settings), [settings.project_groups]);
 
-  const propertyCreatorNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const user of managedUsers) {
-      map.set(user.id, user.name);
-    }
-    if (currentUser) {
-      map.set(currentUser.id, currentUser.name);
-    }
-    return map;
-  }, [managedUsers, currentUser]);
 
-  const propertyCreatorFilterOptions = useMemo(() => {
-    const ids = new Set<string>();
-    for (const property of properties) {
-      const creatorId = getPropertyCreatorId(property);
-      if (creatorId) ids.add(creatorId);
-    }
-    return Array.from(ids)
-      .map(id => ({ id, name: propertyCreatorNameById.get(id) || id }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-  }, [properties, propertyCreatorNameById]);
 
-  const filteredProperties = sortByCreatedAtDesc(properties.filter(p => {
-    const normalizedSearch = searchQuery.toLowerCase();
-    const saleStatus = getPropertySaleStatus(p);
-    const searchableText = [
-      p.title,
-      p.location,
-      p.type,
-      p.transaction_type || '',
-      p.legal_status,
-      p.direction,
-      p.rich_description || p.description || '',
-      p.internal_notes || '',
-      saleStatus
-    ].join(' ').toLowerCase();
-
-    const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
-    const matchesType = propertyFilters.type === 'all' || p.type === propertyFilters.type;
-    const matchesTransaction = propertyFilters.transactionType === 'all' || (p.transaction_type || 'Bán') === propertyFilters.transactionType;
-    const matchesStatus = matchesAdminPropertyStatusFilter(p, propertyFilters.status);
-    const matchesPrice =
-      propertyFilters.price === 'all'
-        || (propertyFilters.price === 'under3' && p.price < 3)
-        || (propertyFilters.price === '3to5' && p.price >= 3 && p.price <= 5)
-        || (propertyFilters.price === '5to10' && p.price > 5 && p.price <= 10)
-        || (propertyFilters.price === 'over10' && p.price > 10);
-    const matchesArea =
-      propertyFilters.area === 'all'
-        || (propertyFilters.area === 'under80' && p.area < 80)
-        || (propertyFilters.area === '80to150' && p.area >= 80 && p.area <= 150)
-        || (propertyFilters.area === 'over150' && p.area > 150);
-    const matchesCreator =
-      propertyFilters.creator === 'all'
-      || getPropertyCreatorId(p) === propertyFilters.creator;
-
-    return matchesSearch && matchesType && matchesTransaction && matchesStatus && matchesPrice && matchesArea && matchesCreator;
-  }));
 
   const filteredPosts = posts.filter(pos => 
     pos.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1202,30 +594,6 @@ export default function App() {
     .slice(0, 8);
   const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
   const canManageWebsiteChat = canManageCmsUsers;
-  const filteredChatHistoryRecords = chatHistoryRecords.filter(record => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return true;
-    return record.user_id.toLowerCase().includes(normalizedQuery)
-      || record.message.toLowerCase().includes(normalizedQuery)
-      || record.role.toLowerCase().includes(normalizedQuery);
-  });
-  const chatHistorySessions = Array.from(
-    filteredChatHistoryRecords.reduce((groups, record) => {
-      const sessionId = record.user_id;
-      groups.set(sessionId, [...(groups.get(sessionId) || []), record]);
-      return groups;
-    }, new Map<string, ChatHistoryRecord[]>())
-  ).map(([sessionId, records]) => ({
-    sessionId,
-    records: records.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    lastMessageAt: records.reduce((latest, record) => Math.max(latest, new Date(record.created_at).getTime()), 0)
-  })).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
-  const selectedChatHistorySession = chatHistorySessions.find(session => session.sessionId === selectedChatHistorySessionId)
-    ?? (selectedChatHistorySessionId === undefined && chatHistorySessions[0] ? chatHistorySessions[0] : undefined);
-  const selectedHistoryGuest = selectedChatHistorySession?.sessionId.startsWith('public-')
-    ? publicChatGuests.find(guest => `public-${guest.session_id}` === selectedChatHistorySession.sessionId)
-    : undefined;
-
   if (authLoading && !currentUser) {
     return <AuthLoadingScreen />;
   }
@@ -1288,8 +656,9 @@ export default function App() {
         canManageWebsiteChat,
         canManageCmsUsers,
         extraBadges: {
-          websiteChat: publicChatGuests.length,
-          chatHistory: chatHistoryRecords.length,
+          // Chat lists live in ChatFeatureHost; sidebar badges stay 0 until a lightweight count API exists.
+          websiteChat: 0,
+          chatHistory: 0,
           users: managedUsers.length,
         },
         actionLoading,
@@ -1328,25 +697,6 @@ export default function App() {
                 )}
               </div>
 
-              {activeTab === 'properties' && (
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <a
-                    href="/"
-                    target="_blank"
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-indigo-600/25 transition-all"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Xem trang BĐS Public</span>
-                  </a>
-                  <button
-                    onClick={openAddPropertyModal}
-                    className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Thêm Bất Động Sản</span>
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -1724,6 +1074,7 @@ export default function App() {
                     onDraftForCustomer={(prompt) => {
                       setActiveTab('chatbot');
                       setUserChatInput(prompt);
+                      setChatDraftSeed(v => v + 1);
                     }}
                   />
                 </Suspense>
@@ -1757,7 +1108,6 @@ export default function App() {
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <Suspense fallback={<ModuleFallback label="Đang tải dự án…" />}>
                     <AdminProjectsPanel
-                      properties={properties}
                       settings={settings}
                       saving={actionLoading === 'save-projects'}
                       onSave={handleSaveProjectCatalog}
@@ -1769,169 +1119,28 @@ export default function App() {
               {/* ==================================================== */}
               {/* TAB 3: PROPERTIES DIRECTORY */}
               {/* ==================================================== */}
-              {activeTab === 'properties' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Danh sách Bất động sản
-                    </h2>
-                    <p className="text-slate-400 text-sm">Chi tiết thông tin bất động sản, sổ đỏ, và tính năng tiếp thị tự động.</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-900 bg-slate-900/35 p-4">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-                      <div className="space-y-1">
-                        <label className="block text-2xs font-semibold uppercase text-slate-500">Khoảng giá</label>
-                        <select
-                          value={propertyFilters.price}
-                          onChange={(e) => setPropertyFilters({ ...propertyFilters, price: e.target.value })}
-                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                        >
-                          <option value="all">Tất cả giá</option>
-                          <option value="under3">Dưới 3 tỷ</option>
-                          <option value="3to5">3 - 5 tỷ</option>
-                          <option value="5to10">5 - 10 tỷ</option>
-                          <option value="over10">Trên 10 tỷ</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-2xs font-semibold uppercase text-slate-500">Khu vực / diện tích</label>
-                        <select
-                          value={propertyFilters.area}
-                          onChange={(e) => setPropertyFilters({ ...propertyFilters, area: e.target.value })}
-                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                        >
-                          <option value="all">Tất cả diện tích</option>
-                          <option value="under80">Dưới 80 m²</option>
-                          <option value="80to150">80 - 150 m²</option>
-                          <option value="over150">Trên 150 m²</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-2xs font-semibold uppercase text-slate-500">Loại hình</label>
-                        <select
-                          value={propertyFilters.type}
-                          onChange={(e) => setPropertyFilters({ ...propertyFilters, type: e.target.value })}
-                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                        >
-                          <option value="all">Tất cả loại hình</option>
-                          {PROPERTY_TYPE_OPTIONS.map(option => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-2xs font-semibold uppercase text-slate-500">Hình thức</label>
-                        <select
-                          value={propertyFilters.transactionType}
-                          onChange={(e) => setPropertyFilters({ ...propertyFilters, transactionType: e.target.value })}
-                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                        >
-                          <option value="all">Bán và cho thuê</option>
-                          {TRANSACTION_TYPE_OPTIONS.map(option => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-2xs font-semibold uppercase text-slate-500">Trạng thái</label>
-                        <select
-                          value={propertyFilters.status}
-                          onChange={(e) => setPropertyFilters({ ...propertyFilters, status: e.target.value })}
-                          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                        >
-                          <option value="visible">Mặc định: đang bán + đã bán (không gồm ẩn)</option>
-                          <option value="available">Đang bán/cho thuê</option>
-                          <option value="sold">Đã bán/đã thuê</option>
-                          <option value="hidden">Chỉ BĐS đã ẩn</option>
-                          <option value="all">Tất cả trạng thái</option>
-                        </select>
-                      </div>
-                      {(currentUser?.role === 'owner' || currentUser?.role === 'company') && propertyCreatorFilterOptions.length > 0 && (
-                        <div className="space-y-1">
-                          <label className="block text-2xs font-semibold uppercase text-slate-500">Người tạo</label>
-                          <select
-                            value={propertyFilters.creator}
-                            onChange={(e) => setPropertyFilters({ ...propertyFilters, creator: e.target.value })}
-                            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-                          >
-                            <option value="all">Tất cả người tạo</option>
-                            {propertyCreatorFilterOptions.map(option => (
-                              <option key={option.id} value={option.id}>{option.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-3 flex flex-col gap-2 text-2xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <p>
-                          <span className="font-semibold text-slate-300">{filteredProperties.length}</span> kết quả
-                          sau bộ lọc
-                          {propertyFilters.status === 'visible' &&
-                          propertyFilters.price === 'all' &&
-                          propertyFilters.area === 'all' &&
-                          propertyFilters.type === 'all' &&
-                          propertyFilters.transactionType === 'all' &&
-                          propertyFilters.creator === 'all' &&
-                          !searchQuery
-                            ? ` (mặc định: không gồm ${propertyStatusCounts.hidden} BĐS đã ẩn)`
-                            : null}
-                        </p>
-                        <p>
-                          Kho: {propertyStatusCounts.available} đang bán/cho thuê ·{' '}
-                          {propertyStatusCounts.sold} đã bán · {propertyStatusCounts.hidden} đã ẩn ·{' '}
-                          {propertyStatusCounts.publicVisible} hiện trên web
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setPropertyFilters({ price: 'all', area: 'all', type: 'all', transactionType: 'all', status: 'visible', creator: 'all' })}
-                        className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-semibold text-slate-300 hover:border-slate-700"
-                      >
-                        Xóa bộ lọc
-                      </button>
-                    </div>
-                  </div>
-
-                  <Suspense fallback={<ModuleFallback label="Đang tải danh sách BĐS…" />}>
-                    <AdminPropertyDirectory
-                      properties={filteredProperties}
-                      creatorNameById={propertyCreatorNameById}
-                      propertyGalleryIndex={propertyGalleryIndex}
-                      setPropertyGalleryIndex={setPropertyGalleryIndex}
-                      actionLoading={actionLoading}
-                      onToggleFeatured={handleTogglePropertyFeatured}
-                      onEdit={openEditPropertyModal}
-                      onImageUpload={handlePropertyImageUpload}
-                      onCopyDescription={prop => handleCopyText(buildPropertyCopyText(prop))}
-                      onToggleSold={handleTogglePropertySold}
-                      onHide={handleSoftDeleteProperty}
-                      onRestore={handleRestoreProperty}
-                      onOpenAiContent={prop => {
-                        setSelectedPropertyForAI(prop);
-                        setAiGeneratingTone('sang trọng và chuyên nghiệp');
-                        setActiveTab('ai-content');
-                      }}
-                    />
-                  </Suspense>
-                  {propertiesTotal > 100 && (
-                    <PaginationBar
-                      page={propertiesPage}
-                      pageSize={100}
-                      totalItems={propertiesTotal}
-                      onPageChange={(page) => {
-                        void loadPropertiesModule(page, searchQuery);
-                      }}
-                      variant="dark"
-                    />
-                  )}
-                </div>
+              {activeTab === 'properties' && currentUser && (
+                <Suspense fallback={<ModuleFallback label="Đang tải BĐS…" />}>
+                  <PropertiesPage
+                    onNotify={showToast}
+                    settings={settings}
+                    currentUser={currentUser}
+                    onPropertySaved={() => {
+                      void refreshNavigationCounts();
+                    }}
+                    onOpenAiContent={(prop) => {
+                      setSelectedPropertyForAI(prop);
+                      setAiGeneratingTone('sang trọng và chuyên nghiệp');
+                      setAiPropertyOptions(prev => {
+                        if (prev.some(p => p.id === prop.id)) return prev;
+                        return [prop, ...prev];
+                      });
+                      setActiveTab('ai-content');
+                    }}
+                  />
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 4: AI CONTENT GENERATOR */}
-              {/* ==================================================== */}
               {activeTab === 'ai-content' && (
                 <div className="space-y-6">
                   <div>
@@ -1951,7 +1160,7 @@ export default function App() {
                         <select
                           value={selectedPropertyForAI?.id || ''}
                           onChange={(e) => {
-                            const found = properties.find(p => p.id === e.target.value);
+                            const found = aiPropertyOptions.find(p => p.id === e.target.value);
                             if (found) {
                               setSelectedPropertyForAI(found);
                             }
@@ -1959,7 +1168,7 @@ export default function App() {
                           className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
                         >
                           <option value="">-- Click để chọn bất động sản cần truyền thông --</option>
-                          {properties.map(p => (
+                          {aiPropertyOptions.map(p => (
                             <option key={p.id} value={p.id}>{p.title} - ({p.price} Tỷ)</option>
                           ))}
                         </select>
@@ -2290,624 +1499,52 @@ export default function App() {
               {/* TAB 6: INBOX MULTICHANNEL */}
               {/* ==================================================== */}
               {activeTab === 'inbox' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Hòm thư khách hàng đa kênh (Social Media Inbox)
-                    </h2>
-                    <p className="text-slate-400 text-sm">Giao diện tiếp quản tin nhắn Messenger, Zalo, bình luận Tiktok và Website Livechat.</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Message listing column */}
-                    <div className="lg:col-span-5 bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden divide-y divide-slate-900/80 max-h-[600px] overflow-y-auto">
-                      <div className="p-4 bg-slate-950 font-bold text-xs uppercase tracking-wider text-slate-500">Hòm thư nhận trong ngày</div>
-                      
-                      {inbox.map((msg) => {
-                        const isSelected = selectedInboxMessage?.id === msg.id;
-                        return (
-                          <div 
-                            key={msg.id}
-                            onClick={() => {
-                              setSelectedInboxMessage(msg);
-                              setResponseReplyText(msg.ai_reply_suggestion || '');
-                            }}
-                            className={`p-4 cursor-pointer transition-all ${
-                              isSelected ? 'bg-rose-500/5 border-l-4 border-rose-500' : 'hover:bg-slate-900/30'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <div className="flex items-center gap-2">
-                                <img
-                                  src={msg.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80"}
-                                  className="w-8 h-8 rounded-full object-cover border border-slate-800"
-                                />
-                                <div>
-                                  <div className="text-xs font-bold text-white leading-tight">{msg.sender_name}</div>
-                                  <span className="text-2xs text-rose-400 capitalize font-mono font-bold">{msg.platform} channel</span>
-                                </div>
-                              </div>
-
-                              <span className={`text-2xs px-2 py-0.5 rounded-full font-bold uppercase ${
-                                msg.intent === 'hỏi giá' ? 'bg-amber-600/20 text-amber-400' :
-                                msg.intent === 'thương lượng' ? 'bg-rose-600/20 text-rose-400 animate-pulse' :
-                                msg.intent === 'đặt lịch xem' ? 'bg-emerald-600/20 text-emerald-400' :
-                                'bg-slate-950 text-slate-500'
-                              }`}>
-                                {msg.intent || 'phân tích...'}
-                              </span>
-                            </div>
-
-                            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                              {msg.message}
-                            </p>
-
-                            <div className="flex items-center justify-between mt-3 text-2xs font-mono text-slate-500">
-                              <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              <span className={msg.status === 'pending' ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-500'}>
-                                {msg.status === 'replied' ? '✓ Đập hộp phản hồi' : '• Cần phản hồi'}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Chat dialog workspace */}
-                    <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
-                      {selectedInboxMessage ? (
-                        <div className="space-y-4">
-                          <div className="border-b border-slate-900 pb-3 flex items-center justify-between">
-                            <div>
-                              <h3 className="font-bold text-white text-md">Khung chat tiếp nhận: {selectedInboxMessage.sender_name}</h3>
-                              <p className="text-xs text-slate-500 font-mono capitalize">Nền tảng đồng bộ: {selectedInboxMessage.platform}</p>
-                            </div>
-                            <button onClick={() => setSelectedInboxMessage(null)} className="text-slate-500 hover:text-slate-300 text-xs">
-                              Đóng khung
-                            </button>
-                          </div>
-
-                          {/* Conversation flow */}
-                          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                            <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-900 max-w-md">
-                              <span className="block text-2xs text-rose-400 font-semibold mb-1">Khách hàng gửi:</span>
-                              <p className="text-xs text-slate-200 leading-relaxed font-medium">{selectedInboxMessage.message}</p>
-                            </div>
-
-                            {selectedInboxMessage.ai_reply_suggestion && (
-                              <div className="p-3.5 bg-rose-950/20 rounded-xl border border-rose-500/20 max-w-md ml-auto">
-                                <span className="block text-2xs text-rose-400 font-bold mb-1 flex items-center gap-1">
-                                  <Sparkles className="w-3.5 h-3.5" /> Gợi ý AI soạn thảo tự động:
-                                </span>
-                                <p className="text-xs text-rose-100 whitespace-pre-line leading-relaxed italic">{selectedInboxMessage.ai_reply_suggestion}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Quick reply typing text area */}
-                          <div className="space-y-3 pt-4 border-t border-slate-900">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-semibold text-slate-400">Giao diện trả lời của Admin</span>
-                              <button
-                                onClick={() => handleAILiveReplySuggestion(selectedInboxMessage.id)}
-                                disabled={actionLoading === `reply-sugg-${selectedInboxMessage.id}`}
-                                className="text-xs bg-slate-950 hover:bg-slate-900 border border-slate-800 text-rose-400 px-3 py-1.5 rounded-lg flex items-center gap-1"
-                              >
-                                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                                <span>{actionLoading === `reply-sugg-${selectedInboxMessage.id}` ? "Đang gõ..." : "AI soạn hộ câu trả lời"}</span>
-                              </button>
-                            </div>
-
-                            <textarea
-                              rows={4}
-                              value={responseReplyText}
-                              onChange={(e) => setResponseReplyText(e.target.value)}
-                              placeholder="Nhập nội dung phản hồi thủ công hoặc chỉnh sửa nội dung AI vừa hỗ trợ ở trên..."
-                              className="w-full bg-slate-950 border border-slate-900 rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                            />
-
-                            <div className="flex justify-end gap-3">
-                              <button
-                                onClick={() => handleSendManualReply(selectedInboxMessage.id)}
-                                disabled={actionLoading === `send-reply-${selectedInboxMessage.id}`}
-                                className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1 shadow-md"
-                              >
-                                <Check className="w-3.5 h-3.5" /> Gửi Phản Hồi Demo
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-                          <MessageSquare className="w-12 h-12 text-slate-700" />
-                          <p className="text-xs text-slate-500 max-w-sm">Chọn một tin nhắn bất kỳ từ danh sách bên trái để phản hồi, phân loại ý định hành vi, và sử dụng AI soạn kịch bản trả lời nhanh.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <Suspense fallback={<ModuleFallback label="Đang tải Inbox…" />}>
+                  <InboxPage onNotify={showToast} searchQuery={searchQuery} />
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 7: CHATBOT AI INTERNAL */}
-              {/* ==================================================== */}
-              {activeTab === 'chatbot' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Bot className="w-5 h-5 text-rose-500" />
-                        Trợ lý AI nội bộ
-                      </h2>
-                      <p className="text-slate-400 text-sm">
-                        Hỏi đáp trực tiếp với AI nắm dữ liệu CRM, bất động sản và nội dung marketing trong hệ thống.
-                      </p>
-                    </div>
-                    {currentUser && canDeleteChatSession(currentUser.id) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteChatSession(currentUser.id, 'trợ lý AI nội bộ')}
-                        disabled={actionLoading === `delete-chat-${currentUser.id}`}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Xóa lịch sử AI
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="bg-slate-900/40 rounded-2xl border border-slate-900 flex flex-col h-[620px] overflow-hidden justify-between">
-                    <div className="p-4 bg-slate-950 border-b border-slate-900 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Bot className="w-5 h-5 text-rose-500" />
-                        <div>
-                          <div className="text-xs font-bold text-white">AI Real Estate Agent Consultant</div>
-                          <span className="text-2xs text-emerald-400">
-                            AI mode: {settings.ai_mode} • {settings.ai_mode === 'openai' ? settings.openai_model : settings.ai_mode === 'gemini' ? 'gemini-2.5-flash' : settings.ollama_model}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="hidden lg:flex gap-2">
-                        {['Khách nào đang nóng nhất?', 'Mỹ Khê có căn nào bán?', 'Tóm tắt khách hàng Đỗ Ngọc Mạnh'].map((hint, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setUserChatInput(hint)}
-                            className="bg-slate-900 text-slate-400 border border-slate-800 text-2xs px-2.5 py-1 rounded-lg hover:border-rose-500 hover:text-white transition-all"
-                          >
-                            {hint}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex-1 p-5 overflow-y-auto space-y-4 app-scroll">
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`p-3.5 rounded-2xl max-w-xl text-xs space-y-1 ${
-                            msg.role === 'user'
-                              ? 'bg-rose-600 text-white ml-12 rounded-tr-none'
-                              : 'bg-slate-950/80 border border-slate-900 text-slate-200 mr-12 rounded-tl-none whitespace-pre-wrap leading-relaxed'
-                          }`}>
-                            <p>{msg.content}</p>
-                            <span className="block text-3xs text-slate-400 font-mono text-right pt-1">{msg.timestamp}</span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {actionLoading === 'chatbot-chat' && (
-                        <div className="flex justify-start">
-                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-400 text-xs flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-100"></span>
-                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping delay-200"></span>
-                            <span>AI Agent đang phân tích database dữ liệu thực tế...</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-4 bg-slate-950 border-t border-slate-900/80 flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={userChatInput}
-                        onChange={(e) => setUserChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatbotMessage()}
-                        placeholder="Hỏi về khách hàng nóng nhất, gợi ý viết bài bán đất, tóm lược chiến dịch..."
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                      />
-                      <button
-                        onClick={handleSendChatbotMessage}
-                        disabled={!userChatInput.trim() || actionLoading === 'chatbot-chat'}
-                        className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl p-3 shadow-md border border-rose-500 transition-all shrink-0"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              {activeTab === 'chatbot' && currentUser && (
+                <Suspense fallback={<ModuleFallback label="Đang tải Chatbot…" />}>
+                  <ChatFeatureHost
+                    mode="chatbot"
+                    currentUser={currentUser}
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                    canManageWebsiteChat={canManageWebsiteChat}
+                    settings={settings}
+                    initialDraft={userChatInput}
+                    key={`chatbot-${chatDraftSeed}`}
+                  />
+                </Suspense>
               )}
 
-              {activeTab === 'website-chat' && canManageWebsiteChat && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <MessageSquare className="w-5 h-5 text-rose-500" />
-                        Chat khách website
-                      </h2>
-                      <p className="text-slate-400 text-sm">
-                        Chọn từng khách đã nhập họ tên/số điện thoại để theo dõi hội thoại. Bỏ tick AI để admin tự chat trực tiếp với khách.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => refreshPublicGuestChats(selectedChatGuestId)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-rose-500/60"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Tải lại
-                    </button>
-                  </div>
-
-                  <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40 lg:grid-cols-[330px_1fr]">
-                    <aside className="border-b border-slate-900 bg-slate-950/70 lg:border-b-0 lg:border-r">
-                      <div className="border-b border-slate-900 p-4">
-                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Khách đã chat</div>
-                        <div className="mt-1 text-sm text-slate-300">{publicChatGuests.length} khách guest</div>
-                      </div>
-                      <div className="max-h-[560px] overflow-y-auto p-3 app-scroll">
-                        {publicChatGuests.map(guest => {
-                          const selected = selectedChatGuestId === guest.session_id;
-                          return (
-                            <button
-                              key={guest.session_id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedChatGuestId(guest.session_id);
-                                setGuestReplyInput('');
-                              }}
-                              className={`mb-2 w-full rounded-xl border p-3 text-left transition-all ${
-                                selected
-                                  ? 'border-rose-500/50 bg-rose-500/10'
-                                  : 'border-slate-900 bg-slate-900/50 hover:border-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-bold text-white">{guest.name}</div>
-                                  <div className="text-xs text-slate-500">{guest.phone}</div>
-                                </div>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-bold ${
-                                  Boolean(guest.ai_enabled) ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'
-                                }`}>
-                                  {Boolean(guest.ai_enabled) ? 'AI' : 'Admin'}
-                                </span>
-                              </div>
-                              <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">{guest.last_message || 'Chưa có tin nhắn'}</p>
-                              <div className="mt-2 flex justify-between text-2xs text-slate-600">
-                                <span>{guest.message_count || 0} tin</span>
-                                <span>{guest.last_message_at ? new Date(guest.last_message_at).toLocaleString('vi-VN') : ''}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                        {publicChatGuests.length === 0 && (
-                          <div className="p-6 text-center text-xs text-slate-500">
-                            Chưa có khách nào bắt đầu chat.
-                          </div>
-                        )}
-                      </div>
-                    </aside>
-
-                    <section className="flex min-w-0 flex-col">
-                      {selectedChatGuestId ? (
-                        <>
-                          {(() => {
-                            const selectedGuest = publicChatGuests.find(guest => guest.session_id === selectedChatGuestId);
-                            return (
-                              <div className="flex flex-col gap-3 border-b border-slate-900 bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                  <div className="text-sm font-bold text-white">{selectedGuest?.name || 'Khách guest'}</div>
-                                  <div className="text-xs text-slate-500">{selectedGuest?.phone} · {selectedChatGuestId}</div>
-                                </div>
-                                {selectedGuest && (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">
-                                      <input
-                                        type="checkbox"
-                                        checked={Boolean(selectedGuest.ai_enabled)}
-                                        onChange={() => handleToggleGuestAi(selectedGuest)}
-                                        className="h-4 w-4 accent-emerald-500"
-                                      />
-                                      AI tự trả lời
-                                    </label>
-                                    {canDeleteChatSession(`public-${selectedChatGuestId}`) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteChatSession(`public-${selectedChatGuestId}`, `khách ${selectedGuest.name}`)}
-                                        disabled={actionLoading === `delete-chat-public-${selectedChatGuestId}`}
-                                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                        Xóa hội thoại
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          <div className="flex-1 space-y-3 overflow-y-auto p-4 app-scroll">
-                            {selectedGuestChatHistory.map(record => (
-                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-                                <div className={`max-w-3xl rounded-2xl px-4 py-3 text-sm leading-6 ${
-                                  record.role === 'user'
-                                    ? 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
-                                    : 'rounded-tr-none bg-rose-600 text-white'
-                                }`}>
-                                  <MarkdownContent content={record.message} compact className="break-words" />
-                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-slate-500' : 'text-rose-100'}`}>
-                                    {record.role === 'user' ? 'Khách' : 'AI/Admin'} · {new Date(record.created_at).toLocaleString('vi-VN')}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="flex gap-3 border-t border-slate-900 bg-slate-950 p-4">
-                            <input
-                              value={guestReplyInput}
-                              onChange={event => setGuestReplyInput(event.target.value)}
-                              onKeyDown={event => event.key === 'Enter' && handleSendGuestReply()}
-                              placeholder="Nhập tin nhắn admin gửi cho khách..."
-                              className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-rose-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleSendGuestReply}
-                              disabled={!guestReplyInput.trim() || actionLoading === `guest-reply-${selectedChatGuestId}`}
-                              className="rounded-xl bg-rose-600 p-3 text-white hover:bg-rose-500 disabled:opacity-50"
-                            >
-                              <Send className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-slate-500">
-                          Chọn một khách ở danh sách bên trái để mở hội thoại.
-                        </div>
-                      )}
-                    </section>
-                  </div>
-                </div>
+              {activeTab === 'website-chat' && currentUser && canManageWebsiteChat && (
+                <Suspense fallback={<ModuleFallback label="Đang tải Website Chat…" />}>
+                  <ChatFeatureHost
+                    mode="website-chat"
+                    currentUser={currentUser}
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                    canManageWebsiteChat={canManageWebsiteChat}
+                    settings={settings}
+                  />
+                </Suspense>
               )}
 
-              {activeTab === 'chat-history' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <MessageSquare className="w-5 h-5 text-rose-500" />
-                        Lịch sử trò chuyện
-                      </h2>
-                      <p className="text-slate-400 text-sm">
-                        Theo dõi toàn bộ hội thoại đã lưu từ chatbot public và chatbot nội bộ CMS.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={fetchAllData}
-                      disabled={refreshing}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-rose-500/60 disabled:opacity-50 sm:w-auto"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                      Tải lại lịch sử
-                    </button>
-                  </div>
-
-                  <div className="grid overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40 lg:min-h-[620px] lg:grid-cols-[330px_1fr]">
-                    <aside className="border-b border-slate-900 bg-slate-950/70 lg:border-b-0 lg:border-r">
-                      <div className="border-b border-slate-900 p-3 sm:p-4">
-                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">User/session đã chat</div>
-                        <div className="mt-1 text-sm text-slate-300">{chatHistorySessions.length} hội thoại</div>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto p-2 app-scroll sm:max-h-80 sm:p-3 lg:max-h-[560px]">
-                        {chatHistorySessions.map(session => {
-                          const isPublicSession = session.sessionId.startsWith('public-');
-                          const lastMessage = session.records[session.records.length - 1];
-                          const selected = selectedChatHistorySession?.sessionId === session.sessionId;
-                          return (
-                            <button
-                              key={session.sessionId}
-                              type="button"
-                              onClick={() => {
-                                setSelectedChatHistorySessionId(session.sessionId);
-                                setGuestReplyInput('');
-                              }}
-                              className={`mb-2 w-full rounded-xl border p-2.5 text-left transition-all sm:p-3 ${
-                                selected ? 'border-rose-500/50 bg-rose-500/10' : 'border-slate-900 bg-slate-900/50 hover:border-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={`rounded-full px-2 py-0.5 text-2xs font-bold ${
-                                  isPublicSession ? 'bg-emerald-500/10 text-emerald-300' : 'bg-indigo-500/10 text-indigo-300'
-                                }`}>
-                                  {isPublicSession ? 'Public' : 'CMS'}
-                                </span>
-                                <span className="text-2xs text-slate-600">{session.records.length} tin</span>
-                              </div>
-                              <div className="mt-2 truncate text-[11px] font-mono text-slate-300 sm:text-xs">{session.sessionId}</div>
-                              <div className="mt-2 text-2xs text-slate-600">
-                                {lastMessage ? new Date(lastMessage.created_at).toLocaleString('vi-VN') : ''}
-                              </div>
-                            </button>
-                          );
-                        })}
-                        {chatHistorySessions.length === 0 && (
-                          <div className="p-6 text-center text-xs text-slate-500">Chưa có lịch sử chat phù hợp.</div>
-                        )}
-                      </div>
-                    </aside>
-
-                    <section className="flex min-h-[430px] min-w-0 flex-col border-t border-slate-900 lg:min-h-0 lg:border-t-0">
-                      {selectedChatHistorySession ? (
-                        <>
-                          <div className="flex flex-col gap-2 border-b border-slate-900 bg-slate-950 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <div className="text-sm font-bold text-white">
-                                {selectedChatHistorySession.sessionId.startsWith('public-') ? 'Public website' : 'CMS nội bộ'}
-                              </div>
-                              <div className="truncate text-xs font-mono text-slate-500">{selectedChatHistorySession.sessionId}</div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-xs text-slate-500">
-                                {selectedChatHistorySession.records.length} tin nhắn
-                              </div>
-                              {canDeleteChatSession(selectedChatHistorySession.sessionId) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteChatSession(
-                                    selectedChatHistorySession.sessionId,
-                                    selectedChatHistorySession.sessionId.startsWith('public-') ? 'hội thoại khách website' : 'hội thoại CMS nội bộ'
-                                  )}
-                                  disabled={actionLoading === `delete-chat-${selectedChatHistorySession.sessionId}`}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:border-rose-500/60 disabled:opacity-50"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Xóa hội thoại
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {selectedHistoryGuest && (
-                            <div className="border-b border-slate-900 bg-slate-950/70 px-3 py-2 sm:px-4">
-                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(selectedHistoryGuest.ai_enabled)}
-                                  onChange={() => handleToggleGuestAi(selectedHistoryGuest)}
-                                  className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-rose-500 focus:ring-rose-500"
-                                />
-                                AI tự trả lời
-                              </label>
-                            </div>
-                          )}
-
-                          <div className="h-[420px] space-y-3 overflow-y-auto p-3 app-scroll sm:h-[520px] sm:p-4 lg:h-[560px]">
-                            {selectedChatHistorySession.records.map(record => (
-                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-                                <div className={`max-w-[92%] rounded-2xl px-3 py-2.5 text-sm leading-6 sm:max-w-3xl sm:px-4 sm:py-3 ${
-                                  record.role === 'user'
-                                    ? 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
-                                    : 'rounded-tr-none bg-rose-600 text-white'
-                                }`}>
-                                  <MarkdownContent content={record.message} compact className="break-words" />
-                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-slate-500' : 'text-rose-100'}`}>
-                                    {record.role === 'user' ? 'Khách/User' : 'AI/Admin'} · {new Date(record.created_at).toLocaleString('vi-VN')}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          {selectedHistoryGuest && (
-                            <div className="border-t border-slate-900 bg-slate-950 p-3 sm:p-4">
-                              <div className="mb-2 text-2xs text-slate-500">
-                                Gửi tin tại đây sẽ tự chuyển phiên này sang chế độ admin trả lời.
-                              </div>
-                              <div className="flex gap-2 sm:gap-3">
-                                <input
-                                  value={guestReplyInput}
-                                  onChange={event => setGuestReplyInput(event.target.value)}
-                                  onKeyDown={event => {
-                                    if (event.key === 'Enter') {
-                                      event.preventDefault();
-                                      handleSendHistoryGuestReply();
-                                    }
-                                  }}
-                                  placeholder="Nhập tin nhắn admin gửi cho khách..."
-                                  className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-rose-500 sm:px-4 sm:py-3"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={handleSendHistoryGuestReply}
-                                  disabled={!guestReplyInput.trim() || actionLoading === `guest-reply-${selectedHistoryGuest.session_id}`}
-                                  className="rounded-xl bg-rose-600 px-3 py-2.5 text-white hover:bg-rose-500 disabled:opacity-50 sm:px-4 sm:py-3"
-                                >
-                                  <Send className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-slate-500">
-                          Chọn một user/session bên trái để xem lịch sử chat.
-                        </div>
-                      )}
-                    </section>
-                  </div>
-
-                  <div className="hidden">
-                    {chatHistorySessions.map(session => {
-                      const isPublicSession = session.sessionId.startsWith('public-');
-                      const lastMessage = session.records[session.records.length - 1];
-                      return (
-                        <section key={session.sessionId} className="overflow-hidden rounded-2xl border border-slate-900 bg-slate-900/40">
-                          <div className="flex flex-col gap-2 border-b border-slate-900 bg-slate-950 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold uppercase ${
-                                  isPublicSession ? 'bg-emerald-500/10 text-emerald-300' : 'bg-indigo-500/10 text-indigo-300'
-                                }`}>
-                                  {isPublicSession ? 'Public website' : 'CMS nội bộ'}
-                                </span>
-                                <span className="text-xs font-mono text-slate-500">{session.sessionId}</span>
-                              </div>
-                              <p className="mt-1 truncate text-xs text-slate-400">
-                                {lastMessage?.message || 'Chưa có nội dung'}
-                              </p>
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {session.records.length} tin nhắn · {lastMessage ? new Date(lastMessage.created_at).toLocaleString('vi-VN') : ''}
-                            </div>
-                          </div>
-
-                          <div className="max-h-[520px] space-y-3 overflow-y-auto p-4 app-scroll">
-                            {session.records.map(record => (
-                              <div key={record.id} className={`flex ${record.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-3xl rounded-2xl px-4 py-3 text-sm leading-6 ${
-                                  record.role === 'user'
-                                    ? 'rounded-tr-none bg-rose-600 text-white'
-                                    : 'rounded-tl-none border border-slate-800 bg-slate-950 text-slate-200'
-                                }`}>
-                                  <MarkdownContent content={record.message} compact className="break-words" />
-                                  <div className={`mt-2 text-2xs ${record.role === 'user' ? 'text-rose-100' : 'text-slate-500'}`}>
-                                    {record.role === 'user' ? 'Khách/User' : 'AI'} · {new Date(record.created_at).toLocaleString('vi-VN')}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      );
-                    })}
-
-                    {chatHistorySessions.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-10 text-center text-sm text-slate-500">
-                        Chưa có lịch sử chat phù hợp với bộ lọc hiện tại.
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {activeTab === 'chat-history' && currentUser && (
+                <Suspense fallback={<ModuleFallback label="Đang tải Chat History…" />}>
+                  <ChatFeatureHost
+                    mode="chat-history"
+                    currentUser={currentUser}
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                    canManageWebsiteChat={canManageWebsiteChat}
+                    settings={settings}
+                  />
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 8: AUTOMATION AI CENTER */}
-              {/* ==================================================== */}
               {activeTab === 'automations' && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Automation…" />}>
                   <AutomationsPage onNotify={showToast} />
@@ -2963,478 +1600,7 @@ export default function App() {
       {/* MODAL WORKSPACES */}
       {/* ==================================================== */}
 
-      {/* Modal Add Property */}
-      {showAddPropertyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6">
-          <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-6 py-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
-                {editingProperty ? <Edit className="w-5 h-5 text-rose-500" /> : <Home className="w-5 h-5 text-rose-500" />}
-                {editingProperty ? 'Chỉnh sửa bất động sản' : 'Thêm bất động sản mới lên kệ'}
-              </h3>
-              <button onClick={closePropertyModal} className="text-slate-400 hover:text-slate-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveProperty} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 app-scroll">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {editingProperty && (
-                  <div className="md:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-xs text-violet-200">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <span className="inline-flex items-center gap-1 font-bold">
-                        <Eye className="h-3.5 w-3.5" />
-                        {Number(editingProperty.public_view_count || 0).toLocaleString('vi-VN')} lượt xem trang công khai
-                      </span>
-                      {editingProperty.last_public_view_at && (
-                        <span className="text-violet-300/80">
-                          Xem gần nhất: {new Date(editingProperty.last_public_view_at).toLocaleString('vi-VN')}
-                        </span>
-                      )}
-                      <span className="text-violet-300/90">
-                        Người tạo: {getPropertyCreatorName(editingProperty, propertyCreatorNameById)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Tiêu đề bất động sản</label>
-                  <input
-                    type="text"
-                    required
-                    value={newPropertyForm.title}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, title: e.target.value })}
-                    placeholder="Bán Lô Đất Góc Hòa Xuân"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Phân khúc / Chủng loại</label>
-                  <select
-                    value={newPropertyForm.type}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, type: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {PROPERTY_TYPE_OPTIONS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Hình thức</label>
-                  <select
-                    value={newPropertyForm.transaction_type}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, transaction_type: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {TRANSACTION_TYPE_OPTIONS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Khu vực thị trường</label>
-                  <select
-                    value={newPropertyForm.market_zone}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, market_zone: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {MARKET_ZONE_OPTIONS.map(option => (
-                      <option key={option.value || 'none'} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <label className="block text-2xs font-semibold text-slate-400">Dự án / phân khu</label>
-                  {!customProjectMode ? (
-                    <select
-                      value={newPropertyForm.project_name}
-                      onChange={(e) => {
-                        if (e.target.value === '__custom__') {
-                          setCustomProjectMode(true);
-                          setNewPropertyForm({ ...newPropertyForm, project_name: '' });
-                          return;
-                        }
-                        setNewPropertyForm({ ...newPropertyForm, project_name: e.target.value });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                    >
-                      <option value="">— Chọn dự án —</option>
-                      {projectCatalogGroups.map(group => (
-                        <optgroup key={group.zone} label={group.label}>
-                          {group.projects.map(project => (
-                            <option key={`${group.zone}-${project}`} value={project}>{project}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                      <option value="__custom__">+ Thêm dự án mới...</option>
-                    </select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newPropertyForm.project_name}
-                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, project_name: e.target.value })}
-                        placeholder="Nhập tên dự án / phân khu mới"
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomProjectMode(false);
-                          setNewPropertyForm({ ...newPropertyForm, project_name: '' });
-                        }}
-                        className="shrink-0 rounded-xl border border-slate-700 px-3 text-xs text-slate-300"
-                      >
-                        Chọn lại
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Vị trí địa chỉ chính xác</label>
-                  <input
-                    type="text"
-                    required
-                    value={newPropertyForm.location}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, location: e.target.value })}
-                    placeholder="Võ Chí Công, Hải Châu, Đà Nẵng"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Giá trị / giá thuê (Tỷ đồng)</label>
-                  <input
-                    type="number"
-                    step="0.05"
-                    required
-                    value={newPropertyForm.price}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, price: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Diện tích đất / căn hộ (m2)</label>
-                  <input
-                    type="number"
-                    required
-                    value={newPropertyForm.area}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, area: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Diện tích sàn (m2)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={newPropertyForm.floor_area}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, floor_area: e.target.value })}
-                    placeholder="Bỏ trống nếu không áp dụng"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Pháp lý hiện hành</label>
-                  <select
-                    required
-                    value={newPropertyForm.legal_status}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, legal_status: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {LEGAL_STATUS_OPTIONS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Hướng</label>
-                  <select
-                    value={newPropertyForm.direction}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, direction: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {DIRECTION_OPTIONS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Lòng đường rộng bao nhiêu (mét)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    required
-                    value={newPropertyForm.road_width}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, road_width: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Số tầng</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={newPropertyForm.floors}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, floors: e.target.value })}
-                    placeholder="Bỏ trống nếu là đất"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Số phòng ngủ</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={newPropertyForm.bedrooms}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, bedrooms: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Số phòng tắm</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={newPropertyForm.bathrooms}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, bathrooms: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 animate-none"
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label className="block text-2xs font-semibold text-slate-400">Công năng phụ</label>
-                  <div className="flex flex-wrap gap-2">
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={newPropertyForm.garage}
-                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, garage: e.target.checked })}
-                        className="h-4 w-4 accent-rose-600"
-                      />
-                      Gara
-                    </label>
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={newPropertyForm.pool}
-                        onChange={(e) => setNewPropertyForm({ ...newPropertyForm, pool: e.target.checked })}
-                        className="h-4 w-4 accent-rose-600"
-                      />
-                      Hồ bơi
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <label className="block text-2xs font-semibold text-slate-400">Mô tả Markdown để copy nhanh</label>
-                    <p className="mt-1 text-2xs text-slate-500">
-                      Gõ hashtag bằng thẻ <span className="font-mono text-emerald-300">#</span> trong mô tả hoặc điểm nhấn — hệ thống tự nhận diện và đưa vào meta SEO website khi lưu BĐS.
-                    </p>
-                  </div>
-                </div>
-                <MarkdownEditor
-                  value={newPropertyForm.rich_description}
-                  onChange={(richDescription) => setNewPropertyForm({ ...newPropertyForm, rich_description: richDescription })}
-                  onUploadImage={async file => {
-                    const token = getAuthToken();
-                    if (!token) throw new Error('Cần đăng nhập để upload ảnh.');
-                    const dataUrl = await resizeImageFile(file);
-                    const { url } = await uploadContentImage(token, dataUrl, newPropertyForm.title || 'property');
-                    return url;
-                  }}
-                />
-              </div>
-
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
-                <div className="text-xs font-bold text-emerald-300">Hashtag nhận diện tự động</div>
-                {detectedPropertyHashtags.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {detectedPropertyHashtags.map(tag => (
-                        <span key={tag} className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-2xs font-semibold text-emerald-300">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-2xs text-slate-400">
-                      Keyword SEO sau lưu: {hashtagsToKeywords(detectedPropertyHashtags).join(', ')}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-2xs text-slate-500">Thêm hashtag vào mô tả hoặc điểm nhấn, ví dụ: #Shophouse #HoaXuan #BatDongSanDaNang</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Upload ảnh lưu trữ</label>
-                  <p className="text-2xs text-slate-500">Ảnh tự resize tối đa 1280px. Kéo thả để sắp xếp — ảnh đầu tiên là ảnh chính.</p>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={async (e) => {
-                      const uploaded = await readImageFiles(e.target.files);
-                      setNewPropertyForm(prev => {
-                        const gallery = [...prev.gallery_images, ...uploaded].slice(0, 8);
-                        return {
-                          ...prev,
-                          gallery_images: gallery,
-                          images: gallery[0] || ''
-                        };
-                      });
-                      e.target.value = '';
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200"
-                  />
-                  {newPropertyForm.gallery_images.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto pt-2 pb-1">
-                      {newPropertyForm.gallery_images.map((img, idx) => (
-                        <div
-                          key={`${idx}-${img.slice(0, 48)}`}
-                          draggable
-                          onDragStart={() => setDraggedGalleryIndex(idx)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => {
-                            if (draggedGalleryIndex !== null) {
-                              reorderGalleryImages(draggedGalleryIndex, idx);
-                            }
-                            setDraggedGalleryIndex(null);
-                          }}
-                          onDragEnd={() => setDraggedGalleryIndex(null)}
-                          className={`relative shrink-0 rounded-lg transition-all ${
-                            draggedGalleryIndex === idx ? 'opacity-40 scale-95' : ''
-                          } ${idx === 0 ? 'ring-2 ring-rose-500 ring-offset-2 ring-offset-slate-950' : ''}`}
-                        >
-                          <img
-                            src={img}
-                            alt={`Ảnh ${idx + 1}`}
-                            draggable={false}
-                            className="h-16 w-16 rounded-lg object-cover border border-slate-800 pointer-events-none"
-                          />
-                          <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded bg-slate-950/85 px-1 py-0.5 text-[10px] font-bold text-slate-200">
-                            <GripVertical className="h-3 w-3" />
-                            {idx + 1}
-                          </span>
-                          {idx === 0 && (
-                            <span className="absolute bottom-1 left-1 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              Ảnh chính
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNewPropertyForm(prev => {
-                                const galleryImages = prev.gallery_images.filter((_, imageIndex) => imageIndex !== idx);
-                                return {
-                                  ...prev,
-                                  gallery_images: galleryImages,
-                                  images: galleryImages[0] || ''
-                                };
-                              });
-                            }}
-                            className="absolute -right-1 -top-1 rounded-full bg-rose-600 p-1 text-white shadow"
-                            aria-label="Xóa ảnh"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-2xs font-semibold text-slate-400">Trạng thái bán hàng</label>
-                  <select
-                    value={newPropertyForm.sale_status}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, sale_status: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
-                  >
-                    {PROPERTY_STATUS_OPTIONS.map(option => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newPropertyForm.is_featured}
-                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, is_featured: e.target.checked })}
-                    className="h-4 w-4 accent-rose-600"
-                  />
-                  Gắn BDS nổi bật
-                </label>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-2xs font-semibold text-slate-400">Điểm nhấn bán hàng (Mỗi dòng một điểm)</label>
-                <textarea
-                  rows={2}
-                  value={newPropertyForm.selling_points}
-                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, selling_points: e.target.value })}
-                  placeholder="View trực diện bờ sông\nHạ tầng điện ngầm đồng bộ\n#Shophouse #HoaXuan"
-                  className="w-full bg-slate-950 border border-slate-800 text-xs rounded-xl p-3"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-2xs font-semibold text-slate-400">Ghi chú bổ sung cho AI/Search</label>
-                <textarea
-                  rows={3}
-                  value={newPropertyForm.internal_notes}
-                  onChange={(e) => setNewPropertyForm({ ...newPropertyForm, internal_notes: e.target.value })}
-                  placeholder="VD: chủ cần bán nhanh, thương lượng sâu, phù hợp khách đầu tư giữ tiền, ưu tiên khách có sẵn tiền..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={closePropertyModal}
-                  className="bg-slate-950 hover:bg-slate-850 text-slate-400 text-xs px-4 py-2 rounded-xl border border-slate-800"
-                >
-                  Bỏ qua
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading === 'add-property' || actionLoading === `edit-prop-${editingProperty?.id}`}
-                  className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-xl transition-all shadow-md shadow-rose-600/10"
-                >
-                  {actionLoading === 'add-property' || actionLoading === `edit-prop-${editingProperty?.id}`
-                    ? 'Đang lưu...'
-                    : editingProperty ? 'Lưu thay đổi' : 'Thêm mới BĐS'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </>
     </AppProviders>

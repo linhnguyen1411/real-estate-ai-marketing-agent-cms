@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   ChevronRight,
@@ -15,10 +15,11 @@ import {
   ProjectGroup,
 } from '../../seo/propertyCatalog';
 import { AppSettings, Property } from '../../types';
+import { listProperties } from '../../services/api';
 import { isPublicProperty } from '../../utils/propertyStatus';
 
 interface AdminProjectsPanelProps {
-  properties: Property[];
+  properties?: Property[];
   settings: AppSettings;
   saving: boolean;
   onSave: (patch: Partial<AppSettings>) => Promise<void>;
@@ -33,11 +34,27 @@ function reorderList<T>(items: T[], fromIndex: number, toIndex: number): T[] {
 }
 
 export default function AdminProjectsPanel({
-  properties,
+  properties: propertiesProp,
   settings,
   saving,
   onSave,
 }: AdminProjectsPanelProps) {
+  const [fetchedProperties, setFetchedProperties] = useState<Property[]>([]);
+  useEffect(() => {
+    if (propertiesProp && propertiesProp.length > 0) return;
+    let cancelled = false;
+    listProperties({ page: 1, limit: 100, sort: 'created_at_desc' })
+      .then(result => {
+        if (!cancelled) setFetchedProperties(result.items);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedProperties([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertiesProp]);
+  const properties = propertiesProp && propertiesProp.length > 0 ? propertiesProp : fetchedProperties;
   const catalogGroups = useMemo(
     () => getEffectiveProjectGroups(settings),
     [settings.project_groups],
@@ -72,11 +89,11 @@ export default function AdminProjectsPanel({
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setDisplayOrder(initialOrder);
   }, [initialOrder]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setGroups(catalogGroups);
   }, [catalogGroups]);
 

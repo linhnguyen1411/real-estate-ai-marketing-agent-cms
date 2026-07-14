@@ -203,6 +203,42 @@ function main() {
   assert.match(customersPage, /showAddModal|createCustomer/, 'CRM page owns create modal');
   checks.push('Batch 4 CRM page ownership intact');
 
+  // Batch 5 — Properties / Inbox / Chat ownership
+  for (const rel of [
+    'src/features/properties/pages/PropertiesPage.tsx',
+    'src/features/inbox/pages/InboxPage.tsx',
+    'src/features/chat/pages/ChatFeatureHost.tsx',
+  ]) {
+    mustExist(rel);
+    checks.push(`exists ${rel}`);
+  }
+
+  assert.match(app, /PropertiesPage/, 'App must lazy-mount PropertiesPage');
+  assert.match(app, /InboxPage/, 'App must lazy-mount InboxPage');
+  assert.match(app, /ChatFeatureHost/, 'App must lazy-mount ChatFeatureHost');
+  assert.doesNotMatch(app, /const \[properties,\s*setProperties\]/, 'App must not own properties list');
+  assert.doesNotMatch(app, /showAddPropertyModal|editingProperty|handleSaveProperty/, 'property modal/handlers must leave App');
+  assert.doesNotMatch(app, /const \[inbox,\s*setInbox\]/, 'App must not own inbox list');
+  assert.doesNotMatch(app, /selectedInboxMessage|responseReplyText/, 'App must not own inbox selection');
+  assert.doesNotMatch(app, /const \[chatMessages,\s*setChatMessages\]/, 'App must not own chat messages');
+  assert.doesNotMatch(app, /handleSendChatbotMessage|handleSendManualReply|handleSendGuestReply/, 'chat/inbox send handlers must leave App');
+  assert.doesNotMatch(app, /listInbox|sendInboxReply|sendAssistantMessage|getChatHistory|getPublicChatGuests/, 'App must not import inbox/chat APIs');
+  assert.doesNotMatch(app, /refreshPublicGuestChats/, 'App must not own chat poll helpers');
+
+  const inboxPage = read('src/features/inbox/pages/InboxPage.tsx');
+  assert.match(inboxPage, /listInbox/, 'InboxPage owns list API');
+  assert.match(inboxPage, /selectedInboxMessage/, 'InboxPage owns selection');
+  assert.doesNotMatch(inboxPage, /createContext|InboxContext/, 'no Inbox god context');
+
+  const chatHost = read('src/features/chat/pages/ChatFeatureHost.tsx');
+  assert.match(chatHost, /sendAssistantMessage|sendPublicChatGuestMessage/, 'Chat host owns send APIs');
+  assert.match(chatHost, /setInterval/, 'Chat host owns polling');
+  assert.match(chatHost, /clearInterval/, 'Chat polling cleans up');
+  assert.match(chatHost, /userChatInput|setUserChatInput/, 'Chat host owns draft');
+  assert.doesNotMatch(chatHost, /createContext|ChatContext/, 'no Chat god context');
+  assert.doesNotMatch(app, /GlobalInboxContext|GlobalChatContext|GlobalPropertiesContext/, 'no global feature stores');
+  checks.push('Batch 5 Properties/Inbox/Chat ownership boundaries');
+
   console.log('frontend-architecture checks passed:');
   for (const c of checks) console.log('  ✓', c);
 }
