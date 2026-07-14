@@ -1,0 +1,41 @@
+[
+  {
+    "label": "before",
+    "at": "2026-07-14T02:28:14.917Z",
+    "node": {
+      "pid": 32112,
+      "rssMb": 84,
+      "heapUsedMb": 13,
+      "externalMb": 5,
+      "handles": 2
+    },
+    "chromeRssMb": 10232,
+    "profileMb": {
+      "missing": true,
+      "mb": 0
+    },
+    "legacyProfileMb": {
+      "missing": false,
+      "mb": 109.4
+    },
+    "browserSessions": [
+      {
+        "workerId": "worker-LinhMSC-7544",
+        "status": "ready",
+        "lastHeartbeatAt": "2026-07-14T02:24:55.572Z",
+        "metadata": {
+          "mode": "cdp",
+          "endpointHost": "127.0.0.1",
+          "endpointPort": 9222,
+          "browserChannel": "chrome"
+        }
+      }
+    ],
+    "counts": {
+      "queued": 5,
+      "running": 1,
+      "pendingOutbox": 0,
+      "failedOutbox": 0
+    }
+  }
+]
