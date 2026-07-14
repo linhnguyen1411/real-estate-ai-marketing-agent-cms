@@ -232,15 +232,92 @@ function main() {
 
   const chatHost = read('src/features/chat/pages/ChatFeatureHost.tsx');
   assert.match(chatHost, /sendAssistantMessage|sendPublicChatGuestMessage/, 'Chat host owns send APIs');
-  assert.match(chatHost, /setInterval/, 'Chat host owns polling');
-  assert.match(chatHost, /clearInterval/, 'Chat polling cleans up');
+  assert.match(chatHost, /useChatPolling/, 'Chat host owns polling via useChatPolling');
   assert.match(chatHost, /userChatInput|setUserChatInput/, 'Chat host owns draft');
   assert.doesNotMatch(chatHost, /createContext|ChatContext/, 'no Chat god context');
   assert.doesNotMatch(app, /GlobalInboxContext|GlobalChatContext|GlobalPropertiesContext/, 'no global feature stores');
   checks.push('Batch 5 Properties/Inbox/Chat ownership boundaries');
 
+  // Batch 6 — shell gate, badge source, decomposition, no god hooks
+  function nonBlankLines(text) {
+    return text.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
+  }
+  function countMatches(text, pattern) {
+    return (text.match(pattern) || []).length;
+  }
+  function countUseState(text) {
+    return countMatches(text, /\buseState(?:<[^>;\n]+>)?\s*\(/g);
+  }
+  function countUseEffect(text) {
+    return countMatches(text, /\b(?:React\.)?useEffect\s*\(/g);
+  }
+
+  const appLoc = app.split(/\r?\n/).length;
+  const appNb = nonBlankLines(app);
+  const appUseState = countUseState(app);
+  const appUseEffect = countUseEffect(app);
+  assert.ok(appLoc <= 1800, `App.tsx LOC ${appLoc} must be <=1800 (legacy Posts/SEO allowed)`);
+  assert.ok(appUseState <= 30, `App useState ${appUseState} advisory <=30`);
+  assert.ok(appUseEffect <= 10, `App useEffect ${appUseEffect} advisory <=10`);
+  assert.doesNotMatch(app, /showAddPropertyModal|editingProperty\b|handleSaveProperty/, 'App no property modal state');
+  assert.doesNotMatch(app, /selectedInboxMessage|responseReplyText/, 'App no inbox selection state');
+  assert.doesNotMatch(app, /const \[chatMessages,\s*setChatMessages\]/, 'App no chat messages state');
+  assert.doesNotMatch(app, /listInbox|sendInboxReply|sendAssistantMessage|getChatHistory|getPublicChatGuests/, 'App no inbox/chat list APIs');
+  assert.doesNotMatch(app, /extraBadges:\s*\{[^}]*websiteChat:\s*0/, 'App must not hardcode websiteChat badge to 0');
+  assert.doesNotMatch(app, /extraBadges:\s*\{[^}]*chatHistory:\s*0/, 'App must not hardcode chatHistory badge to 0');
+  assert.match(app, /websiteChat:\s*0,\s*\r?\n\s*chatHistory:\s*0/, 'EMPTY_NAV_COUNTS includes chat fields');
+
+  const navTypes = read('src/app/navigation/navigationTypes.ts');
+  assert.match(navTypes, /websiteChat:\s*number/, 'NavigationCountsView has websiteChat');
+  assert.match(navTypes, /chatHistory:\s*number/, 'NavigationCountsView has chatHistory');
+  assert.match(sidebar, /counts\.websiteChat|badgeKey === 'websiteChat'/, 'sidebar reads websiteChat count');
+  assert.match(sidebar, /counts\.chatHistory|badgeKey === 'chatHistory'/, 'sidebar reads chatHistory count');
+
+  const apiSrc = read('src/services/api.ts');
+  assert.match(apiSrc, /websiteChat:\s*number/, 'API NavigationCounts has websiteChat');
+  assert.match(apiSrc, /chatHistory:\s*number/, 'API NavigationCounts has chatHistory');
+  assert.match(apiSrc, /\/api\/navigation-counts/, 'uses lightweight navigation-counts endpoint');
+
+  const propertiesPage = read('src/features/properties/pages/PropertiesPage.tsx');
+  const propertiesLoc = propertiesPage.split(/\r?\n/).length;
+  assert.ok(propertiesLoc <= 800, `PropertiesPage LOC ${propertiesLoc} must be <=800`);
+  assert.ok(propertiesLoc <= 560, `PropertiesPage LOC ${propertiesLoc} target <=560 after Batch 6 split`);
+  mustExist('src/features/properties/components/PropertyFormModal.tsx');
+  assert.match(propertiesPage, /PropertyFormModal/, 'PropertiesPage uses PropertyFormModal');
+  assert.doesNotMatch(propertiesPage, /createContext|PropertiesContext/, 'no Properties god context');
+
+  const chatHostLoc = chatHost.split(/\r?\n/).length;
+  assert.ok(chatHostLoc <= 500, `ChatFeatureHost LOC ${chatHostLoc} must be <=500`);
+  assert.ok(chatHostLoc <= 380, `ChatFeatureHost LOC ${chatHostLoc} target <=380 after mode split`);
+  mustExist('src/features/chat/hooks/useChatPolling.ts');
+  mustExist('src/features/chat/components/AssistantChatPanel.tsx');
+  mustExist('src/features/chat/components/WebsiteChatPanel.tsx');
+  mustExist('src/features/chat/components/ChatHistoryPanel.tsx');
+  const pollHook = read('src/features/chat/hooks/useChatPolling.ts');
+  assert.match(pollHook, /clearInterval/, 'useChatPolling cleans up interval');
+  assert.match(pollHook, /setInterval/, 'useChatPolling owns polling timer');
+  assert.match(chatHost, /useChatPolling/, 'ChatFeatureHost uses useChatPolling');
+  assert.match(chatHost, /AssistantChatPanel|WebsiteChatPanel|ChatHistoryPanel/, 'ChatFeatureHost delegates mode panels');
+  assert.doesNotMatch(app, /import\s+PropertiesPage\s+from/, 'Properties must stay lazy');
+  assert.doesNotMatch(app, /import\s+InboxPage\s+from/, 'Inbox must stay lazy');
+  assert.doesNotMatch(app, /import\s+ChatFeatureHost\s+from/, 'ChatFeatureHost must stay lazy');
+  checks.push('Batch 6 shell gate, badges, Properties/Chat split, polling cleanup');
+
+  // Hidden pages: feature routes only render when activeTab matches (no multi-mount of all panels)
+  assert.match(app, /activeTab === 'properties'/, 'Properties gated by activeTab');
+  assert.match(app, /activeTab === 'inbox'/, 'Inbox gated by activeTab');
+  assert.match(app, /activeTab === 'chatbot'/, 'Chatbot gated by activeTab');
+  assert.match(app, /React\.lazy\(\(\)\s*=>\s*import\('\.\/features\/properties/, 'Properties lazy chunk');
+  assert.match(app, /React\.lazy\(\(\)\s*=>\s*import\('\.\/features\/inbox/, 'Inbox lazy chunk');
+  assert.match(app, /React\.lazy\(\(\)\s*=>\s*import\('\.\/features\/chat/, 'Chat lazy chunk');
+  checks.push('Batch 6 lazy route chunks + activeTab mount gating');
+
   console.log('frontend-architecture checks passed:');
   for (const c of checks) console.log('  ✓', c);
+  console.log(
+    `  · App LOC=${appLoc} nonBlank=${appNb} useState=${appUseState} useEffect=${appUseEffect}`,
+  );
+  console.log(`  · PropertiesPage LOC=${propertiesLoc} ChatFeatureHost LOC=${chatHostLoc}`);
 }
 
 main();
