@@ -172,6 +172,37 @@ function main() {
   assert.match(leadPage, /intelligenceOf|ResolvedLeadIntelligence|intelligence/, 'canonical intelligence retained');
   checks.push('Lead Intelligence keeps canonical DTO usage');
 
+  // Batch 4 — ownership boundaries
+  for (const rel of [
+    'src/features/users/pages/UsersPage.tsx',
+    'src/features/dashboard/components/DashboardHotLeads.tsx',
+  ]) {
+    mustExist(rel);
+    checks.push(`exists ${rel}`);
+  }
+
+  assert.match(app, /UsersPage/, 'App must lazy-mount UsersPage');
+  assert.match(app, /DashboardHotLeads/, 'App must lazy-mount DashboardHotLeads');
+  assert.doesNotMatch(app, /const \[customers,\s*setCustomers\]/, 'App must not own CRM customers list state');
+  assert.doesNotMatch(app, /loadCrmModule/, 'App must not preload CRM into App state');
+  assert.doesNotMatch(app, /selectedFinding|selectedCustomer|selectedScannedContent/, 'App must not own feature selected entities');
+  assert.doesNotMatch(app, /handleCreateUser|handleToggleMemberAssignment|handleBulkMemberAssignment/, 'user permission handlers must leave App');
+  assert.doesNotMatch(app, /editingUser|newUserForm|selectedPermissionMemberId/, 'Users form/modal state must leave App');
+  assert.doesNotMatch(app, /User & Permission/, 'Users page JSX must leave App');
+  assert.doesNotMatch(app, /create FeatureContext|useAppState\s*\(/, 'no god FeatureContext / useAppState');
+
+  const usersPage = read('src/features/users/pages/UsersPage.tsx');
+  assert.match(usersPage, /listCustomers/, 'UsersPage fetches customer assignment catalog');
+  assert.match(usersPage, /listProperties/, 'UsersPage fetches property assignment catalog');
+  assert.match(usersPage, /getUsers/, 'UsersPage owns users query');
+  assert.doesNotMatch(usersPage, /customers:\s*Customer\[\]/, 'UsersPage must not take customers props from App');
+  checks.push('Batch 4 ownership: Users + no App CRM customers state');
+
+  const customersPage = read('src/features/crm/pages/CustomersPage.tsx');
+  assert.match(customersPage, /listCustomers/, 'CRM page owns list query');
+  assert.match(customersPage, /showAddModal|createCustomer/, 'CRM page owns create modal');
+  checks.push('Batch 4 CRM page ownership intact');
+
   console.log('frontend-architecture checks passed:');
   for (const c of checks) console.log('  ✓', c);
 }
