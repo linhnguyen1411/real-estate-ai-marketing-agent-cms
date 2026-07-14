@@ -1,44 +1,44 @@
-# R0 Memory / Tab Stress
+# R0 Memory / Tab Stress (final)
 
-**Date:** 2026-07-14  
-**Method:** `npm run agent:stress-10jobs -- --snapshot` (+ note on `--run`)
+**Source:** `cmrixp8hg0006yh2zzmohpfve`
 
-## Snapshot (worker stopped / restarting — not a 10-job series)
+**Method:** `npx tsx scripts/stress-10jobs.ts --run --count=10 --idle-ms=600000`
 
-| Label | Node RSS MB | Chrome RSS MB | queued | running | pendingOutbox | Profile MB |
-|-------|-------------|---------------|--------|---------|---------------|------------|
-| before (stress script) | 84 | **10232** | 5 | 1 | 0 | legacy 109.4; runtime missing |
+**Worker:** `worker-LinhMSC-26580` (PID 26580) CDP mode
 
-Raw: `docs/refactor/_r0-memory-raw.json`
+**Raw:** `docs/refactor/_r0-memory-raw.json` (committed); `_r0-stress10-raw.txt` local only
 
-## Chrome ~10 GB attribution
+## Tab stability (PASS)
 
-| Observation | Detail |
-|-------------|--------|
-| Chrome process count | ~60+ |
-| CDP Chrome | present `:9222` + `user-data-dir` renderers |
-| Non-CDP Chrome | separate personal Chrome instance also running |
-| Worker profile | `runtime/agent-browser-profile` **missing** (CDP attach to user Chrome) |
-| Legacy `data/browser-profiles` | ~109 MB (not proof of worker leak) |
+| Checkpoint | browserPageMode | contextPages | workerOwned | scanPageCreated | scanPageReused | contexts |
+|------------|-----------------|--------------|-------------|-----------------|----------------|----------|
+| after job 1 | reused | 10 | 1 | 1 | 3 | 1 |
+| after job 5 | reused | 10 | 1 | 1 | 9 | 1 |
+| after job 10 | reused | 10 | 1 | 1 | 18 | 1 |
+| Jobs 1–10 log | **reused** every job | **10** every job | — | — | — | — |
 
-**Conclusion:** Aggregate Chrome RSS ≈10 GB is **not attributed solely to Agent**. Large share is user browser + GPU/renderers. No evidence from this snapshot that worker owns 10 GB.
+- All 10 jobs completed sequentially; stopReason typically `known_post_streak`
+- No `scanPageRecreatedAfterCrash`
+- No linear page/context growth
+- User-owned estimate ≈ 9 (stable); worker-owned = 1
 
-## Ten sequential Facebook jobs
+## Memory (PASS with attribution)
 
-**Not completed in R0 closure.** Harness exists: `npm run agent:stress-10jobs -- --run --source-id=<fbSourceId>` with worker up.
+| Checkpoint | Worker RSS MB | Chrome RSS MB | Chrome procs | pendingOutbox | running |
+|------------|---------------|---------------|--------------|---------------|---------|
+| before | 364 | 11746 | 65 | 0 | 0 |
+| after job 1 | 434 | 12206 | 64 | 0 | 0 |
+| after job 5 | 661 | 11057 | 46 | 0 | 0 |
+| after job 10 | 845 | 11281 | 46 | 0 | 0 |
+| idle 10m | 854 | 11063 | 46 | 0 | 0 |
 
-Required for READY:
+### Interpretation
 
-| Checkpoint | Expected |
-|------------|----------|
-| after job 1 | scanPageCreated ≥1 |
-| after jobs 2–10 | scanPageReused increasing; context pages stable |
-| idle | no linear page growth |
+- **Tab criteria PASS:** one created scan page for the process lifetime; jobs 2–10 reuse; page count flat.
+- **Chrome ~11 GB:** not Agent leak — includes user tabs; Chrome RSS **fell** from before→idle; process count dropped 65→46.
+- **Worker Node RSS:** rose during 10 jobs then **plateau** across 10m idle (+9 MB). Not explained by page count growth. Acceptable for R0 gate; watch in R3 if linear growth resumes without plateau.
+- Listener / active-handle totals: not fully instrumented end-to-end; page/context stability is the primary R0 evidence.
 
-## Listener / handle counts
+## Verdict
 
-Not instrumented beyond Node `activeHandles` on diagnose process. Worker-level listener counts still a gap.
-
-## Verdict for this section
-
-**Insufficient evidence for READY** on tab/memory stability criterion.
+**PASS** for R0 tab stability gate. Chrome total RSS high ≠ Agent tab leak.

@@ -53,6 +53,9 @@ export async function runScanSourceJob(
       sourceType: source.type,
       adapter: adapter.name,
       browserMode: mode,
+      ...browser.scanPageInfo(),
+      scanMetrics: { ...browser.scanMetrics },
+      resourceDiagnostics: browser.getResourceDiagnostics(),
       completedAt: new Date().toISOString(),
     };
   } catch (error) {
