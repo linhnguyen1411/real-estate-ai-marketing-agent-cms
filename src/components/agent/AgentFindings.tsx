@@ -25,7 +25,8 @@ import {
   resolveLeadIntelligence,
   formatVietnamPhoneDisplay,
   formatResolvedBudget,
-} from '../../utils/resolveLeadIntelligence';
+  type ResolvedLeadIntelligence,
+} from '@/shared/agent-domain';
 import {
   AgentPanelEmpty,
   AgentPanelError,
@@ -33,6 +34,15 @@ import {
   AgentPanelLoader,
   formatAgentDate,
 } from './AgentPlatformUi';
+
+/** Prefer API-resolved intelligence; fallback to client pure resolver for compatibility. */
+function intelligenceOf(finding: AgentFinding): ResolvedLeadIntelligence {
+  const fromApi = (finding.intelligence || finding.resolved) as ResolvedLeadIntelligence | undefined;
+  if (fromApi && typeof fromApi === 'object' && 'analysisStatus' in fromApi) {
+    return fromApi;
+  }
+  return resolveLeadIntelligence(finding);
+}
 
 type Props = {
   userRole: UserRole;
@@ -684,7 +694,7 @@ export default function AgentFindings({ userRole }: Props) {
       ) : (
         <div className="space-y-3">
           {findings.map(finding => {
-            const resolved = resolveLeadIntelligence(finding);
+            const resolved = intelligenceOf(finding);
             const phoneDisplay = formatVietnamPhoneDisplay(resolved.primaryPhone);
             const secondaryHotline = resolved.contact.phones.find(
               p => p.label === 'hotline' && p.normalized !== resolved.primaryPhone,
@@ -1213,7 +1223,9 @@ function FindingDetailDrawer({
   onDismiss: () => void;
   onCreateReply: () => void;
 }) {
-  const resolved = resolveLeadIntelligence(finding);
+  const resolved = intelligenceOf(finding);
+  // Diagnostics / matching evidence still live under extractedData until R2 repository split;
+  // primary person/score/classification/phone/summary come from `resolved` (API intelligence).
   const extracted = asRecord(finding.extractedData);
   const contact = asRecord(extracted.contact);
   const money = asRecord(extracted.money);
@@ -1228,15 +1240,19 @@ function FindingDetailDrawer({
 
   const reasons = Array.isArray(finding.reasons)
     ? finding.reasons.map(String)
-    : Array.isArray(intelligence.reasons)
-      ? intelligence.reasons.map(String)
-      : [];
-  const missing = Array.isArray(intelligence.missingInformation)
-    ? intelligence.missingInformation.map(String)
-    : resolved.requirementsList.length
-      ? []
-      : [];
-  const keywordMatches = [
+    : resolved.intelligence.reasons.length
+      ? resolved.intelligence.reasons.map(String)
+      : Array.isArray(intelligence.reasons)
+        ? intelligence.reasons.map(String)
+        : [];
+  const missing = Array.isArray(resolved.intelligence.missingInformation)
+    && resolved.intelligence.missingInformation.length
+    ? resolved.intelligence.missingInformation.map(String)
+    : Array.isArray(intelligence.missingInformation)
+      ? intelligence.missingInformation.map(String)
+      : resolved.requirementsList.length
+        ? []
+        : [];  const keywordMatches = [
     ...(Array.isArray(diagnostics.matchedPositive)
       ? diagnostics.matchedPositive.map(v => `+ ${String(v)}`)
       : []),
