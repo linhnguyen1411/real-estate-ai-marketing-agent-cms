@@ -94,7 +94,18 @@ See `R1-DEPRECATIONS.md`.
 
 ## 17. Commits
 
-See git log on `feature/refactor` after R1 close (split per plan where practical).
+```
+f2a875f docs(refactor): capture R1 baseline and type inventory
+668890b refactor(domain): add canonical lead intelligence types and pure resolver
+df61e84 refactor(api): expose canonical lead intelligence dto
+dd49d88 refactor(ui): consume lead intelligence dto
+3f436fb refactor(consumers): use canonical resolver in lifecycle services
+9ca0171 refactor(normalization): clarify normalizer responsibilities
+d19d95d test(domain): add lead intelligence golden fixtures
+0afec5e docs(refactor): document R1 domain consolidation
+```
+
+HEAD: `0afec5e`
 
 ## 18. Test results
 
