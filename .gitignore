@@ -58,3 +58,18 @@ public/property-images/
 *.tmp
 *.temp
 .cache/
+
+# Browser automation profiles & sensitive session artifacts (AI agent / Playwright)
+**/browser-profiles/
+**/runtime/agent-browser-profile/
+**/.browser-profile/
+**/playwright/.auth/
+cookies.json
+**/*cookies*.json
+**/screenshots/
+**/*screenshot*.png
+**/*screenshot*.jpg
+**/playwright-traces/
+**/traces/
+**/*.trace.zip
+data/browser-debug/

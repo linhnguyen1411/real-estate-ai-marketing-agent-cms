@@ -25,6 +25,64 @@ export type LeadEventType =
   | 'qr_view'
   | 'qr_download';
 
+/** Structured payload stored on agent_promote events / returned for detail view */
+export interface InvestorLeadPromoteDetail {
+  findingId?: string;
+  classification?: string | null;
+  intent?: string | null;
+  actorRole?: string | null;
+  priority?: string | null;
+  urgency?: string | null;
+  leadScore?: number | null;
+  scoreStatus?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  needSummary?: string | null;
+  recommendedAction?: string | null;
+  replySuggestion?: string | null;
+  reasons?: string[];
+  missingInformation?: string[];
+  risks?: string[];
+  personName?: string | null;
+  facebookName?: string | null;
+  facebookProfileUrl?: string | null;
+  phones?: string[];
+  primaryPhone?: string | null;
+  emails?: string[];
+  zalo?: string | null;
+  budgetRange?: string | null;
+  buyerBudgetMin?: number | null;
+  buyerBudgetMax?: number | null;
+  purpose?: string | null;
+  transactionTimeline?: string | null;
+  location?: string | null;
+  city?: string | null;
+  district?: string | null;
+  ward?: string | null;
+  street?: string | null;
+  project?: string | null;
+  propertyTypes?: string[];
+  areaMinM2?: number | null;
+  areaMaxM2?: number | null;
+  bedrooms?: number | null;
+  floors?: number | null;
+  legalStatus?: string | null;
+  direction?: string | null;
+  features?: string[];
+  requirements?: string[];
+  sourcePostUrl?: string | null;
+  sourceGroup?: string | null;
+  sourceName?: string | null;
+  sourceType?: string | null;
+  authorName?: string | null;
+  authorUrl?: string | null;
+  publishedAt?: string | null;
+  collectedAt?: string | null;
+  originalContent?: string | null;
+  shortDescription?: string | null;
+  [key: string]: unknown;
+}
+
 export interface InvestorLead {
   id: string;
   name: string;
@@ -35,18 +93,34 @@ export interface InvestorLead {
   budget_range?: LeadBudgetRange | string;
   source?: string;
   channel?: LeadChannel | string;
+  source_channel?: string;
+  source_type?: string;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
   page_path?: string;
   magnet_slug?: string;
   short_link_slug?: string;
+  first_message?: string;
   investor_score: number;
   score_breakdown?: Record<string, number>;
-  status: 'new' | 'contacted' | 'qualified' | 'closed' | 'lost';
+  status:
+    | 'new'
+    | 'contacted'
+    | 'qualified'
+    | 'closed'
+    | 'lost'
+    | 'called'
+    | 'unreachable'
+    | 'callback_scheduled'
+    | 'unqualified'
+    | 'converted_to_customer'
+    | string;
   tags?: string[];
   access_token?: string;
   emails_sent?: number;
+  /** Latest agent_promote event payload (Lead Intelligence) */
+  promote_detail?: InvestorLeadPromoteDetail | null;
   created_at: string;
   updated_at: string;
 }

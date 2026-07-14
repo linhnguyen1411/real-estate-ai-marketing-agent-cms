@@ -1,0 +1,107 @@
+import type { BrowserSession } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../prisma';
+import type { WorkerConfig } from './config';
+
+export type BrowserSessionStatus =
+  | 'starting'
+  | 'ready'
+  | 'running'
+  | 'needs_login'
+  | 'error'
+  | 'offline';
+
+export class HeartbeatService {
+  private sessionId: string | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private status: BrowserSessionStatus = 'starting';
+
+  constructor(private readonly config: WorkerConfig) {}
+
+  async register(
+    getCurrentUrl?: () => Promise<string | null>,
+    metadata?: Record<string, unknown>,
+  ): Promise<BrowserSession> {
+    const existing = await prisma.browserSession.findFirst({
+      where: { workerId: this.config.workerId },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const data = {
+      name: this.config.sessionName,
+      workerId: this.config.workerId,
+      profilePath: this.config.profileDir,
+      companyId: this.config.companyId,
+      status: 'starting' as const,
+      lastHeartbeatAt: new Date(),
+      lastError: null as string | null,
+      metadata: (metadata ?? {}) as Prisma.InputJsonValue,
+    };
+
+    const session = existing
+      ? await prisma.browserSession.update({ where: { id: existing.id }, data })
+      : await prisma.browserSession.create({ data });
+
+    this.sessionId = session.id;
+    this.status = 'starting';
+
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => {
+      void this.pulse(getCurrentUrl);
+    }, this.config.heartbeatIntervalMs);
+
+    return session;
+  }
+
+  async setStatus(status: BrowserSessionStatus): Promise<void> {
+    this.status = status;
+    if (!this.sessionId) return;
+    await prisma.browserSession.update({
+      where: { id: this.sessionId },
+      data: { status, lastHeartbeatAt: new Date() },
+    });
+  }
+
+  async pulse(getCurrentUrl?: () => Promise<string | null>): Promise<void> {
+    if (!this.sessionId) return;
+    if (this.status === 'needs_login' || this.status === 'offline') return;
+
+    let currentUrl: string | null = null;
+    try {
+      currentUrl = getCurrentUrl ? await getCurrentUrl() : null;
+    } catch {
+      currentUrl = null;
+    }
+
+    await prisma.browserSession.update({
+      where: { id: this.sessionId },
+      data: {
+        status: this.status === 'starting' ? 'ready' : this.status,
+        lastHeartbeatAt: new Date(),
+        ...(currentUrl ? { currentUrl } : {}),
+      },
+    });
+  }
+
+  async markOffline(lastError?: string): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.status = 'offline';
+    if (!this.sessionId) return;
+
+    await prisma.browserSession.update({
+      where: { id: this.sessionId },
+      data: {
+        status: 'offline',
+        lastHeartbeatAt: new Date(),
+        ...(lastError ? { lastError: lastError.slice(0, 500) } : {}),
+      },
+    });
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+}

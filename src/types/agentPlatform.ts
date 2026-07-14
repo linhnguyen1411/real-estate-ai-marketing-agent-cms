@@ -1,0 +1,384 @@
+export type AgentSourceType = 'facebook_group' | 'website' | 'forum' | 'search';
+export type AgentSourceStatus = 'active' | 'paused' | 'error';
+export type AgentMissionStatus = 'draft' | 'active' | 'paused' | 'completed';
+export type AgentJobStatus = 'queued' | 'claimed' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type AgentFindingStatus = 'new' | 'reviewed' | 'promoted' | 'dismissed';
+
+export interface AgentListMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AgentDashboardCounts {
+  activeSources: number;
+  queuedJobs: number;
+  runningJobs: number;
+  newFindings: number;
+  unreadNotifications: number;
+  jobsFailed24h: number;
+  sourcesWithError?: number;
+  postsNewLastScans?: number;
+  recentSourceScans?: AgentSourceScanSummary[];
+}
+
+export interface AgentSourceScanSummary {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  lastScannedAt: string | null;
+  nextScanAt: string | null;
+  lastError: string | null;
+  postsNew: number | null;
+  findings?: number | null;
+  stoppedReason: string | null;
+}
+
+export interface AgentSource {
+  id: string;
+  companyId: string | null;
+  name: string;
+  type: AgentSourceType | string;
+  url: string;
+  status: AgentSourceStatus | string;
+  priority: number;
+  scanIntervalMinutes: number;
+  config: Record<string, unknown>;
+  checkpoint?: Record<string, unknown> | null;
+  lastScannedAt?: string | null;
+  nextScanAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentMission {
+  id: string;
+  companyId: string | null;
+  ownerUserId: string | null;
+  name: string;
+  objective: string;
+  status: AgentMissionStatus | string;
+  rules: Record<string, unknown>;
+  schedule?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentMissionTemplate {
+  id: string;
+  name: string;
+  objective: string;
+  rules: {
+    sourceIds: string[];
+    positiveKeywords: string[];
+    negativeKeywords: string[];
+    minFindingScore: number;
+    minScore: number;
+    notifyScore: number;
+    maxItemsPerRun: number;
+    analysisInstructions: string;
+    preferredSourceTypes?: string[];
+  };
+  schedule: {
+    cadence: string;
+    preferredHoursLocal?: number[];
+    timezone?: string;
+  };
+}
+
+export interface AgentDailyReportMetrics {
+  date: string;
+  timezone: string;
+  rangeStart: string;
+  rangeEnd: string;
+  sourcesScanned: number;
+  postsNew: number;
+  findingsTotal: number;
+  findingsByScore: {
+    hot: number;
+    warm: number;
+    cool: number;
+    buckets: Array<{ label: string; min: number; max: number; count: number }>;
+  };
+  topLeads: Array<{
+    id: string;
+    title: string;
+    score: number;
+    summary: string;
+    sourceName: string | null;
+    missionName: string | null;
+    createdAt: string;
+  }>;
+  mostEffectiveSources: Array<{
+    sourceId: string;
+    sourceName: string;
+    sourceType: string;
+    findingsCount: number;
+    avgScore: number;
+    postsNew: number;
+  }>;
+  demandThemes: Array<{ theme: string; count: number }>;
+  failedJobs: Array<{
+    id: string;
+    type: string;
+    sourceName: string | null;
+    missionName: string | null;
+    errorMessage: string | null;
+    finishedAt: string | null;
+  }>;
+  browserSessionHealth: {
+    total: number;
+    byStatus: Record<string, number>;
+    needsLogin: number;
+    staleHeartbeat: number;
+    healthy: number;
+  };
+}
+
+export interface AgentDailyReport {
+  metrics: AgentDailyReportMetrics;
+  aiSummary: string | null;
+  aiSummaryError: string | null;
+  dataSource: 'database';
+}
+
+export interface AgentJob {
+  id: string;
+  companyId: string | null;
+  missionId: string | null;
+  sourceId: string | null;
+  type: string;
+  status: AgentJobStatus | string;
+  priority: number;
+  payload: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  attempts: number;
+  maxAttempts: number;
+  claimedBy?: string | null;
+  claimedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  availableAt: string;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source?: { id: string; name: string; type: string } | null;
+  mission?: { id: string; name: string } | null;
+}
+
+export interface AgentFinding {
+  id: string;
+  companyId: string | null;
+  missionId: string | null;
+  sourceId: string;
+  scannedContentId: string;
+  type: string;
+  score: number;
+  title: string;
+  summary: string;
+  extractedData: Record<string, unknown>;
+  reasons: unknown[];
+  status: AgentFindingStatus | string;
+  promotedLeadId?: string | null;
+  classification?: string | null;
+  intent?: string | null;
+  actorRole?: string | null;
+  priority?: string | null;
+  confidence?: number | null;
+  keywordScore?: number | null;
+  aiScore?: number | null;
+  leadFitScore?: number | null;
+  finalScore?: number | null;
+  primaryPhone?: string | null;
+  primaryLocation?: string | null;
+  /** BigInt may arrive as string from JSON serialization */
+  budgetMin?: string | number | null;
+  budgetMax?: string | number | null;
+  askingPrice?: string | number | null;
+  propertyType?: string | null;
+  dismissedAt?: string | null;
+  dismissedBy?: string | null;
+  dismissReason?: string | null;
+  dismissNote?: string | null;
+  duplicateOfFindingId?: string | null;
+  dedupeStatus?: string | null;
+  similarityScore?: number | null;
+  dedupeReason?: string | null;
+  intelligenceVersion?: string | null;
+  personName?: string | null;
+  needSummary?: string | null;
+  scoreStatus?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  promotedAt?: string | null;
+  promotedBy?: string | null;
+  externalInventoryItemId?: string | null;
+  externalInventorySavedAt?: string | null;
+  externalInventorySavedBy?: string | null;
+  analysisStatus?: string;
+  consistencyWarnings?: string[];
+  resolved?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  source?: { id: string; name: string; type: string };
+  mission?: { id: string; name: string } | null;
+  scannedContent?: {
+    id: string;
+    canonicalUrl: string;
+    authorName?: string | null;
+    authorUrl?: string | null;
+    contentText?: string | null;
+    publishedAt?: string | null;
+    collectedAt: string;
+  };
+}
+
+export interface ExternalInventoryItem {
+  id: string;
+  companyId: string | null;
+  findingId?: string | null;
+  title: string;
+  description?: string | null;
+  originalContent: string;
+  propertyType?: string | null;
+  transactionType: string;
+  askingPriceMin?: string | number | null;
+  askingPriceMax?: string | number | null;
+  rentPrice?: string | number | null;
+  city?: string | null;
+  district?: string | null;
+  ward?: string | null;
+  street?: string | null;
+  project?: string | null;
+  areaMinM2?: number | null;
+  areaMaxM2?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactFacebookUrl?: string | null;
+  sourceUrl?: string | null;
+  sourceName?: string | null;
+  sourceType?: string | null;
+  verificationStatus: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScannedContentItem {
+  id: string;
+  companyId: string | null;
+  sourceId: string;
+  externalId: string | null;
+  canonicalUrl: string;
+  authorName: string | null;
+  authorUrl: string | null;
+  contentText: string;
+  contentHash: string;
+  publishedAt: string | null;
+  collectedAt: string;
+  status: string;
+  metrics?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  source?: { id: string; name: string; type: string };
+  findings?: Array<{ id: string; score: number; status: string; type: string }>;
+}
+
+export interface AgentNotification {
+  id: string;
+  companyId: string | null;
+  userId: string | null;
+  findingId: string | null;
+  type: string;
+  eventKey?: string | null;
+  title: string;
+  message: string;
+  severity: string;
+  status: string;
+  data?: Record<string, unknown> | null;
+  createdAt: string;
+  readAt?: string | null;
+  finding?: { id: string; title: string; score: number; status: string } | null;
+}
+
+export interface EnqueueSourceResult {
+  sourceId: string;
+  jobId: string;
+}
+
+export interface EnqueueMissionResult {
+  missionId: string;
+  jobsCreated: number;
+  jobIds: string[];
+}
+
+export interface BrowserSession {
+  id: string;
+  companyId: string | null;
+  name: string;
+  status: string;
+  workerId: string | null;
+  profilePath: string;
+  currentUrl?: string | null;
+  lastHeartbeatAt?: string | null;
+  lastError?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AgentActionType = 'comment' | 'message' | 'save' | 'follow_up';
+export type AgentActionProposalStatus =
+  | 'proposed'
+  | 'approved'
+  | 'rejected'
+  | 'executed'
+  | 'failed';
+export type AgentActionRiskLevel = 'low' | 'medium' | 'high';
+
+export interface AgentActionProposal {
+  id: string;
+  companyId: string | null;
+  findingId: string;
+  actionType: AgentActionType | string;
+  draftText: string;
+  rationale: string;
+  riskLevel: AgentActionRiskLevel | string;
+  status: AgentActionProposalStatus | string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  executedAt?: string | null;
+  result?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finding?: {
+    id: string;
+    title: string;
+    score: number;
+    status: string;
+    summary?: string;
+    source?: { id: string; name: string; type: string } | null;
+  } | null;
+  audits?: AgentActionAuditLog[];
+}
+
+export interface AgentActionAuditLog {
+  id: string;
+  companyId: string | null;
+  proposalId: string;
+  actorUserId: string | null;
+  action: string;
+  detail?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AgentActionCopyResult {
+  proposalId: string;
+  draftText: string;
+  status: string;
+  actionType: string;
+}

@@ -329,6 +329,29 @@ export interface AppSettings {
   project_display_order?: string[];
   /** Danh mục dự án tùy chỉnh (ghi đè PROPERTY_PROJECT_GROUPS khi có) */
   project_groups?: ProjectCatalogGroup[];
+  /** Telegram lead alerts */
+  telegram_enabled?: boolean;
+  telegram_bot_token?: string;
+  telegram_chat_id?: string;
+  telegram_min_score?: number;
+  telegram_classifications?: string[];
+  telegram_only_with_phone?: boolean;
+  telegram_include_phone?: boolean;
+  telegram_include_budget?: boolean;
+  telegram_include_location?: boolean;
+  telegram_include_link?: boolean;
+  telegram_quiet_hours_start?: string;
+  telegram_quiet_hours_end?: string;
+  /** AI Agent → VPS sync */
+  agent_sync_enabled?: boolean;
+  agent_sync_vps_url?: string;
+  agent_sync_key_id?: string;
+  agent_sync_secret?: string;
+  agent_sync_company_id?: string;
+  agent_sync_worker_id?: string;
+  agent_sync_batch_size?: number;
+  agent_sync_timeout_ms?: number;
+  agent_sync_verify_tls?: boolean;
 }
 
 export interface ChatHistoryRecord {

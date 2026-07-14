@@ -58,7 +58,7 @@ export default function AgentProfilePage() {
         description={agent.bio || `Hồ sơ môi giới bất động sản ${agent.name} tại Estoria.`}
         path={path}
         ogType="profile"
-        ogImage={agent.avatar_url}
+        image={agent.avatar_url}
       />
       <div className="mx-auto max-w-5xl px-4 py-10">
         <Breadcrumbs items={breadcrumbs} className="mb-6" />

@@ -11,6 +11,11 @@ function parseIsoDate(value: unknown, fallback = new Date()): Date {
   return fallback;
 }
 
+function asPromoteDetail(value: unknown): InvestorLead['promote_detail'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as InvestorLead['promote_detail'];
+}
+
 function rowToLead(
   row: {
     id: string;
@@ -22,12 +27,15 @@ function rowToLead(
     budgetRange: string | null;
     source: string | null;
     channel: string | null;
+    sourceChannel?: string | null;
+    sourceType?: string | null;
     utmSource: string | null;
     utmMedium: string | null;
     utmCampaign: string | null;
     pagePath: string | null;
     magnetSlug: string | null;
     shortLinkSlug: string | null;
+    firstMessage?: string | null;
     investorScore: number;
     status: string;
     accessToken: string | null;
@@ -35,7 +43,8 @@ function rowToLead(
     createdAt: Date;
     updatedAt: Date;
   },
-  tags: string[] = []
+  tags: string[] = [],
+  promoteDetail: InvestorLead['promote_detail'] = null,
 ): InvestorLead {
   return {
     id: row.id,
@@ -47,16 +56,20 @@ function rowToLead(
     budget_range: row.budgetRange || undefined,
     source: row.source || undefined,
     channel: row.channel || undefined,
+    source_channel: row.sourceChannel || undefined,
+    source_type: row.sourceType || undefined,
     utm_source: row.utmSource || undefined,
     utm_medium: row.utmMedium || undefined,
     utm_campaign: row.utmCampaign || undefined,
     page_path: row.pagePath || undefined,
     magnet_slug: row.magnetSlug || undefined,
     short_link_slug: row.shortLinkSlug || undefined,
+    first_message: row.firstMessage || undefined,
     investor_score: row.investorScore,
     status: (row.status as InvestorLead['status']) || 'new',
     access_token: row.accessToken || undefined,
     emails_sent: row.emailsSent,
+    promote_detail: promoteDetail,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
     tags,
@@ -262,14 +275,32 @@ export async function getLeadByAccessToken(magnetSlug: string, token: string): P
   return rowToLead(row, await getLeadTags(row.id));
 }
 
-export async function listInvestorLeads(limit = 200): Promise<InvestorLead[]> {
+export async function listInvestorLeads(
+  limit = 200,
+  options?: { includeConverted?: boolean },
+): Promise<InvestorLead[]> {
   const rows = await prisma.lead.findMany({
+    where: options?.includeConverted
+      ? undefined
+      : { status: { not: 'converted_to_customer' } },
     orderBy: [{ investorScore: 'desc' }, { createdAt: 'desc' }],
     take: limit,
+    include: {
+      tags: { orderBy: { createdAt: 'asc' } },
+      events: {
+        where: { eventType: 'agent_promote' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
   });
 
-  return Promise.all(
-    rows.map(async (row) => rowToLead(row, await getLeadTags(row.id)))
+  return rows.map(row =>
+    rowToLead(
+      row,
+      row.tags.map(tag => tag.tag),
+      asPromoteDetail(row.events[0]?.eventData),
+    ),
   );
 }
 
