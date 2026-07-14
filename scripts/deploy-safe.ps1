@@ -3,9 +3,11 @@ param(
   [string]$User = "root",
   [string]$ArchiveName = "deploy-agent-safe.tar.gz",
   [string]$HealthUrl = "https://bdsdanang.site/api/health",
-  [switch]$SkipLint
+  [switch]$SkipLint,
+  [switch]$SkipBackup
 )
 
+# SAFE DEPLOY ENTRYPOINT — never calls deploy.ps1 / db push.
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
@@ -13,7 +15,13 @@ $remote = "${User}@${HostName}"
 $localArchive = Join-Path $root $ArchiveName
 $remoteScript = Join-Path $root "scripts\tmp-vps-safe-deploy.sh"
 
-Write-Host "SAFE DEPLOY - prisma migrate deploy only (no db push)" -ForegroundColor Yellow
+Write-Host "SAFE DEPLOY - prisma migrate deploy only (NO db push)" -ForegroundColor Yellow
+
+if (-not $SkipBackup) {
+  Write-Host "==> backup:prod" -ForegroundColor Cyan
+  & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "backup-prod.ps1")
+  if ($LASTEXITCODE -ne 0) { throw "backup failed" }
+}
 
 if (-not $SkipLint) {
   Write-Host "==> lint" -ForegroundColor Cyan
@@ -32,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw "scp archive failed" }
 scp $remoteScript "${remote}:/tmp/tmp-vps-safe-deploy.sh"
 if ($LASTEXITCODE -ne 0) { throw "scp script failed" }
 
-Write-Host "==> Remote deploy" -ForegroundColor Cyan
+Write-Host "==> Remote migrate+build+restart" -ForegroundColor Cyan
 ssh $remote "sed -i 's/\r`$//' /tmp/tmp-vps-safe-deploy.sh; bash /tmp/tmp-vps-safe-deploy.sh"
 if ($LASTEXITCODE -ne 0) { throw "remote deploy failed" }
 
