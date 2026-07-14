@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../src/types';
-import { resolveLeadIntelligence } from '../../src/utils/resolveLeadIntelligence';
+import { resolveLeadIntelligence, toLeadIntelligenceListDTO } from '../../shared/agent-domain';
 import { prisma } from '../prisma';
 import type { AgentDashboardCounts, MissionRules, PaginatedMeta, PaginationInput } from './agentTypes';
 
@@ -416,9 +416,15 @@ export async function listAgentFindings(
 
 function enrichFindingForApi<T extends Record<string, any>>(row: T): T & {
   resolved?: ReturnType<typeof resolveLeadIntelligence>;
+  intelligence?: ReturnType<typeof resolveLeadIntelligence>;
+  intelligenceSummary?: ReturnType<typeof toLeadIntelligenceListDTO>;
 } {
   const serialized = serializeFindingRow(row);
   const resolved = resolveLeadIntelligence(serialized);
+  const intelligenceSummary = toLeadIntelligenceListDTO(resolved, {
+    status: serialized.status,
+    findingId: serialized.id,
+  });
   return {
     ...serialized,
     classification: resolved.classification ?? serialized.classification ?? null,
@@ -436,7 +442,10 @@ function enrichFindingForApi<T extends Record<string, any>>(row: T): T & {
     primaryLocation: resolved.primaryLocation ?? serialized.primaryLocation ?? null,
     analysisStatus: resolved.analysisStatus,
     consistencyWarnings: resolved.consistencyWarnings,
+    /** @deprecated Prefer `intelligence` — same object */
     resolved,
+    intelligence: resolved,
+    intelligenceSummary,
   };
 }
 
