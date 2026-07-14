@@ -1,47 +1,30 @@
-# PERFORMANCE MILESTONE RESUME
+# PERFORMANCE MILESTONE — RESUME PLAN
 
-After Frontend Architecture Decomposition (Batch 1+), resume Performance work on the new module boundaries — do **not** declare Performance complete yet.
+Performance work remains **paused** after Batch 2 architecture. Do not claim complete.
 
-## Already kept (must not regress)
+## Already kept (still wired)
 
-| Item | Location |
-|------|----------|
-| F5 bootstrap = dashboard + navigation-counts + settings | `App.tsx` → `getBootstrapData` |
-| Load-on-menu via `loadModuleForTab` | `App.tsx` |
-| Query TTL cache | `src/services/queryCache.ts` |
-| List pagination query params | `server/listPagination.ts` + CRM GETs |
-| Lazy panels (InvestorLeads, AgentPlatform, SEO, …) | still in App + `AdminHeader` bell |
-| Docs audit/report | `docs/performance/*` |
+- `getBootstrapData` / dashboard + navigation-counts + settings bootstrap
+- `navigationCounts` sidebar badges
+- `loadModuleForTab` for CRM/properties/etc.
+- `queryCache` + invalidate helpers
+- Lazy admin panels (investor leads, SEO, property directory, …)
+- List pagination query params on CRM APIs
+- Batch 2 feature lazy pages (settings/automations/integrations/profile + agent sections)
 
-## Needs rewire as features extract
+## Needs rewire after further architecture
 
-| Work | When feature moves |
-|------|--------------------|
-| Dashboard metrics UI | → `features/dashboard` hooks using `/api/dashboard` only |
-| CRM list fetch/pagination | → `features/crm` hooks |
-| Properties list | → `features/properties` |
-| Nav badges | stay on `navigation-counts`; sidebar already config-driven |
-| Promote invalidate | keep `invalidateAfterLeadPromote` near findings feature |
+- When Users / CRM leave App, keep permission assignment APIs unchanged
+- Move remaining bootstrap `loadModuleForTab` owners into page hooks
+- Ensure Notifications bell continues to use count-only endpoint
 
-## Not done yet (Performance Milestone)
+## Not done (Performance Milestone)
 
-- Full route-based router (still tab `activeTab` for CRM tabs)
-- Virtual tables for >100 rows
-- Complete server-side filter for all CRM price/area client filters
-- Dedicated page-level Suspense for every CRM tab module
-- Before/after runtime metrics in prod
+- Full CRM server-side search UX polish
+- Virtual tables for lists >100
+- Dedicated AppRouter composition (routes still via tab state in AdminApp)
+- F5 → only auth/layout/dashboard/nav-counts as exclusive guaranteed set for all menus
 
 ## KPI still apply
 
-- F5: auth + layout + dashboard + nav counts only
-- No preload findings/CRM/jobs/inventory/notifications list/sources/properties
-- Pagination server-side for lists
-- Route/module lazy boundaries
-- No business/schema/AI changes
-
-## Resume order (after architecture PARTIAL→COMPLETE)
-
-1. Finish App shell + feature extraction (this phase).
-2. Convert remaining CRM tabs to lazy feature pages.
-3. Re-run PERFORMANCE-REPORT deltas on new chunk graph.
-4. Only then mark Performance Milestone.
+Same as PERFORMANCE-REPORT.md: F5 API count, transfer, lazy chunks, no preload of Sources/Jobs/Notifications list/Reports/Sessions.

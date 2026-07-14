@@ -44,13 +44,12 @@ import {
   GripVertical,
   FileSearch,
 } from 'lucide-react';
-import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, MarketingChannel, GeneratedContentRecord, User } from './types';
+import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, ChatMessage, ChatHistoryRecord, PublicChatGuest, AppSettings, GeneratedContentRecord, User } from './types';
 import { ASSISTANT_WELCOME_MESSAGE, DEFAULT_SETTINGS } from './config/defaults';
 import MarkdownContent from './components/MarkdownContent';
 import MarkdownEditor from './components/MarkdownEditor';
 import { uploadContentImage } from './services/blogApi';
 import { resizeImageFile } from './utils/resizeImageFile';
-import AdminProfilePanel from './components/admin/AdminProfilePanel';
 import {
   countPropertyStatuses,
   getPropertySaleStatus,
@@ -78,8 +77,6 @@ import {
   getGeneratedContents,
   getBootstrapData,
   getNavigationCounts,
-  getAutomations,
-  getChannels,
   listCustomers,
   listProperties,
   listPosts,
@@ -93,7 +90,6 @@ import {
   sendAssistantMessage,
   sendPublicChatGuestMessage,
   sendInboxReply,
-  toggleAutomation,
   updatePublicChatGuestAi,
   deleteChatSession,
   updateCustomer,
@@ -127,6 +123,10 @@ const AdminProjectsPanel = React.lazy(() => import('./components/admin/AdminProj
 const LeadMagnetContentAdmin = React.lazy(() => import('./components/admin/LeadMagnetContentAdmin'));
 const SeoContentAdmin = React.lazy(() => import('./components/admin/SeoContentAdmin'));
 const AgentPlatformPage = React.lazy(() => import('./pages/AgentPlatformPage'));
+const SystemSettingsPage = React.lazy(() => import('./features/settings/pages/SystemSettingsPage'));
+const AutomationsPage = React.lazy(() => import('./features/automations/pages/AutomationsPage'));
+const IntegrationsPage = React.lazy(() => import('./features/integrations/pages/IntegrationsPage'));
+const ProfilePage = React.lazy(() => import('./features/profile/pages/ProfilePage'));
 
 function ModuleFallback({ label = 'Đang tải module…' }: { label?: string }) {
   return (
@@ -232,7 +232,6 @@ export default function App() {
   const [inbox, setInbox] = useState<InboxMessage[]>([]);
   const [automations, setAutomations] = useState<AutomationTask[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [channels, setChannels] = useState<MarketingChannel[]>([]);
   const [generatedContents, setGeneratedContents] = useState<GeneratedContentRecord[]>([]);
   const [managedUsers, setManagedUsers] = useState<User[]>([]);
   const [chatHistoryRecords, setChatHistoryRecords] = useState<ChatHistoryRecord[]>([]);
@@ -527,15 +526,12 @@ export default function App() {
         return;
       }
       if (tab === 'automations') {
-        if (!mark('automations') && !force) return;
-        setModuleLoading(true);
-        setAutomations(await getAutomations());
         return;
       }
       if (tab === 'integrations') {
-        if (!mark('channels') && !force) return;
-        setModuleLoading(true);
-        setChannels(await getChannels());
+        return;
+      }
+      if (tab === 'settings' || tab === 'profile') {
         return;
       }
       if (['website-chat', 'chat-history', 'chatbot', 'users', 'ai-content'].includes(tab)) {
@@ -1278,18 +1274,7 @@ export default function App() {
     }
   };
 
-  // Toggle automation trigger
-  const handleToggleAutomation = async (id: string) => {
-    try {
-      const automation = await toggleAutomation(id);
-      showToast(`Đã ${automation.status === 'active' ? 'bật' : 'tắt'} kịch bản tự động hóa!`, 'info');
-      setAutomations(prev => prev.map(a => a.id === id ? automation : a));
-    } catch (e: any) {
-      showToast(e.message || "Lỗi thao tác tự động hóa.", "error");
-    }
-  };
-
-  // Run manually test automation reports
+  // Run manually test automation reports (sidebar sandbox button)
   const handleRunDemoAutomations = async () => {
     setActionLoading('run-automations');
     try {
@@ -1469,78 +1454,6 @@ export default function App() {
       showToast('Đã khôi phục sản phẩm về listing công khai.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Không thể khôi phục sản phẩm.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Update Settings Configuration
-  const handleSaveSettings = async (e: FormEvent) => {
-    e.preventDefault();
-    setActionLoading('save-settings');
-    try {
-      const updatedSettings = await saveSettings(settings);
-      showToast("Đã lưu thiết lập cấu hình AI thành công!", "success");
-      setSettings(updatedSettings);
-    } catch (e: any) {
-      showToast(e.message || "Lỗi lưu.", "error");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleTestTelegram = async () => {
-    setActionLoading('test-telegram');
-    try {
-      const token = getAuthToken();
-      const response = await fetch('/api/settings/telegram/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({}),
-      });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
-      }
-      showToast((json as { message?: string }).message || 'Đã gửi tin Telegram thử.', 'success');
-    } catch (e: any) {
-      showToast(e.message || 'Test Telegram thất bại.', 'error');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleTestAgentSync = async () => {
-    setActionLoading('test-agent-sync');
-    try {
-      const token = getAuthToken();
-      const response = await fetch('/api/settings/agent-sync/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          agent_sync_vps_url: settings.agent_sync_vps_url,
-          agent_sync_key_id: settings.agent_sync_key_id,
-          agent_sync_secret: settings.agent_sync_secret,
-          agent_sync_timeout_ms: settings.agent_sync_timeout_ms,
-        }),
-      });
-      const json = await response.json().catch(() => ({}));
-      if (response.status === 404) {
-        showToast('Server chưa có endpoint test — restart CMS rồi thử lại.', 'info');
-        return;
-      }
-      if (!response.ok) {
-        throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
-      }
-      showToast((json as { message?: string }).message || 'Kết nối VPS OK.', 'success');
-    } catch (e: any) {
-      showToast(e.message || 'Test Đồng bộ VPS thất bại.', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -3522,74 +3435,11 @@ export default function App() {
               {/* TAB 8: AUTOMATION AI CENTER */}
               {/* ==================================================== */}
               {activeTab === 'automations' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        Trung tâm Tự Động Hóa AI Automation Center
-                      </h2>
-                      <p className="text-slate-400 text-sm">Thiết lập các workflow sự kiện tự động kích hoạt AI xử lý thông tin.</p>
-                    </div>
-
-                    <button
-                      onClick={handleRunDemoAutomations}
-                      disabled={actionLoading === 'run-automations'}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-md"
-                    >
-                      <Play className="w-3.5 h-3.5" /> Chạy thử toàn diện (Simulate)
-                    </button>
-                  </div>
-
-                  {/* Automation Tasks Grid visual */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {automations.map((auto) => (
-                      <div key={auto.id} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 flex flex-col justify-between hover:border-slate-800 transition-all space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h3 className="font-bold text-white text-sm">{auto.name}</h3>
-                              <span className="text-2xs text-rose-400 font-mono">Trigger: {auto.trigger_event}</span>
-                            </div>
-
-                            <button
-                              onClick={() => handleToggleAutomation(auto.id)}
-                              className={`px-3 py-1.5 rounded-lg text-2xs font-extrabold transition-all border ${
-                                auto.status === 'active' 
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                                  : 'bg-slate-950 text-slate-500 border-slate-900'
-                              }`}
-                            >
-                              {auto.status === 'active' ? '● RUNNING' : '○ PAUSED'}
-                            </button>
-                          </div>
-
-                          <p className="text-xs text-slate-400 leading-relaxed font-sans">{auto.action_description}</p>
-                        </div>
-
-                        {/* Executed count */}
-                        <div className="flex justify-between text-2xs text-slate-500 border-t border-slate-900/85 pt-3">
-                          <span>Chạy được: <strong>{auto.run_count} lần</strong></span>
-                          <span>Đồng bộ: {auto.last_run ? new Date(auto.last_run).toLocaleTimeString() : 'Chưa chạy'}</span>
-                        </div>
-
-                        {/* Recent log snippet view */}
-                        {auto.logs && auto.logs.length > 0 && (
-                          <div className="p-3 bg-slate-950 rounded-xl border border-slate-900/80 font-mono text-3xs text-slate-400 space-y-1 overflow-y-auto max-h-24">
-                            <span className="text-slate-500 block">NHẬT KÝ LIVE TRUY VẤN:</span>
-                            {auto.logs.map((log, lidx) => (
-                              <p key={lidx}>{log}</p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <Suspense fallback={<ModuleFallback label="Đang tải Automation…" />}>
+                  <AutomationsPage onNotify={showToast} />
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 9: USER & PERMISSION MANAGEMENT */}
-              {/* ==================================================== */}
               {activeTab === 'users' && canManageCmsUsers && (
                 <div className="space-y-6">
                   <div>
@@ -3860,445 +3710,29 @@ export default function App() {
               {/* TAB: PROFILE */}
               {/* ==================================================== */}
               {activeTab === 'profile' && currentUser && (
-                <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                  <AdminProfilePanel
+                <Suspense fallback={<ModuleFallback label="Đang tải hồ sơ…" />}>
+                  <ProfilePage
                     currentUser={currentUser}
-                    saving={actionLoading === 'save-profile'}
-                    onSavingChange={(loading) => setActionLoading(loading ? 'save-profile' : null)}
-                    onUpdated={(user) => {
-                      setCurrentUser(user);
-                      setManagedUsers(prev => prev.map(item => (
-                        item.id === user.id
-                          ? {
-                            ...item,
-                            name: user.name,
-                            email: user.email,
-                            phone: user.phone,
-                            avatar_url: user.avatar_url,
-                            bio: user.bio,
-                            agent_tier: user.agent_tier,
-                            public_slug: user.public_slug,
-                            show_public_profile: user.show_public_profile,
-                          }
-                          : item
-                      )));
-                    }}
+                    onUserUpdated={setCurrentUser}
+                    onManagedUsersPatch={setManagedUsers}
                     onNotify={showToast}
                   />
-                </div>
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 9: INTEGRATIONS ACCOUNT */}
-              {/* ==================================================== */}
               {activeTab === 'integrations' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Tích hợp kênh mạng xã hội & Tài khoản CMS
-                    </h2>
-                    <p className="text-slate-400 text-sm">Kiểm soát trạng thái kết nối cổng API của các fanpage và tài khoản liên kết.</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {channels.map((chan, idx) => (
-                      <div key={idx} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 flex flex-col justify-between hover:border-slate-800 transition-all space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                              chan.platform === 'facebook' ? 'bg-blue-600 text-white' :
-                              chan.platform === 'zalo' ? 'bg-sky-500 text-white' :
-                              chan.platform === 'tiktok' ? 'bg-white text-black' :
-                              'bg-rose-600 text-white'
-                            }`}>
-                              {chan.platform[0].toUpperCase()}
-                            </span>
-                            <div>
-                              <h3 className="font-bold text-white text-xs leading-none">{chan.name}</h3>
-                              <span className="text-3xs text-slate-500 capitalize">{chan.platform} API Client</span>
-                            </div>
-                          </div>
-
-                          <span className={`px-2.5 py-1 rounded-full text-3xs font-black tracking-tight ${
-                            chan.connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-950 text-slate-500 border-transparent'
-                          }`}>
-                            {chan.connected ? "CONNECTED" : "DISCONNECTED"}
-                          </span>
-                        </div>
-
-                        {/* Stats if connected */}
-                        {chan.connected && (
-                          <div className="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-900 text-center text-xs">
-                            <div>
-                              <span className="block text-3xs text-slate-505">Tin nhắn nhận</span>
-                              <span className="font-bold text-white">{chan.messages_count} messages</span>
-                            </div>
-                            <div>
-                              <span className="block text-3xs text-slate-505">Bình luận</span>
-                              <span className="font-bold text-white">{chan.comments_count} comments</span>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between text-3xs text-slate-500">
-                          <span>Quét lần cuối: {chan.last_sync}</span>
-                          <button type="button" className="text-rose-400 hover:underline">Đã lưu cổng</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* API integration instructions warning */}
-                  <div className="bg-slate-900/20 p-5 rounded-2xl border border-slate-900 space-y-3">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-rose-500" /> Hướng dẫn tích hợp cổng API thật (Prod Sync)
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed max-w-3xl">
-                      Hệ thống đang cấu hình mock API dạng demo sandbox chất lượng. Để đấu nối sản phẩm thật với Facebook Graph API, Zalo OA Webhook hay TikTok Marketing, bạn chỉ cần phát sinh cổng redirect OAuth, cấu hình Access Token gối đầu của doanh nghiệp trong trang Cài đặt, và hướng sự kiện webhook về địa chỉ của API Server.
-                    </p>
-                  </div>
-                </div>
+                <Suspense fallback={<ModuleFallback label="Đang tải tích hợp…" />}>
+                  <IntegrationsPage onNotify={showToast} />
+                </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 10: CONFIG SETTINGS */}
-              {/* ==================================================== */}
               {activeTab === 'settings' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      Cổng cấu hình hệ thống AI Agent
-                    </h2>
-                    <p className="text-slate-400 text-sm">Chuyển đổi phương thức xử lý AI thông minh qua Gemini API hoặc Ollama local chạy cục bộ.</p>
-                  </div>
-
-                  <form onSubmit={handleSaveSettings} className="bg-slate-900/40 p-6 rounded-2xl border border-slate-900 space-y-6 max-w-2xl">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">Chế độ vận hành AI chính</label>
-                        <select
-                          value={settings.ai_mode}
-                          onChange={(e) => setSettings({ ...settings, ai_mode: e.target.value as AppSettings['ai_mode'] })}
-                          className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                        >
-                          <option value="auto">Auto: Ollama local, fallback ChatGPT</option>
-                          <option value="ollama">Ollama Local API Client</option>
-                          <option value="openai">OpenAI / ChatGPT API</option>
-                          <option value="gemini">Google Gemini API</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">Giọng văn Agent định chuẩn Việt Nam</label>
-                        <input
-                          type="text"
-                          value={settings.agent_tone}
-                          onChange={(e) => setSettings({ ...settings, agent_tone: e.target.value })}
-                          placeholder="Mặc định: sang trọng và chuyên nghiệp"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">Ollama API Endpoint (Nếu chọn Ollama)</label>
-                        <input
-                          type="text"
-                          value={settings.ollama_endpoint}
-                          onChange={(e) => setSettings({ ...settings, ollama_endpoint: e.target.value })}
-                          placeholder="Mặc định: http://localhost:11434"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">Default Model Target (Ollama)</label>
-                        <input
-                          type="text"
-                          value={settings.ollama_model}
-                          onChange={(e) => setSettings({ ...settings, ollama_model: e.target.value })}
-                          placeholder="Mặc định: qwen3:8b"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">OpenAI / ChatGPT Model Fallback</label>
-                        <input
-                          type="text"
-                          value={settings.openai_model}
-                          onChange={(e) => setSettings({ ...settings, openai_model: e.target.value })}
-                          placeholder="Mặc định: gpt-5-mini"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                        />
-                      </div>
-
-                    </div>
-
-                    <div className="border-t border-slate-800 pt-6 space-y-4">
-                      <h3 className="text-sm font-bold text-white">Telegram</h3>
-                      <label className="flex items-center gap-2 text-xs text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(settings.telegram_enabled)}
-                          onChange={e => setSettings({ ...settings, telegram_enabled: e.target.checked })}
-                          className="rounded border-slate-700 bg-slate-950"
-                        />
-                        Bật thông báo Telegram
-                      </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Bot token</label>
-                          <input
-                            type="password"
-                            autoComplete="off"
-                            value={settings.telegram_bot_token || ''}
-                            onChange={e => setSettings({ ...settings, telegram_bot_token: e.target.value })}
-                            placeholder="•••••••• (không hiện lại sau lưu nếu mask)"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Chat ID</label>
-                          <input
-                            type="text"
-                            value={settings.telegram_chat_id || ''}
-                            onChange={e => setSettings({ ...settings, telegram_chat_id: e.target.value })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Điểm tối thiểu</label>
-                          <input
-                            type="number"
-                            value={settings.telegram_min_score ?? 70}
-                            onChange={e => setSettings({ ...settings, telegram_min_score: Number(e.target.value) || 0 })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2 text-xs text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={settings.telegram_only_with_phone !== false}
-                          onChange={e => setSettings({ ...settings, telegram_only_with_phone: e.target.checked })}
-                          className="rounded border-slate-700 bg-slate-950"
-                        />
-                        Chỉ gửi khi có số điện thoại
-                      </label>
-                      <div className="flex flex-wrap gap-4 text-xs text-slate-300">
-                        {[
-                          { key: 'telegram_include_phone' as const, label: 'Gồm SĐT' },
-                          { key: 'telegram_include_budget' as const, label: 'Gồm ngân sách' },
-                          { key: 'telegram_include_location' as const, label: 'Gồm vị trí' },
-                          { key: 'telegram_include_link' as const, label: 'Gồm link bài' },
-                        ].map(item => (
-                          <label key={item.key} className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={settings[item.key] !== false}
-                              onChange={e => setSettings({ ...settings, [item.key]: e.target.checked })}
-                              className="rounded border-slate-700 bg-slate-950"
-                            />
-                            {item.label}
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleTestTelegram}
-                        disabled={actionLoading === 'test-telegram'}
-                        className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-50"
-                      >
-                        {actionLoading === 'test-telegram' ? 'Đang gửi…' : 'Test Telegram'}
-                      </button>
-                    </div>
-
-                    <div className="border-t border-slate-800 pt-6 space-y-4">
-                      <h3 className="text-sm font-bold text-white">AI Agent — Đồng bộ VPS</h3>
-                      {settings.agent_sync_enabled ? (
-                        <p className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100">
-                          Dữ liệu mới (Source + Nội dung quét + Finding) sẽ được lưu local và đồng bộ lên VPS production.
-                          Máy này là bot quét / cache; CMS production lấy dữ liệu từ VPS.
-                        </p>
-                      ) : null}
-                      <label className="flex items-center gap-2 text-xs text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(settings.agent_sync_enabled)}
-                          onChange={e => setSettings({ ...settings, agent_sync_enabled: e.target.checked })}
-                          className="rounded border-slate-700 bg-slate-950"
-                        />
-                        Bật đồng bộ VPS
-                      </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2 md:col-span-2">
-                          <label className="block text-xs font-semibold text-slate-300">VPS URL</label>
-                          <input
-                            type="text"
-                            value={settings.agent_sync_vps_url || ''}
-                            onChange={e => setSettings({ ...settings, agent_sync_vps_url: e.target.value })}
-                            placeholder="https://…"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Key ID</label>
-                          <input
-                            type="text"
-                            value={settings.agent_sync_key_id || ''}
-                            onChange={e => setSettings({ ...settings, agent_sync_key_id: e.target.value })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Secret</label>
-                          <input
-                            type="password"
-                            autoComplete="off"
-                            value={settings.agent_sync_secret || ''}
-                            onChange={e => setSettings({ ...settings, agent_sync_secret: e.target.value })}
-                            placeholder="••••••••"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Company ID</label>
-                          <input
-                            type="text"
-                            value={settings.agent_sync_company_id || ''}
-                            onChange={e => setSettings({ ...settings, agent_sync_company_id: e.target.value })}
-                            placeholder="comp-da-nang"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Worker ID</label>
-                          <input
-                            type="text"
-                            value={settings.agent_sync_worker_id || ''}
-                            onChange={e => setSettings({ ...settings, agent_sync_worker_id: e.target.value })}
-                            placeholder="local-worker-1"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Batch size</label>
-                          <input
-                            type="number"
-                            value={settings.agent_sync_batch_size ?? 20}
-                            onChange={e => setSettings({ ...settings, agent_sync_batch_size: Number(e.target.value) || 1 })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-semibold text-slate-300">Timeout (ms)</label>
-                          <input
-                            type="number"
-                            value={settings.agent_sync_timeout_ms ?? 15000}
-                            onChange={e => setSettings({ ...settings, agent_sync_timeout_ms: Number(e.target.value) || 1000 })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Secret không hiển thị lại sau lưu (mask). Để trống secret nếu không đổi.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleTestAgentSync}
-                          disabled={actionLoading === 'test-agent-sync'}
-                          className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-50"
-                        >
-                          {actionLoading === 'test-agent-sync' ? 'Đang kiểm tra…' : 'Test connection'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setActionLoading('flush-agent-sync');
-                            try {
-                              const token = getAuthToken();
-                              const response = await fetch('/api/settings/agent-sync/flush', {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                },
-                                body: JSON.stringify({ limit: 20 }),
-                              });
-                              const json = await response.json().catch(() => ({}));
-                              if (!response.ok) {
-                                throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
-                              }
-                              const flush = (json as { data?: { flush?: { synced?: number; failed?: number; processed?: number } } }).data?.flush;
-                              showToast(
-                                `Sync now: processed ${flush?.processed ?? 0}, synced ${flush?.synced ?? 0}, failed ${flush?.failed ?? 0}`,
-                                'success',
-                              );
-                            } catch (e: any) {
-                              showToast(e.message || 'Flush thất bại.', 'error');
-                            } finally {
-                              setActionLoading(null);
-                            }
-                          }}
-                          disabled={actionLoading === 'flush-agent-sync'}
-                          className="rounded-xl border border-emerald-800/60 px-4 py-2 text-xs font-bold text-emerald-200 hover:bg-slate-900 disabled:opacity-50"
-                        >
-                          {actionLoading === 'flush-agent-sync' ? 'Đang sync…' : 'Sync now'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setActionLoading('status-agent-sync');
-                            try {
-                              const token = getAuthToken();
-                              const response = await fetch('/api/settings/agent-sync/status', {
-                                headers: token ? { Authorization: `Bearer ${token}` } : {},
-                              });
-                              const json = await response.json().catch(() => ({}));
-                              if (!response.ok) {
-                                throw new Error((json as { message?: string }).message || `API lỗi ${response.status}`);
-                              }
-                              const d = (json as { data?: Record<string, unknown> }).data || {};
-                              showToast(
-                                `Pending ${d.pending ?? 0} · Failed ${d.failed ?? 0} · Synced ${d.synced ?? 0} · Dead ${d.deadLetter ?? 0}`,
-                                'info',
-                              );
-                            } catch (e: any) {
-                              showToast(e.message || 'Không lấy được status.', 'error');
-                            } finally {
-                              setActionLoading(null);
-                            }
-                          }}
-                          disabled={actionLoading === 'status-agent-sync'}
-                          className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300 hover:bg-slate-900 disabled:opacity-50"
-                        >
-                          Xem outbox status
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Backfill dữ liệu cũ: <code className="text-slate-300">npm run agent:enqueue-unsynced-data -- --apply --limit 20</code>
-                      </p>
-                    </div>
-
-                    <div className="p-4 bg-slate-950 rounded-xl border border-slate-900/80 text-xs text-slate-400 leading-relaxed space-y-1.5">
-                      <strong className="text-rose-400 block font-bold">LỜI KHUYÊN DÀNH CHO DEVELOPERS:</strong>
-                      <p>Hệ thống tự động đồng bộ hóa cấu hình về file <span className="text-white font-mono font-bold">db.json</span> vĩnh viễn khóa gối đầu ở server side.</p>
-                      <p>Sử dụng phím Settings Secrets ở ngoài thanh bên AI Studio để ghi đè <span className="text-white font-mono font-bold">GEMINI_API_KEY</span> chính xác khi chạy production.</p>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-900">
-                      <button
-                        type="submit"
-                        disabled={actionLoading === 'save-settings'}
-                        className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-md transition-all"
-                      >
-                        {actionLoading === 'save-settings' ? 'Đang lưu thiết lập...' : 'Cập nhật thiết lập'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
+                <Suspense fallback={<ModuleFallback label="Đang tải Settings…" />}>
+                  <SystemSettingsPage
+                    onNotify={showToast}
+                    onSettingsSaved={setSettings}
+                  />
+                </Suspense>
               )}
 
             </>

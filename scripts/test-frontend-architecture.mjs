@@ -86,6 +86,57 @@ function main() {
   assert.match(sidebar, /AGENT_SUBMENU/);
   checks.push('sidebar uses config data');
 
+  // Batch 2 feature modules
+  for (const rel of [
+    'src/features/settings/pages/SystemSettingsPage.tsx',
+    'src/features/settings/hooks/useSystemSettings.ts',
+    'src/features/settings/services/systemSettingsApi.ts',
+    'src/features/automations/pages/AutomationsPage.tsx',
+    'src/features/integrations/pages/IntegrationsPage.tsx',
+    'src/features/profile/pages/ProfilePage.tsx',
+    'src/features/agent/sources/pages/SourcesPage.tsx',
+    'src/features/agent/missions/pages/MissionsPage.tsx',
+    'src/features/agent/jobs/pages/JobsPage.tsx',
+    'src/features/agent/notifications/pages/NotificationsPage.tsx',
+    'src/features/agent/sessions/pages/SessionsPage.tsx',
+    'src/features/agent/reports/pages/ReportsPage.tsx',
+    'src/features/agent/shared/AgentPlatformUi.tsx',
+  ]) {
+    mustExist(rel);
+    checks.push(`exists ${rel}`);
+  }
+
+  assert.match(app, /SystemSettingsPage/, 'App must lazy-mount SystemSettingsPage');
+  assert.match(app, /AutomationsPage/, 'App must lazy-mount AutomationsPage');
+  assert.match(app, /IntegrationsPage/, 'App must lazy-mount IntegrationsPage');
+  assert.match(app, /ProfilePage/, 'App must lazy-mount ProfilePage');
+  assert.doesNotMatch(app, /handleSaveSettings/, 'settings save handler must leave App');
+  assert.doesNotMatch(app, /handleTestTelegram/, 'telegram test handler must leave App');
+  assert.doesNotMatch(app, /handleTestAgentSync/, 'agent sync test handler must leave App');
+  assert.doesNotMatch(app, /Cổng cấu hình hệ thống AI Agent/, 'settings JSX must leave App');
+  assert.doesNotMatch(app, /Trung tâm Tự Động Hóa AI Automation Center/, 'automations JSX must leave App');
+  checks.push('Batch 2 App no longer owns settings/automations JSX+handlers');
+
+  const agentPlatform = read('src/pages/AgentPlatformPage.tsx');
+  assert.match(agentPlatform, /React\.lazy/, 'AgentPlatformPage must lazy-load Batch 2 sections');
+  assert.match(agentPlatform, /features\/agent\/sources\/pages\/SourcesPage/);
+  assert.match(agentPlatform, /features\/agent\/missions\/pages\/MissionsPage/);
+  assert.match(agentPlatform, /features\/agent\/jobs\/pages\/JobsPage/);
+  assert.match(agentPlatform, /features\/agent\/notifications\/pages\/NotificationsPage/);
+  assert.match(agentPlatform, /features\/agent\/sessions\/pages\/SessionsPage/);
+  assert.match(agentPlatform, /features\/agent\/reports\/pages\/ReportsPage/);
+  assert.match(agentPlatform, /Suspense/);
+  checks.push('AgentPlatformPage lazy Batch 2 sections');
+
+  // App must not statically import Batch 2 page implementations
+  assert.doesNotMatch(
+    app,
+    /import\s+SystemSettingsPage\s+from/,
+    'SystemSettingsPage must be lazy, not static',
+  );
+  assert.doesNotMatch(app, /import\s+AutomationsPage\s+from/, 'AutomationsPage must be lazy');
+  checks.push('Batch 2 pages are lazy-imported from App');
+
   console.log('frontend-architecture checks passed:');
   for (const c of checks) console.log('  ✓', c);
 }
