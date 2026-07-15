@@ -17,6 +17,7 @@ import type {
   EnqueueSourceResult,
   ExternalInventoryItem,
   ScannedContentItem,
+  AgentSpamRule,
 } from '../types/agentPlatform';
 
 type ApiStatus = 'success' | 'error';
@@ -641,4 +642,105 @@ export function copyAgentActionProposal(id: string, markApproved = false) {
 
 export function fetchAgentActionProposalAudits(id: string) {
   return agentRequest<AgentActionAuditLog[]>(`/api/agent/action-proposals/${id}/audits`);
+}
+
+// ─── Spam & Block Rules ───────────────────────────────────────────────
+
+export function fetchSpamRules(params: {
+  page?: number;
+  limit?: number;
+  type?: string;
+  action?: string;
+  sourceId?: string;
+  active?: boolean | string;
+  expired?: boolean | string;
+  search?: string;
+}) {
+  return agentListRequest<AgentSpamRule>(`/api/agent/spam-rules${qs(params)}`);
+}
+
+export function createSpamRule(payload: {
+  type: string;
+  action: string;
+  rawValue: string;
+  label?: string;
+  reason?: string;
+  sourceId?: string | null;
+  expiresAt?: string | null;
+  priority?: number;
+  isActive?: boolean;
+}) {
+  return agentRequest<AgentSpamRule>('/api/agent/spam-rules', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchSpamRule(id: string, payload: Record<string, unknown>) {
+  return agentRequest<AgentSpamRule>(`/api/agent/spam-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSpamRule(id: string) {
+  return agentRequest<AgentSpamRule>(`/api/agent/spam-rules/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function normalizeSpamPhone(phone: string) {
+  return agentRequest<{ rawValue: string; normalizedValue: string; e164Value: string; valid: boolean }>(
+    '/api/agent/spam-rules/normalize-phone',
+    { method: 'POST', body: JSON.stringify({ phone }) },
+  );
+}
+
+export function testSpamPolicy(payload: {
+  contentText: string;
+  authorName?: string;
+  authorUrl?: string;
+  sourceId?: string;
+  classification?: string;
+}) {
+  return agentRequest<{
+    decision: {
+      decision: string;
+      primaryReason: string | null;
+      hardGate: boolean;
+      scorePenalty: number;
+      explanations: string[];
+    };
+    rulesLoaded: number;
+  }>('/api/agent/spam-rules/test', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function blockScannedContent(id: string, payload: {
+  type?: string;
+  rawValue?: string;
+  phone?: string;
+  reason?: string;
+  label?: string;
+  action?: string;
+}) {
+  return agentRequest<{ rule: AgentSpamRule; contentId: string; status: string }>(
+    `/api/agent/scanned-contents/${id}/block`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export function blockFinding(id: string, payload: {
+  type?: string;
+  rawValue?: string;
+  phone?: string;
+  reason?: string;
+  label?: string;
+}) {
+  return agentRequest<{ rule: AgentSpamRule; findingId: string; dismissed: boolean }>(
+    `/api/agent/findings/${id}/block`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
