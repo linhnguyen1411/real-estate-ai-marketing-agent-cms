@@ -160,6 +160,12 @@ export async function processFindingForContent(input: {
   rules?: RuleSet;
   title: string;
   analysisBudget?: AnalysisBudget;
+  workflow?: {
+    missionRunId?: string;
+    deferNotify?: boolean;
+    deferTelegram?: boolean;
+    deferMatching?: boolean;
+  };
 }): Promise<FindingProcessResult> {
   const config = resolveLeadAnalysisConfig(input.source, input.mission);
   const rules: RuleSet = input.rules ?? {
@@ -782,15 +788,17 @@ export async function processFindingForContent(input: {
     (analysis?.summary || '').trim().slice(0, 600) ||
     `Lead ${classification}: ${input.content.contentText.slice(0, 180)}`;
 
-  const matching = await matchPropertiesForLead({
-    companyId: input.content.companyId,
-    classification,
-    budgetMin: budgetMin != null ? Number(budgetMin) : null,
-    budgetMax: budgetMax != null ? Number(budgetMax) : null,
-    location: primaryLocation,
-    propertyTypes,
-    purpose: intent,
-  });
+  const matching = input.workflow?.deferMatching
+    ? { items: [], missingReason: 'deferred_to_workflow_step' as const }
+    : await matchPropertiesForLead({
+        companyId: input.content.companyId,
+        classification,
+        budgetMin: budgetMin != null ? Number(budgetMin) : null,
+        budgetMax: budgetMax != null ? Number(budgetMax) : null,
+        location: primaryLocation,
+        propertyTypes,
+        purpose: intent,
+      });
 
   const existingFinding = await prisma.agentFinding.findFirst({
     where: {
@@ -901,6 +909,7 @@ export async function processFindingForContent(input: {
         data: {
           companyId: contentRow.companyId,
           missionId: input.mission?.id ?? null,
+          missionRunId: input.workflow?.missionRunId ?? null,
           sourceId: input.source.id,
           scannedContentId: contentRow.id,
           type: findingType,
@@ -945,6 +954,7 @@ export async function processFindingForContent(input: {
   let notificationCreated = false;
   const isDuplicateHidden = dedupe.status === 'duplicate';
   if (
+    !input.workflow?.deferNotify &&
     finalScore >= config.notifyScore &&
     findingId &&
     !isDuplicateHidden &&
@@ -964,7 +974,10 @@ export async function processFindingForContent(input: {
   // Non-blocking Telegram + VPS outbox after new/updated finding
   if (findingId && !isDuplicateHidden) {
     // When local→VPS sync is on, Telegram is owned by VPS after ingest.
-    if (!(isLocalSyncEnabled() && shouldEnqueueSync())) {
+    if (
+      !input.workflow?.deferTelegram &&
+      !(isLocalSyncEnabled() && shouldEnqueueSync())
+    ) {
       void notifyFindingIfEligible({ findingId }).catch(() => undefined);
     }
     if (findingCreated || existingFinding) {
