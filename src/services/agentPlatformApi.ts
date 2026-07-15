@@ -230,6 +230,46 @@ export function runAgentMission(id: string) {
   });
 }
 
+export function fetchAgentMissionRuns(missionId: string, params: { page?: number; limit?: number } = {}) {
+  return agentListRequest<{ id: string; status: string; triggerType: string; createdAt: string; completedAt?: string | null }>(
+    `/api/agent/missions/${missionId}/runs${qs(params)}`,
+  );
+}
+
+export function fetchAgentMissionRunDetail(runId: string) {
+  return agentRequest<import('../types/agentPlatform').AgentMissionRunDetail>(
+    `/api/agent/mission-runs/${runId}`,
+  );
+}
+
+export function cancelAgentMissionRun(runId: string) {
+  return agentRequest<{ id: string; status: string }>(`/api/agent/mission-runs/${runId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function retryFailedAgentMissionRun(runId: string) {
+  return agentRequest<{ retried: number }>(`/api/agent/mission-runs/${runId}/retry-failed`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function pauseAgentMission(id: string) {
+  return agentRequest<AgentMission>(`/api/agent/missions/${id}/pause`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function activateAgentMission(id: string) {
+  return agentRequest<AgentMission>(`/api/agent/missions/${id}/activate`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 export function fetchAgentJobs(params: {
   page?: number;
   limit?: number;

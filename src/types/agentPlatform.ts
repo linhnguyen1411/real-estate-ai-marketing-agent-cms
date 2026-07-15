@@ -68,8 +68,75 @@ export interface AgentMission {
   templateKey?: string | null;
   nextRunAt?: string | null;
   lastRunAt?: string | null;
+  scheduler?: {
+    lastRunStatus?: string | null;
+    lastRunAt?: string | null;
+    nextRunAt?: string | null;
+    schedule?: Record<string, unknown> | null;
+    runningCount?: number;
+    sourceCount?: number;
+    pipelineStepCount?: number;
+    schedulerSkipReason?: string | null;
+  };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AgentMissionRunDetail {
+  id: string;
+  missionId: string;
+  missionName: string;
+  status: string;
+  triggerType: string;
+  triggeredBy: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  pipelineVersion: number;
+  pipelineHash: string | null;
+  sources: Array<{ id: string; name: string; url: string }>;
+  jobs: Array<{
+    id: string;
+    sourceId: string | null;
+    status: string;
+    type: string;
+    errorMessage: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }>;
+  metrics: Record<string, number>;
+  stepSummary: {
+    total: number;
+    completed: number;
+    skipped: number;
+    failed: number;
+    pending: number;
+    running: number;
+  };
+  errors: Array<{
+    stepId: string;
+    stepType: string;
+    errorCode: string | null;
+    errorMessage: string | null;
+  }>;
+  steps: Array<{
+    id: string;
+    stepId: string;
+    stepType: string;
+    status: string;
+    executionTarget: string | null;
+    sourceId: string | null;
+    scannedContentId: string | null;
+    findingId: string | null;
+    externalInventoryId: string | null;
+    attempts: number;
+    durationMs: number | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    warnings: string[];
+    errorCode: string | null;
+    errorMessage: string | null;
+  }>;
 }
 
 export interface AgentMissionTemplate {
