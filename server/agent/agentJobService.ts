@@ -1,75 +1,33 @@
 import { prisma } from '../prisma';
-import { getAgentMissionById, resolveMissionSourceIds } from './agentDb';
+import { startMissionRun } from '../modules/mission-engine/application/missionRunService';
 
 export interface EnqueueMissionResult {
   missionId: string;
+  missionRunId: string;
   jobsCreated: number;
+  jobsSkipped: number;
   jobIds: string[];
 }
 
+/** Mission 2.0: create MissionRun + enqueue scan_source jobs (serialized per source). */
 export async function enqueueMissionRun(input: {
   missionId: string;
   companyId: string;
   triggeredByUserId: string;
 }): Promise<EnqueueMissionResult> {
-  const mission = await getAgentMissionById(input.missionId);
-  if (!mission) {
-    throw new Error('Không tìm thấy mission.');
-  }
-
-  if (mission.status === 'completed') {
-    throw new Error('Mission đã hoàn thành, không thể chạy lại.');
-  }
-
-  const sourceIds = await resolveMissionSourceIds(mission, input.companyId);
-  if (sourceIds.length === 0) {
-    throw new Error('Không có nguồn active phù hợp để enqueue job.');
-  }
-
-  const now = new Date();
-  const jobIds: string[] = [];
-
-  await prisma.$transaction(async (tx) => {
-    for (const sourceId of sourceIds) {
-      const source = await tx.agentSource.findUnique({ where: { id: sourceId } });
-      if (!source || source.status !== 'active') continue;
-
-      const job = await tx.agentJob.create({
-        data: {
-          companyId: mission.companyId ?? input.companyId,
-          missionId: mission.id,
-          sourceId: source.id,
-          type: 'scan_source',
-          status: 'queued',
-          priority: source.priority,
-          availableAt: now,
-          payload: {
-            missionId: mission.id,
-            sourceId: source.id,
-            triggeredBy: input.triggeredByUserId,
-            enqueuedAt: now.toISOString(),
-          },
-        },
-      });
-      jobIds.push(job.id);
-    }
-
-    if (jobIds.length === 0) {
-      throw new Error('Không tạo được job nào từ các nguồn đã chọn.');
-    }
-
-    await tx.agentMission.update({
-      where: { id: mission.id },
-      data: {
-        status: mission.status === 'draft' ? 'active' : mission.status,
-      },
-    });
+  const result = await startMissionRun({
+    missionId: input.missionId,
+    companyId: input.companyId,
+    triggerType: 'manual',
+    triggeredBy: input.triggeredByUserId,
   });
 
   return {
-    missionId: mission.id,
-    jobsCreated: jobIds.length,
-    jobIds,
+    missionId: input.missionId,
+    missionRunId: result.missionRunId,
+    jobsCreated: result.jobsCreated,
+    jobsSkipped: result.jobsSkipped,
+    jobIds: result.jobIds,
   };
 }
 
