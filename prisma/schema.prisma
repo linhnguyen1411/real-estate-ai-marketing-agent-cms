@@ -594,6 +594,8 @@ model AgentSource {
   jobs            AgentJob[]
   scannedContents ScannedContent[]
   findings        AgentFinding[]
+  missionLinks    AgentMissionSource[]
+  workflowSteps   AgentWorkflowStepRun[]
 
   @@unique([companyId, url])
   @@unique([companyId, externalSourceKey])
@@ -605,30 +607,136 @@ model AgentSource {
 }
 
 model AgentMission {
-  id          String   @id @default(cuid())
-  companyId   String?  @map("company_id")
-  ownerUserId String?  @map("owner_user_id")
-  name        String
-  objective   String   @db.Text
-  status      String   @default("draft")
-  rules       Json     @default("{}")
-  schedule    Json?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  companyId       String?   @map("company_id")
+  ownerUserId     String?   @map("owner_user_id")
+  name            String
+  objective       String    @db.Text
+  status          String    @default("draft")
+  /// Legacy keyword / score config — kept for compatibility
+  rules           Json      @default("{}")
+  schedule        Json?
+  /// Mission 2.0 versioned pipeline definition
+  pipeline        Json?
+  pipelineVersion Int       @default(1) @map("pipeline_version")
+  templateKey     String?   @map("template_key")
+  nextRunAt       DateTime? @map("next_run_at")
+  lastRunAt       DateTime? @map("last_run_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  jobs     AgentJob[]
-  findings AgentFinding[]
+  jobs           AgentJob[]
+  findings       AgentFinding[]
+  missionSources AgentMissionSource[]
+  runs           AgentMissionRun[]
+  workflowSteps  AgentWorkflowStepRun[]
 
   @@index([companyId])
   @@index([ownerUserId])
   @@index([status])
+  @@index([status, nextRunAt])
+  @@index([templateKey])
   @@map("agent_missions")
+}
+
+/// Many-to-many Mission ↔ Source
+model AgentMissionSource {
+  id        String   @id @default(cuid())
+  companyId String?  @map("company_id")
+  missionId String   @map("mission_id")
+  sourceId  String   @map("source_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  config    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  mission AgentMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  source  AgentSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, sourceId])
+  @@index([companyId])
+  @@index([sourceId])
+  @@index([missionId, isActive])
+  @@map("agent_mission_sources")
+}
+
+model AgentMissionRun {
+  id               String    @id @default(cuid())
+  companyId        String?   @map("company_id")
+  missionId        String    @map("mission_id")
+  missionVersion   Int       @default(1) @map("mission_version")
+  pipelineSnapshot Json      @map("pipeline_snapshot")
+  pipelineHash     String?   @map("pipeline_hash")
+  status           String    @default("queued")
+  triggerType      String    @default("manual") @map("trigger_type")
+  triggeredBy      String?   @map("triggered_by")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  metrics          Json?
+  error            String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  mission AgentMission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  jobs    AgentJob[]
+  steps   AgentWorkflowStepRun[]
+  findings AgentFinding[]
+
+  @@index([companyId])
+  @@index([missionId, createdAt])
+  @@index([missionId, status])
+  @@index([status, createdAt])
+  @@map("agent_mission_runs")
+}
+
+model AgentWorkflowStepRun {
+  id               String    @id @default(cuid())
+  companyId        String?   @map("company_id")
+  missionRunId     String    @map("mission_run_id")
+  missionId        String    @map("mission_id")
+  jobId            String?   @map("job_id")
+  sourceId         String?   @map("source_id")
+  scannedContentId String?   @map("scanned_content_id")
+  findingId        String?   @map("finding_id")
+  stepId           String    @map("step_id")
+  stepType         String    @map("step_type")
+  status           String    @default("pending")
+  attempts         Int       @default(0)
+  maxAttempts      Int       @default(3) @map("max_attempts")
+  idempotencyKey   String?   @map("idempotency_key")
+  inputRef         Json?     @map("input_ref")
+  output           Json?
+  errorCode        String?   @map("error_code")
+  errorMessage     String?   @map("error_message") @db.Text
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  durationMs       Int?      @map("duration_ms")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  missionRun AgentMissionRun @relation(fields: [missionRunId], references: [id], onDelete: Cascade)
+  mission    AgentMission    @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  job        AgentJob?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  source     AgentSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  finding    AgentFinding?   @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  @@unique([missionRunId, scannedContentId, stepId])
+  @@unique([idempotencyKey])
+  @@index([missionRunId, status])
+  @@index([missionId, createdAt])
+  @@index([scannedContentId])
+  @@index([jobId])
+  @@index([stepType, status])
+  @@index([companyId])
+  @@index([status, startedAt])
+  @@map("agent_workflow_step_runs")
 }
 
 model AgentJob {
   id           String    @id @default(cuid())
   companyId    String?   @map("company_id")
   missionId    String?   @map("mission_id")
+  missionRunId String?   @map("mission_run_id")
   sourceId     String?   @map("source_id")
   type         String
   status       String    @default("queued")
@@ -646,12 +754,15 @@ model AgentJob {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  mission AgentMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  source  AgentSource?  @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  mission    AgentMission?         @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missionRun AgentMissionRun?      @relation(fields: [missionRunId], references: [id], onDelete: SetNull)
+  source     AgentSource?          @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  stepRuns   AgentWorkflowStepRun[]
 
   @@index([status, availableAt, priority])
   @@index([sourceId, status])
   @@index([missionId, status])
+  @@index([missionRunId, status])
   @@index([claimedBy])
   @@index([companyId])
   @@map("agent_jobs")
@@ -723,6 +834,8 @@ model AgentFinding {
   id               String  @id @default(cuid())
   companyId        String? @map("company_id")
   missionId        String? @map("mission_id")
+  missionRunId     String? @map("mission_run_id")
+  workflowStepRunId String? @map("workflow_step_run_id")
   sourceId         String  @map("source_id")
   scannedContentId String  @map("scanned_content_id")
   type             String
@@ -790,6 +903,7 @@ model AgentFinding {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   mission               AgentMission?          @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missionRun            AgentMissionRun?       @relation(fields: [missionRunId], references: [id], onDelete: SetNull)
   source                AgentSource            @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   scannedContent        ScannedContent         @relation(fields: [scannedContentId], references: [id], onDelete: Restrict)
   duplicateOf           AgentFinding?          @relation("FindingDuplicates", fields: [duplicateOfFindingId], references: [id], onDelete: SetNull)
@@ -797,12 +911,14 @@ model AgentFinding {
   notifications         AgentNotification[]
   actionProposals       AgentActionProposal[]
   externalInventoryItem ExternalInventoryItem? @relation(fields: [externalInventoryItemId], references: [id], onDelete: SetNull)
+  workflowSteps         AgentWorkflowStepRun[]
 
   @@unique([scannedContentId, type])
   @@index([companyId])
   @@index([status, score])
   @@index([sourceId, createdAt])
   @@index([missionId, createdAt])
+  @@index([missionRunId])
   @@index([promotedLeadId])
   @@index([companyId, status, createdAt])
   @@index([companyId, classification, status])
