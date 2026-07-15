@@ -387,3 +387,24 @@ export interface AgentActionCopyResult {
   status: string;
   actionType: string;
 }
+
+export interface AgentSpamRule {
+  id: string;
+  companyId?: string | null;
+  sourceId?: string | null;
+  type: string;
+  action: string;
+  rawValue: string;
+  normalizedValue?: string | null;
+  e164Value?: string | null;
+  pattern?: string | null;
+  label?: string | null;
+  reason?: string | null;
+  priority: number;
+  isActive: boolean;
+  expiresAt?: string | null;
+  createdBy?: string | null;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

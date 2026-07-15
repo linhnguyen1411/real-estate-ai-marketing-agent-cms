@@ -44,6 +44,7 @@ export const AGENT_SUBMENU: NavItemConfig[] = [
   { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch, path: '/admin/agents/findings', badgeKey: 'leadIntelligence' },
   { id: 'agent-external-inventory', label: 'Giỏ hàng ngoài', icon: Package, path: '/admin/agents/external-inventory', badgeKey: 'externalInventory' },
   { id: 'agent-proposals', label: 'Duyệt phản hồi', icon: ClipboardCheck, path: '/admin/agents/proposals' },
+  { id: 'agent-spam', label: 'Spam Control', icon: ShieldCheck, path: '/admin/agents/spam' },
   { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare, path: '/admin/agents/notifications', badgeKey: 'notifications' },
   { id: 'agent-sessions', label: 'Sessions', icon: Cpu, path: '/admin/agents/sessions' },
   { id: 'agent-reports', label: 'Báo cáo', icon: FileBarChart, path: '/admin/agents/reports' },

@@ -131,28 +131,15 @@ async function createOutboxRow(
 }
 
 /**
- * Sync gate used by worker + CMS. Falls back to DB AppSetting when
- * ensureDatabaseReady() has not populated the in-memory cache (worker bug).
+ * Sync gate used by worker + CMS.
+ * Hard-on: always enqueue when local sync is active (settings toggle ignored).
  */
 export function shouldEnqueueSync(): boolean {
-  if (!isLocalSyncEnabled()) return false;
-  try {
-    return Boolean(getSettings().agent_sync_enabled);
-  } catch {
-    // Cache not ready — do not block; caller may still enqueue after async resolve
-    return process.env.AGENT_SYNC_FORCE === 'true';
-  }
+  return isLocalSyncEnabled();
 }
 
 export async function shouldEnqueueSyncAsync(): Promise<boolean> {
-  if (!isLocalSyncEnabled()) return false;
-  try {
-    return Boolean(getSettings().agent_sync_enabled);
-  } catch {
-    const row = await prisma.appSetting.findUnique({ where: { key: 'app' } });
-    const data = (row?.data || {}) as Record<string, unknown>;
-    return Boolean(data.agent_sync_enabled);
-  }
+  return isLocalSyncEnabled();
 }
 
 /**
@@ -231,6 +218,21 @@ export async function enqueueScannedContentSync(input: {
           rawData: content.rawData,
           metrics: content.metrics,
           dedupeVersion: content.dedupeVersion,
+          spamDecision:
+            (content.rawData as Record<string, unknown> | null)?.spamDecision ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.spamDecision ??
+            null,
+          spamReason:
+            (content.rawData as Record<string, unknown> | null)?.spamReason ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.spamReason ??
+            null,
+          matchedSpamRuleIds:
+            (content.rawData as Record<string, unknown> | null)?.matchedSpamRuleIds ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.matchedSpamRuleIds ??
+            null,
           syncVersion,
         },
       }) as Record<string, unknown>,

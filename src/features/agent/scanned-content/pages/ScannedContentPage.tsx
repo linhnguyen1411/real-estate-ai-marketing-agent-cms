@@ -25,6 +25,8 @@ const STATUS_FILTERS = [
   { id: '', label: 'Tất cả' },
   { id: 'collected', label: 'Collected' },
   { id: 'processed', label: 'Processed' },
+  { id: 'analyzed', label: 'Analyzed' },
+  { id: 'blocked', label: 'Đã chặn' },
   { id: 'ignored', label: 'Ignored' },
   { id: 'archived', label: 'Archived' },
 ] as const;
@@ -60,6 +62,10 @@ function stageLabel(stage: string | null): string {
       return 'Loại ở keyword gate';
     case 'low_final_score':
       return 'Loại — finalScore thấp';
+    case 'blocked':
+      return 'Đã chặn (spam policy)';
+    case 'spam_ignored':
+      return 'Ignore bởi spam rule';
     case 'hard_spam':
       return 'Loại — spam';
     case 'too_short':

@@ -21,6 +21,8 @@ export type AnalysisFilterStage =
   | 'passed'
   | 'too_short'
   | 'hard_spam'
+  | 'blocked'
+  | 'spam_ignored'
   | 'keyword_gate'
   | 'low_final_score'
   | 'budget_exhausted'

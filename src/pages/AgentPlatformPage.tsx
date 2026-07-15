@@ -22,6 +22,9 @@ const ReportsPage = React.lazy(() => import('../features/agent/reports/pages/Rep
 const ActionProposalsPage = React.lazy(
   () => import('../features/agent/action-proposals/pages/ActionProposalsPage'),
 );
+const SpamControlPage = React.lazy(
+  () => import('../features/agent/spam-control/pages/SpamControlPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
@@ -32,6 +35,7 @@ const NAV_ITEMS = [
   { path: '/admin/agents/findings', label: 'Lead Intelligence' },
   { path: '/admin/agents/external-inventory', label: 'Giỏ hàng ngoài' },
   { path: '/admin/agents/proposals', label: 'Duyệt phản hồi' },
+  { path: '/admin/agents/spam', label: 'Spam Control' },
   { path: '/admin/agents/notifications', label: 'Thông báo' },
   { path: '/admin/agents/sessions', label: 'Sessions' },
   { path: '/admin/agents/reports', label: 'Báo cáo' },
@@ -50,6 +54,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/findings')) return 'findings';
   if (pathname.startsWith('/admin/agents/external-inventory')) return 'external-inventory';
   if (pathname.startsWith('/admin/agents/proposals')) return 'proposals';
+  if (pathname.startsWith('/admin/agents/spam')) return 'spam';
   if (pathname.startsWith('/admin/agents/notifications')) return 'notifications';
   if (pathname.startsWith('/admin/agents/sessions')) return 'sessions';
   if (pathname.startsWith('/admin/agents/reports')) return 'reports';
@@ -117,6 +122,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'proposals' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <ActionProposalsPage />
+          </Suspense>
+        )}
+        {section === 'spam' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <SpamControlPage canManage={canManage} />
           </Suspense>
         )}
         {section === 'notifications' && (

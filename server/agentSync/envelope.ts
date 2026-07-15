@@ -25,8 +25,9 @@ export type AgentIngestionEnvelopeV1 = {
   payload: Record<string, unknown>;
 };
 
+/** Hard-on: local→VPS sync is always enabled (env flag ignored). */
 export function isLocalSyncEnabled(): boolean {
-  return process.env.AGENT_LOCAL_SYNC_ENABLED?.trim().toLowerCase() === 'true';
+  return true;
 }
 
 export function syncIdempotencyKey(parts: string[]): string {

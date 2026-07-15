@@ -201,27 +201,13 @@ export async function notifyFindingIfEligible(input: {
 }): Promise<TelegramSendResult> {
   try {
     const settings = input.settings || getSettings();
-    const envOn = process.env.AGENT_TELEGRAM_ENABLED?.trim().toLowerCase() === 'true';
-    if (!envOn && !(input.force && settings.telegram_enabled)) {
-      console.info('[telegram] skip env_disabled finding=%s', input.findingId);
-      return { ok: false, skipped: true, reason: 'env_disabled' };
-    }
-    if (!settings.telegram_enabled) {
-      console.info('[telegram] skip disabled(settings) finding=%s', input.findingId);
-      return { ok: false, skipped: true, reason: 'disabled' };
-    }
+    // Hard-on: ignore AGENT_TELEGRAM_ENABLED / settings.telegram_enabled / quiet hours.
+    // Still requires bot token + chat id; score/classification eligibility still apply unless force.
     const botToken = String(settings.telegram_bot_token || '').trim();
     const chatId = String(settings.telegram_chat_id || '').trim();
     if (!botToken || !chatId) {
       console.info('[telegram] skip missing_credentials finding=%s', input.findingId);
       return { ok: false, skipped: true, reason: 'missing_credentials' };
-    }
-    if (
-      !input.force &&
-      isInQuietHours(settings.telegram_quiet_hours_start, settings.telegram_quiet_hours_end)
-    ) {
-      console.info('[telegram] skip quiet_hours finding=%s', input.findingId);
-      return { ok: false, skipped: true, reason: 'quiet_hours' };
     }
 
     const finding = await prisma.agentFinding.findUnique({
