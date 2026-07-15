@@ -77,6 +77,8 @@
     "test:agent-transactions": "tsx scripts/test-agent-transactions.ts",
     "test:agent-spam-control": "tsx scripts/test-agent-spam-control.ts",
     "test:scanner-v2": "tsx scripts/test-agent-spam-control.ts",
+    "test:mission-engine": "tsx scripts/test-mission-engine.ts",
+    "mission:recover-stale-runs": "tsx scripts/recover-stale-mission-runs.ts",
     "agent:backfill-spam-decisions": "tsx scripts/backfill-spam-decisions.ts",
     "agent:reanalyze-scanner-v2": "tsx scripts/reanalyze-scanner-v2.ts",
     "fb:test": "tsx scripts/fb-test.mjs",
