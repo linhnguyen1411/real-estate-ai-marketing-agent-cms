@@ -63,6 +63,11 @@ export interface AgentMission {
   status: AgentMissionStatus | string;
   rules: Record<string, unknown>;
   schedule?: Record<string, unknown> | null;
+  pipeline?: Record<string, unknown> | null;
+  pipelineVersion?: number;
+  templateKey?: string | null;
+  nextRunAt?: string | null;
+  lastRunAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,18 +76,31 @@ export interface AgentMissionTemplate {
   id: string;
   name: string;
   objective: string;
-  rules: {
-    sourceIds: string[];
-    positiveKeywords: string[];
-    negativeKeywords: string[];
-    minFindingScore: number;
-    minScore: number;
-    notifyScore: number;
-    maxItemsPerRun: number;
-    analysisInstructions: string;
-    preferredSourceTypes?: string[];
+  category?: string;
+  workflowVersion?: number;
+  pipeline?: {
+    version: number;
+    steps: Array<{
+      id: string;
+      type: string;
+      enabled?: boolean;
+      dependsOn?: string[];
+      config?: Record<string, unknown>;
+    }>;
   };
-  schedule: {
+  rules: {
+    sourceIds?: string[];
+    positiveKeywords?: string[];
+    negativeKeywords?: string[];
+    minFindingScore?: number;
+    minScore?: number;
+    notifyScore?: number;
+    maxItemsPerRun?: number;
+    analysisInstructions?: string;
+    preferredSourceTypes?: Array<'facebook_group' | 'website' | 'forum' | 'search' | string>;
+    [key: string]: unknown;
+  };
+  schedule?: {
     cadence: string;
     preferredHoursLocal?: number[];
     timezone?: string;
@@ -316,7 +334,9 @@ export interface EnqueueSourceResult {
 
 export interface EnqueueMissionResult {
   missionId: string;
+  missionRunId?: string;
   jobsCreated: number;
+  jobsSkipped?: number;
   jobIds: string[];
 }
 

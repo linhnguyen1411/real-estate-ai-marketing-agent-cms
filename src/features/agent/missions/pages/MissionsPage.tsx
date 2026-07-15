@@ -126,7 +126,12 @@ export default function AgentMissions({ canManage }: Props) {
     setMessage('');
     try {
       const result = await runAgentMission(mission.id);
-      setMessage(`Đã enqueue ${result.jobsCreated} job — worker sẽ xử lý.`);
+      setMessage(
+        `MissionRun ${(result as { missionRunId?: string }).missionRunId || '—'} · enqueue ${result.jobsCreated} job` +
+          ((result as { jobsSkipped?: number }).jobsSkipped
+            ? ` (skip ${(result as { jobsSkipped?: number }).jobsSkipped} — source đang scan)`
+            : ''),
+      );
       load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Chạy mission thất bại.');
@@ -148,8 +153,8 @@ export default function AgentMissions({ canManage }: Props) {
   return (
     <div className="space-y-6">
       <AgentPanelHeader
-        title="Mission AI Agent"
-        subtitle="Templates + mục tiêu quét — Chạy ngay chỉ enqueue job"
+        title="Mission Workflow Engine"
+        subtitle="Mission 2.0 — pipeline cấu hình được · Run tạo MissionRun + source jobs"
         onRefresh={load}
         actions={
           canManage ? (
@@ -225,6 +230,11 @@ export default function AgentMissions({ canManage }: Props) {
                 className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"
               >
                 <h4 className="text-sm font-semibold text-white">{template.name}</h4>
+                {template.workflowVersion === 2 ? (
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-400">
+                    Workflow · {template.pipeline?.steps?.length ?? 0} steps · {template.category}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-xs text-slate-400 line-clamp-3">{template.objective}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
                   <span className="rounded bg-slate-800 px-1.5 py-0.5">
@@ -372,6 +382,18 @@ export default function AgentMissions({ canManage }: Props) {
                     <p className="mt-1 text-sm text-slate-400">{mission.objective}</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                       <span className="rounded bg-slate-800 px-2 py-0.5 uppercase">{mission.status}</span>
+                      {mission.templateKey ? (
+                        <span className="rounded bg-emerald-900/40 px-2 py-0.5 text-emerald-300">
+                          {mission.templateKey}
+                        </span>
+                      ) : null}
+                      {Array.isArray((mission.pipeline as { steps?: unknown[] } | null)?.steps) ? (
+                        <span>
+                          {(mission.pipeline as { steps: unknown[] }).steps.length} steps · v
+                          {mission.pipelineVersion ?? 1}
+                        </span>
+                      ) : null}
+                      {mission.lastRunAt ? <span>Last run {formatAgentDate(mission.lastRunAt)}</span> : null}
                       {rules.templateId && (
                         <span className="rounded bg-rose-950/40 px-2 py-0.5 text-rose-400/80">
                           template: {rules.templateId}
