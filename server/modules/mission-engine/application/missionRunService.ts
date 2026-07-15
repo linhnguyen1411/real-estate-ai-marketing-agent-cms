@@ -134,7 +134,7 @@ export async function startMissionRun(input: StartMissionRunInput): Promise<Star
   };
 }
 
-function computeNextRunAt(schedule: unknown, from: Date): Date | null {
+function computeNextRunAtInternal(schedule: unknown, from: Date): Date | null {
   if (!schedule || typeof schedule !== 'object') return null;
   const cadence = String((schedule as { cadence?: string }).cadence || '').toLowerCase();
   const ms =
@@ -149,6 +149,11 @@ function computeNextRunAt(schedule: unknown, from: Date): Date | null {
             : null;
   if (!ms) return null;
   return new Date(from.getTime() + ms);
+}
+
+/** Exported for tests and scheduler UX. */
+export function computeNextRunAt(schedule: unknown, from: Date): Date | null {
+  return computeNextRunAtInternal(schedule, from);
 }
 
 /** Scheduler: enqueue MissionRuns for active missions past nextRunAt. */
@@ -190,7 +195,7 @@ export async function enqueueDueScheduledMissions(now = new Date()): Promise<{
         triggerType: 'schedule',
         triggeredBy: 'scheduler',
       });
-      const nextRunAt = computeNextRunAt(mission.schedule, now);
+      const nextRunAt = computeNextRunAtInternal(mission.schedule, now);
       await prisma.agentMission.update({
         where: { id: mission.id },
         data: { nextRunAt: nextRunAt ?? new Date(now.getTime() + 4 * 60 * 60_000) },

@@ -17,6 +17,7 @@ import {
   listStepRunsForMissionRun,
 } from '../repositories/workflowStepRunRepository';
 import { executeContentWorkflow } from '../application/workflowExecutionService';
+import { buildMissionRunDetail } from '../application/missionRunDetailService';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -155,14 +156,14 @@ export function registerMissionEngineRoutes(app: Express, deps: AgentRouteDeps) 
 
   app.get('/api/agent/mission-runs/:runId', async (req: Request, res: Response) => {
     try {
-      const run = await getMissionRunById(req.params.runId);
-      if (!run) {
+      const detail = await buildMissionRunDetail(req.params.runId);
+      if (!detail) {
         sendError(res, 404, 'Không tìm thấy mission run.');
         return;
       }
-      if (!assertAccess(req, res, run.companyId)) return;
-      const steps = await listStepRunsForMissionRun(run.id);
-      res.json({ status: 'success', data: { ...run, steps } });
+      const run = await getMissionRunById(req.params.runId);
+      if (!run || !assertAccess(req, res, run.companyId)) return;
+      res.json({ status: 'success', data: detail });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tải được mission run.');
     }
@@ -170,14 +171,14 @@ export function registerMissionEngineRoutes(app: Express, deps: AgentRouteDeps) 
 
   app.get('/api/agent/mission-runs/:runId/steps', async (req: Request, res: Response) => {
     try {
-      const run = await getMissionRunById(req.params.runId);
-      if (!run) {
+      const detail = await buildMissionRunDetail(req.params.runId);
+      if (!detail) {
         sendError(res, 404, 'Không tìm thấy mission run.');
         return;
       }
-      if (!assertAccess(req, res, run.companyId)) return;
-      const steps = await listStepRunsForMissionRun(run.id);
-      res.json({ status: 'success', data: steps });
+      const run = await getMissionRunById(req.params.runId);
+      if (!run || !assertAccess(req, res, run.companyId)) return;
+      res.json({ status: 'success', data: detail.steps });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tải được steps.');
     }
