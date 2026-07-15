@@ -1,11 +1,13 @@
 /**
  * Fail stale agent jobs left by previous worker PIDs (safe ops recovery).
- * Dry-run by default; pass --apply to mutate.
+ * Also reports orphan jobs (dead worker, recent claim). Dry-run by default; --apply to mutate.
  */
+import { recoverOrphanAgentJobs } from '../server/agent/orphanAgentJobRecovery';
 import { prisma } from '../server/prisma';
 
 async function main() {
   const apply = process.argv.includes('--apply');
+  const orphan = await recoverOrphanAgentJobs({ dryRun: !apply });
   const staleCutoff = new Date(Date.now() - 20 * 60_000);
   const stale = await prisma.agentJob.findMany({
     where: {
@@ -25,7 +27,18 @@ async function main() {
     },
   });
 
-  console.log(JSON.stringify({ dryRun: !apply, staleCount: stale.length, stale }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        dryRun: !apply,
+        orphan,
+        staleCount: stale.length,
+        stale,
+      },
+      null,
+      2,
+    ),
+  );
   if (!apply || stale.length === 0) return;
 
   const result = await prisma.agentJob.updateMany({

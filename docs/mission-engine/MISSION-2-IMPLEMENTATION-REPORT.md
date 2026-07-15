@@ -18,7 +18,7 @@ Runtime executes configurable pipelines with MissionRun/StepRun, Buyer/Brand gat
 | C. workflow execution | **Completed** | `workflowExecutionService` | smoke pipes | — |
 | D. step handlers | **Completed** | `steps/*` | smoke + domain | polish AI enrichment |
 | E. ingestion/local→VPS | **Partial** | ingest gate + sync provenance | ingestion tests | end-to-end VPS verify |
-| F. scheduler | **Partial** | source + mission due helper | tick logs | mission nextRunAt UX |
+| F. scheduler | **Partial** | source + mission due + settle | tick logs | mission nextRunAt UX |
 | G. UI | **Partial** | MissionsPage templates/meta | — | run timeline page |
 | H. tests | **Partial** | domain + smoke script | green domain/smoke | more integration |
 
@@ -28,12 +28,21 @@ Runtime executes configurable pipelines with MissionRun/StepRun, Buyer/Brand gat
 
 See `MISSION-2-RUNTIME-RECOVERY.md`.
 
-CMS/worker killed intentionally for `prisma generate`, then restarted. Final state: both alive.
+**Các process cũ được dừng có chủ đích để regenerate Prisma và build. Instance mới đã được khởi động thành công: CMS PID 31712, home 200; worker PID 5916, worker-LinhMSC-28556, tiếp tục claim và complete job. Các cảnh báo task nền trước đó không phản ánh trạng thái cuối.**
 
-## 2. CMS/worker final status
+## 2. CMS/worker final status (2026-07-15)
 
-- CMS PID **31128**, home/admin **200**
-- Worker PID **32520**, workerId `worker-LinhMSC-32784`, managed/headless, claiming jobs
+| Component | Value |
+|-----------|-------|
+| CMS PID | **31712** — home/admin **200** |
+| Worker PID | **5916** |
+| workerId | **`worker-LinhMSC-28556`** |
+| BrowserSession | `cmrlubcal00002avnr9c4qn33` **ready**, heartbeat fresh |
+| Stale jobs (age) | **0** |
+| Orphan jobs recovered | **1** (worker `-32784` → failed, không block queue) |
+| Outbox pending/failed | **0** |
+| Open MissionRuns | **0** |
+| Scheduler | skipDup active; mission due + settle on tick |
 
 ## 3. Source job smoke
 
@@ -74,7 +83,9 @@ spam → topic → summarize → notify_cms
 
 ## 10. Recovery / idempotency
 
-- Stale agent jobs: recovered 3 leftovers from old workers
+- Stale agent jobs (age): **0**
+- Orphan agent jobs: **1** recovered (`recover-orphan-agent-jobs --apply`) — worker cũ `-32784`
+- Scheduler: `settleOpenMissionRuns` đóng MissionRun khi scan jobs xong, không step pending
 - `mission:recover-stale-runs` dry-run: 0 stale steps
 - Fixture retry idempotent
 

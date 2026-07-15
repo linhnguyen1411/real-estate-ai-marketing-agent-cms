@@ -1,6 +1,9 @@
 import { checkStaleBrowserSessions } from './agentNotificationService';
 import { prisma } from '../prisma';
-import { enqueueDueScheduledMissions } from '../modules/mission-engine/application/missionRunService';
+import {
+  enqueueDueScheduledMissions,
+  settleOpenMissionRuns,
+} from '../modules/mission-engine/application/missionRunService';
 
 /** Fixed class/id pair for pg_try_advisory_xact_lock (agent scheduler). */
 export const AGENT_SCHEDULER_LOCK_CLASS = 41871;
@@ -228,6 +231,10 @@ export async function runAgentSchedulerTick(now = new Date()): Promise<Scheduler
           console.log(
             `[agent-scheduler] Mission runs: due=${missionTick.missionsDue} created=${missionTick.runsCreated}`,
           );
+        }
+        const settled = await settleOpenMissionRuns();
+        if (settled > 0) {
+          console.log(`[agent-scheduler] Mission runs settled=${settled}`);
         }
       } catch (error) {
         console.warn(

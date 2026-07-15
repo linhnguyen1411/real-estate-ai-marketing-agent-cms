@@ -1,11 +1,14 @@
 # Mission 2.0 — Runtime Recovery After Prisma Regeneration
 
 **Date:** 2026-07-15  
-**Branch:** `feature/mission-workflow-engine`
+**Branch:** `feature/mission-workflow-engine`  
+**Final check:** 2026-07-15 ~09:10 UTC+7
 
-## Statement
+## Statement (trạng thái cuối)
 
-CMS và worker bị dừng có chủ đích trong quá trình regenerate Prisma. Sau khi regenerate hoàn tất, cả hai process đã được khởi động lại. Các lỗi task nền giữa phiên không phản ánh trạng thái cuối.
+**Các process cũ được dừng có chủ đích để regenerate Prisma và build. Instance mới đã được khởi động thành công: CMS PID 31712, home 200; worker PID 5916, worker-LinhMSC-28556, tiếp tục claim và complete job. Các cảnh báo task nền trước đó không phản ánh trạng thái cuối.**
+
+Hai task nền cũ (`npm run dev`, `agent:worker`) bị kill **có chủ đích** trong lúc `prisma generate` / `npm run build` (EPERM khi worker giữ query engine). Đây **không phải** lỗi ứng dụng.
 
 ---
 
@@ -13,96 +16,84 @@ CMS và worker bị dừng có chủ đích trong quá trình regenerate Prisma.
 
 | Check | Result |
 |-------|--------|
-| Process | PID **31128** (`npm run dev`) — alive |
+| Process | PID **31712** (`npm run dev`) — alive |
 | Home `http://localhost:3000/` | **200** |
 | Admin `http://localhost:3000/admin` | **200** |
-| Scheduler | Enabled — ticks every 60s; skips duplicates when active scan jobs exist |
+| Scheduler | Enabled — tick 60s; `skippedDup` khi source đã có active scan job |
 
 ## 2. Agent worker
 
 | Check | Result |
 |-------|--------|
-| Process | PID **32520** — alive |
-| workerId | `worker-LinhMSC-32784` |
+| Process | PID **5916** — alive |
+| workerId | **`worker-LinhMSC-28556`** |
 | Mode | managed / headless |
-| Heartbeat | BrowserSession `ready`, heartbeat ~20s |
-| Claim loop | Active — continuously claiming `scan_source` |
+| Heartbeat | BrowserSession **ready**, heartbeat ~20–30s |
+| Claim loop | Active — claim → running → completed liên tục |
 
 ## 3. Browser session
 
 | Check | Result |
 |-------|--------|
-| Active session | `cmrlsg9sm000065kmcb586k1c` status **ready** |
-| Worker | `worker-LinhMSC-32784` |
+| Active session | `cmrlubcal00002avnr9c4qn33` status **ready** |
+| Worker | `worker-LinhMSC-28556` |
 | URL | Facebook group feed (reuse) |
-| Offline leftovers | Prior worker sessions marked offline after regen kill |
+| Offline leftovers | Session worker cũ `-32784` offline sau regen |
 
-## 4. Jobs
+## 4. Jobs (ổn định sau orphan recovery)
 
-| Status | Notes |
-|--------|-------|
-| Stale from old PIDs | **3 recovered → failed** (`scripts/recover-stale-agent-jobs.ts --apply`) |
-| Live smoke | Job `cmrlu7cpd003lzzcmjheaqk7n` **queued→running→completed** |
-| stopReason | Present in result payload |
-| Contents | 99 inserted this pass (large group); dedupe also active |
+| Check | Result |
+|-------|--------|
+| Stale by age (>20m) | **0** |
+| Orphan (dead worker claim) | **1 recovered** → `failed` (`cmrlu7cpl003pzzcmow050cka`, worker `-32784`) |
+| Active duplicate per source | **0** |
+| Recent lifecycle (30m) | 8+ completed, 1 failed (orphan), queue drain bình thường |
+| Worker hiện tại | Claim job mới bằng `-28556`, không kẹt |
+
+Scripts:
+
+- `npx tsx scripts/mission-runtime-check.ts`
+- `npx tsx scripts/inspect-enqueued-jobs.ts`
+- `npx tsx scripts/recover-orphan-agent-jobs.ts [--apply]`
+- `npx tsx scripts/recover-stale-agent-jobs.ts [--apply]` (stale age + orphan report)
 
 ## 5. Scheduler
 
-- Source scheduler continues due enqueue with skipDup when jobs active.
-- Mission scheduler helper present (`enqueueDueScheduledMissions`).
-- No evidence of duplicate MissionRun spam after restart.
+- Source scheduler: enqueue due sources; **skipDup** khi `hasActiveScanJob`.
+- Mission scheduler: `enqueueDueScheduledMissions` — không duplicate open MissionRun.
+- Mission settlement: `settleOpenMissionRuns` trên mỗi tick (đóng run khi jobs xong, không còn step pending).
 
 ## 6. Prisma
 
 | Check | Result |
 |-------|--------|
-| `migrate status` | Database schema is up to date (9 migrations) |
-| Client generate | Success after intentional stop |
+| `migrate status` | Database schema is up to date |
+| Client generate | Success sau intentional stop |
 | Models | `AgentMissionRun`, `AgentWorkflowStepRun`, `AgentMissionSource` queryable |
-| db push | **Not used** |
 
 ## 7. Outbox / sync
 
 | Check | Result |
 |-------|--------|
-| Outbox | ~763 synced; flushes succeeding (batched) |
-| Pending backlog | Not abnormal |
-| Provenance fix | Sync enqueue now attaches `missionId` / `missionRunId` / `pipelineVersion` when StepRun/Finding has them |
+| Outbox synced | ~1053+ |
+| Pending / failed / dead_letter | **0** (không bất thường) |
+| Provenance | Sync enqueue gắn `missionId` / `missionRunId` / `pipelineVersion` / `jobId` khi có |
 
-## 8. Mission engine live proof (pre-fixture)
+## 8. Mission engine
 
-Existing MissionRun `cmrlsgfs0000azzcmstil5rvj` already executed StepRuns:
+| Check | Result |
+|-------|--------|
+| MissionRuns completed | 3+ (fixture smoke) |
+| StepRuns | 44 (25 completed, 19 skipped) |
+| Open MissionRuns | **0** |
+| Smoke gates | `smoke-mission-pipelines.ts` **PASS** (Buyer Finding, Brand 0 Finding, legacy path, idempotent retry) |
 
-- spam / extract / classify completed  
-- create_lead_intelligence skipped (seller / low_score / domain_needs_review) — engine controlling outcomes  
+## 9. Known non-blockers (local)
 
-## 9. Fixture smoke (controlled)
+- AI keys invalid → fallback analysis; engine vẫn chạy
+- `properties`/`listings` tables missing → matching query errors trong log (local DB)
+- EPERM prisma generate khi worker giữ engine → fix bằng intentional stop
 
-`npx tsx scripts/smoke-mission-pipelines.ts` → **SMOKE GATES PASS**
+## 10. Ops note — không restart trừ blocker
 
-| Gate | Result |
-|------|--------|
-| Buyer Finding | `cmrlu87qx000o5jx34oglgyp6` classification=buyer |
-| Seller no Finding | true |
-| Brand no Finding | 0 |
-| Brand no Inventory | 0 |
-| Brand no lead step | true |
-| Retry idempotent | step count stable |
-| Legacy source path Finding | true (no MissionRun) |
-
-## 10. Final process status (end of this check)
-
-- After smoke/docs, build needed a **second intentional stop** (EPERM on prisma generate while worker held query engine).
-- Stopped CMS PID 31128 + worker PID 32520 deliberately → `prisma generate` + `npm run build` OK → restarted.
-- Post-restart status recorded in follow-up section below.
-
-## 11. Post-build restart (final)
-
-| Process | PID | Status |
-|---------|-----|--------|
-| CMS `npm run dev` | **31712** | listening :3000 |
-| Agent worker | **5916** | managed/headless — claim loop |
-
-WorkerId after restart: see worker log (`worker-LinhMSC-*`).
-
-Home/admin should return 200. Do not treat intentional build stops as app failures.
+Trong phiên này **không** restart lại CMS/worker. Orphan job được xử lý qua script DB (`recover-orphan-agent-jobs --apply`) mà không cần kill process.

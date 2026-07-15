@@ -4,7 +4,10 @@ import { assertValidPipeline } from '../domain/workflowValidation';
 import { resolveMissionPipeline } from '../domain/missionTemplates';
 import { pipelineSnapshotHash } from '../domain/workflowPolicies';
 import type { TriggerType } from '../domain/workflowTypes';
-import { createMissionRun } from '../repositories/missionRunRepository';
+import {
+  completeMissionRunIfSettled,
+  createMissionRun,
+} from '../repositories/missionRunRepository';
 
 export interface StartMissionRunInput {
   missionId: string;
@@ -199,4 +202,26 @@ export async function enqueueDueScheduledMissions(now = new Date()): Promise<{
   }
 
   return { missionsDue, runsCreated };
+}
+
+/** Close MissionRuns whose scan jobs finished but produced no pending workflow steps. */
+export async function settleOpenMissionRuns(limit = 20): Promise<number> {
+  const open = await prisma.agentMissionRun.findMany({
+    where: { status: { in: ['queued', 'running'] } },
+    select: { id: true, status: true },
+    take: limit,
+  });
+
+  let settled = 0;
+  for (const run of open) {
+    const updated = await completeMissionRunIfSettled(run.id);
+    if (
+      updated &&
+      updated.status !== run.status &&
+      (updated.status === 'completed' || updated.status === 'completed_with_errors')
+    ) {
+      settled += 1;
+    }
+  }
+  return settled;
 }

@@ -1,3 +1,4 @@
+import { recoverOrphanAgentJobs } from '../server/agent/orphanAgentJobRecovery';
 import { prisma } from '../server/prisma';
 
 async function main() {
@@ -48,6 +49,21 @@ async function main() {
   const missionSourceCount = await prisma.agentMissionSource.count();
   const missionRunCount = await prisma.agentMissionRun.count();
   const stepRunCount = await prisma.agentWorkflowStepRun.count();
+  const orphan = await recoverOrphanAgentJobs({ dryRun: true });
+  const outboxPending = await prisma.agentSyncOutbox.count({
+    where: { status: { in: ['pending', 'processing', 'failed', 'dead_letter'] } },
+  });
+  const duplicateActiveScan = await prisma.$queryRaw<
+    { source_id: string; cnt: bigint }[]
+  >`
+    SELECT source_id, COUNT(*)::bigint as cnt
+    FROM agent_jobs
+    WHERE type = 'scan_source'
+      AND status IN ('queued','claimed','running')
+      AND source_id IS NOT NULL
+    GROUP BY source_id
+    HAVING COUNT(*) > 1
+  `;
 
   console.log(
     JSON.stringify(
@@ -55,6 +71,10 @@ async function main() {
         jobByStatus,
         activeJobs,
         staleJobs,
+        orphanJobs: orphan.orphaned.length,
+        liveWorkers: orphan.liveWorkers,
+        outboxPendingOrFailed: outboxPending,
+        duplicateActiveScanPerSource: duplicateActiveScan,
         sessions: sessions.map(s => ({
           id: s.id,
           status: s.status,
