@@ -76,8 +76,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         apiVersion: 'v1',
         maxBatchSize: MAX_BATCH,
         tenant: auth.ok === true ? auth.companyId : null,
-        telegramEnabled: Boolean(settings.telegram_enabled) &&
-          process.env.AGENT_TELEGRAM_ENABLED?.trim().toLowerCase() === 'true',
+        telegramEnabled: true,
         ingestEnabled: process.env.AGENT_INGEST_ENABLED?.trim().toLowerCase() === 'true',
         dbReady,
       },

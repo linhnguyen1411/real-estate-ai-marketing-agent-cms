@@ -116,9 +116,7 @@ export async function processOutboxBatch(options?: {
   limit?: number;
 }): Promise<{ processed: number; synced: number; failed: number }> {
   const settings = getSettings();
-  if (!settings.agent_sync_enabled) {
-    return { processed: 0, synced: 0, failed: 0 };
-  }
+  // Hard-on: process outbox regardless of settings.agent_sync_enabled.
 
   const limit = Math.min(
     options?.limit ?? Number(settings.agent_sync_batch_size || 10),

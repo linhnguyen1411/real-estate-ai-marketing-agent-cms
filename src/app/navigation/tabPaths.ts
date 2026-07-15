@@ -20,6 +20,7 @@ export const AGENT_TAB_TO_PATH: Record<string, string> = {
   'agent-findings': '/admin/agents/findings',
   'agent-external-inventory': '/admin/agents/external-inventory',
   'agent-proposals': '/admin/agents/proposals',
+  'agent-spam': '/admin/agents/spam',
   'agent-notifications': '/admin/agents/notifications',
   'agent-sessions': '/admin/agents/sessions',
   'agent-reports': '/admin/agents/reports',
