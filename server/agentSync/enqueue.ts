@@ -434,6 +434,86 @@ export async function enqueueFindingUpsertSync(input: {
   }
 }
 
+export async function enqueueSourceUpsertSync(input: {
+  sourceId: string;
+  tx?: Tx;
+  kickFlush?: boolean;
+}): Promise<{ enqueued: boolean; reason?: string; outboxId?: string }> {
+  if (!(await shouldEnqueueSyncAsync())) {
+    return { enqueued: false, reason: isLocalSyncEnabled() ? 'disabled' : 'env_disabled' };
+  }
+
+  const run = async (tx: Tx) => {
+    const source = await ensureSourceExternalKey(input.sourceId, tx);
+    const settings = getSettings();
+    const companyId = source.companyId;
+    const syncVersion = `s_${source.updatedAt.toISOString()}`;
+    const idempotencyKey = syncIdempotencyKey([
+      'source',
+      companyId || 'none',
+      source.externalSourceKey,
+      'v1',
+      syncVersion,
+    ]);
+
+    const envelope: AgentIngestionEnvelopeV1 = {
+      apiVersion: AGENT_INGEST_API_VERSION,
+      ingestionId: idempotencyKey,
+      idempotencyKey,
+      eventType: 'source_upsert',
+      companyId,
+      localWorkerId: workerId(settings),
+      sourceKey: source.externalSourceKey,
+      capturedAt: new Date().toISOString(),
+      payload: sanitizeJsonValue({
+        source: {
+          localSourceId: source.id,
+          externalSourceKey: source.externalSourceKey,
+          remoteSourceId: source.remoteId,
+          name: source.name,
+          type: source.type,
+          url: source.url,
+          status: source.status,
+          config: sanitizeSourceConfig(source.config),
+          lastScannedAt: source.lastScannedAt?.toISOString() ?? null,
+          nextScanAt: source.nextScanAt?.toISOString() ?? null,
+          createdAt: source.createdAt.toISOString(),
+          updatedAt: source.updatedAt.toISOString(),
+        },
+      }) as Record<string, unknown>,
+    };
+
+    await tx.agentSource.update({
+      where: { id: source.id },
+      data: {
+        syncStatus: 'pending',
+        syncError: null,
+      },
+    }).catch(() => undefined);
+
+    const created = await createOutboxRow(tx, {
+      companyId,
+      eventType: 'source_upsert',
+      entityId: source.id,
+      ingestionId: idempotencyKey,
+      dependencyKey: `source:${source.externalSourceKey}`,
+      envelope,
+    });
+    return { enqueued: created.created || Boolean(created.outboxId), outboxId: created.outboxId };
+  };
+
+  try {
+    const result = input.tx ? await run(input.tx) : await prisma.$transaction(run);
+    if (result.enqueued && input.kickFlush !== false) scheduleAgentSyncFlush();
+    return result;
+  } catch (error) {
+    return {
+      enqueued: false,
+      reason: error instanceof Error ? error.message : 'enqueue_error',
+    };
+  }
+}
+
 export async function enqueueScanCompletedSync(input: {
   sourceId: string;
   localJobId?: string | null;
