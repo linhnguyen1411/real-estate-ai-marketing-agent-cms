@@ -15,12 +15,22 @@ export type InvestorLeadCallStatus =
 
 export async function fetchInvestorLeads(params: {
   includeConverted?: boolean;
+  page?: number;
+  limit?: number;
+  search?: string;
 } = {}): Promise<InvestorLead[]> {
-  const qs = params.includeConverted ? '?includeConverted=1' : '';
+  const searchParams = new URLSearchParams();
+  if (params.includeConverted) searchParams.set('includeConverted', '1');
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+  if (params.search) searchParams.set('search', params.search);
+  const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
   const response = await fetch(`/api/investor-leads${qs}`, { headers: authHeaders() });
   const json = await response.json();
   if (!response.ok) throw new Error(json.message || 'Failed');
-  return json.data || [];
+  const data = json.data;
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.items) ? data.items : [];
 }
 
 export async function updateInvestorLeadStatus(id: string, status: InvestorLead['status']) {

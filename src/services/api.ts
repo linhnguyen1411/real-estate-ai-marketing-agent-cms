@@ -12,6 +12,15 @@ import {
   Property,
   User
 } from '../types';
+import {
+  CACHE_TTL_MS,
+  cacheGetOrSet,
+  cacheInvalidate,
+  invalidateAfterLeadPromote,
+  invalidateCrmModule,
+} from './queryCache';
+
+export { invalidateAfterLeadPromote, invalidateCrmModule, cacheInvalidate };
 
 type ApiStatus = 'success' | 'error';
 
@@ -169,45 +178,166 @@ export async function uploadProfileAvatar(imageDataUrl: string) {
   return { url: user.avatar_url || '', user };
 }
 
-export async function getInitialAppData(): Promise<InitialAppData> {
-  const [
-    dashboard,
-    customers,
-    properties,
-    posts,
-    inbox,
-    automations,
-    settings,
-    channels
-  ] = await Promise.all([
-    apiRequest<DashboardData>('/api/dashboard'),
-    apiRequest<Customer[]>('/api/customers'),
-    apiRequest<Property[]>('/api/properties'),
-    apiRequest<Post[]>('/api/posts'),
-    apiRequest<InboxMessage[]>('/api/inbox'),
-    apiRequest<AutomationTask[]>('/api/automations'),
-    apiRequest<AppSettings>('/api/settings'),
-    apiRequest<MarketingChannel[]>('/api/channels')
-  ]);
+export interface NavigationCounts {
+  crm: number;
+  properties: number;
+  posts: number;
+  pendingInbox: number;
+  leadIntelligence: number;
+  investorLeads: number;
+  externalInventory: number;
+  notifications: number;
+  jobs: number;
+  sources: number;
+  /** Public website guest conversations (count only). */
+  websiteChat: number;
+  /** Distinct chat history sessions in scope (count only). */
+  chatHistory: number;
+}
 
+export interface ListPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedList<T> {
+  items: T[];
+  pagination: ListPagination;
+}
+
+export type ListQueryParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  sort?: string;
+  type?: string;
+  transactionType?: string;
+};
+
+function toQueryString(params?: ListQueryParams) {
+  if (!params) return '';
+  const searchParams = new URLSearchParams();
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.status) searchParams.set('status', params.status);
+  if (params.sort) searchParams.set('sort', params.sort);
+  if (params.type) searchParams.set('type', params.type);
+  if (params.transactionType) searchParams.set('transactionType', params.transactionType);
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+}
+
+async function fetchList<T>(path: string, params?: ListQueryParams): Promise<PaginatedList<T> | T[]> {
+  return apiRequest<PaginatedList<T> | T[]>(`${path}${toQueryString(params)}`);
+}
+
+export function asPaginatedList<T>(data: PaginatedList<T> | T[], fallbackLimit = 50): PaginatedList<T> {
+  if (Array.isArray(data)) {
+    return {
+      items: data,
+      pagination: {
+        page: 1,
+        limit: fallbackLimit,
+        total: data.length,
+        totalPages: Math.max(1, Math.ceil(data.length / fallbackLimit) || 1),
+      },
+    };
+  }
+  return data;
+}
+
+/** Lightweight F5 bootstrap: dashboard metrics + nav badges + settings. No entity lists. */
+export async function getBootstrapData(): Promise<{
+  dashboard: DashboardData;
+  navigationCounts: NavigationCounts;
+  settings: AppSettings;
+}> {
+  const [dashboard, navigationCounts, settings] = await Promise.all([
+    cacheGetOrSet('dashboard', CACHE_TTL_MS.dashboard, () => apiRequest<DashboardData>('/api/dashboard')),
+    cacheGetOrSet('navigation-counts', CACHE_TTL_MS.navigationCounts, () =>
+      apiRequest<NavigationCounts>('/api/navigation-counts'),
+    ),
+    cacheGetOrSet('settings', CACHE_TTL_MS.settings, () => apiRequest<AppSettings>('/api/settings')),
+  ]);
+  return { dashboard, navigationCounts, settings };
+}
+
+export function getDashboard() {
+  return cacheGetOrSet('dashboard', CACHE_TTL_MS.dashboard, () => apiRequest<DashboardData>('/api/dashboard'));
+}
+
+export function getNavigationCounts(force = false) {
+  if (force) cacheInvalidate('navigation-counts');
+  return cacheGetOrSet('navigation-counts', CACHE_TTL_MS.navigationCounts, () =>
+    apiRequest<NavigationCounts>('/api/navigation-counts'),
+  );
+}
+
+export function getSettings() {
+  return cacheGetOrSet('settings', CACHE_TTL_MS.settings, () => apiRequest<AppSettings>('/api/settings'));
+}
+
+export function getChannels() {
+  return cacheGetOrSet('channels', CACHE_TTL_MS.channels, () => apiRequest<MarketingChannel[]>('/api/channels'));
+}
+
+export function getAutomations() {
+  return cacheGetOrSet('automations', CACHE_TTL_MS.automations, () =>
+    apiRequest<AutomationTask[]>('/api/automations'),
+  );
+}
+
+export async function listCustomers(params?: ListQueryParams) {
+  const key = `crm:customers:${toQueryString(params)}`;
+  return cacheGetOrSet(key, CACHE_TTL_MS.crm, async () =>
+    asPaginatedList(await fetchList<Customer>('/api/customers', params)),
+  );
+}
+
+export async function listProperties(params?: ListQueryParams) {
+  const key = `properties:${toQueryString(params)}`;
+  return cacheGetOrSet(key, CACHE_TTL_MS.properties, async () =>
+    asPaginatedList(await fetchList<Property>('/api/properties', params)),
+  );
+}
+
+export async function listPosts(params?: ListQueryParams) {
+  const key = `posts:${toQueryString(params)}`;
+  return asPaginatedList(await fetchList<Post>('/api/posts', params));
+}
+
+export async function listInbox(params?: ListQueryParams) {
+  const key = `inbox:${toQueryString(params)}`;
+  return asPaginatedList(await fetchList<InboxMessage>('/api/inbox', params));
+}
+
+/** @deprecated Prefer getBootstrapData + on-demand list* module loaders. */
+export async function getInitialAppData(): Promise<InitialAppData> {
+  const bootstrap = await getBootstrapData();
   return {
-    dashboard,
-    customers,
-    properties,
-    posts,
-    inbox,
-    automations,
-    settings,
-    channels
+    dashboard: bootstrap.dashboard,
+    customers: [],
+    properties: [],
+    posts: [],
+    inbox: [],
+    automations: [],
+    settings: bootstrap.settings,
+    channels: [],
   };
 }
 
+/** Poll dashboard metrics only — do not re-download property lists. */
 export async function refreshTrafficData() {
-  const [properties, settings] = await Promise.all([
-    apiRequest<Property[]>('/api/properties'),
-    apiRequest<AppSettings>('/api/settings')
+  cacheInvalidate('dashboard');
+  const [dashboard, settings] = await Promise.all([
+    getDashboard(),
+    getSettings(),
   ]);
-  return { properties, settings };
+  return { dashboard, settings, properties: [] as Property[] };
 }
 
 export function analyzeCustomer(customerId: string) {

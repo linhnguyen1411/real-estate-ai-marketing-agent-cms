@@ -70,6 +70,7 @@
     "cleanup:agent-runtime": "node scripts/cleanup-agent-runtime.mjs",
     "cleanup:db-tech-retention": "node scripts/cleanup-db-tech-retention.mjs",
     "test:agent-regression": "node scripts/test-agent-regression.mjs",
+    "test:frontend-architecture": "node scripts/test-frontend-architecture.mjs",
     "test:deploy-safety": "node scripts/test-deploy-safety.mjs",
     "test:agent-tenant-isolation": "tsx scripts/test-agent-tenant-isolation.ts",
     "test:agent-repositories": "tsx scripts/test-agent-repositories.ts",

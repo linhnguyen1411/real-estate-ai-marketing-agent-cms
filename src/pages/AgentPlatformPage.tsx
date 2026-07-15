@@ -1,17 +1,27 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { UserRole } from '../types';
 import AgentDashboard from '../components/agent/AgentDashboard';
-import AgentSources from '../components/agent/AgentSources';
-import AgentMissions from '../components/agent/AgentMissions';
-import AgentJobs from '../components/agent/AgentJobs';
-import AgentFindings from '../components/agent/AgentFindings';
-import AgentNotifications from '../components/agent/AgentNotifications';
-import BrowserSessions from '../components/agent/BrowserSessions';
-import AgentReports from '../components/agent/AgentReports';
-import AgentActionProposals from '../components/agent/AgentActionProposals';
-import AgentScannedContents from '../components/agent/AgentScannedContents';
-import AgentExternalInventory from '../components/agent/AgentExternalInventory';
+import { AgentPanelLoader } from '../features/agent/shared/AgentPlatformUi';
+
+const SourcesPage = React.lazy(() => import('../features/agent/sources/pages/SourcesPage'));
+const MissionsPage = React.lazy(() => import('../features/agent/missions/pages/MissionsPage'));
+const JobsPage = React.lazy(() => import('../features/agent/jobs/pages/JobsPage'));
+const ScannedContentPage = React.lazy(
+  () => import('../features/agent/scanned-content/pages/ScannedContentPage'),
+);
+const LeadIntelligencePage = React.lazy(
+  () => import('../features/agent/lead-intelligence/pages/LeadIntelligencePage'),
+);
+const ExternalInventoryPage = React.lazy(
+  () => import('../features/agent/external-inventory/pages/ExternalInventoryPage'),
+);
+const NotificationsPage = React.lazy(() => import('../features/agent/notifications/pages/NotificationsPage'));
+const SessionsPage = React.lazy(() => import('../features/agent/sessions/pages/SessionsPage'));
+const ReportsPage = React.lazy(() => import('../features/agent/reports/pages/ReportsPage'));
+const ActionProposalsPage = React.lazy(
+  () => import('../features/agent/action-proposals/pages/ActionProposalsPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
@@ -74,16 +84,56 @@ export default function AgentPlatformPage({ userRole }: Props) {
 
       <div className="min-h-0">
         {section === 'dashboard' && <AgentDashboard />}
-        {section === 'sources' && <AgentSources canManage={canManage} />}
-        {section === 'missions' && <AgentMissions canManage={canManage} />}
-        {section === 'jobs' && <AgentJobs canManage={canManage} />}
-        {section === 'contents' && <AgentScannedContents userRole={userRole} />}
-        {section === 'findings' && <AgentFindings userRole={userRole} />}
-        {section === 'external-inventory' && <AgentExternalInventory />}
-        {section === 'proposals' && <AgentActionProposals />}
-        {section === 'notifications' && <AgentNotifications />}
-        {section === 'sessions' && <BrowserSessions />}
-        {section === 'reports' && <AgentReports />}
+        {section === 'sources' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <SourcesPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'missions' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <MissionsPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'jobs' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <JobsPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'contents' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <ScannedContentPage userRole={userRole} />
+          </Suspense>
+        )}
+        {section === 'findings' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <LeadIntelligencePage userRole={userRole} />
+          </Suspense>
+        )}
+        {section === 'external-inventory' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <ExternalInventoryPage />
+          </Suspense>
+        )}
+        {section === 'proposals' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <ActionProposalsPage />
+          </Suspense>
+        )}
+        {section === 'notifications' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <NotificationsPage />
+          </Suspense>
+        )}
+        {section === 'sessions' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <SessionsPage />
+          </Suspense>
+        )}
+        {section === 'reports' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <ReportsPage />
+          </Suspense>
+        )}
       </div>
     </div>
   );
