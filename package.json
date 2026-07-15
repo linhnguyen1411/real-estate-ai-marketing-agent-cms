@@ -79,6 +79,7 @@
     "test:scanner-v2": "tsx scripts/test-agent-spam-control.ts",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",
+    "test:mission-provenance-e2e": "tsx scripts/test-mission-provenance-e2e.ts",
     "mission:recover-stale-runs": "tsx scripts/recover-stale-mission-runs.ts",
     "mission:recover-stale-jobs": "tsx scripts/recover-stale-agent-jobs.ts",
     "mission:recover-orphan-jobs": "tsx scripts/recover-orphan-agent-jobs.ts",
