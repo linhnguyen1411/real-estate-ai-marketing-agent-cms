@@ -42,6 +42,8 @@ import {
 import {
   textHasKeyword,
 } from '../../agent/offTopicFilter';
+import { evaluateContentSpam } from '../../agent/spam/spamPolicyService';
+import type { SpamDecision } from '../../agent/spam/spamTypes';
 
 export interface RuleSet {
   positiveKeywords: string[];
@@ -413,6 +415,39 @@ export async function processFindingForContent(input: {
     });
   }
 
+  // Tier-1 spam policy (pre-AI): phone / profile / source / phrase / hash
+  const preAiSpam = await evaluateContentSpam({
+    contentText: `${input.title}\n${input.content.contentText}`,
+    authorName: input.content.authorName,
+    authorUrl: input.content.authorUrl,
+    pageUrl: input.content.canonicalUrl,
+    canonicalUrl: input.content.canonicalUrl,
+    contentHash: input.content.contentHash,
+    normalizedContentHash: input.content.normalizedContentHash,
+    phones: deterministic.phone.phones?.map(p => ({
+      raw: p.raw,
+      normalized: p.normalized,
+      e164: p.e164,
+    })),
+    sourceId: input.source.id,
+    companyId: input.content.companyId || input.source.companyId,
+    tier: 'pre_ai',
+  });
+
+  if (preAiSpam.decision.hardGate) {
+    return applySpamHardGate({
+      contentId: input.content.id,
+      decision: preAiSpam.decision,
+      config,
+      keywordScore,
+      prefilterScore: prefilter.score,
+    });
+  }
+
+  const spamScorePenalty = preAiSpam.decision.decision === 'lower_score'
+    ? preAiSpam.decision.scorePenalty
+    : 0;
+
   const budget = input.analysisBudget ?? {
     used: 0,
     max: getLeadAnalysisLimits().maxPerJob,
@@ -490,6 +525,43 @@ export async function processFindingForContent(input: {
     analysis?.representedDemand || direction.representedDemand;
   const brokerActivity = analysis?.brokerActivity || direction.brokerActivity;
 
+  // Tier-2 spam policy (post-classification): classification / actor_role rules
+  const postClassSpam = await evaluateContentSpam({
+    contentText: `${input.title}\n${input.content.contentText}`,
+    authorName: input.content.authorName,
+    authorUrl: input.content.authorUrl,
+    canonicalUrl: input.content.canonicalUrl,
+    contentHash: input.content.contentHash,
+    normalizedContentHash: input.content.normalizedContentHash,
+    phones: deterministic.phone.phones?.map(p => ({
+      raw: p.raw,
+      normalized: p.normalized,
+      e164: p.e164,
+    })),
+    sourceId: input.source.id,
+    companyId: input.content.companyId || input.source.companyId,
+    classification,
+    actorRole,
+    tier: 'post_class',
+  });
+
+  if (postClassSpam.decision.hardGate) {
+    return applySpamHardGate({
+      contentId: input.content.id,
+      decision: postClassSpam.decision,
+      config,
+      keywordScore,
+      prefilterScore: prefilter.score,
+      aiScore,
+      analysisRan,
+      classification,
+    });
+  }
+
+  const totalSpamPenalty =
+    spamScorePenalty +
+    (postClassSpam.decision.decision === 'lower_score' ? postClassSpam.decision.scorePenalty : 0);
+
   const targetMatched = config.targetClassifications.includes(classification);
   const isBrokerDemand =
     classification === 'broker' &&
@@ -538,12 +610,15 @@ export async function processFindingForContent(input: {
     urgency: analysis?.urgency,
   });
 
-  const finalScore = computeIntelligenceFinalScore({
-    leadFitScore,
-    aiScore,
-    keywordScore,
-    targetMatched: targetMatched && actorRole === 'demand_side',
-  });
+  const finalScore = Math.max(
+    0,
+    computeIntelligenceFinalScore({
+      leadFitScore,
+      aiScore,
+      keywordScore,
+      targetMatched: targetMatched && actorRole === 'demand_side',
+    }) - totalSpamPenalty,
+  );
 
   const analysisReasons = analysis?.reasons || [];
 
@@ -951,6 +1026,59 @@ function emptyResult(partial: Partial<FindingProcessResult> & { filterStage: Ana
   };
 }
 
+async function applySpamHardGate(opts: {
+  contentId: string;
+  decision: SpamDecision;
+  config: LeadAnalysisConfig;
+  keywordScore: number;
+  prefilterScore?: number;
+  aiScore?: number | null;
+  analysisRan?: boolean;
+  classification?: string;
+}): Promise<FindingProcessResult> {
+  const isBlock = opts.decision.decision === 'block';
+  const filterStage: AnalysisFilterStage = isBlock ? 'blocked' : 'spam_ignored';
+  const matchedRuleIds = opts.decision.matchedRules.map(m => m.ruleId);
+  await persistContentAnalysis(opts.contentId, {
+    filterStage,
+    analysisMode: opts.config.analysisMode,
+    keywordScore: opts.keywordScore,
+    prefilterScore: opts.prefilterScore ?? null,
+    aiScore: opts.aiScore ?? null,
+    leadFitScore: 0,
+    finalScore: 0,
+    scoreStatus: isBlock ? 'blocked' : 'ignored',
+    decision: opts.decision.decision,
+    reasonCode: opts.decision.primaryReason,
+    usedDefaultKeywords: opts.config.usedDefaultKeywords,
+    classification: opts.classification,
+    spamDecision: opts.decision.decision,
+    spamReason: opts.decision.primaryReason,
+    matchedSpamRuleIds: matchedRuleIds,
+    spamExplanations: opts.decision.explanations,
+    blockedAt: new Date().toISOString(),
+    blockedByRuleVersion: opts.decision.version,
+    reasons: [
+      `spam_${opts.decision.decision}`,
+      opts.decision.primaryReason || '',
+      ...opts.decision.explanations.slice(0, 5),
+    ].filter(Boolean),
+  });
+  return {
+    ...emptyResult({
+      filterStage,
+      keywordScore: opts.keywordScore,
+      prefilterScore: opts.prefilterScore,
+      aiScore: opts.aiScore ?? null,
+      analysisMode: opts.config.analysisMode,
+      score: 0,
+      finalScore: 0,
+    }),
+    analysisRan: opts.analysisRan,
+    classification: opts.classification,
+  };
+}
+
 function resolveClassification(
   analysis: LeadAnalysisResult | null,
   deterministic: DeterministicExtraction,
@@ -1257,9 +1385,12 @@ async function persistContentAnalysis(
     const nextStatus =
       filterStage === 'created_finding' || filterStage === 'duplicate'
         ? 'analyzed'
+        : filterStage === 'blocked'
+          ? 'blocked'
         : filterStage === 'domain_needs_review'
           ? 'needs_review'
         : filterStage === 'hard_spam' ||
+            filterStage === 'spam_ignored' ||
             filterStage === 'too_short' ||
             filterStage === 'keyword_gate' ||
             filterStage === 'low_final_score' ||
@@ -1269,6 +1400,18 @@ async function persistContentAnalysis(
           ? 'ignored'
           : existing?.status || 'collected';
 
+    const spamMeta =
+      analysis.spamDecision || analysis.matchedSpamRuleIds
+        ? {
+            spamDecision: analysis.spamDecision,
+            spamReason: analysis.spamReason,
+            matchedSpamRuleIds: analysis.matchedSpamRuleIds,
+            blockedAt: analysis.blockedAt,
+            blockedByRuleVersion: analysis.blockedByRuleVersion,
+            spamExplanations: analysis.spamExplanations,
+          }
+        : {};
+
     const nextRawData = opts?.rawAnalysis
       ? {
           ...prevRaw,
@@ -1276,8 +1419,11 @@ async function persistContentAnalysis(
             ...((prevRaw.analysis as Record<string, unknown>) || {}),
             ...opts.rawAnalysis,
           },
+          ...spamMeta,
         }
-      : undefined;
+      : Object.keys(spamMeta).length
+        ? { ...prevRaw, ...spamMeta }
+        : undefined;
 
     await prisma.scannedContent.update({
       where: { id: contentId },
