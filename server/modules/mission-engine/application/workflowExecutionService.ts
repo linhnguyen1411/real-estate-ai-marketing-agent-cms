@@ -14,6 +14,7 @@ import {
   markStepTerminal,
 } from '../repositories/workflowStepRunRepository';
 import { requireHandler } from './workflowStepDispatcher';
+import { shouldExecuteStepOnRuntime, inferRuntimeTargetFromEnv } from '../../../agentSync/missionProvenance';
 
 export interface ExecuteContentWorkflowInput {
   missionRunId: string;
@@ -22,6 +23,8 @@ export interface ExecuteContentWorkflowInput {
   sourceId?: string | null;
   findingId?: string | null;
   missionRules?: Record<string, unknown>;
+  /** When set, only steps matching this execution target run (local_worker | vps). */
+  runtimeTarget?: 'local_worker' | 'vps';
 }
 
 export interface ExecuteContentWorkflowResult {
@@ -55,6 +58,7 @@ export async function executeContentWorkflow(
 
   const pipeline = parsePipeline(run.pipelineSnapshot);
   const steps = contentLevelSteps(pipeline);
+  const runtimeTarget = input.runtimeTarget ?? inferRuntimeTargetFromEnv();
   const previousStepOutputs: Record<string, unknown> = {
     missionRules: input.missionRules ?? {},
   };
@@ -78,6 +82,10 @@ export async function executeContentWorkflow(
   const metricsDelta: Record<string, number> = {};
 
   for (const step of steps) {
+    if (!shouldExecuteStepOnRuntime(step.executionTarget, runtimeTarget)) {
+      continue;
+    }
+
     if (blocked.has(step.id)) {
       const { record } = await ensureStepRun({
         companyId: run.companyId,

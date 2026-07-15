@@ -11,6 +11,7 @@ import {
   type AgentSyncEventType,
 } from './envelope';
 import { scheduleAgentSyncFlush } from './outboxWorker';
+import { completedLocalStepsFromDb } from '../agentIngest/missionProvenanceIngest';
 
 type Tx = Prisma.TransactionClient;
 
@@ -84,6 +85,120 @@ async function ensureSourceExternalKey(
     }
   }
   return { ...source, externalSourceKey: key };
+}
+
+async function attachMissionProvenance(
+  tx: Tx,
+  input: {
+    contentId: string;
+    sourceId: string;
+    sourceExternalKey: string;
+    worker: string | null;
+    capturedAt: string;
+  },
+): Promise<Record<string, unknown>> {
+  const step = await tx.agentWorkflowStepRun.findFirst({
+    where: { scannedContentId: input.contentId },
+    orderBy: { createdAt: 'desc' },
+    select: { missionId: true, missionRunId: true, jobId: true, sourceId: true },
+  });
+
+  let missionRunId = step?.missionRunId ?? null;
+  let missionId = step?.missionId ?? null;
+  let jobId = step?.jobId ?? null;
+  let sourceId = step?.sourceId ?? input.sourceId;
+
+  if (!missionRunId) {
+    const job = await tx.agentJob.findFirst({
+      where: {
+        sourceId: input.sourceId,
+        missionRunId: { not: null },
+        status: { in: ['queued', 'claimed', 'running', 'completed'] },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { missionId: true, missionRunId: true, id: true },
+    });
+    if (job?.missionRunId) {
+      missionRunId = job.missionRunId;
+      missionId = job.missionId;
+      jobId = job.id;
+    }
+  }
+
+  if (!missionRunId) {
+    return {
+      missionId: null,
+      missionRunId: null,
+      jobId: null,
+      pipelineVersion: null,
+      pipelineHash: null,
+      missionVersion: null,
+    };
+  }
+
+  const run = await tx.agentMissionRun.findUnique({
+    where: { id: missionRunId },
+    select: {
+      missionVersion: true,
+      pipelineHash: true,
+      pipelineSnapshot: true,
+    },
+  });
+  const localSteps = await tx.agentWorkflowStepRun.findMany({
+    where: { missionRunId, scannedContentId: input.contentId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      stepId: true,
+      stepType: true,
+      status: true,
+      output: true,
+      findingId: true,
+      completedAt: true,
+    },
+  });
+
+  const pipelineVersion = run?.missionVersion ?? null;
+  const completedLocalSteps = completedLocalStepsFromDb(
+    localSteps.map(s => ({
+      ...s,
+      externalInventoryId:
+        s.output && typeof s.output === 'object' && (s.output as { itemId?: string }).itemId
+          ? String((s.output as { itemId?: string }).itemId)
+          : null,
+    })),
+  );
+
+  return {
+    missionId,
+    missionRunId,
+    jobId,
+    sourceId,
+    sourceExternalKey: input.sourceExternalKey,
+    localScannedContentId: input.contentId,
+    pipelineVersion,
+    pipelineHash: run?.pipelineHash ?? null,
+    missionVersion: run?.missionVersion ?? null,
+    executionTarget: 'local_worker',
+    workerId: input.worker,
+    capturedAt: input.capturedAt,
+    completedLocalSteps,
+    missionWorkflow: {
+      missionId,
+      missionRunId,
+      jobId,
+      sourceId,
+      sourceExternalKey: input.sourceExternalKey,
+      localScannedContentId: input.contentId,
+      pipelineVersion,
+      pipelineHash: run?.pipelineHash ?? null,
+      missionVersion: run?.missionVersion ?? null,
+      executionTarget: 'local_worker',
+      workerId: input.worker,
+      capturedAt: input.capturedAt,
+      completedLocalSteps,
+      pipelineSnapshot: run?.pipelineSnapshot ?? null,
+    },
+  };
 }
 
 async function createOutboxRow(
@@ -176,6 +291,15 @@ export async function enqueueScannedContentSync(input: {
       syncVersion,
     ]);
 
+    const capturedAt = new Date().toISOString();
+    const provenance = await attachMissionProvenance(tx, {
+      contentId: content.id,
+      sourceId: source.id,
+      sourceExternalKey: source.externalSourceKey,
+      worker: workerId(settings),
+      capturedAt,
+    });
+
     const envelope: AgentIngestionEnvelopeV1 = {
       apiVersion: AGENT_INGEST_API_VERSION,
       ingestionId: idempotencyKey,
@@ -184,14 +308,11 @@ export async function enqueueScannedContentSync(input: {
       companyId,
       localWorkerId: workerId(settings),
       sourceKey: source.externalSourceKey,
-      capturedAt: new Date().toISOString(),
+      capturedAt,
       parserVersion: 'facebook-local-v1',
       analysisVersion: null,
       payload: sanitizeJsonValue({
-        missionId: null,
-        missionRunId: null,
-        jobId: null,
-        pipelineVersion: null,
+        ...provenance,
         source: {
           localSourceId: source.id,
           externalSourceKey: source.externalSourceKey,
@@ -241,23 +362,6 @@ export async function enqueueScannedContentSync(input: {
         },
       }) as Record<string, unknown>,
     };
-
-    // Mission 2.0 provenance from latest StepRun for this content (if any)
-    const step = await tx.agentWorkflowStepRun.findFirst({
-      where: { scannedContentId: content.id },
-      orderBy: { createdAt: 'desc' },
-      select: { missionId: true, missionRunId: true, jobId: true },
-    });
-    if (step) {
-      const run = await tx.agentMissionRun.findUnique({
-        where: { id: step.missionRunId },
-        select: { missionVersion: true },
-      });
-      envelope.payload.missionId = step.missionId;
-      envelope.payload.missionRunId = step.missionRunId;
-      envelope.payload.jobId = step.jobId;
-      envelope.payload.pipelineVersion = run?.missionVersion ?? null;
-    }
 
     await tx.scannedContent.update({
       where: { id: content.id },

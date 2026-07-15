@@ -4,6 +4,11 @@ import { prisma } from '../prisma';
 import { notifyFindingHighScore } from '../agent/agentNotificationService';
 import { notifyFindingIfEligible } from '../notifications/telegramNotificationService';
 import { runInTransaction, asDb, type DbClient } from '../repositories/shared/repositoryTypes';
+import { extractMissionProvenance } from '../agentSync/missionProvenance';
+import {
+  ensureMissionRunFromProvenance,
+  syncCompletedLocalSteps,
+} from './missionProvenanceIngest';
 
 export type IngestFindingPayload = {
   ingestionId?: string;
@@ -17,6 +22,10 @@ export type IngestFindingPayload = {
   missionRunId?: string;
   jobId?: string;
   pipelineVersion?: number;
+  pipelineHash?: string;
+  missionVersion?: number;
+  completedLocalSteps?: Array<Record<string, unknown>>;
+  missionWorkflow?: Record<string, unknown>;
   /** Escape hatch: allow legacy finding upsert even with missionRunId */
   forceFindingUpsert?: boolean;
   source?: {
@@ -420,18 +429,26 @@ export async function ingestFindingPayload(input: {
   requestHash?: string | null;
   /** When true, upsert source+content only (no Finding). */
   contentOnly?: boolean;
+  /** When true (with missionRunId), upsert content then continue VPS workflow. */
+  continueMissionWorkflow?: boolean;
 }): Promise<IngestFindingResult> {
   const warnings: string[] = [];
   const missionRunId = String(input.payload.missionRunId || '').trim() || null;
+  const hasFindingPayload =
+    Boolean(input.payload.finding) &&
+    Object.values(input.payload.finding || {}).some(v => v != null && v !== '');
   const workflowContentOnly =
-    Boolean(missionRunId) && !input.payload.forceFindingUpsert && !input.contentOnly;
+    Boolean(missionRunId) &&
+    !input.payload.forceFindingUpsert &&
+    !hasFindingPayload &&
+    input.continueMissionWorkflow === true;
 
-  // Mission workflow payloads: upsert content only, then continue VPS steps
-  // only when this run/content has no completed step runs yet (idempotent reuse).
+  // Mission workflow payloads: upsert content, sync local steps, continue VPS steps.
   if (workflowContentOnly) {
     const contentResult = await ingestFindingPayload({
       ...input,
       contentOnly: true,
+      continueMissionWorkflow: false,
       payload: {
         ...input.payload,
         forceFindingUpsert: false,
@@ -440,28 +457,50 @@ export async function ingestFindingPayload(input: {
     });
     if (contentResult.scannedContentId && missionRunId) {
       try {
-        const completed = await prisma.agentWorkflowStepRun.count({
-          where: {
+        const provenance =
+          extractMissionProvenance(input.payload as Record<string, unknown>) ||
+          extractMissionProvenance({
             missionRunId,
-            scannedContentId: contentResult.scannedContentId,
-            status: { in: ['completed', 'skipped'] },
-          },
-        });
-        if (completed === 0) {
-          const { executeContentWorkflow } = await import(
-            '../modules/mission-engine/application/workflowExecutionService'
-          );
-          await executeContentWorkflow({
-            missionRunId,
-            scannedContentId: contentResult.scannedContentId,
-            jobId: input.payload.jobId || null,
-            sourceId: contentResult.sourceId,
-            missionRules: {},
+            missionId: input.payload.missionId,
+            jobId: input.payload.jobId,
+            pipelineVersion: input.payload.pipelineVersion,
+            pipelineHash: input.payload.pipelineHash,
+            completedLocalSteps: input.payload.completedLocalSteps,
+            missionWorkflow: input.payload.missionWorkflow,
           });
-          warnings.push('mission_workflow_continued_on_vps');
-        } else {
-          warnings.push('mission_workflow_steps_already_present_skip_rerun');
+
+        if (provenance) {
+          await ensureMissionRunFromProvenance(provenance, input.companyId);
+          const run = await prisma.agentMissionRun.findUnique({
+            where: { id: missionRunId },
+            select: { missionId: true, missionVersion: true },
+          });
+          if (run) {
+            await syncCompletedLocalSteps({
+              provenance,
+              companyId: input.companyId,
+              missionRunId,
+              missionId: run.missionId,
+              scannedContentId: contentResult.scannedContentId,
+              sourceId: contentResult.sourceId ?? null,
+              jobId: input.payload.jobId || null,
+              pipelineVersion: run.missionVersion,
+            });
+          }
         }
+
+        const { executeContentWorkflow } = await import(
+          '../modules/mission-engine/application/workflowExecutionService'
+        );
+        await executeContentWorkflow({
+          missionRunId,
+          scannedContentId: contentResult.scannedContentId,
+          jobId: input.payload.jobId || null,
+          sourceId: contentResult.sourceId,
+          missionRules: {},
+          runtimeTarget: 'vps',
+        });
+        warnings.push('mission_workflow_continued_on_vps');
       } catch (err) {
         warnings.push(
           `mission_workflow_continue_failed:${err instanceof Error ? err.message.slice(0, 120) : 'error'}`,
@@ -951,6 +990,21 @@ export async function ingestEventEnvelope(input: {
     analysisVersion:
       input.envelope.analysisVersion != null ? String(input.envelope.analysisVersion) : undefined,
     capturedAt: input.envelope.capturedAt != null ? String(input.envelope.capturedAt) : undefined,
+    missionId: payloadBody.missionId != null ? String(payloadBody.missionId) : undefined,
+    missionRunId: payloadBody.missionRunId != null ? String(payloadBody.missionRunId) : undefined,
+    jobId: payloadBody.jobId != null ? String(payloadBody.jobId) : undefined,
+    pipelineVersion:
+      payloadBody.pipelineVersion != null ? Number(payloadBody.pipelineVersion) : undefined,
+    pipelineHash: payloadBody.pipelineHash != null ? String(payloadBody.pipelineHash) : undefined,
+    missionVersion:
+      payloadBody.missionVersion != null ? Number(payloadBody.missionVersion) : undefined,
+    completedLocalSteps: Array.isArray(payloadBody.completedLocalSteps)
+      ? (payloadBody.completedLocalSteps as Array<Record<string, unknown>>)
+      : undefined,
+    missionWorkflow:
+      payloadBody.missionWorkflow && typeof payloadBody.missionWorkflow === 'object'
+        ? (payloadBody.missionWorkflow as Record<string, unknown>)
+        : undefined,
     source: (payloadBody.source || undefined) as IngestFindingPayload['source'],
     scannedContent: (payloadBody.scannedContent || undefined) as IngestFindingPayload['scannedContent'],
     finding: (payloadBody.finding || undefined) as IngestFindingPayload['finding'],
@@ -976,6 +1030,8 @@ export async function ingestEventEnvelope(input: {
     payload: mapped,
     requestHash: input.requestHash,
     contentOnly,
+    continueMissionWorkflow:
+      Boolean(mapped.missionRunId) && eventType === 'scanned_content_upsert',
   });
 
   return {
