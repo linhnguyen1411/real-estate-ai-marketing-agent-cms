@@ -12,6 +12,13 @@ export type IngestFindingPayload = {
   parserVersion?: string;
   analysisVersion?: string;
   capturedAt?: string;
+  /** Mission 2.0 provenance — when set, VPS must not auto-create Finding outside workflow */
+  missionId?: string;
+  missionRunId?: string;
+  jobId?: string;
+  pipelineVersion?: number;
+  /** Escape hatch: allow legacy finding upsert even with missionRunId */
+  forceFindingUpsert?: boolean;
   source?: {
     id?: string;
     name?: string;
@@ -415,6 +422,55 @@ export async function ingestFindingPayload(input: {
   contentOnly?: boolean;
 }): Promise<IngestFindingResult> {
   const warnings: string[] = [];
+  const missionRunId = String(input.payload.missionRunId || '').trim() || null;
+  const workflowContentOnly =
+    Boolean(missionRunId) && !input.payload.forceFindingUpsert && !input.contentOnly;
+
+  // Mission workflow payloads: upsert content only, then continue VPS steps
+  // only when this run/content has no completed step runs yet (idempotent reuse).
+  if (workflowContentOnly) {
+    const contentResult = await ingestFindingPayload({
+      ...input,
+      contentOnly: true,
+      payload: {
+        ...input.payload,
+        forceFindingUpsert: false,
+        finding: undefined,
+      },
+    });
+    if (contentResult.scannedContentId && missionRunId) {
+      try {
+        const completed = await prisma.agentWorkflowStepRun.count({
+          where: {
+            missionRunId,
+            scannedContentId: contentResult.scannedContentId,
+            status: { in: ['completed', 'skipped'] },
+          },
+        });
+        if (completed === 0) {
+          const { executeContentWorkflow } = await import(
+            '../modules/mission-engine/application/workflowExecutionService'
+          );
+          await executeContentWorkflow({
+            missionRunId,
+            scannedContentId: contentResult.scannedContentId,
+            jobId: input.payload.jobId || null,
+            sourceId: contentResult.sourceId,
+            missionRules: {},
+          });
+          warnings.push('mission_workflow_continued_on_vps');
+        } else {
+          warnings.push('mission_workflow_steps_already_present_skip_rerun');
+        }
+      } catch (err) {
+        warnings.push(
+          `mission_workflow_continue_failed:${err instanceof Error ? err.message.slice(0, 120) : 'error'}`,
+        );
+      }
+    }
+    return { ...contentResult, warnings: [...(contentResult.warnings || []), ...warnings] };
+  }
+
   const ingestionId =
     String(input.payload.ingestionId || '').trim() ||
     `ing_${crypto.randomBytes(10).toString('hex')}`;
@@ -821,6 +877,67 @@ export async function ingestEventEnvelope(input: {
       ingestionId,
       eventType,
       warnings: [],
+    };
+  }
+
+  // Source-only sync: upsert AgentSource without placeholder ScannedContent
+  if (eventType === 'source_upsert') {
+    const ingestionId =
+      String(input.envelope.ingestionId || input.envelope.idempotencyKey || '').trim() ||
+      `src_${crypto.randomBytes(8).toString('hex')}`;
+    const warnings: string[] = [];
+    let sourcePayload = (payloadBody.source || undefined) as IngestFindingPayload['source'] | undefined;
+    if (sourcePayload && input.envelope.sourceKey) {
+      sourcePayload = {
+        ...sourcePayload,
+        externalKey: String(input.envelope.sourceKey),
+        externalSourceKey: String(input.envelope.sourceKey),
+      } as IngestFindingPayload['source'];
+    }
+    const source = await upsertSource({
+      companyId: input.companyId,
+      source: sourcePayload,
+      warnings,
+    });
+    await prisma.agentIngestionEvent.upsert({
+      where: {
+        companyId_ingestionId: {
+          companyId: input.companyId,
+          ingestionId,
+        },
+      },
+      create: {
+        companyId: input.companyId,
+        ingestionId,
+        idempotencyKey: String(input.envelope.idempotencyKey || ingestionId),
+        localWorkerId: input.envelope.localWorkerId != null ? String(input.envelope.localWorkerId) : null,
+        keyId: input.keyId || null,
+        status: 'accepted',
+        sourceId: source.id,
+        requestHash: input.requestHash || null,
+        payloadMeta: { eventType: 'source_upsert' } as Prisma.InputJsonValue,
+        warnings,
+        telegramQueued: false,
+      },
+      update: {
+        status: 'accepted',
+        sourceId: source.id,
+        warnings,
+        errorMessage: null,
+      },
+    });
+    return {
+      status: 'accepted',
+      ingestionId,
+      sourceId: source.id,
+      scannedContentId: null,
+      findingId: null,
+      telegramQueued: false,
+      warnings,
+      eventType,
+      remoteSourceId: source.id,
+      remoteScannedContentId: null,
+      remoteFindingId: null,
     };
   }
 
