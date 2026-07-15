@@ -1095,6 +1095,41 @@ model AgentIngestNonce {
   @@map("agent_ingest_nonces")
 }
 
+/// AI Scanner 2.0 — admin spam / block / allow rules
+model AgentSpamRule {
+  id               String    @id @default(cuid())
+  companyId        String?   @map("company_id")
+  sourceId         String?   @map("source_id")
+  missionId        String?   @map("mission_id")
+  findingType      String?   @map("finding_type")
+  type             String
+  action           String
+  rawValue         String    @map("raw_value") @db.Text
+  normalizedValue  String?   @map("normalized_value")
+  e164Value        String?   @map("e164_value")
+  pattern          String?   @db.Text
+  label            String?
+  reason           String?   @db.Text
+  priority         Int       @default(100)
+  isActive         Boolean   @default(true) @map("is_active")
+  expiresAt        DateTime? @map("expires_at")
+  metadata         Json?
+  createdBy        String?   @map("created_by")
+  archivedAt       DateTime? @map("archived_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([sourceId])
+  @@index([type])
+  @@index([normalizedValue])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@index([companyId, type, isActive])
+  @@index([companyId, action, isActive])
+  @@map("agent_spam_rules")
+}
+
 /// Telegram delivery log (dedupe by eventKey)
 model TelegramDeliveryLog {
   id             String    @id @default(cuid())
