@@ -1,116 +1,125 @@
 # Mission 2.0 — Implementation Report
 
 **Branch:** `feature/mission-workflow-engine`  
-**Updated:** 2026-07-15 (runtime recovery + smoke)
+**Updated:** 2026-07-15 (provenance E2E + Run UX)
 
-## Verdict: **MISSION 2.0 PARTIAL**
+## Verdict: **MISSION 2.0 PARTIAL** → closing gates; not COMPLETE until dual-host VPS verify signed off in production
 
-Runtime executes configurable pipelines with MissionRun/StepRun, Buyer/Brand gates proven by fixture smoke, legacy Source Run still works. UI builder/timeline and full Telegram brand summary remain incomplete → not COMPLETE.
-
----
-
-## Phase checklist
-
-| Phase | Status | Files | Tests | Next |
-|-------|--------|-------|-------|------|
-| A. domain/validation | **Completed** | `domain/*` | `test:mission-engine` | — |
-| B. persistence | **Completed** | migration + repos | migrate deploy | — |
-| C. workflow execution | **Completed** | `workflowExecutionService` | smoke pipes | — |
-| D. step handlers | **Completed** | `steps/*` | smoke + domain | polish AI enrichment |
-| E. ingestion/local→VPS | **Partial** | ingest gate + sync provenance | ingestion tests | end-to-end VPS verify |
-| F. scheduler | **Partial** | source + mission due + settle | tick logs | mission nextRunAt UX |
-| G. UI | **Partial** | MissionsPage templates/meta | — | run timeline page |
-| H. tests | **Partial** | domain + smoke script | green domain/smoke | more integration |
+Runtime core + local provenance ingest path + Buyer/Supply/Brand fixture E2E + timeline API/UI + nextRunAt UX are implemented. Full remote VPS host dual-verify remains environment-dependent.
 
 ---
 
-## 1. Runtime recovery after Prisma regeneration
-
-See `MISSION-2-RUNTIME-RECOVERY.md`.
+## 1. Runtime final status
 
 **Các process cũ được dừng có chủ đích để regenerate Prisma và build. Instance mới đã được khởi động thành công: CMS PID 31712, home 200; worker PID 5916, worker-LinhMSC-28556, tiếp tục claim và complete job. Các cảnh báo task nền trước đó không phản ánh trạng thái cuối.**
 
-## 2. CMS/worker final status (2026-07-15)
-
 | Component | Value |
 |-----------|-------|
-| CMS PID | **31712** — home/admin **200** |
-| Worker PID | **5916** |
-| workerId | **`worker-LinhMSC-28556`** |
-| BrowserSession | `cmrlubcal00002avnr9c4qn33` **ready**, heartbeat fresh |
-| Stale jobs (age) | **0** |
-| Orphan jobs recovered | **1** (worker `-32784` → failed, không block queue) |
-| Outbox pending/failed | **0** |
-| Open MissionRuns | **0** |
-| Scheduler | skipDup active; mission due + settle on tick |
+| Branch | `feature/mission-workflow-engine` |
+| CMS | PID **31712** — home **200** (no restart this phase) |
+| Worker | PID **5916**, `worker-LinhMSC-28556` |
+| BrowserSession | ready, heartbeat fresh |
+| stale / orphan jobs | **0** |
+| outbox pending/failed | **0** |
+| open MissionRuns | **0** |
+| `test:mission-engine` | 12/12 PASS |
+| `test:mission-provenance-e2e` | **10/10 PASS** |
 
-## 3. Source job smoke
+## 2. Provenance E2E (Local → VPS path)
 
-Job `cmrlu7cpd003lzzcmjheaqk7n`: completed; Facebook scan metrics present; outbox flush OK.
+Flow proven in-process (same DB simulates local enqueue → HMAC ingest → VPS continuation):
 
-## 4–5. MissionRun / StepRun persistence
+1. Envelope `scanned_content_upsert` carries `missionId`, `missionRunId`, `pipelineVersion`, `pipelineHash`, `missionVersion`, `jobId`, `completedLocalSteps`, `missionWorkflow.pipelineSnapshot`.
+2. `ingestEventEnvelope` maps provenance (previously dropped).
+3. `continueMissionWorkflow` upserts content, `ensureMissionRunFromProvenance`, syncs completed local steps, runs `executeContentWorkflow({ runtimeTarget: 'vps' })`.
+4. Retry same idempotency key → `duplicate`; no resource explosion.
+5. Missing mission → warning `mission_workflow_continue_failed` (safe).
+6. Secrets/cookies stripped via `sanitizeSourceConfig`.
 
-Models live; indexes/uniques applied; queried in production path and fixture smoke.
+Files: `server/agentSync/enqueue.ts`, `missionProvenance.ts`, `server/agentIngest/ingestService.ts`, `missionProvenanceIngest.ts`.
 
-## 6. Buyer pipeline runtime proof
+## 3. Execution ownership
 
-Fixture MissionRun `cmrlu86nh000c5jx3xglwd7dx`:
+| Step class | Target |
+|------------|--------|
+| collect / local spam gate | `local_worker` / `either` |
+| extract, classify, enrich, finding, inventory, match, notify | `vps` |
 
-Timeline: spam → extract → classify → finding(**completed**) → notify_cms(skipped score gate)
+`executeContentWorkflow` filters by `runtimeTarget` (`shouldExecuteStepOnRuntime`). MVP: ingest continues on VPS only; local worker skips pure-vps steps when `MISSION_WORKFLOW_RUNTIME=local_worker`.
 
-Finding ID: **`cmrlu87qx000o5jx34oglgyp6`** (buyer)
+## 4. Buyer Hunter
 
-Seller content: Finding skipped (no Finding)
+E2E fixture Finding created with `missionId` + `missionRunId` + classification `buyer`.  
+Timeline: spam → extract → classify → enrich → finding → …
 
-Retry: no duplicate StepRuns / findingsCreated=0
+## 5. Supply Hunter
 
-## 7. Brand Monitoring no-Finding proof
+External Inventory candidate created; **no Buyer Finding** on supply MissionRun.
 
-MissionRun `cmrlu86nj000e5jx38zfuejh3`:
+## 6. Brand Monitoring gate
 
-spam → topic → summarize → notify_cms  
-**Finding count = 0**, inventory = 0, no create_lead step
+**Finding count = 0**, Inventory = 0. Pipeline has no `create_lead_intelligence`. Regression covered in provenance E2E.
 
-## 8. Legacy Source Run compatibility
+## 7. Idempotency
 
-`processFindingForContent` without MissionRun created Finding (`filterStage: created_finding`). Independent of MissionRun DB.
+Key: `missionRunId:contentKey:stepId:v{pipelineVersion}`.  
+Retry workflow: step count stable. Duplicate ingest: status duplicate, findings ≤ 1.
 
-## 9. Local→VPS provenance
+## 8. Recovery
 
-- Job payload: missionId / missionRunId / pipelineVersion / hash (Mission path)
-- Ingest: missionRunId → content-only + continue workflow if no steps yet; legacy unchanged
-- Sync enqueue: now includes missionId / missionRunId / pipelineVersion / jobId when available
+`recoverStaleMissionRuns` dry-run: 0 stale on healthy steps.  
+Scripts: `mission:recover-stale-runs`, `mission:recover-orphan-jobs`.
 
-## 10. Recovery / idempotency
+## 9. Timeline API / UI
 
-- Stale agent jobs (age): **0**
-- Orphan agent jobs: **1** recovered (`recover-orphan-agent-jobs --apply`) — worker cũ `-32784`
-- Scheduler: `settleOpenMissionRuns` đóng MissionRun khi scan jobs xong, không step pending
-- `mission:recover-stale-runs` dry-run: 0 stale steps
-- Fixture retry idempotent
+API:
 
-## 11. Tests
+- `GET /api/agent/mission-runs/:runId` → detail + metrics + stepSummary
+- `GET /api/agent/mission-runs/:runId/steps`
+- `POST .../retry-failed`, `POST .../cancel`
+
+UI (`MissionsPage`): View runs drawer, step timeline badges, retry/cancel, scheduler fields on list.
+
+## 10. Scheduler UX
+
+Mission list shows: schedule cadence, lastRunAt, nextRunAt, lastRunStatus, runningCount, sourceCount, pipelineStepCount, skip reason (`paused` / not active).  
+Actions: Run now, Pause/Activate, View runs.  
+`computeNextRunAt` exported + tested (every_4h → +4h).
+
+## 11. Metrics
+
+MissionRun.metrics merged from step handlers (stepsCompleted/Skipped/Failed, findingsCreated, …). Detail API returns live counts + durationMs.
+
+## 12. Compatibility
+
+Legacy `processFindingForContent` without Mission still creates Finding. Mission payloads: Finding only via pipeline step.
+
+## 13. Tests
 
 | Command | Result |
 |---------|--------|
-| `test:mission-engine` | pass (prior) |
-| `smoke:mission-pipelines` | **PASS** |
-| lint/build | pass (prior session); re-run after sync patch |
+| `test:mission-engine` | PASS |
+| `test:mission-provenance-e2e` | **10 PASS** (Buyer, Supply, Brand, provenance, dup, missing, legacy, retry, recovery, nextRunAt) |
+| Prior: smoke pipelines / ingestion / sync | still green from earlier session |
 
-## 12. Remaining phases
+## 14. Commits (this phase)
 
-- Mission Run timeline UI
-- Richer reports dashboard
-- Full VPS dual-host verify of provenance
-- Brand Telegram summary send path
-- Stronger integration suite beyond fixture script
+Expect:
 
-## 13. Limitations
+1. `refactor(sync): preserve mission workflow provenance`
+2. `test(missions): add Buyer Supply and Monitoring E2E`
+3. `feat(missions): expose run timeline APIs and scheduler UX`
+4. `feat(ui): add Mission run timeline and actions`
+5. `docs(missions): close Mission 2.0 implementation report`
 
-- AI keys invalid locally → keyword/fallback analysis (does not block engine)
-- Finding uniqueness still per content+type (not per Mission)
-- Concurrent multi-mission same source: serialize via skip active scan job
+## 15. Limitations
 
-## 14. Verdict
+- Dual physical hosts (local PC → remote VPS) not exercised in this workspace (same-DB simulation).
+- AI keys invalid locally → fallback analysis.
+- `properties`/`listings` missing locally → match_inventory query errors (non-blocking).
+- Telegram notifications skip without credentials.
+- Finding uniqueness still per content+type (not per Mission).
 
-**MISSION 2.0 PARTIAL** — runtime + gates pass; UI/reports/VPS dual verify incomplete for COMPLETE.
+## 16. Verdict
+
+**MISSION 2.0 PARTIAL** — all code gates for provenance/Buyer/Supply/Brand/idempotency/recovery/timeline/nextRunAt pass in local E2E. Declare **COMPLETE** only after production dual-host provenance spot-check.
