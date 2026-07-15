@@ -231,6 +231,21 @@ export async function enqueueScannedContentSync(input: {
           rawData: content.rawData,
           metrics: content.metrics,
           dedupeVersion: content.dedupeVersion,
+          spamDecision:
+            (content.rawData as Record<string, unknown> | null)?.spamDecision ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.spamDecision ??
+            null,
+          spamReason:
+            (content.rawData as Record<string, unknown> | null)?.spamReason ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.spamReason ??
+            null,
+          matchedSpamRuleIds:
+            (content.rawData as Record<string, unknown> | null)?.matchedSpamRuleIds ??
+            ((content.metrics as Record<string, unknown> | null)?.leadAnalysis as Record<string, unknown> | undefined)
+              ?.matchedSpamRuleIds ??
+            null,
           syncVersion,
         },
       }) as Record<string, unknown>,

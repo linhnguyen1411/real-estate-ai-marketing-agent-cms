@@ -208,7 +208,12 @@ export function detectSubjectDirection(rawText: string): SubjectDirectionResult 
       classification = 'renter';
       intent = 'rent';
       representedDemand = 'renter';
-    } else if (/đầu\s*tư|cashflow|dòng\s*tiền/i.test(text) && /(cần|tìm|muốn)/i.test(text) && !/dòng\s*tiền\s*sẵn|đang\s*khai\s*thác/i.test(text)) {
+    } else if (
+      /đầu\s*tư|cashflow|dòng\s*tiền/i.test(text) &&
+      /(cần|tìm|muốn)/i.test(text) &&
+      !/dòng\s*tiền\s*sẵn|đang\s*khai\s*thác|dòng\s*tiền\s*tốt/i.test(text) &&
+      !/quý\s*nhà\s*đầu\s*tư|kính\s*gửi\s*nhà\s*đầu\s*tư|vốn\s*tự\s*có\s*từ/i.test(text)
+    ) {
       classification = 'investor';
       intent = 'invest';
       representedDemand = 'investor';
