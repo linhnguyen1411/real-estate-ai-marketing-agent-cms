@@ -1,5 +1,6 @@
 import { checkStaleBrowserSessions } from './agentNotificationService';
 import { prisma } from '../prisma';
+import { enqueueDueScheduledMissions } from '../modules/mission-engine/application/missionRunService';
 
 /** Fixed class/id pair for pg_try_advisory_xact_lock (agent scheduler). */
 export const AGENT_SCHEDULER_LOCK_CLASS = 41871;
@@ -218,6 +219,19 @@ export async function runAgentSchedulerTick(now = new Date()): Promise<Scheduler
       } catch (error) {
         console.warn(
           '[agent-scheduler] Stale session check failed:',
+          error instanceof Error ? error.message : error,
+        );
+      }
+      try {
+        const missionTick = await enqueueDueScheduledMissions(now);
+        if (missionTick.runsCreated > 0) {
+          console.log(
+            `[agent-scheduler] Mission runs: due=${missionTick.missionsDue} created=${missionTick.runsCreated}`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          '[agent-scheduler] Mission schedule failed:',
           error instanceof Error ? error.message : error,
         );
       }
