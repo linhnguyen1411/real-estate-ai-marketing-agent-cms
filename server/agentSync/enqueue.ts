@@ -188,6 +188,10 @@ export async function enqueueScannedContentSync(input: {
       parserVersion: 'facebook-local-v1',
       analysisVersion: null,
       payload: sanitizeJsonValue({
+        missionId: null,
+        missionRunId: null,
+        jobId: null,
+        pipelineVersion: null,
         source: {
           localSourceId: source.id,
           externalSourceKey: source.externalSourceKey,
@@ -237,6 +241,23 @@ export async function enqueueScannedContentSync(input: {
         },
       }) as Record<string, unknown>,
     };
+
+    // Mission 2.0 provenance from latest StepRun for this content (if any)
+    const step = await tx.agentWorkflowStepRun.findFirst({
+      where: { scannedContentId: content.id },
+      orderBy: { createdAt: 'desc' },
+      select: { missionId: true, missionRunId: true, jobId: true },
+    });
+    if (step) {
+      const run = await tx.agentMissionRun.findUnique({
+        where: { id: step.missionRunId },
+        select: { missionVersion: true },
+      });
+      envelope.payload.missionId = step.missionId;
+      envelope.payload.missionRunId = step.missionRunId;
+      envelope.payload.jobId = step.jobId;
+      envelope.payload.pipelineVersion = run?.missionVersion ?? null;
+    }
 
     await tx.scannedContent.update({
       where: { id: content.id },
@@ -323,6 +344,11 @@ export async function enqueueFindingUpsertSync(input: {
       parserVersion: 'facebook-local-v1',
       analysisVersion: finding.intelligenceVersion,
       payload: sanitizeJsonValue({
+        missionId: finding.missionId,
+        missionRunId: finding.missionRunId,
+        jobId: null,
+        pipelineVersion: null,
+        workflowStepRunId: finding.workflowStepRunId,
         source: {
           localSourceId: source.id,
           externalSourceKey: source.externalSourceKey,
@@ -391,9 +417,28 @@ export async function enqueueFindingUpsertSync(input: {
           createdAt: finding.createdAt.toISOString(),
           updatedAt: finding.updatedAt.toISOString(),
           syncVersion,
+          missionId: finding.missionId,
+          missionRunId: finding.missionRunId,
         },
       }) as Record<string, unknown>,
     };
+
+    if (finding.missionRunId) {
+      const run = await tx.agentMissionRun.findUnique({
+        where: { id: finding.missionRunId },
+        select: { missionVersion: true },
+      });
+      envelope.payload.pipelineVersion = run?.missionVersion ?? null;
+      const step = await tx.agentWorkflowStepRun.findFirst({
+        where: {
+          missionRunId: finding.missionRunId,
+          scannedContentId: content.id,
+          findingId: finding.id,
+        },
+        select: { jobId: true },
+      });
+      if (step?.jobId) envelope.payload.jobId = step.jobId;
+    }
 
     await tx.agentFinding.update({
       where: { id: finding.id },

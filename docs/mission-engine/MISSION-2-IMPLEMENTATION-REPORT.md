@@ -1,90 +1,105 @@
 # Mission 2.0 — Implementation Report
 
 **Branch:** `feature/mission-workflow-engine`  
-**Date:** 2026-07-15  
+**Updated:** 2026-07-15 (runtime recovery + smoke)
 
 ## Verdict: **MISSION 2.0 PARTIAL**
 
-Runtime executes configurable pipelines (MissionRun + StepRun + step handlers reusing Spam/Finding/Inventory/Telegram). UI remains list-first with template/pipeline metadata (no full drag builder / full run timeline page). End-to-end smoke with Facebook browser not fully verified in this session.
+Runtime executes configurable pipelines with MissionRun/StepRun, Buyer/Brand gates proven by fixture smoke, legacy Source Run still works. UI builder/timeline and full Telegram brand summary remain incomplete → not COMPLETE.
 
 ---
 
-## 1. Current state (audit)
+## Phase checklist
 
-See `docs/mission-engine/MISSION-2-CURRENT-STATE-AUDIT.md`.
+| Phase | Status | Files | Tests | Next |
+|-------|--------|-------|-------|------|
+| A. domain/validation | **Completed** | `domain/*` | `test:mission-engine` | — |
+| B. persistence | **Completed** | migration + repos | migrate deploy | — |
+| C. workflow execution | **Completed** | `workflowExecutionService` | smoke pipes | — |
+| D. step handlers | **Completed** | `steps/*` | smoke + domain | polish AI enrichment |
+| E. ingestion/local→VPS | **Partial** | ingest gate + sync provenance | ingestion tests | end-to-end VPS verify |
+| F. scheduler | **Partial** | source + mission due helper | tick logs | mission nextRunAt UX |
+| G. UI | **Partial** | MissionsPage templates/meta | — | run timeline page |
+| H. tests | **Partial** | domain + smoke script | green domain/smoke | more integration |
 
-## 2. Mission semantics
+---
 
-Mission = durable workflow config (pipeline + sources + schedule).  
-MissionRun = one execution with immutable pipeline snapshot.  
-StepRun = one step per content (or job) with status/output/idempotency.
+## 1. Runtime recovery after Prisma regeneration
 
-## 3–8. Domain / pipeline / execution
+See `MISSION-2-RUNTIME-RECOVERY.md`.
 
-| Area | Location |
-|------|----------|
-| Types | `server/modules/mission-engine/domain/workflowTypes.ts` |
-| Validation | `workflowValidation.ts` |
-| Graph | `workflowGraph.ts` |
-| Policies | `workflowPolicies.ts` |
-| Templates | `missionTemplates.ts` |
-| Run service | `application/missionRunService.ts` |
-| Execution | `application/workflowExecutionService.ts` |
-| Recovery | `application/workflowRecoveryService.ts` |
-| Post-collect | `application/processContentAfterCollect.ts` |
+CMS/worker killed intentionally for `prisma generate`, then restarted. Final state: both alive.
 
-## 9. Service adapters
+## 2. CMS/worker final status
 
-Steps call existing Spam / `processFindingForContent` (deferred notify/match) / External Inventory / matching / notify / Telegram.
+- CMS PID **31128**, home/admin **200**
+- Worker PID **32520**, workerId `worker-LinhMSC-32784`, managed/headless, claiming jobs
 
-## 10–11. Idempotency & recovery
+## 3. Source job smoke
 
-Idempotency key: `missionRunId:contentOrJob:stepId:v{version}`.  
-`npm run mission:recover-stale-runs` (dry-run default; `--apply` to mutate).
+Job `cmrlu7cpd003lzzcmjheaqk7n`: completed; Facebook scan metrics present; outbox flush OK.
 
-## 12. Scheduler
+## 4–5. MissionRun / StepRun persistence
 
-Source scheduler unchanged. Also `enqueueDueScheduledMissions` for active missions with non-manual cadence.
+Models live; indexes/uniques applied; queried in production path and fixture smoke.
 
-## 13–14. Local→VPS / Ingest
+## 6. Buyer pipeline runtime proof
 
-Jobs carry `missionRunId` + pipeline hash.  
-Ingest with `missionRunId` → content-only + continue workflow only if no completed steps yet. Legacy payloads unchanged.
+Fixture MissionRun `cmrlu86nh000c5jx3xglwd7dx`:
 
-## 15–16. UI / Templates
+Timeline: spam → extract → classify → finding(**completed**) → notify_cms(skipped score gate)
 
-Missions page shows Workflow templates (v2), step count, MissionRun id on run.  
-Templates: Buyer Hunter, Supply Hunter, Brand Monitoring, Content Research, Lead Watch HP.
+Finding ID: **`cmrlu87qx000o5jx34oglgyp6`** (buyer)
 
-## 17. Reports
+Seller content: Finding skipped (no Finding)
 
-Metrics accumulated on MissionRun.metrics from step results (no fabricated dashboard yet).
+Retry: no duplicate StepRuns / findingsCreated=0
 
-## 18. Migration
+## 7. Brand Monitoring no-Finding proof
 
-`prisma/migrations/20260715150000_mission_workflow_engine` — MissionSource, MissionRun, WorkflowStepRun, pipeline columns, backfill.
+MissionRun `cmrlu86nj000e5jx38zfuejh3`:
 
-## 19. Tests
+spam → topic → summarize → notify_cms  
+**Finding count = 0**, inventory = 0, no create_lead step
 
-`npm run test:mission-engine` — domain validation + condition DSL + templates (pass).
+## 8. Legacy Source Run compatibility
 
-## 20. Manual smoke
+`processFindingForContent` without MissionRun created Finding (`filterStage: created_finding`). Independent of MissionRun DB.
 
-Not fully run (browser). Local migrate + domain tests OK.
+## 9. Local→VPS provenance
 
-## 21. Commits (planned)
+- Job payload: missionId / missionRunId / pipelineVersion / hash (Mission path)
+- Ingest: missionRunId → content-only + continue workflow if no steps yet; legacy unchanged
+- Sync enqueue: now includes missionId / missionRunId / pipelineVersion / jobId when available
 
-1. docs audit  
-2. domain + migration + engine + adapters + API + UI + ingest + tests + report  
+## 10. Recovery / idempotency
 
-## 22. Limitations
+- Stale agent jobs: recovered 3 leftovers from old workers
+- `mission:recover-stale-runs` dry-run: 0 stale steps
+- Fixture retry idempotent
 
-- Full run timeline UI page deferred  
-- Brand Telegram summary mode skips without generic send  
-- Concurrent multi-mission same source: serialize by skipping enqueue if active scan job  
-- Finding still unique per content+type (not per mission)  
-- AI-heavy extract/classify before finding are recorded steps; lead creation reuses full finding engine  
+## 11. Tests
 
-## 23. Verdict
+| Command | Result |
+|---------|--------|
+| `test:mission-engine` | pass (prior) |
+| `smoke:mission-pipelines` | **PASS** |
+| lint/build | pass (prior session); re-run after sync patch |
 
-**MISSION 2.0 PARTIAL** — engine executes; UI/reports/smoke incomplete for COMPLETE.
+## 12. Remaining phases
+
+- Mission Run timeline UI
+- Richer reports dashboard
+- Full VPS dual-host verify of provenance
+- Brand Telegram summary send path
+- Stronger integration suite beyond fixture script
+
+## 13. Limitations
+
+- AI keys invalid locally → keyword/fallback analysis (does not block engine)
+- Finding uniqueness still per content+type (not per Mission)
+- Concurrent multi-mission same source: serialize via skip active scan job
+
+## 14. Verdict
+
+**MISSION 2.0 PARTIAL** — runtime + gates pass; UI/reports/VPS dual verify incomplete for COMPLETE.

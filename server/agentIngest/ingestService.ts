@@ -602,6 +602,8 @@ export async function ingestFindingPayload(input: {
               scannedContentId: content.id,
               status: 'new',
               dedupeStatus: 'unique',
+              missionId: input.payload.missionId || null,
+              missionRunId: input.payload.missionRunId || null,
               ...fields,
             },
           });
