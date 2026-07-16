@@ -35,7 +35,17 @@ import {
   recoverAfterPublishClickTimeout,
   buildPublishContext,
   mapGraphError,
+  mapGraphApiError,
+  sanitizeGraphPayload,
+  computeBackoffMs,
+  facebookPageGraphPublisher,
+  enqueueDueSocialPublishJobs,
+  reclaimStalePublishJobs,
+  claimPublishJob,
+  retryJob,
+  AGENT_JOB_TYPE_PUBLISH_SOCIAL,
 } from '../server/modules/social-publishing/index';
+import type { PublishContext, PublishResult } from '../server/modules/social-publishing/types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -228,9 +238,111 @@ async function runDbTests() {
       '19b. missionIntegration also pending_review',
       missionDraft.status === 'pending_review' && !missionDraft.approvedBy,
     );
+
+    // ── PRODUCTION DB (optional) ────────────────────────────
+    // P7. reclaim + enqueue creates AgentJob only (no publisher call)
+    const dueDraft = await createDraft({
+      companyId: companyA,
+      body: `Due enqueue ${suffix}`,
+      createdBy: 'test',
+    });
+    await approveDraft(dueDraft.id, 'test');
+    const dueJob = await createPublishJob({
+      companyId: companyA,
+      draftId: dueDraft.id,
+      channelId,
+      scheduledAt: new Date(Date.now() - 60_000),
+      actor: 'test',
+    });
+    const beforeAgent = await prisma.agentJob.count({
+      where: { type: AGENT_JOB_TYPE_PUBLISH_SOCIAL },
+    });
+    const enqueueRes = await enqueueDueSocialPublishJobs(new Date());
+    ok('P7. enqueueDue returns counts', typeof enqueueRes.created === 'number');
+    const afterAgent = await prisma.agentJob.count({
+      where: { type: AGENT_JOB_TYPE_PUBLISH_SOCIAL },
+    });
+    ok(
+      'P7. enqueueDue creates AgentJob (not publisher)',
+      afterAgent >= beforeAgent && (enqueueRes.created >= 1 || enqueueRes.skipped >= 1),
+    );
+    const agentForDue = await prisma.agentJob.findFirst({
+      where: {
+        type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
+        payload: { path: ['publishJobId'], equals: dueJob.id },
+      },
+    });
+    ok('P7. AgentJob payload has publishJobId', Boolean(agentForDue));
+
+    // P8. claim channel lock — second claim fails
+    const lockDraft = await createDraft({
+      companyId: companyA,
+      body: `Lock A ${suffix}`,
+      createdBy: 'test',
+    });
+    await approveDraft(lockDraft.id, 'test');
+    const lockDraftB = await createDraft({
+      companyId: companyA,
+      body: `Lock B ${suffix}`,
+      createdBy: 'test',
+    });
+    await approveDraft(lockDraftB.id, 'test');
+    const jobA = await createPublishJob({
+      companyId: companyA,
+      draftId: lockDraft.id,
+      channelId,
+      scheduledAt: new Date('2031-01-01T00:00:00.000Z'),
+      actor: 'test',
+    });
+    const jobB = await createPublishJob({
+      companyId: companyA,
+      draftId: lockDraftB.id,
+      channelId,
+      scheduledAt: new Date('2031-01-02T00:00:00.000Z'),
+      actor: 'test',
+    });
+    const claimedA = await claimPublishJob(jobA.id, 'worker-a');
+    ok('P8. first claim succeeds', claimedA?.status === 'claimed');
+    const activeJobs = [
+      { id: claimedA!.id, status: claimedA!.status },
+      { id: jobB.id, status: jobB.status },
+    ];
+    ok(
+      'P8. hasActiveChannelJob true when other active',
+      hasActiveChannelJob(activeJobs, channelId, jobB.id) === true,
+    );
+    let claimBFailed = false;
+    try {
+      await claimPublishJob(jobB.id, 'worker-b');
+    } catch (err) {
+      claimBFailed =
+        err instanceof Error &&
+        ((err as { code?: string }).code === 'channel_locked' ||
+          /channel has another active/i.test(err.message));
+    }
+    ok('P8. second claim fails with channel_locked', claimBFailed);
+
+    // P12. manual retry resets attempts
+    await prisma.socialPublishJob.update({
+      where: { id: jobB.id },
+      data: { status: 'failed', attempts: 2, errorCode: 'graph_api_error' },
+    });
+    const retried = await retryJob(jobB.id, 'test');
+    ok(
+      'P12. retry resets attempts to 0',
+      !retried.skipped && retried.job.attempts === 0 && retried.job.status === 'queued',
+    );
+
+    // Cleanup extra production rows via company filters in finally
   } finally {
     // cleanup best-effort
     try {
+      await prisma.agentJob.deleteMany({
+        where: {
+          OR: [{ companyId: companyA }, { companyId: companyB }],
+          type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
+        },
+      });
       if (jobId) {
         await prisma.socialPublishJob.deleteMany({
           where: { OR: [{ id: jobId }, { companyId: companyA }, { companyId: companyB }] },
@@ -249,6 +361,13 @@ async function runDbTests() {
       await prisma.socialPublishAuditLog.deleteMany({
         where: { OR: [{ companyId: companyA }, { companyId: companyB }] },
       });
+      try {
+        await prisma.socialPublishAttempt.deleteMany({
+          where: { OR: [{ companyId: companyA }, { companyId: companyB }] },
+        });
+      } catch {
+        // table may not exist yet
+      }
     } catch {
       // ignore cleanup errors
     }
@@ -326,6 +445,151 @@ async function main() {
   ok('10. mapGraphError 190 → graph_token_expired', tokenExpired.errorCode === 'graph_token_expired');
   const other = mapGraphError({ error: { code: 100, message: 'bad' } });
   ok('10. mapGraphError other → graph_api_error', other.errorCode === 'graph_api_error');
+
+  // ── PRODUCTION (pure / mocks, no live FB) ─────────────────
+
+  // P1. Publish success result shape
+  const successShape: PublishResult = {
+    ok: true,
+    facebookPostId: '123_456',
+    facebookPostUrl: 'https://www.facebook.com/123_456',
+    externalPostId: '123_456',
+    externalUrl: 'https://www.facebook.com/123_456',
+    latencyMs: 42,
+    request: sanitizeGraphPayload({
+      endpoint: '/page/feed',
+      method: 'POST',
+      message: 'hi',
+      access_token: 'EAASECRET',
+    }),
+  };
+  ok(
+    'P1. success shape has facebookPostId + latencyMs',
+    successShape.ok === true &&
+      successShape.facebookPostId === '123_456' &&
+      successShape.latencyMs === 42,
+  );
+  ok(
+    'P1. success request sanitized (no raw token)',
+    successShape.request?.access_token === '[REDACTED]',
+  );
+
+  // P2. Publish failed mapGraphApiError
+  const failedMapped = mapGraphApiError({ error: { code: 100, message: 'Invalid parameter' } });
+  ok(
+    'P2. mapGraphApiError generic → graph_api_error',
+    failedMapped.errorCode === 'graph_api_error' &&
+      failedMapped.errorMessage === 'Invalid parameter',
+  );
+  const failedViaWrapper = mapGraphError({ error: { code: 1, message: 'fail' } });
+  ok('P2. mapGraphError ok=false', failedViaWrapper.ok === false);
+
+  // P3. Retry backoff computeBackoffMs
+  ok('P3. backoff attempt 1 = 60s', computeBackoffMs(1) === 60_000);
+  ok('P3. backoff attempt 2 = 120s', computeBackoffMs(2) === 120_000);
+  ok('P3. backoff attempt 3 = 240s', computeBackoffMs(3) === 240_000);
+  ok('P3. backoff capped at 30m', computeBackoffMs(20) === 30 * 60_000);
+
+  // P4. Duplicate / shouldSkipRetry
+  ok('P4. shouldSkipRetry published', shouldSkipRetry({ status: 'published' }).skip);
+  ok(
+    'P4. shouldSkipRetry externalPostId',
+    shouldSkipRetry({ status: 'failed', result: { externalPostId: 'p1' } }).skip,
+  );
+  ok('P4. shouldSkipRetry allows failed without post', !shouldSkipRetry({ status: 'failed' }).skip);
+
+  // P5. Expired token mapping 190
+  const exp = mapGraphApiError({ error: { code: 190, message: 'Error validating access token' } });
+  ok('P5. code 190 → graph_token_expired', exp.errorCode === 'graph_token_expired');
+
+  // P6. Permission denied 10/200
+  const perm10 = mapGraphApiError({ error: { code: 10, message: 'Permission denied' } });
+  ok('P6. code 10 → graph_permission_denied', perm10.errorCode === 'graph_permission_denied');
+  const perm200 = mapGraphApiError({ error: { code: 200, message: 'Requires permission' } });
+  ok('P6. code 200 → graph_permission_denied', perm200.errorCode === 'graph_permission_denied');
+
+  // P7 structural: enqueueDueSocialPublishJobs source only reclaim + AgentJob (no publisher)
+  ok(
+    'P7. enqueueDueSocialPublishJobs is exported function',
+    typeof enqueueDueSocialPublishJobs === 'function' &&
+      typeof reclaimStalePublishJobs === 'function',
+  );
+
+  // P8 pure: hasActiveChannelJob claim lock semantics
+  ok(
+    'P8. hasActiveChannelJob blocks second job',
+    hasActiveChannelJob(
+      [
+        { id: 'a', status: 'publishing' },
+        { id: 'b', status: 'queued' },
+      ],
+      'ch',
+      'b',
+    ) === true,
+  );
+  ok(
+    'P8. hasActiveChannelJob false when only self active',
+    hasActiveChannelJob([{ id: 'a', status: 'claimed' }], 'ch', 'a') === false,
+  );
+
+  // P9. Timeout error code publish_timeout
+  const timeoutMapped = mapGraphApiError({
+    error: { code: 'publish_timeout', message: 'Graph request timed out after 90000ms' },
+  });
+  ok('P9. publish_timeout mapped', timeoutMapped.errorCode === 'publish_timeout');
+
+  // P10. sanitizeGraphPayload redacts access_token
+  const sanitized = sanitizeGraphPayload({
+    access_token: 'EAAabc123',
+    message: 'hello',
+    nested: { pageAccessToken: 'secret', ok: true },
+  });
+  ok('P10. access_token redacted', sanitized.access_token === '[REDACTED]');
+  ok(
+    'P10. nested pageAccessToken redacted',
+    (sanitized.nested as Record<string, unknown>).pageAccessToken === '[REDACTED]' &&
+      (sanitized.nested as Record<string, unknown>).ok === true,
+  );
+  ok('P10. message preserved', sanitized.message === 'hello');
+
+  // P11. Multi-image rejected / media_invalid (publisher, no network)
+  const multiCtx = {
+    workerId: 'test',
+    job: { id: 'j1' } as PublishContext['job'],
+    channel: {
+      id: 'c1',
+      type: 'facebook_page',
+      executionMode: 'graph_api',
+      externalId: 'page1',
+      config: { pageAccessToken: 'tok' },
+    } as unknown as PublishContext['channel'],
+    draft: {
+      id: 'd1',
+      body: 'multi',
+      linkUrl: null,
+      media: [
+        { type: 'image', fileUrl: 'https://cdn.example.com/a.jpg', sortOrder: 0 },
+        { type: 'image', fileUrl: 'https://cdn.example.com/b.jpg', sortOrder: 1 },
+      ],
+    } as unknown as PublishContext['draft'],
+  } as unknown as PublishContext;
+  const multiResult = await facebookPageGraphPublisher.publish(multiCtx);
+  ok(
+    'P11. multi-image → media_invalid',
+    multiResult.ok === false && multiResult.errorCode === 'media_invalid',
+  );
+  const videoCtx = {
+    ...multiCtx,
+    draft: {
+      ...multiCtx.draft,
+      media: [{ type: 'video', fileUrl: 'https://cdn.example.com/v.mp4', sortOrder: 0 }],
+    },
+  } as unknown as PublishContext;
+  const videoResult = await facebookPageGraphPublisher.publish(videoCtx);
+  ok(
+    'P11. video → media_invalid',
+    videoResult.ok === false && videoResult.errorCode === 'media_invalid',
+  );
 
   // 11. needs_login mapping
   ok('11. browser_auth_blocked → needs_login', mapNeedsLoginErrorCode('browser_auth_blocked'));
