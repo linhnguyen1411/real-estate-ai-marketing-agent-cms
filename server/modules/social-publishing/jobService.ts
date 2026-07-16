@@ -14,6 +14,7 @@ import {
   type PublishErrorCode,
   type PublishResult,
 } from './types';
+import { startPublishMissionRun } from './publishMissionBridge';
 
 export function buildIdempotencyKey(
   draftId: string,
@@ -277,33 +278,13 @@ export async function enqueueDueSocialPublishJobs(now = new Date()): Promise<{
 export async function enqueueAgentJobForPublishJob(
   job: Pick<SocialPublishJob, 'id' | 'companyId'>,
 ): Promise<boolean> {
-  const active = await prisma.agentJob.findFirst({
-    where: {
-      type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
-      status: { in: ['queued', 'claimed', 'running'] },
-      payload: {
-        path: ['publishJobId'],
-        equals: job.id,
-      },
-    },
-    select: { id: true },
+  const result = await startPublishMissionRun({
+    publishJobId: job.id,
+    companyId: job.companyId ?? null,
+    triggerType: 'scheduler',
+    triggeredBy: 'social_publish_scheduler',
   });
-  if (active) return false;
-
-  await prisma.agentJob.create({
-    data: {
-      companyId: job.companyId,
-      type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
-      status: 'queued',
-      priority: 5,
-      availableAt: new Date(),
-      payload: {
-        publishJobId: job.id,
-        triggeredBy: 'social_publish_scheduler',
-      },
-    },
-  });
-  return true;
+  return result.created;
 }
 
 export async function claimPublishJob(

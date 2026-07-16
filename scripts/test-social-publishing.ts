@@ -273,6 +273,7 @@ async function runDbTests() {
       },
     });
     ok('P7. AgentJob payload has publishJobId', Boolean(agentForDue));
+    ok('P7. AgentJob has missionRunId', Boolean(agentForDue?.missionRunId));
 
     // P8. claim channel lock — second claim fails
     const lockDraft = await createDraft({

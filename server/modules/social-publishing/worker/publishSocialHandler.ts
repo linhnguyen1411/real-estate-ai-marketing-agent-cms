@@ -12,32 +12,11 @@ import {
   getJobById,
   markPreparing,
   markPublishing,
-  patchJobResult,
   runPrePublishSafetyChecks,
 } from '../jobService';
-import {
-  createFacebookPageBrowserPublisher,
-  createFacebookProfileBrowserPublisher,
-  resolvePublisher,
-  setPublisherRegistry,
-} from '../publishers';
-import { facebookPageGraphPublisher } from '../publishers/facebookPageGraphPublisher';
-import { DEFAULT_PUBLISH_TIMEOUT_MS } from '../graph/facebookGraphClient';
+import { startPublishMissionRun } from '../publishMissionBridge';
 import type { PublishResult } from '../types';
-
-function ensureWorkerPublishers(browser: BrowserManager): void {
-  const pageFactory = {
-    getPublishPage: (options?: { initialUrl?: string; mode?: 'cdp' | 'managed' }) =>
-      browser.getPublishPage(options),
-    beginCdpJob: () => browser.beginCdpJob(),
-    releaseCdpLock: () => browser.releaseCdpLock(),
-  };
-  setPublisherRegistry([
-    facebookPageGraphPublisher,
-    createFacebookProfileBrowserPublisher({ pageFactory }),
-    createFacebookPageBrowserPublisher({ pageFactory }),
-  ]);
-}
+import { executePublishWorkflow } from '../../mission-engine/application/publishWorkflowExecutionService';
 
 function isAlreadyPublishedResult(result: unknown): result is { externalPostId: string } {
   return Boolean(
@@ -54,15 +33,13 @@ function isAlreadyPublishedResult(result: unknown): result is { externalPostId: 
  */
 export async function runPublishSocialJob(
   agentJob: AgentJob,
-  browser: BrowserManager,
+  _browser: BrowserManager,
 ): Promise<Record<string, unknown>> {
   const payload = (agentJob.payload || {}) as Record<string, unknown>;
   const publishJobId = String(payload.publishJobId || '').trim();
   if (!publishJobId) {
     throw new Error('publish_social missing payload.publishJobId');
   }
-
-  ensureWorkerPublishers(browser);
 
   const existing = await getJobById(publishJobId);
   if (!existing) {
@@ -124,7 +101,6 @@ export async function runPublishSocialJob(
     return { ok: false, publishJobId, errorCode: 'unknown' };
   }
 
-  const timeoutMs = Number(process.env.SOCIAL_PUBLISH_TIMEOUT_MS) || DEFAULT_PUBLISH_TIMEOUT_MS;
   const workerId = agentJob.claimedBy || 'worker';
   const attempt = await createAttemptStart({
     companyId: full.companyId,
@@ -135,31 +111,61 @@ export async function runPublishSocialJob(
     attemptNumber: full.attempts,
   });
 
-  const publisher = resolvePublisher(full.channel);
-  let result: PublishResult;
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const startedAt = Date.now();
 
   try {
+    const missionRunId =
+      (typeof agentJob.missionRunId === 'string' && agentJob.missionRunId.trim())
+      || (typeof payload.missionRunId === 'string' && payload.missionRunId.trim())
+      || (typeof (full.result as Record<string, unknown> | null)?.missionRunId === 'string'
+        ? String((full.result as Record<string, unknown>).missionRunId).trim()
+        : '');
+
+    const ensuredMissionRunId = missionRunId
+      || (await startPublishMissionRun({
+        publishJobId,
+        companyId: full.companyId,
+        triggerType: 'worker',
+        triggeredBy: workerId,
+      })).missionRunId;
+
     await markPreparing(publishJobId);
     await markPublishing(publishJobId);
 
-    result = await Promise.race([
-      publisher.publish({
-        job: full,
-        draft: full.draft,
-        channel: full.channel,
-        workerId,
-      }),
-      new Promise<PublishResult>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(
-            Object.assign(new Error(`Publish timed out after ${timeoutMs}ms`), {
-              code: 'publish_timeout',
-            }),
-          );
-        }, timeoutMs);
-      }),
-    ]);
+    const workflowResult = await executePublishWorkflow({
+      missionRunId: ensuredMissionRunId,
+      publishJobId,
+      jobId: agentJob.id,
+      workerId,
+      runtimeTarget: 'local_worker',
+    });
+
+    const jobAfterWorkflow = await getJobById(publishJobId);
+    const jobResult = (jobAfterWorkflow?.result || {}) as Record<string, unknown>;
+    const externalPostId = typeof jobResult.externalPostId === 'string' ? jobResult.externalPostId : undefined;
+    const externalUrl = typeof jobResult.externalUrl === 'string' ? jobResult.externalUrl : undefined;
+
+    const result: PublishResult = {
+      ok: true,
+      externalPostId,
+      externalUrl,
+      facebookPostId: externalPostId,
+      facebookPostUrl: externalUrl,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+      dryRun: process.env.BROWSER_PUBLISH_LIVE !== '1',
+      response: {
+        workflow: workflowResult,
+      },
+    };
+
+    await finishAttemptSuccess(attempt.id, {
+      facebookPostId: result.facebookPostId,
+      facebookPostUrl: result.facebookPostUrl,
+      responseJson: result.response || result.raw,
+      durationMs: result.latencyMs,
+    });
+    await completePublishJob(publishJobId, result);
+    return { ok: true, publishJobId, missionRunId: ensuredMissionRunId, result };
   } catch (error) {
     const code =
       error && typeof error === 'object' && 'code' in error
@@ -173,53 +179,5 @@ export async function runPublishSocialJob(
     });
     await failPublishJob(publishJobId, code, message);
     return { ok: false, publishJobId, errorCode: code, errorMessage: message };
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
-
-  if (result.ok) {
-    const facebookPostId = result.facebookPostId || result.externalPostId;
-    const facebookPostUrl = result.facebookPostUrl || result.externalUrl;
-
-    // Mid-flight: persist post id before complete to reduce double-post risk
-    if (facebookPostId) {
-      await patchJobResult(publishJobId, {
-        externalPostId: facebookPostId,
-        facebookPostId,
-        facebookPostUrl,
-        latencyMs: result.latencyMs,
-      });
-    }
-
-    await finishAttemptSuccess(attempt.id, {
-      facebookPostId,
-      facebookPostUrl,
-      requestJson: result.request,
-      responseJson: result.response || result.raw,
-      durationMs: result.latencyMs,
-    });
-    await completePublishJob(publishJobId, result);
-    return { ok: true, publishJobId, result };
-  }
-
-  await finishAttemptFailure(attempt.id, {
-    status: result.errorCode === 'publish_timeout' ? 'timeout' : 'failed',
-    errorCode: result.errorCode || 'unknown',
-    errorMessage: result.errorMessage || 'Publish failed',
-    requestJson: result.request,
-    responseJson: result.response || result.raw,
-    durationMs: result.latencyMs,
-  });
-  await failPublishJob(
-    publishJobId,
-    result.errorCode || 'unknown',
-    result.errorMessage || 'Publish failed',
-  );
-  return {
-    ok: false,
-    publishJobId,
-    errorCode: result.errorCode,
-    errorMessage: result.errorMessage,
-    result,
-  };
 }
