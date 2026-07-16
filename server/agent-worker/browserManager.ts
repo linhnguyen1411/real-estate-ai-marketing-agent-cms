@@ -32,6 +32,8 @@ export class BrowserManager {
   private readonly config: WorkerConfig;
   /** Single worker-owned scan tab, reused across jobs (never the user's tab). */
   private scanPage: Page | null = null;
+  /** Separate worker-owned publish tab — never reuse scan tab for posting. */
+  private publishPage: Page | null = null;
   /** Safety guard: warn if the context accumulates more tabs than this. */
   private readonly maxContextPages = 10;
   readonly scanMetrics = {
@@ -42,6 +44,7 @@ export class BrowserManager {
   };
   /** Mode used for the most recent getScanPage call. */
   private lastScanPageMode: 'created' | 'reused' | 'recreated' = 'created';
+  private lastPublishPageMode: 'created' | 'reused' | 'recreated' = 'created';
 
   constructor(config: WorkerConfig) {
     this.config = config;
@@ -113,6 +116,66 @@ export class BrowserManager {
     return page;
   }
 
+  /**
+   * Get the worker-owned Facebook publish tab (separate from scan).
+   * Created once and reused; closed on worker shutdown without touching user tabs.
+   */
+  async getPublishPage(options: GetPageOptions = {}): Promise<Page> {
+    const mode = this.resolveMode(options);
+    const conn = await this.ensureConnection(mode);
+
+    if (this.publishPage && !this.publishPage.isClosed()) {
+      this.lastPublishPageMode = 'reused';
+      if (options.initialUrl) {
+        const current = this.publishPage.url();
+        if (shouldReloadScanPage(current, options.initialUrl)) {
+          await this.publishPage
+            .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+            .catch(() => undefined);
+        }
+      }
+      return this.publishPage;
+    }
+
+    if (this.publishPage && this.publishPage.isClosed()) {
+      this.lastPublishPageMode = 'recreated';
+    } else {
+      this.lastPublishPageMode = 'created';
+    }
+    this.publishPage = null;
+
+    const pageCount = conn.context.pages().length;
+    if (pageCount >= this.maxContextPages) {
+      console.warn(
+        `[browser-manager] context has ${pageCount} tabs (>= ${this.maxContextPages}); ` +
+          'not closing user tabs — only worker-owned publish tab is managed.',
+      );
+    }
+
+    const page = await conn.context.newPage();
+    this.publishPage = page;
+    if (options.initialUrl) {
+      await page
+        .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(() => undefined);
+    }
+    return page;
+  }
+
+  publishPageInfo(): { browserPageMode: 'created' | 'reused' | 'recreated'; contextPageCount: number } {
+    return {
+      browserPageMode: this.lastPublishPageMode,
+      contextPageCount: this.currentContextPageCount(),
+    };
+  }
+
+  async closePublishPage(): Promise<void> {
+    if (this.publishPage && !this.publishPage.isClosed()) {
+      await this.publishPage.close().catch(() => undefined);
+    }
+    this.publishPage = null;
+  }
+
   get profilePath(): string {
     return this.config.profileDir;
   }
@@ -148,12 +211,16 @@ export class BrowserManager {
     const contexts =
       (this.cdp ? 1 : 0) + (this.managed ? 1 : 0);
     const pageCount = this.currentContextPageCount();
-    const workerOwned =
+    const workerOwnedScan =
       this.scanPage && !this.scanPage.isClosed() ? 1 : 0;
+    const workerOwnedPublish =
+      this.publishPage && !this.publishPage.isClosed() ? 1 : 0;
+    const workerOwned = workerOwnedScan + workerOwnedPublish;
     return {
       browserContexts: contexts,
       contextPageCount: pageCount,
-      workerOwnedScanPages: workerOwned,
+      workerOwnedScanPages: workerOwnedScan,
+      workerOwnedPublishPages: workerOwnedPublish,
       userOwnedPagesEstimate: Math.max(0, pageCount - workerOwned),
       scanPageCreated: this.scanMetrics.scanPageCreated,
       scanPageReused: this.scanMetrics.scanPageReused,
@@ -246,6 +313,8 @@ export class BrowserManager {
       await this.scanPage.close().catch(() => undefined);
     }
     this.scanPage = null;
+
+    await this.closePublishPage();
 
     // CDP: disconnect refs only — never close external Chrome.
     if (this.cdp) {

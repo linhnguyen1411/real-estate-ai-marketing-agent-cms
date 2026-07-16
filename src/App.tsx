@@ -953,7 +953,8 @@ export default function App() {
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div>
                           <h3 className="text-sm font-bold text-white">Publish queue actions</h3>
-                          <p className="text-xs text-slate-500 mt-1">Facebook va Zalo duoc uu tien. Moi thao tac ben duoi deu goi API va luu database.</p>
+                          {/* Legacy stub — use AI Agent → Lịch đăng bài (social-publishing MVP) */}
+                          <p className="text-xs text-slate-500 mt-1">Facebook va Zalo duoc uu tien. Moi thao tac ben duoi deu goi API va luu database. (legacy stub — use AI Agent → Lịch đăng bài)</p>
                         </div>
                         <span className="text-2xs text-slate-500 font-mono">{publishPosts.length} posts</span>
                       </div>

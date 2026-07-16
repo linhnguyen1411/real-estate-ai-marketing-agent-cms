@@ -9,6 +9,7 @@ import {
 import { isShuttingDown } from './gracefulShutdown';
 import type { WorkerConfig } from './config';
 import { runScanSourceJob } from './scanSourceHandler';
+import { runPublishSocialJob } from '../modules/social-publishing/worker/publishSocialHandler';
 
 type JobHandler = (
   job: AgentJob,
@@ -39,6 +40,8 @@ const HANDLERS: Record<string, JobHandler> = {
 
   /** @deprecated use scan_source */
   source_scan: async (job, browser) => runScanSourceJob(job, browser),
+
+  publish_social: async (job, browser) => runPublishSocialJob(job, browser),
 };
 
 async function executeJob(job: AgentJob, browser: BrowserManager): Promise<Record<string, unknown>> {

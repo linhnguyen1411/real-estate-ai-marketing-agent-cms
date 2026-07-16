@@ -75,6 +75,7 @@ import { LEAD_MAGNETS } from './src/leadGen/leadMagnets';
 import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './server/facebookRoutes';
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
+import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
 import {
   maskSettingsSecrets,
   sendTestTelegram,
@@ -1345,6 +1346,7 @@ if (FACEBOOK_GRAPH_LEGACY_ENABLED) {
 }
 if (AGENT_ENABLED) {
   registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
+  registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }

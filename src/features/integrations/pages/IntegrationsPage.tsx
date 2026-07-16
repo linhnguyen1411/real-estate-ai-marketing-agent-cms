@@ -113,9 +113,10 @@ export default function IntegrationsPage({ onNotify }: Props) {
           <AlertCircle className="w-4 h-4 text-rose-500" /> Hướng dẫn tích hợp cổng API thật (Prod Sync)
         </h3>
         <p className="text-xs text-slate-400 leading-relaxed max-w-3xl">
-          Hệ thống đang cấu hình mock API dạng demo sandbox chất lượng. Để đấu nối sản phẩm thật với Facebook Graph
-          API, Zalo OA Webhook hay TikTok Marketing, bạn chỉ cần phát sinh cổng redirect OAuth, cấu hình Access Token
-          gối đầu của doanh nghiệp trong trang Cài đặt, và hướng sự kiện webhook về địa chỉ của API Server.
+          Các thẻ kênh bên trên là mock demo sandbox — chưa phải kênh đăng bài thật. Outbound social publishing
+          dùng module mới (`/api/social/*`). Để đấu nối Facebook Graph API, Zalo OA Webhook hay TikTok Marketing,
+          bạn chỉ cần phát sinh cổng redirect OAuth, cấu hình Access Token gối đầu của doanh nghiệp trong trang
+          Cài đặt, và hướng sự kiện webhook về địa chỉ của API Server.
         </p>
       </div>
     </div>
