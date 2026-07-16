@@ -1,11 +1,13 @@
 # Mission 2.0 — Implementation Report
 
 **Branch:** `feature/mission-workflow-engine`  
-**Updated:** 2026-07-15 (provenance E2E + Run UX)
+**Updated:** 2026-07-16 (dual-host production verification)
 
-## Verdict: **MISSION 2.0 PARTIAL** → closing gates; not COMPLETE until dual-host VPS verify signed off in production
+## Verdict: **MISSION 2.0 COMPLETE**
 
-Runtime core + local provenance ingest path + Buyer/Supply/Brand fixture E2E + timeline API/UI + nextRunAt UX are implemented. Full remote VPS host dual-verify remains environment-dependent.
+Dual-host Local PC → HTTPS/HMAC → remote VPS proven (session `m2dh_1784165884719`): Buyer Finding, Supply External Inventory, Brand **0 Finding**, provenance continue, network idempotency.
+
+Details: `MISSION-2-DUAL-HOST-VERIFICATION.md`, `MISSION-2-DUAL-HOST-PREFLIGHT.md`.
 
 ---
 
@@ -16,14 +18,16 @@ Runtime core + local provenance ingest path + Buyer/Supply/Brand fixture E2E + t
 | Component | Value |
 |-----------|-------|
 | Branch | `feature/mission-workflow-engine` |
-| CMS | PID **31712** — home **200** (no restart this phase) |
-| Worker | PID **5916**, `worker-LinhMSC-28556` |
-| BrowserSession | ready, heartbeat fresh |
-| stale / orphan jobs | **0** |
-| outbox pending/failed | **0** |
-| open MissionRuns | **0** |
+| Local CMS | PID **31712** — home **200** (not restarted for VPS deploy) |
+| Local Worker | PID **5916**, `worker-LinhMSC-28556` |
+| VPS PM2 | `real-estate-ai-cms` PID **1240500**, online |
+| VPS migration | `20260715150000_mission_workflow_engine` applied |
+| Dual-host Buyer Finding | `cmrmuc80x003mle0hig5nygka` |
+| Dual-host Supply Inventory | `cmrmucbpi004fle0hrcsajr20` |
+| Dual-host Brand Findings | **0** |
+| stale / orphan / outbox pending | **0** |
 | `test:mission-engine` | 12/12 PASS |
-| `test:mission-provenance-e2e` | **10/10 PASS** |
+| `test:mission-provenance-e2e` | 10/10 PASS |
 
 ## 2. Provenance E2E (Local → VPS path)
 
@@ -114,12 +118,12 @@ Expect:
 
 ## 15. Limitations
 
-- Dual physical hosts (local PC → remote VPS) not exercised in this workspace (same-DB simulation).
+- Offline VPS outage simulation skipped (production kept online).
+- Telegram delivery audit table missing on VPS; buyer telegram StepRun completed, brand skipped.
+- Timeline UI browser QA not screenshot-captured (API/DB timelines confirmed).
 - AI keys invalid locally → fallback analysis.
-- `properties`/`listings` missing locally → match_inventory query errors (non-blocking).
-- Telegram notifications skip without credentials.
 - Finding uniqueness still per content+type (not per Mission).
 
 ## 16. Verdict
 
-**MISSION 2.0 PARTIAL** — all code gates for provenance/Buyer/Supply/Brand/idempotency/recovery/timeline/nextRunAt pass in local E2E. Declare **COMPLETE** only after production dual-host provenance spot-check.
+**MISSION 2.0 COMPLETE** — dual-host Local→VPS provenance, Buyer Finding, Supply Inventory, Brand 0 Finding, HMAC security, and network idempotency verified.
