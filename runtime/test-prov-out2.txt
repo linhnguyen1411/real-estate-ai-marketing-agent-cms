@@ -1,0 +1,100 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> react-example@0.0.0 test:mission-provenance-e2e
+> tsx scripts/test-mission-provenance-e2e.ts
+
+Mission 2.0 ΓÇö provenance + workflow E2E
+
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+[telegram] skip missing_credentials finding=cmrlvs6si000xs2dz1mmxbj5o
+  Γ£ô Buyer Hunter ΓÇö Finding created with mission provenance
+  Γ£ô Supply Hunter ΓÇö External Inventory candidate, no Buyer Finding
+  Γ£ô Brand Monitoring ΓÇö 0 Finding, 0 Inventory
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[agent-sync] outbox flush processed=1 synced=1 failed=0
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+[telegram] skip missing_credentials finding=cmrlvs7e4002ds2dzqiyvdx5q
+  Γ£ô Provenance envelope ΓÇö VPS continuation
+  Γ£ô Duplicate payload ΓÇö idempotent ingest
+  Γ£ô Missing mission ΓÇö continuation fails safely
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+  Γ£ô Legacy without Mission ΓÇö Finding allowed
+  Γ£ô Retry workflow ΓÇö step count stable
+  Γ£ô Recovery dry-run
+  Γ£ô nextRunAt advances
+
+Done: 10 assertions passed
+[agent-sync] outbox flush processed=1 synced=1 failed=0
+[agent-sync] outbox flush processed=1 synced=1 failed=0

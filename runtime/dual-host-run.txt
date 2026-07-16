@@ -1,0 +1,124 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+=== Dual-host verify session=m2dh_1784165861503 ===
+
+Γ£ô VPS mission provenance supported
+Γ£ô HMAC valid signature
+Γ£ô HMAC bad signature rejected
+Γ£ô HMAC expired timestamp rejected
+Γ£ô HMAC replay nonce rejected
+node:internal/modules/cjs/loader:1207
+  const err = new Error(message);
+              ^
+
+Error: Cannot find module '@prisma/client'
+Require stack:
+- /tmp/vps-upsert-verify-missions.ts
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at nextResolveSimple (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1017)
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:4388
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3818
+    at resolveTsPaths (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:770)
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1155
+    at T._resolveFilename (file:///var/www/real-estate-ai-cms/node_modules/tsx/dist/register-CqMfTiWi.mjs:2:14889)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+    at require (node:internal/modules/helpers:182:18) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/tmp/vps-upsert-verify-missions.ts' ]
+}
+
+Node.js v20.19.5
+Error: Command failed: ssh -o BatchMode=yes root@112.213.87.124 "sed -i 's/\r$//' /tmp/vps-upsert-verify-missions.ts; 
+cd /var/www/real-estate-ai-cms && npx tsx /tmp/vps-upsert-verify-missions.ts 
+/tmp/dual-host-fixture-m2dh_1784165861503.json"
+node:internal/modules/cjs/loader:1207
+  const err = new Error(message);
+              ^
+
+Error: Cannot find module '@prisma/client'
+Require stack:
+- /tmp/vps-upsert-verify-missions.ts
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at nextResolveSimple (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1017)
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:4388
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3818
+    at resolveTsPaths (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:770)
+    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1155
+    at T._resolveFilename (file:///var/www/real-estate-ai-cms/node_modules/tsx/dist/register-CqMfTiWi.mjs:2:14889)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+    at require (node:internal/modules/helpers:182:18) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/tmp/vps-upsert-verify-missions.ts' ]
+}
+
+Node.js v20.19.5
+
+    at genericNodeError (node:internal/errors:985:15)
+    at wrappedFn (node:internal/errors:539:14)
+    at checkExecSyncError (node:child_process:925:11)
+    at execSync (node:child_process:997:15)
+    at main (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\run-mission-dual-host-verify.ts:351:21) {
+  status: 1,
+  signal: null,
+  output: [
+    null,
+    '',
+    'node:internal/modules/cjs/loader:1207\n' +
+      '  const err = new Error(message);\n' +
+      '              ^\n' +
+      '\n' +
+      "Error: Cannot find module '@prisma/client'\n" +
+      'Require stack:\n' +
+      '- /tmp/vps-upsert-verify-missions.ts\n' +
+      '    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)\n' +
+      '    at nextResolveSimple (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1017)\n' +
+      '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:4388\n' +
+      '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3818\n' +
+      '    at resolveTsPaths (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:770)\n' +
+      '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1155\n' +
+      '    at T._resolveFilename 
+(file:///var/www/real-estate-ai-cms/node_modules/tsx/dist/register-CqMfTiWi.mjs:2:14889)\n' +
+      '    at Module._load (node:internal/modules/cjs/loader:1038:27)\n' +
+      '    at Module.require (node:internal/modules/cjs/loader:1289:19)\n' +
+      '    at require (node:internal/modules/helpers:182:18) {\n' +
+      "  code: 'MODULE_NOT_FOUND',\n" +
+      "  requireStack: [ '/tmp/vps-upsert-verify-missions.ts' ]\n" +
+      '}\n' +
+      '\n' +
+      'Node.js v20.19.5\n'
+  ],
+  pid: 2820,
+  stdout: '',
+  stderr: 'node:internal/modules/cjs/loader:1207\n' +
+    '  const err = new Error(message);\n' +
+    '              ^\n' +
+    '\n' +
+    "Error: Cannot find module '@prisma/client'\n" +
+    'Require stack:\n' +
+    '- /tmp/vps-upsert-verify-missions.ts\n' +
+    '    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)\n' +
+    '    at nextResolveSimple (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1017)\n' +
+    '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:4388\n' +
+    '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3818\n' +
+    '    at resolveTsPaths (/var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:770)\n' +
+    '    at /var/www/real-estate-ai-cms/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1155\n' +
+    '    at T._resolveFilename 
+(file:///var/www/real-estate-ai-cms/node_modules/tsx/dist/register-CqMfTiWi.mjs:2:14889)\n' +
+    '    at Module._load (node:internal/modules/cjs/loader:1038:27)\n' +
+    '    at Module.require (node:internal/modules/cjs/loader:1289:19)\n' +
+    '    at require (node:internal/modules/helpers:182:18) {\n' +
+    "  code: 'MODULE_NOT_FOUND',\n" +
+    "  requireStack: [ '/tmp/vps-upsert-verify-missions.ts' ]\n" +
+    '}\n' +
+    '\n' +
+    'Node.js v20.19.5\n'
+}

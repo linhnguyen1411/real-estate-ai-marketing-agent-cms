@@ -1,0 +1,564 @@
+{
+  "session": "m2dh_1784165861503",
+  "companyId": "comp-da-nang",
+  "missions": [
+    {
+      "id": "cmrmuadxa00008v4y52jk8yjb",
+      "name": "[VERIFY] Buyer Hunter Dual Host m2dh_1784165861503",
+      "templateKey": "buyer-hunter",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "config": {},
+            "dependsOn": []
+          },
+          {
+            "id": "extract",
+            "type": "extract_structured_data",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "classify",
+            "type": "classify_subject",
+            "enabled": true,
+            "dependsOn": [
+              "extract"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "allowedClassifications": [
+                "buyer",
+                "renter",
+                "investor"
+              ],
+              "allowedActors": [
+                "demand_side"
+              ]
+            }
+          },
+          {
+            "id": "enrich",
+            "type": "ai_enrich",
+            "enabled": true,
+            "dependsOn": [
+              "classify"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "finding",
+            "type": "create_lead_intelligence",
+            "enabled": true,
+            "dependsOn": [
+              "enrich"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "stop_workflow"
+            },
+            "config": {}
+          },
+          {
+            "id": "matching",
+            "type": "match_inventory",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "notify_cms",
+            "type": "notify_cms",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "minimumScore": 60
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          },
+          {
+            "id": "telegram",
+            "type": "notify_telegram",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "minimumScore": 60
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    },
+    {
+      "id": "cmrmuadxq00018v4yuom0ih28",
+      "name": "[VERIFY] Supply Hunter Dual Host m2dh_1784165861503",
+      "templateKey": "supply-hunter",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "dependsOn": [],
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "extract_structured_data",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "classify",
+            "type": "classify_subject",
+            "enabled": true,
+            "dependsOn": [
+              "extract"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "allowedClassifications": [
+                "seller",
+                "landlord",
+                "broker"
+              ],
+              "allowedActors": [
+                "supply_side"
+              ]
+            }
+          },
+          {
+            "id": "enrich",
+            "type": "ai_enrich",
+            "enabled": true,
+            "dependsOn": [
+              "classify"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "inventory",
+            "type": "create_external_inventory_candidate",
+            "enabled": true,
+            "dependsOn": [
+              "enrich"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "stop_workflow"
+            },
+            "config": {}
+          },
+          {
+            "id": "matching",
+            "type": "match_inventory",
+            "enabled": true,
+            "dependsOn": [
+              "inventory"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "notify_cms",
+            "type": "notify_cms",
+            "enabled": true,
+            "dependsOn": [
+              "inventory"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "continue"
+            },
+            "config": {}
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    },
+    {
+      "id": "cmrmuadxu00028v4yuj59p498",
+      "name": "[VERIFY] Brand Monitor Dual Host m2dh_1784165861503",
+      "templateKey": "brand-monitoring",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "dependsOn": [],
+            "config": {}
+          },
+          {
+            "id": "topic",
+            "type": "topic_match",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "sentiment",
+            "type": "sentiment_analysis",
+            "enabled": true,
+            "dependsOn": [
+              "topic"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "summary",
+            "type": "summarize",
+            "enabled": true,
+            "dependsOn": [
+              "sentiment"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "telegram",
+            "type": "notify_telegram",
+            "enabled": true,
+            "dependsOn": [
+              "summary"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "mode": "summary"
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    }
+  ],
+  "runs": [
+    {
+      "id": "cmrmuadxw00048v4ytz5rfgyo",
+      "missionId": "cmrmuadxa00008v4y52jk8yjb",
+      "pipelineHash": "dh-buyer-m2dh_1784165861503",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "config": {},
+            "dependsOn": []
+          },
+          {
+            "id": "extract",
+            "type": "extract_structured_data",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "classify",
+            "type": "classify_subject",
+            "enabled": true,
+            "dependsOn": [
+              "extract"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "allowedClassifications": [
+                "buyer",
+                "renter",
+                "investor"
+              ],
+              "allowedActors": [
+                "demand_side"
+              ]
+            }
+          },
+          {
+            "id": "enrich",
+            "type": "ai_enrich",
+            "enabled": true,
+            "dependsOn": [
+              "classify"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "finding",
+            "type": "create_lead_intelligence",
+            "enabled": true,
+            "dependsOn": [
+              "enrich"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "stop_workflow"
+            },
+            "config": {}
+          },
+          {
+            "id": "matching",
+            "type": "match_inventory",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "notify_cms",
+            "type": "notify_cms",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "minimumScore": 60
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          },
+          {
+            "id": "telegram",
+            "type": "notify_telegram",
+            "enabled": true,
+            "dependsOn": [
+              "finding"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "minimumScore": 60
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    },
+    {
+      "id": "cmrmuadya00068v4y3ljbqqj3",
+      "missionId": "cmrmuadxq00018v4yuom0ih28",
+      "pipelineHash": "dh-supply-m2dh_1784165861503",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "dependsOn": [],
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "extract_structured_data",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "classify",
+            "type": "classify_subject",
+            "enabled": true,
+            "dependsOn": [
+              "extract"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "allowedClassifications": [
+                "seller",
+                "landlord",
+                "broker"
+              ],
+              "allowedActors": [
+                "supply_side"
+              ]
+            }
+          },
+          {
+            "id": "enrich",
+            "type": "ai_enrich",
+            "enabled": true,
+            "dependsOn": [
+              "classify"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "inventory",
+            "type": "create_external_inventory_candidate",
+            "enabled": true,
+            "dependsOn": [
+              "enrich"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "stop_workflow"
+            },
+            "config": {}
+          },
+          {
+            "id": "matching",
+            "type": "match_inventory",
+            "enabled": true,
+            "dependsOn": [
+              "inventory"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "notify_cms",
+            "type": "notify_cms",
+            "enabled": true,
+            "dependsOn": [
+              "inventory"
+            ],
+            "executionTarget": "vps",
+            "retry": {
+              "onFailure": "continue"
+            },
+            "config": {}
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    },
+    {
+      "id": "cmrmuadyc00088v4y08xfw4l5",
+      "missionId": "cmrmuadxu00028v4yuj59p498",
+      "pipelineHash": "dh-brand-m2dh_1784165861503",
+      "pipeline": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "spam",
+            "type": "spam_filter",
+            "enabled": true,
+            "executionTarget": "either",
+            "dependsOn": [],
+            "config": {}
+          },
+          {
+            "id": "topic",
+            "type": "topic_match",
+            "enabled": true,
+            "dependsOn": [
+              "spam"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "sentiment",
+            "type": "sentiment_analysis",
+            "enabled": true,
+            "dependsOn": [
+              "topic"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "summary",
+            "type": "summarize",
+            "enabled": true,
+            "dependsOn": [
+              "sentiment"
+            ],
+            "executionTarget": "vps",
+            "config": {}
+          },
+          {
+            "id": "telegram",
+            "type": "notify_telegram",
+            "enabled": true,
+            "dependsOn": [
+              "summary"
+            ],
+            "executionTarget": "vps",
+            "config": {
+              "mode": "summary"
+            },
+            "retry": {
+              "onFailure": "continue"
+            }
+          }
+        ],
+        "defaults": {
+          "maxAttempts": 2,
+          "onFailure": "continue"
+        }
+      }
+    }
+  ]
+}

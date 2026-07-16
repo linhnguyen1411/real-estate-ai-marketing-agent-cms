@@ -1,0 +1,244 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> react-example@0.0.0 test:mission-provenance-e2e
+> tsx scripts/test-mission-provenance-e2e.ts
+
+Mission 2.0 ΓÇö provenance + workflow E2E
+
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+[telegram] skip missing_credentials finding=cmrlvpxl9000xbicceft0z7z0
+  Γ£ô Buyer Hunter ΓÇö Finding created with mission provenance
+  Γ£ù Supply Hunter ΓÇö External Inventory candidate, no Buyer Finding AssertionError [ERR_ASSERTION]: inventory 
+candidate
+    at <anonymous> (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:245:10)
+    at async test (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:41:5)
+    at async <anonymous> 
+(F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:232:1) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+  Γ£ô Brand Monitoring ΓÇö 0 Finding, 0 Inventory
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[agent-sync] outbox flush processed=1 synced=1 failed=0
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+[telegram] skip missing_credentials finding=cmrlvpy74002dbiccyuu4a3k7
+  Γ£ù Provenance envelope ΓÇö VPS continuation AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ 'duplicate'
+- 'accepted'
+
+    at <anonymous> (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:299:10)
+    at async test (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:41:5)
+    at async <anonymous> 
+(F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:262:1) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'duplicate',
+  expected: 'accepted',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+prisma:error 
+Invalid `tx.agentWorkflowStepRun.findMany()` invocation in
+F:\workspace\real-estate-ai-marketing-agent-cms\server\agentSync\enqueue.ts:147:52
+
+  144     pipelineSnapshot: true,
+  145   },
+  146 });
+ΓåÆ 147 const localSteps = await tx.agentWorkflowStepRun.findMany({
+        where: {
+          missionRunId: "cmrlvpy8c002rbicctyw8bzeq",
+          scannedContentId: "cmrlvpy8b002pbiccfca8xmvj"
+        },
+        orderBy: {
+          createdAt: "asc"
+        },
+        select: {
+          stepId: true,
+          stepType: true,
+          status: true,
+          output: true,
+          findingId: true,
+          externalInventoryId: true,
+          ~~~~~~~~~~~~~~~~~~~
+          completedAt: true,
+      ?   id?: true,
+      ?   companyId?: true,
+      ?   missionRunId?: true,
+      ?   missionId?: true,
+      ?   jobId?: true,
+      ?   sourceId?: true,
+      ?   scannedContentId?: true,
+      ?   attempts?: true,
+      ?   maxAttempts?: true,
+      ?   idempotencyKey?: true,
+      ?   inputRef?: true,
+      ?   errorCode?: true,
+      ?   errorMessage?: true,
+      ?   startedAt?: true,
+      ?   durationMs?: true,
+      ?   createdAt?: true,
+      ?   updatedAt?: true,
+      ?   missionRun?: true,
+      ?   mission?: true,
+      ?   job?: true,
+      ?   source?: true,
+      ?   finding?: true
+        }
+      })
+
+Unknown field `externalInventoryId` for select statement on model `AgentWorkflowStepRun`. Available options are marked with ?.
+[agent-sync] enqueueScannedContentSync failed: 
+Invalid `tx.agentWorkflowStepRun.findMany()` invocation in
+F:\workspace\real-estate-ai-marketing-agent-cms\server\agentSync\enqueue.ts:147:52
+
+  144     pipelineSnapshot: true,
+  145   },
+  146 });
+ΓåÆ 147 const localSteps = await tx.agentWorkflowStepRun.findMany({
+        where: {
+          missionRunId: "cmrlvpy8c002rbicctyw8bzeq",
+          scannedContentId: "cmrlvpy8b002pbiccfca8xmvj"
+        },
+        orderBy: {
+          createdAt: "asc"
+        },
+        select: {
+          stepId: true,
+          stepType: true,
+          status: true,
+          output: true,
+          findingId: true,
+          externalInventoryId: true,
+          ~~~~~~~~~~~~~~~~~~~
+          completedAt: true,
+      ?   id?: true,
+      ?   companyId?: true,
+      ?   missionRunId?: true,
+      ?   missionId?: true,
+      ?   jobId?: true,
+      ?   sourceId?: true,
+      ?   scannedContentId?: true,
+      ?   attempts?: true,
+      ?   maxAttempts?: true,
+      ?   idempotencyKey?: true,
+      ?   inputRef?: true,
+      ?   errorCode?: true,
+      ?   errorMessage?: true,
+      ?   startedAt?: true,
+      ?   durationMs?: true,
+      ?   createdAt?: true,
+      ?   updatedAt?: true,
+      ?   missionRun?: true,
+      ?   mission?: true,
+      ?   job?: true,
+      ?   source?: true,
+      ?   finding?: true
+        }
+      })
+
+Unknown field `externalInventoryId` for select statement on model `AgentWorkflowStepRun`. Available options are marked 
+with ?.
+  Γ£ô Duplicate payload ΓÇö idempotent ingest
+  Γ£ù Missing mission ΓÇö continuation fails safely AssertionError [ERR_ASSERTION]: Expected values to be strictly 
+equal:
++ actual - expected
+
++ 'duplicate'
+- 'accepted'
+
+    at <anonymous> (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:362:10)
+    at async test (F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:41:5)
+    at async <anonymous> 
+(F:\workspace\real-estate-ai-marketing-agent-cms\scripts\test-mission-provenance-e2e.ts:341:1) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'duplicate',
+  expected: 'accepted',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+[AI fallback] gemini failed: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":
+"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"
+googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.Lo
+calizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[AI fallback] openai failed: Incorrect API key provided: MY_OPENA*****_KEY. You can find your API key at 
+https://platform.openai.com/account/api-keys.
+[AI fallback] ollama failed: fetch failed
+[lead-analyzer] AI failed, using fallback: Kh├┤ng gß╗ìi ─æ╞░ß╗úc AI provider n├áo. gemini: 
+{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":
+[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"
+service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-
+US","message":"API key not valid. Please pass a valid API key."}]}} | openai: Incorrect API key provided: 
+MY_OPENA*****_KEY. You can find your API key at https://platform.openai.com/account/api-keys. | ollama: fetch failed
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "listings" does not exist`
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42P01`. Message: `relation "properties" does not exist`
+  Γ£ô Legacy without Mission ΓÇö Finding allowed
+  Γ£ô Retry workflow ΓÇö step count stable
+  Γ£ô Recovery dry-run
+  Γ£ô nextRunAt advances
+
+Done: 7 assertions passed

@@ -1,0 +1,85 @@
+{
+  "session": "m2dh_1784165884719",
+  "deployedCommitHint": "local HEAD deployed via archive",
+  "health": {
+    "tenant": "comp-da-nang",
+    "missionProvenance": {
+      "supported": true,
+      "continueWorkflow": true,
+      "acceptedPipelineVersions": [
+        1
+      ],
+      "fields": [
+        "missionId",
+        "missionRunId",
+        "missionVersion",
+        "pipelineVersion",
+        "pipelineHash",
+        "jobId",
+        "completedLocalSteps",
+        "missionWorkflow"
+      ]
+    }
+  },
+  "missions": {
+    "buyer": "cmrmuavyg0000hhyt8sfrj6c3",
+    "supply": "cmrmuavyj0001hhyt1ot4svei",
+    "brand": "cmrmuavyl0002hhytvs82pv20"
+  },
+  "runs": {
+    "buyer": "cmrmuavym0004hhytpedqy9fh",
+    "supply": "cmrmuavyq0006hhytg9rq8jn8",
+    "brand": "cmrmuavyr0008hhytxv2l32op"
+  },
+  "results": [
+    {
+      "case": "Buyer Hunter Dual Host",
+      "localMissionId": "cmrmuavyg0000hhyt8sfrj6c3",
+      "localRunId": "cmrmuavym0004hhytpedqy9fh",
+      "remoteContentId": "cmrmubxbr0037le0h0hq11sz3",
+      "remoteFindingId": "cmrmuc80x003mle0hig5nygka",
+      "remoteInventoryId": null,
+      "findingCount": 1,
+      "inventoryCount": 0,
+      "stepCount": 9,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    },
+    {
+      "case": "Supply Hunter Dual Host",
+      "localMissionId": "cmrmuavyj0001hhyt1ot4svei",
+      "localRunId": "cmrmuavyq0006hhytg9rq8jn8",
+      "remoteContentId": "cmrmucbl60041le0ht0lxe2tj",
+      "remoteFindingId": null,
+      "remoteInventoryId": "cmrmucbpi004fle0hrcsajr20",
+      "findingCount": 0,
+      "inventoryCount": 1,
+      "stepCount": 8,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    },
+    {
+      "case": "Brand Monitor Dual Host",
+      "localMissionId": "cmrmuavyl0002hhytvs82pv20",
+      "localRunId": "cmrmuavyr0008hhytxv2l32op",
+      "remoteContentId": "cmrmucepy0052le0hxjiafg4a",
+      "remoteFindingId": null,
+      "remoteInventoryId": null,
+      "findingCount": 0,
+      "inventoryCount": 0,
+      "stepCount": 6,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    }
+  ],
+  "allPass": true
+}

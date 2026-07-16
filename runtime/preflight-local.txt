@@ -1,0 +1,146 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "jobByStatus": [
+    {
+      "_count": {
+        "_all": 1
+      },
+      "status": "running"
+    },
+    {
+      "_count": {
+        "_all": 12
+      },
+      "status": "failed"
+    },
+    {
+      "_count": {
+        "_all": 1134
+      },
+      "status": "completed"
+    }
+  ],
+  "activeJobs": [
+    {
+      "id": "cmrmtxrfs02kfuxb9usc62qi9",
+      "status": "running",
+      "type": "scan_source",
+      "sourceId": "cmrixamgu000611zm721uv1xv",
+      "missionId": null,
+      "missionRunId": null,
+      "claimedBy": "worker-LinhMSC-28556",
+      "startedAt": "2026-07-16T01:27:55.016Z",
+      "updatedAt": "2026-07-16T01:27:55.018Z",
+      "availableAt": "2026-07-16T01:27:53.116Z"
+    }
+  ],
+  "staleJobs": 0,
+  "orphanJobs": 0,
+  "liveWorkers": [
+    "worker-LinhMSC-28556"
+  ],
+  "outboxPendingOrFailed": 0,
+  "duplicateActiveScanPerSource": [],
+  "sessions": [
+    {
+      "id": "cmrlubcal00002avnr9c4qn33",
+      "status": "ready",
+      "workerId": "worker-LinhMSC-28556",
+      "lastHeartbeatAt": "2026-07-16T01:28:00.576Z",
+      "currentUrl": "https://www.facebook.com/groups/batdongsanso1danang",
+      "updatedAt": "2026-07-16T01:28:00.579Z"
+    },
+    {
+      "id": "cmrlsg9sm000065kmcb586k1c",
+      "status": "offline",
+      "workerId": "worker-LinhMSC-32784",
+      "lastHeartbeatAt": "2026-07-15T08:49:52.252Z",
+      "currentUrl": "https://www.facebook.com/groups/batdongsanso1danang",
+      "updatedAt": "2026-07-15T08:51:45.468Z"
+    },
+    {
+      "id": "cmrll8eee0000cme8qj0pn8r0",
+      "status": "offline",
+      "workerId": "worker-LinhMSC-29584",
+      "lastHeartbeatAt": "2026-07-15T07:54:11.597Z",
+      "currentUrl": "https://www.facebook.com/groups/batdongsanso1danang",
+      "updatedAt": "2026-07-15T07:58:39.057Z"
+    },
+    {
+      "id": "cmrll60oi00009bza7jch424l",
+      "status": "offline",
+      "workerId": "worker-LinhMSC-35448",
+      "lastHeartbeatAt": "2026-07-15T04:35:55.743Z",
+      "currentUrl": "https://www.facebook.com/groups/batdongsanso1danang",
+      "updatedAt": "2026-07-15T04:37:31.609Z"
+    },
+    {
+      "id": "cmrlk3dkf000013ejq9w4lva1",
+      "status": "offline",
+      "workerId": "worker-LinhMSC-34024",
+      "lastHeartbeatAt": "2026-07-15T04:34:14.322Z",
+      "currentUrl": "https://www.facebook.com/groups/batdongsanso1danang",
+      "updatedAt": "2026-07-15T04:36:41.787Z"
+    }
+  ],
+  "outbox": [
+    {
+      "_count": {
+        "_all": 2713
+      },
+      "status": "synced"
+    },
+    {
+      "_count": {
+        "_all": 1
+      },
+      "status": "sending"
+    }
+  ],
+  "missionRunByStatus": [
+    {
+      "_count": {
+        "_all": 29
+      },
+      "status": "completed"
+    },
+    {
+      "_count": {
+        "_all": 20
+      },
+      "status": "queued"
+    },
+    {
+      "_count": {
+        "_all": 1
+      },
+      "status": "running"
+    }
+  ],
+  "stepByStatus": [
+    {
+      "_count": {
+        "_all": 90
+      },
+      "status": "skipped"
+    },
+    {
+      "_count": {
+        "_all": 204
+      },
+      "status": "completed"
+    }
+  ],
+  "counts": {
+    "missionSourceCount": 20,
+    "missionRunCount": 50,
+    "stepRunCount": 294
+  }
+}
