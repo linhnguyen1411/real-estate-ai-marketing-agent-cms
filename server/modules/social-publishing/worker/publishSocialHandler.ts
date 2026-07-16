@@ -1,10 +1,18 @@
 import type { AgentJob } from '@prisma/client';
 import type { BrowserManager } from '../../../agent-worker/browserManager';
 import {
+  createAttemptStart,
+  finishAttemptFailure,
+  finishAttemptSuccess,
+} from '../attemptService';
+import {
   claimPublishJob,
   completePublishJob,
   failPublishJob,
   getJobById,
+  markPreparing,
+  markPublishing,
+  patchJobResult,
   runPrePublishSafetyChecks,
 } from '../jobService';
 import {
@@ -14,6 +22,7 @@ import {
   setPublisherRegistry,
 } from '../publishers';
 import { facebookPageGraphPublisher } from '../publishers/facebookPageGraphPublisher';
+import { DEFAULT_PUBLISH_TIMEOUT_MS } from '../graph/facebookGraphClient';
 import type { PublishResult } from '../types';
 
 function ensureWorkerPublishers(browser: BrowserManager): void {
@@ -115,26 +124,92 @@ export async function runPublishSocialJob(
     return { ok: false, publishJobId, errorCode: 'unknown' };
   }
 
+  const timeoutMs = Number(process.env.SOCIAL_PUBLISH_TIMEOUT_MS) || DEFAULT_PUBLISH_TIMEOUT_MS;
+  const workerId = agentJob.claimedBy || 'worker';
+  const attempt = await createAttemptStart({
+    companyId: full.companyId,
+    jobId: publishJobId,
+    draftId: full.draftId,
+    channelId: full.channelId,
+    workerId,
+    attemptNumber: full.attempts,
+  });
+
   const publisher = resolvePublisher(full.channel);
   let result: PublishResult;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
   try {
-    result = await publisher.publish({
-      job: full,
-      draft: full.draft,
-      channel: full.channel,
-      workerId: agentJob.claimedBy || 'worker',
-    });
+    await markPreparing(publishJobId);
+    await markPublishing(publishJobId);
+
+    result = await Promise.race([
+      publisher.publish({
+        job: full,
+        draft: full.draft,
+        channel: full.channel,
+        workerId,
+      }),
+      new Promise<PublishResult>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(
+            Object.assign(new Error(`Publish timed out after ${timeoutMs}ms`), {
+              code: 'publish_timeout',
+            }),
+          );
+        }, timeoutMs);
+      }),
+    ]);
   } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code: string }).code)
+        : 'unknown';
     const message = error instanceof Error ? error.message : 'Publisher threw';
-    await failPublishJob(publishJobId, 'unknown', message);
-    return { ok: false, publishJobId, errorCode: 'unknown', errorMessage: message };
+    await finishAttemptFailure(attempt.id, {
+      status: code === 'publish_timeout' ? 'timeout' : 'failed',
+      errorCode: code,
+      errorMessage: message,
+    });
+    await failPublishJob(publishJobId, code, message);
+    return { ok: false, publishJobId, errorCode: code, errorMessage: message };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 
   if (result.ok) {
+    const facebookPostId = result.facebookPostId || result.externalPostId;
+    const facebookPostUrl = result.facebookPostUrl || result.externalUrl;
+
+    // Mid-flight: persist post id before complete to reduce double-post risk
+    if (facebookPostId) {
+      await patchJobResult(publishJobId, {
+        externalPostId: facebookPostId,
+        facebookPostId,
+        facebookPostUrl,
+        latencyMs: result.latencyMs,
+      });
+    }
+
+    await finishAttemptSuccess(attempt.id, {
+      facebookPostId,
+      facebookPostUrl,
+      requestJson: result.request,
+      responseJson: result.response || result.raw,
+      durationMs: result.latencyMs,
+    });
     await completePublishJob(publishJobId, result);
     return { ok: true, publishJobId, result };
   }
 
+  await finishAttemptFailure(attempt.id, {
+    status: result.errorCode === 'publish_timeout' ? 'timeout' : 'failed',
+    errorCode: result.errorCode || 'unknown',
+    errorMessage: result.errorMessage || 'Publish failed',
+    requestJson: result.request,
+    responseJson: result.response || result.raw,
+    durationMs: result.latencyMs,
+  });
   await failPublishJob(
     publishJobId,
     result.errorCode || 'unknown',

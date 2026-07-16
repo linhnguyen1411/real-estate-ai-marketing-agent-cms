@@ -1,13 +1,20 @@
 import { Prisma, type SocialChannel } from '@prisma/client';
+import { encryptAccessToken } from '../../facebook/tokenCrypto';
 import { prisma } from '../../prisma';
 import { appendAuditLog } from './auditService';
+import {
+  exchangeForLongLivedToken,
+  getFacebookAppCredentials,
+} from './graph/facebookGraphClient';
 import { notifyChannelNeedsLogin } from './notificationBridge';
 import { resolvePublisher } from './publishers';
+import type { GraphVerifyDetails } from './publishers/facebookPageGraphPublisher';
 import {
   CHANNEL_STATUSES,
   CHANNEL_TYPES,
   DEFAULT_SAFETY_SETTINGS,
   EXECUTION_MODES,
+  type ChannelConnectionState,
   type ChannelStatus,
   type ChannelType,
   type ExecutionMode,
@@ -214,11 +221,21 @@ export async function recordFailure(
         ? 'paused'
         : 'error';
 
+  const connectionState: ChannelConnectionState | undefined =
+    errorCode === 'graph_token_expired' || errorCode === 'channel_disconnected'
+      ? errorCode === 'channel_disconnected'
+        ? 'disconnected'
+        : 'expired'
+      : errorCode === 'graph_permission_denied'
+        ? 'permission_error'
+        : undefined;
+
   const channel = await prisma.socialChannel.update({
     where: { id },
     data: {
       consecutiveFailures,
       status: nextStatus,
+      ...(connectionState ? { connectionState } : {}),
     },
   });
 
@@ -248,27 +265,132 @@ export async function recordSuccess(id: string): Promise<SocialChannel> {
       consecutiveFailures: 0,
       status: 'active',
       isActive: true,
+      connectionState: 'connected',
     },
   });
+}
+
+export function mapHealthToConnectionState(
+  health: GraphVerifyDetails | { ok: boolean; status: string; errorCode?: string },
+): ChannelConnectionState {
+  if ('connectionState' in health && health.connectionState) {
+    return health.connectionState as ChannelConnectionState;
+  }
+  if (health.ok) return 'connected';
+  if (health.errorCode === 'graph_token_expired' || health.errorCode === 'channel_disconnected') {
+    return health.errorCode === 'channel_disconnected' ? 'disconnected' : 'expired';
+  }
+  if (health.errorCode === 'graph_permission_denied') return 'permission_error';
+  if (health.status === 'needs_login') return 'expired';
+  return 'disconnected';
+}
+
+export async function connectPageToken(
+  channelId: string,
+  input: {
+    pageAccessToken: string;
+    pageId?: string | null;
+    pageName?: string | null;
+    actor?: string | null;
+  },
+): Promise<SocialChannel> {
+  const existing = await getChannelById(channelId);
+  if (!existing) throw new Error('Channel not found');
+
+  let token = String(input.pageAccessToken || '').trim();
+  if (!token) throw new Error('pageAccessToken is required');
+
+  let tokenExpiresAt: Date | null = null;
+  const creds = getFacebookAppCredentials();
+  if (creds) {
+    const exchanged = await exchangeForLongLivedToken(token, creds.appId, creds.appSecret);
+    if ('accessToken' in exchanged) {
+      token = exchanged.accessToken;
+      if (exchanged.expiresIn && exchanged.expiresIn > 0) {
+        tokenExpiresAt = new Date(Date.now() + exchanged.expiresIn * 1000);
+      }
+    }
+  }
+
+  const encrypted = encryptAccessToken(token);
+  const prevConfig =
+    existing.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
+      ? (existing.config as Record<string, unknown>)
+      : {};
+  const nextConfig: Record<string, unknown> = {
+    ...prevConfig,
+    pageAccessTokenEncrypted: encrypted,
+  };
+  delete nextConfig.pageAccessToken;
+  if (input.pageId) nextConfig.pageId = String(input.pageId).trim();
+  if (input.pageName) nextConfig.pageName = String(input.pageName).trim();
+
+  const channel = await prisma.socialChannel.update({
+    where: { id: channelId },
+    data: {
+      ...(input.pageId ? { externalId: String(input.pageId).trim() } : {}),
+      ...(input.pageName ? { name: String(input.pageName).trim() || existing.name } : {}),
+      config: nextConfig as Prisma.InputJsonValue,
+      connectionState: 'connected',
+      status: 'active',
+      isActive: true,
+      consecutiveFailures: 0,
+      lastVerifyError: null,
+      ...(tokenExpiresAt ? { tokenExpiresAt } : {}),
+    },
+  });
+
+  await appendAuditLog({
+    companyId: channel.companyId,
+    entityType: 'SocialChannel',
+    entityId: channelId,
+    action: 'connected',
+    actor: input.actor,
+    metadata: {
+      pageId: input.pageId || channel.externalId,
+      exchanged: Boolean(creds),
+      tokenExpiresAt: tokenExpiresAt?.toISOString() ?? null,
+    },
+  });
+
+  return channel;
 }
 
 export async function verifyChannel(id: string) {
   const channel = await getChannelById(id);
   if (!channel) throw new Error('Channel not found');
   const publisher = resolvePublisher(channel);
-  const health = await publisher.verifyChannel(channel);
-  if (!health.ok && (CHANNEL_STATUSES as readonly string[]).includes(String(health.status))) {
-    await prisma.socialChannel.update({
-      where: { id },
-      data: { status: String(health.status) },
-    });
-  }
+  const health = (await publisher.verifyChannel(channel)) as GraphVerifyDetails;
+  const connectionState = mapHealthToConnectionState(health);
+  const statusUpdate =
+    health.ok
+      ? { status: 'active' as const }
+      : (CHANNEL_STATUSES as readonly string[]).includes(String(health.status))
+        ? { status: String(health.status) }
+        : {};
+
+  await prisma.socialChannel.update({
+    where: { id },
+    data: {
+      ...statusUpdate,
+      lastVerifiedAt: new Date(),
+      lastVerifyError: health.ok ? null : health.details || health.errorCode || 'verify failed',
+      connectionState,
+      ...(health.tokenExpiresAt !== undefined
+        ? { tokenExpiresAt: health.tokenExpiresAt }
+        : {}),
+    },
+  });
+
   await appendAuditLog({
     companyId: channel.companyId,
     entityType: 'SocialChannel',
     entityId: id,
     action: 'verified',
-    metadata: health as unknown as Record<string, unknown>,
+    metadata: {
+      ...(health as unknown as Record<string, unknown>),
+      connectionState,
+    },
   });
-  return health;
+  return { ...health, connectionState };
 }

@@ -24,6 +24,14 @@ export const JOB_STATUSES = [
 
 export const CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error'] as const;
 
+/** UI connection health; distinct from CHANNEL_STATUSES operational status. */
+export const CHANNEL_CONNECTION_STATES = [
+  'connected',
+  'disconnected',
+  'expired',
+  'permission_error',
+] as const;
+
 export const CHANNEL_TYPES = ['facebook_profile', 'facebook_page'] as const;
 
 export const EXECUTION_MODES = ['browser', 'graph_api'] as const;
@@ -32,6 +40,7 @@ export const PUBLISH_ERROR_CODES = [
   'channel_inactive',
   'channel_paused',
   'channel_needs_login',
+  'channel_disconnected',
   'channel_locked',
   'daily_cap',
   'spacing',
@@ -39,7 +48,9 @@ export const PUBLISH_ERROR_CODES = [
   'not_approved',
   'media_invalid',
   'graph_token_expired',
+  'graph_permission_denied',
   'graph_api_error',
+  'publish_timeout',
   'browser_auth_blocked',
   'browser_composer_not_found',
   'browser_publish_failed',
@@ -52,6 +63,7 @@ export const PUBLISH_ERROR_CODES = [
 export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 export type JobStatus = (typeof JOB_STATUSES)[number];
 export type ChannelStatus = (typeof CHANNEL_STATUSES)[number];
+export type ChannelConnectionState = (typeof CHANNEL_CONNECTION_STATES)[number];
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 export type ExecutionMode = (typeof EXECUTION_MODES)[number];
 export type PublishErrorCode = (typeof PUBLISH_ERROR_CODES)[number];
@@ -77,6 +89,11 @@ export interface PublishResult {
   ok: boolean;
   externalPostId?: string;
   externalUrl?: string;
+  facebookPostId?: string;
+  facebookPostUrl?: string;
+  latencyMs?: number;
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
   dryRun?: boolean;
   errorCode?: PublishErrorCode | string;
   errorMessage?: string;

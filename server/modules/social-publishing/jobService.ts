@@ -23,6 +23,13 @@ export function buildIdempotencyKey(
   return `${draftId}:${channelId}:${scheduledAt.toISOString()}`;
 }
 
+/** Exponential backoff: min(60s * 2^(attempts-1), 30m). attempts is 1-based after a failure. */
+export function computeBackoffMs(attempts: number): number {
+  return Math.min(60_000 * 2 ** Math.max(0, attempts - 1), 30 * 60_000);
+}
+
+const STALE_PUBLISH_JOB_MS = 10 * 60_000;
+
 /** Pure: retry must not republish an already-published job. */
 export function shouldSkipRetry(job: {
   status: string;
@@ -173,6 +180,7 @@ export async function retryJob(id: string, actor?: string | null) {
     data: {
       status: 'queued',
       scheduledAt: new Date(),
+      attempts: 0,
       errorCode: null,
       errorMessage: null,
       claimedBy: null,
@@ -193,6 +201,47 @@ export async function retryJob(id: string, actor?: string | null) {
 }
 
 /**
+ * Reset ACTIVE jobs stuck longer than 10 minutes back to queued.
+ */
+export async function reclaimStalePublishJobs(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_PUBLISH_JOB_MS);
+  const stale = await prisma.socialPublishJob.findMany({
+    where: {
+      status: { in: [...ACTIVE_JOB_STATUSES] },
+      startedAt: { lt: cutoff },
+    },
+    take: 50,
+  });
+
+  let reclaimed = 0;
+  for (const job of stale) {
+    await prisma.socialPublishJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'queued',
+        claimedBy: null,
+        startedAt: null,
+        errorCode: 'publish_timeout',
+        errorMessage: 'Stale publish job reclaimed after 10 minutes',
+      },
+    });
+    await appendAuditLog({
+      companyId: job.companyId,
+      entityType: 'SocialPublishJob',
+      entityId: job.id,
+      action: 'stale_reclaimed',
+      metadata: {
+        previousStatus: job.status,
+        startedAt: job.startedAt?.toISOString() ?? null,
+        claimedBy: job.claimedBy,
+      },
+    });
+    reclaimed += 1;
+  }
+  return reclaimed;
+}
+
+/**
  * Scheduler: for due SocialPublishJob rows, create AgentJob publish_social
  * if none active for that publishJobId.
  */
@@ -200,7 +249,10 @@ export async function enqueueDueSocialPublishJobs(now = new Date()): Promise<{
   due: number;
   created: number;
   skipped: number;
+  reclaimed: number;
 }> {
+  const reclaimed = await reclaimStalePublishJobs(now);
+
   const dueJobs = await prisma.socialPublishJob.findMany({
     where: {
       status: 'queued',
@@ -219,7 +271,7 @@ export async function enqueueDueSocialPublishJobs(now = new Date()): Promise<{
     else skipped += 1;
   }
 
-  return { due: dueJobs.length, created, skipped };
+  return { due: dueJobs.length, created, skipped, reclaimed };
 }
 
 export async function enqueueAgentJobForPublishJob(
@@ -287,7 +339,7 @@ export async function claimPublishJob(
     return tx.socialPublishJob.update({
       where: { id },
       data: {
-        status: 'publishing',
+        status: 'claimed',
         claimedBy: workerId,
         startedAt: new Date(),
         attempts: { increment: 1 },
@@ -296,10 +348,48 @@ export async function claimPublishJob(
   });
 }
 
+export async function markPreparing(id: string): Promise<SocialPublishJob> {
+  return prisma.socialPublishJob.update({
+    where: { id },
+    data: { status: 'preparing' },
+  });
+}
+
+export async function markPublishing(id: string): Promise<SocialPublishJob> {
+  return prisma.socialPublishJob.update({
+    where: { id },
+    data: { status: 'publishing' },
+  });
+}
+
+/** Persist partial result mid-flight (e.g. facebookPostId) to reduce double-post risk. */
+export async function patchJobResult(
+  id: string,
+  partial: Record<string, unknown>,
+): Promise<SocialPublishJob> {
+  const existing = await prisma.socialPublishJob.findUnique({ where: { id } });
+  const prev =
+    existing?.result && typeof existing.result === 'object' && !Array.isArray(existing.result)
+      ? (existing.result as Record<string, unknown>)
+      : {};
+  return prisma.socialPublishJob.update({
+    where: { id },
+    data: {
+      result: { ...prev, ...partial } as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export async function completePublishJob(
   id: string,
   result: PublishResult,
 ): Promise<SocialPublishJob> {
+  const storedResult = {
+    ...result,
+    facebookPostId: result.facebookPostId || result.externalPostId,
+    facebookPostUrl: result.facebookPostUrl || result.externalUrl,
+    latencyMs: result.latencyMs,
+  };
   const job = await prisma.socialPublishJob.update({
     where: { id },
     data: {
@@ -307,7 +397,7 @@ export async function completePublishJob(
       completedAt: new Date(),
       errorCode: null,
       errorMessage: null,
-      result: result as unknown as Prisma.InputJsonValue,
+      result: storedResult as unknown as Prisma.InputJsonValue,
       claimedBy: null,
     },
   });
@@ -329,7 +419,7 @@ export async function completePublishJob(
     entityType: 'SocialPublishJob',
     entityId: id,
     action: 'published',
-    metadata: result as unknown as Record<string, unknown>,
+    metadata: storedResult as unknown as Record<string, unknown>,
   });
   return job;
 }
@@ -355,9 +445,7 @@ export async function failPublishJob(
       ...(exhausted
         ? {}
         : {
-            scheduledAt: new Date(
-              Date.now() + Math.min(60_000 * 2 ** Math.max(0, existing.attempts - 1), 30 * 60_000),
-            ),
+            scheduledAt: new Date(Date.now() + computeBackoffMs(existing.attempts)),
           }),
     },
   });

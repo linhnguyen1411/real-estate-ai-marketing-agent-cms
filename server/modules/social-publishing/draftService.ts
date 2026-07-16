@@ -3,7 +3,7 @@ import { prisma } from '../../prisma';
 import { appendAuditLog } from './auditService';
 import { validateMediaList, type MediaInput } from './mediaValidation';
 import { fingerprintBody } from './safetyService';
-import { createPublishJob } from './jobService';
+import { createPublishJob, enqueueAgentJobForPublishJob } from './jobService';
 
 export async function listDrafts(input: {
   companyId?: string | null;
@@ -274,6 +274,11 @@ export async function approveAndSchedule(
     scheduledAt,
     actor,
   });
+
+  // If due now, enqueue AgentJob immediately so publish-now does not wait for scheduler tick
+  if (scheduledAt.getTime() <= Date.now()) {
+    await enqueueAgentJobForPublishJob(job);
+  }
 
   await appendAuditLog({
     companyId: draft.companyId,

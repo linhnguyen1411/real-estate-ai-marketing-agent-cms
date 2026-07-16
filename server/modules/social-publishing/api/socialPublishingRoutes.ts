@@ -4,6 +4,7 @@ import { canAccessAgentRecord, canManageAgentConfig } from '../../../agent/agent
 import { listAuditLogs } from '../auditService';
 import {
   activateChannel,
+  connectPageToken,
   createChannel,
   getChannelById,
   listChannels,
@@ -22,6 +23,7 @@ import {
   submitForReview,
   updateDraft,
 } from '../draftService';
+import { listAttempts, listAttemptsForJob } from '../attemptService';
 import { cancelJob, getJobById, listJobs, retryJob } from '../jobService';
 import { canScheduleDraftStatus } from '../safetyService';
 import { DEFAULT_SAFETY_SETTINGS } from '../types';
@@ -162,6 +164,35 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 400, error instanceof Error ? error.message : 'Activate failed.');
+    }
+  });
+
+  app.post('/api/social/channels/:id/connect', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getChannelById(req.params.id);
+      if (!existing) return sendError(res, 404, 'Channel not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const pageAccessToken = String(body.pageAccessToken || '').trim();
+      if (!pageAccessToken) return sendError(res, 400, 'pageAccessToken is required');
+      const channel = await connectPageToken(req.params.id, {
+        pageAccessToken,
+        pageId: body.pageId != null ? String(body.pageId) : undefined,
+        pageName: body.pageName != null ? String(body.pageName) : undefined,
+        actor: user.id,
+      });
+      // Verify after connect so connection fields are fresh
+      let health = null;
+      try {
+        health = await verifyChannel(req.params.id);
+      } catch {
+        // connect still succeeded
+      }
+      res.json({ status: 'success', data: { channel, health } });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Connect failed.');
     }
   });
 
@@ -373,6 +404,35 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 400, error instanceof Error ? error.message : 'Retry failed.');
+    }
+  });
+
+  app.get('/api/social/jobs/:id/attempts', async (req: Request, res: Response) => {
+    try {
+      const job = await getJobById(req.params.id);
+      if (!job) return sendError(res, 404, 'Job not found');
+      if (!assertRecordAccess(req, res, job.companyId)) return;
+      const data = await listAttemptsForJob(req.params.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được attempts.');
+    }
+  });
+
+  app.get('/api/social/attempts', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const limitRaw = Number(req.query.limit);
+      const data = await listAttempts({
+        companyId,
+        jobId: String(req.query.jobId || '').trim() || undefined,
+        channelId: String(req.query.channelId || '').trim() || undefined,
+        limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được attempts.');
     }
   });
 

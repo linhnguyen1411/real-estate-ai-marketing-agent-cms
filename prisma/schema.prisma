@@ -1269,20 +1269,24 @@ model TelegramDeliveryLog {
 
 /// Social Publishing MVP — outbound Facebook profile/page posts
 model SocialChannel {
-  id                   String   @id @default(cuid())
-  companyId            String?  @map("company_id")
+  id                   String    @id @default(cuid())
+  companyId            String?   @map("company_id")
   type                 String
   name                 String
-  externalId           String?  @map("external_id")
-  profileUrl           String?  @map("profile_url") @db.Text
-  status               String   @default("active")
-  executionMode        String   @map("execution_mode")
-  browserSessionId     String?  @map("browser_session_id")
-  config               Json     @default("{}")
-  isActive             Boolean  @default(true) @map("is_active")
-  consecutiveFailures  Int      @default(0) @map("consecutive_failures")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  externalId           String?   @map("external_id")
+  profileUrl           String?   @map("profile_url") @db.Text
+  status               String    @default("active")
+  executionMode        String    @map("execution_mode")
+  browserSessionId     String?   @map("browser_session_id")
+  config               Json      @default("{}")
+  isActive             Boolean   @default(true) @map("is_active")
+  consecutiveFailures  Int       @default(0) @map("consecutive_failures")
+  lastVerifiedAt       DateTime? @map("last_verified_at")
+  lastVerifyError      String?   @map("last_verify_error") @db.Text
+  tokenExpiresAt       DateTime? @map("token_expires_at")
+  connectionState      String?   @map("connection_state")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   jobs SocialPublishJob[]
 
@@ -1352,14 +1356,43 @@ model SocialPublishJob {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  draft   SocialPostDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
-  channel SocialChannel   @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  draft           SocialPostDraft       @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  channel         SocialChannel         @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  publishAttempts SocialPublishAttempt[]
 
   @@index([status, scheduledAt])
   @@index([channelId, status])
   @@index([companyId])
   @@index([draftId])
   @@map("social_publish_jobs")
+}
+
+model SocialPublishAttempt {
+  id              String    @id @default(cuid())
+  companyId       String?   @map("company_id")
+  jobId           String    @map("job_id")
+  draftId         String    @map("draft_id")
+  channelId       String    @map("channel_id")
+  workerId        String?   @map("worker_id")
+  attemptNumber   Int       @map("attempt_number")
+  status          String
+  startedAt       DateTime  @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  durationMs      Int?      @map("duration_ms")
+  facebookPostId  String?   @map("facebook_post_id")
+  facebookPostUrl String?   @map("facebook_post_url") @db.Text
+  requestJson     Json?     @map("request_json")
+  responseJson    Json?     @map("response_json")
+  errorCode       String?   @map("error_code")
+  errorMessage    String?   @map("error_message") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  job SocialPublishJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([channelId, createdAt])
+  @@index([companyId])
+  @@map("social_publish_attempts")
 }
 
 model SocialPublishAuditLog {
