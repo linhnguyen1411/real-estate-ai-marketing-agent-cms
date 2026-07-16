@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pause, Play, Plus, ShieldCheck } from 'lucide-react';
+import { KeyRound, Pause, Play, Plus, ShieldCheck } from 'lucide-react';
 import {
   activateSocialChannel,
+  connectSocialChannel,
   createSocialChannel,
   fetchSocialChannels,
   pauseSocialChannel,
@@ -35,6 +36,27 @@ function channelStatusClass(status: string) {
   return map[status] || 'bg-slate-800 text-slate-300';
 }
 
+function resolveConnectionBadge(channel: SocialChannel): {
+  label: string;
+  className: string;
+} {
+  const state = channel.connectionState;
+  if (state === 'connected' || (!state && channel.status === 'active')) {
+    return { label: 'Connected', className: 'bg-emerald-900/50 text-emerald-300' };
+  }
+  if (state === 'expired') {
+    return { label: 'Expired', className: 'bg-amber-900/50 text-amber-300' };
+  }
+  if (state === 'permission_error') {
+    return { label: 'Permission Error', className: 'bg-rose-900/50 text-rose-300' };
+  }
+  return { label: 'Disconnected', className: 'bg-slate-800 text-slate-400' };
+}
+
+function isGraphPageChannel(channel: SocialChannel) {
+  return channel.type === 'facebook_page' && channel.executionMode === 'graph_api';
+}
+
 type Props = {
   canManage: boolean;
   onMessage: (msg: string) => void;
@@ -48,6 +70,9 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastHealth, setLastHealth] = useState<Record<string, SocialChannelHealth>>({});
+  const [connectOpenId, setConnectOpenId] = useState<string | null>(null);
+  const [connectToken, setConnectToken] = useState('');
+  const [connectPageId, setConnectPageId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,6 +137,45 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
       await load();
     } catch (err) {
       onMessage(err instanceof Error ? err.message : 'Test thất bại.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleConnect = async (channel: SocialChannel) => {
+    if (!canManage) return;
+    const token = connectToken.trim();
+    if (!token) {
+      onMessage('Page Access Token bắt buộc.');
+      return;
+    }
+    setBusyId(channel.id);
+    try {
+      const result = await connectSocialChannel(channel.id, {
+        pageAccessToken: token,
+        pageId: connectPageId.trim() || undefined,
+      });
+      if (result.health) {
+        setLastHealth(prev => ({ ...prev, [channel.id]: result.health! }));
+      }
+      onMessage(
+        result.health?.ok
+          ? `Đã kết nối & verify OK: ${result.health.details || result.channel.name}`
+          : `Đã lưu token${result.health ? ` — verify: ${result.health.details || result.health.errorCode}` : ''}.`,
+      );
+      setConnectToken('');
+      setConnectPageId('');
+      setConnectOpenId(null);
+      // Re-test to refresh connectionState on channel row
+      try {
+        const health = await testSocialChannel(channel.id);
+        setLastHealth(prev => ({ ...prev, [channel.id]: health }));
+      } catch {
+        // connect already succeeded
+      }
+      await load();
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : 'Connect thất bại.');
     } finally {
       setBusyId(null);
     }
@@ -258,90 +322,171 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
           description="Tạo facebook_profile (browser) hoặc facebook_page (graph_api)."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-slate-900 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-3 py-3">Tên</th>
-                <th className="px-3 py-3">Loại / Mode</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">Health</th>
-                <th className="px-3 py-3">Failures</th>
-                <th className="px-3 py-3">Cập nhật</th>
-                {canManage && <th className="px-3 py-3">Thao tác</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map(channel => {
-                const health = lastHealth[channel.id];
-                return (
-                  <tr key={channel.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                    <td className="px-3 py-3">
-                      <div className="font-medium text-slate-200">{channel.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {channel.externalId || channel.profileUrl || '—'}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-slate-400">
-                      {channel.type}
-                      <div className="text-slate-600">{channel.executionMode}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${channelStatusClass(channel.status)}`}
-                      >
-                        {channel.status}
-                      </span>
-                      {!channel.isActive && (
-                        <span className="ml-1 text-[10px] text-slate-500">inactive</span>
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">Tên</th>
+                  <th className="px-3 py-3">Loại / Mode</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Connection</th>
+                  <th className="px-3 py-3">Health</th>
+                  <th className="px-3 py-3">Token / Verified</th>
+                  <th className="px-3 py-3">Failures</th>
+                  {canManage && <th className="px-3 py-3">Thao tác</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {channels.map(channel => {
+                  const health = lastHealth[channel.id];
+                  const badge = resolveConnectionBadge(channel);
+                  const graphPage = isGraphPageChannel(channel);
+                  return (
+                    <React.Fragment key={channel.id}>
+                      <tr className="border-t border-slate-800 hover:bg-slate-900/40">
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-slate-200">{channel.name}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {channel.externalId || channel.profileUrl || '—'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400">
+                          {channel.type}
+                          <div className="text-slate-600">{channel.executionMode}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${channelStatusClass(channel.status)}`}
+                          >
+                            {channel.status}
+                          </span>
+                          {!channel.isActive && (
+                            <span className="ml-1 text-[10px] text-slate-500">inactive</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400">
+                          {health
+                            ? `${health.ok ? 'OK' : 'FAIL'} — ${health.details || health.status}`
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400">
+                          {channel.lastVerifiedAt || channel.tokenExpiresAt ? (
+                            <div className="space-y-0.5">
+                              {channel.lastVerifiedAt && (
+                                <div>Verified: {formatAgentDate(channel.lastVerifiedAt)}</div>
+                              )}
+                              {channel.tokenExpiresAt && (
+                                <div>Expires: {formatAgentDate(channel.tokenExpiresAt)}</div>
+                              )}
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs tabular-nums text-slate-400">
+                          {channel.consecutiveFailures}
+                        </td>
+                        {canManage && (
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {graphPage && (
+                                <button
+                                  type="button"
+                                  disabled={busyId === channel.id}
+                                  onClick={() => {
+                                    setConnectOpenId(id =>
+                                      id === channel.id ? null : channel.id,
+                                    );
+                                    setConnectPageId(channel.externalId || '');
+                                    setConnectToken('');
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded border border-violet-800 px-2 py-1 text-[10px] font-bold text-violet-300 hover:bg-violet-950/40 disabled:opacity-50"
+                                >
+                                  <KeyRound className="h-3 w-3" />{' '}
+                                  {channel.connectionState === 'connected' ||
+                                  (!channel.connectionState && channel.status === 'active')
+                                    ? 'Reconnect'
+                                    : 'Connect'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={busyId === channel.id}
+                                onClick={() => handleTest(channel)}
+                                className="inline-flex items-center gap-1 rounded border border-sky-800 px-2 py-1 text-[10px] font-bold text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                              >
+                                <ShieldCheck className="h-3 w-3" /> Test
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyId === channel.id}
+                                onClick={() => handlePauseToggle(channel)}
+                                className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                              >
+                                {channel.status === 'paused' || !channel.isActive ? (
+                                  <>
+                                    <Play className="h-3 w-3" /> Activate
+                                  </>
+                                ) : (
+                                  <>
+                                    <Pause className="h-3 w-3" /> Pause
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                      {canManage && connectOpenId === channel.id && graphPage && (
+                        <tr className="border-t border-slate-800/60 bg-slate-950/60">
+                          <td colSpan={canManage ? 8 : 7} className="px-3 py-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                              <label className="block min-w-0 flex-1 text-xs text-slate-400">
+                                Page Access Token
+                                <input
+                                  type="password"
+                                  value={connectToken}
+                                  onChange={e => setConnectToken(e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
+                                  placeholder="EAA..."
+                                  autoComplete="off"
+                                />
+                              </label>
+                              <label className="block w-full text-xs text-slate-400 sm:w-48">
+                                Page ID (optional)
+                                <input
+                                  value={connectPageId}
+                                  onChange={e => setConnectPageId(e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
+                                  placeholder={channel.externalId || 'page id'}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={busyId === channel.id || !connectToken.trim()}
+                                onClick={() => handleConnect(channel)}
+                                className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:opacity-50"
+                              >
+                                Connect & Test
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-slate-400">
-                      {health
-                        ? `${health.ok ? 'OK' : 'FAIL'} — ${health.details || health.status}`
-                        : '—'}
-                    </td>
-                    <td className="px-3 py-3 text-xs tabular-nums text-slate-400">
-                      {channel.consecutiveFailures}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-slate-400">
-                      {formatAgentDate(channel.updatedAt)}
-                    </td>
-                    {canManage && (
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          <button
-                            type="button"
-                            disabled={busyId === channel.id}
-                            onClick={() => handleTest(channel)}
-                            className="inline-flex items-center gap-1 rounded border border-sky-800 px-2 py-1 text-[10px] font-bold text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
-                          >
-                            <ShieldCheck className="h-3 w-3" /> Test
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyId === channel.id}
-                            onClick={() => handlePauseToggle(channel)}
-                            className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            {channel.status === 'paused' || !channel.isActive ? (
-                              <>
-                                <Play className="h-3 w-3" /> Activate
-                              </>
-                            ) : (
-                              <>
-                                <Pause className="h-3 w-3" /> Pause
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

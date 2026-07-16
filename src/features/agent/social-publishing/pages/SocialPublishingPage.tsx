@@ -11,7 +11,7 @@ const TABS: { id: PublishingTab; label: string; path: string }[] = [
   { id: 'calendar', label: 'Lịch đăng', path: '/admin/agents/publishing' },
   { id: 'drafts', label: 'Bản nháp', path: '/admin/agents/publishing/drafts' },
   { id: 'channels', label: 'Kênh đăng', path: '/admin/agents/publishing/channels' },
-  { id: 'history', label: 'Lịch sử', path: '/admin/agents/publishing/history' },
+  { id: 'history', label: 'Logs', path: '/admin/agents/publishing/history' },
 ];
 
 function resolvePublishingTab(pathname: string, hash: string): PublishingTab {

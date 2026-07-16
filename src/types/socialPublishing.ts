@@ -24,6 +24,14 @@ export const SOCIAL_JOB_STATUSES = [
 
 export const SOCIAL_CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error'] as const;
 
+/** UI connection health; distinct from operational channel status. */
+export const SOCIAL_CHANNEL_CONNECTION_STATES = [
+  'connected',
+  'disconnected',
+  'expired',
+  'permission_error',
+] as const;
+
 export const SOCIAL_CHANNEL_TYPES = ['facebook_profile', 'facebook_page'] as const;
 
 export const SOCIAL_EXECUTION_MODES = ['browser', 'graph_api'] as const;
@@ -31,6 +39,7 @@ export const SOCIAL_EXECUTION_MODES = ['browser', 'graph_api'] as const;
 export type SocialDraftStatus = (typeof SOCIAL_DRAFT_STATUSES)[number];
 export type SocialJobStatus = (typeof SOCIAL_JOB_STATUSES)[number];
 export type SocialChannelStatus = (typeof SOCIAL_CHANNEL_STATUSES)[number];
+export type SocialChannelConnectionState = (typeof SOCIAL_CHANNEL_CONNECTION_STATES)[number];
 export type SocialChannelType = (typeof SOCIAL_CHANNEL_TYPES)[number];
 export type SocialExecutionMode = (typeof SOCIAL_EXECUTION_MODES)[number];
 
@@ -75,8 +84,33 @@ export interface SocialChannel {
   config?: Record<string, unknown>;
   isActive: boolean;
   consecutiveFailures: number;
+  connectionState?: SocialChannelConnectionState | string | null;
+  lastVerifiedAt?: string | null;
+  lastVerifyError?: string | null;
+  tokenExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SocialPublishAttempt {
+  id: string;
+  companyId?: string | null;
+  jobId: string;
+  draftId: string;
+  channelId: string;
+  workerId?: string | null;
+  attemptNumber: number;
+  status: string;
+  startedAt: string;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  facebookPostId?: string | null;
+  facebookPostUrl?: string | null;
+  requestJson?: Record<string, unknown> | null;
+  responseJson?: Record<string, unknown> | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
 }
 
 export interface SocialPublishJob {
@@ -191,4 +225,15 @@ export interface RetryJobResult {
   job: SocialPublishJob;
   skipped: boolean;
   reason?: string;
+}
+
+export interface ConnectSocialChannelPayload {
+  pageAccessToken: string;
+  pageId?: string;
+  pageName?: string;
+}
+
+export interface ConnectSocialChannelResult {
+  channel: SocialChannel;
+  health: SocialChannelHealth | null;
 }

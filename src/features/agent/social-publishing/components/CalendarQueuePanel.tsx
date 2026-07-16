@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RotateCcw, XCircle } from 'lucide-react';
+import { ExternalLink, RotateCcw, XCircle } from 'lucide-react';
 import {
   cancelSocialJob,
   fetchSocialJobs,
@@ -26,6 +26,17 @@ function jobStatusClass(status: string) {
     skipped: 'bg-slate-800 text-slate-400',
   };
   return map[status] || 'bg-slate-800 text-slate-300';
+}
+
+function readFacebookPostUrl(job: SocialPublishJob): string | null {
+  const result = (job.result || {}) as Record<string, unknown>;
+  const url = result.facebookPostUrl || result.externalUrl;
+  if (typeof url === 'string' && url.trim()) return url;
+  const postId = result.facebookPostId || result.externalPostId;
+  if (typeof postId === 'string' && postId.trim() && !postId.startsWith('dry_run_')) {
+    return `https://www.facebook.com/${postId}`;
+  }
+  return null;
 }
 
 type Props = {
@@ -105,7 +116,7 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
     <div className="space-y-4">
       <AgentPanelHeader
         title="Lịch / Queue"
-        subtitle="Jobs theo scheduledAt — hủy hoặc retry khi lỗi"
+        subtitle="Queue theo scheduledAt (không phải lưới tháng) — hủy hoặc retry khi lỗi"
         onRefresh={load}
         refreshing={loading}
         actions={
@@ -144,63 +155,77 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
               </tr>
             </thead>
             <tbody>
-              {jobs.map(job => (
-                <tr key={job.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                  <td className="px-3 py-3 text-xs text-slate-300">
-                    {formatAgentDate(job.scheduledAt)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="text-slate-200">
-                      {job.draft?.title || job.draftId.slice(0, 8)}
-                    </div>
-                    <div className="mt-1 line-clamp-1 text-xs text-slate-500">
-                      {job.draft?.body || '—'}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-slate-400">
-                    {job.channel?.name || job.channelId.slice(0, 8)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <span
-                      className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${jobStatusClass(job.status)}`}
-                    >
-                      {job.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-xs tabular-nums text-slate-400">
-                    {job.attempts}/{job.maxAttempts}
-                  </td>
-                  <td className="max-w-[220px] px-3 py-3 text-xs text-rose-300">
-                    {job.errorCode || job.errorMessage || '—'}
-                  </td>
-                  {canManage && (
+              {jobs.map(job => {
+                const postUrl =
+                  job.status === 'published' ? readFacebookPostUrl(job) : null;
+                return (
+                  <tr key={job.id} className="border-t border-slate-800 hover:bg-slate-900/40">
+                    <td className="px-3 py-3 text-xs text-slate-300">
+                      {formatAgentDate(job.scheduledAt)}
+                    </td>
                     <td className="px-3 py-3">
-                      <div className="flex gap-1">
-                        {['queued', 'failed', 'skipped'].includes(job.status) && (
-                          <button
-                            type="button"
-                            disabled={busyId === job.id}
-                            onClick={() => handleCancel(job)}
-                            className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            <XCircle className="h-3 w-3" /> Hủy
-                          </button>
-                        )}
-                        {['failed', 'skipped'].includes(job.status) && (
-                          <button
-                            type="button"
-                            disabled={busyId === job.id}
-                            onClick={() => handleRetry(job)}
-                            className="inline-flex items-center gap-1 rounded border border-amber-800 px-2 py-1 text-[10px] font-bold text-amber-300 hover:bg-amber-950/40 disabled:opacity-50"
-                          >
-                            <RotateCcw className="h-3 w-3" /> Retry
-                          </button>
-                        )}
+                      <div className="text-slate-200">
+                        {job.draft?.title || job.draftId.slice(0, 8)}
+                      </div>
+                      <div className="mt-1 line-clamp-1 text-xs text-slate-500">
+                        {job.draft?.body || '—'}
                       </div>
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="px-3 py-3 text-xs text-slate-400">
+                      {job.channel?.name || job.channelId.slice(0, 8)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${jobStatusClass(job.status)}`}
+                      >
+                        {job.status}
+                      </span>
+                      {postUrl && (
+                        <a
+                          href={postUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 flex items-center gap-1 text-[10px] text-sky-400 hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" /> View Facebook Post
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-xs tabular-nums text-slate-400">
+                      {job.attempts}/{job.maxAttempts}
+                    </td>
+                    <td className="max-w-[220px] px-3 py-3 text-xs text-rose-300">
+                      {job.errorCode || job.errorMessage || '—'}
+                    </td>
+                    {canManage && (
+                      <td className="px-3 py-3">
+                        <div className="flex gap-1">
+                          {['queued', 'failed', 'skipped'].includes(job.status) && (
+                            <button
+                              type="button"
+                              disabled={busyId === job.id}
+                              onClick={() => handleCancel(job)}
+                              className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              <XCircle className="h-3 w-3" /> Hủy
+                            </button>
+                          )}
+                          {['failed', 'skipped'].includes(job.status) && (
+                            <button
+                              type="button"
+                              disabled={busyId === job.id}
+                              onClick={() => handleRetry(job)}
+                              className="inline-flex items-center gap-1 rounded border border-amber-800 px-2 py-1 text-[10px] font-bold text-amber-300 hover:bg-amber-950/40 disabled:opacity-50"
+                            >
+                              <RotateCcw className="h-3 w-3" /> Retry
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

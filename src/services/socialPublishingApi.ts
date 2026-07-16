@@ -2,6 +2,8 @@ import { getAuthToken } from './api';
 import type {
   ApproveAndScheduleResult,
   ApproveSchedulePayload,
+  ConnectSocialChannelPayload,
+  ConnectSocialChannelResult,
   CreateSocialChannelPayload,
   CreateSocialDraftPayload,
   PublishNowPayload,
@@ -10,6 +12,7 @@ import type {
   SocialChannel,
   SocialChannelHealth,
   SocialPostDraft,
+  SocialPublishAttempt,
   SocialPublishAuditLog,
   SocialPublishJob,
   SocialSafetySettings,
@@ -118,6 +121,13 @@ export function activateSocialChannel(id: string) {
   });
 }
 
+export function connectSocialChannel(id: string, payload: ConnectSocialChannelPayload) {
+  return socialRequest<ConnectSocialChannelResult>(`/api/social/channels/${id}/connect`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Drafts ────────────────────────────────────────────────
 
 export function fetchSocialDrafts(params: { status?: string } = {}) {
@@ -195,6 +205,24 @@ export function retrySocialJob(id: string) {
   return socialRequest<RetryJobResult>(`/api/social/jobs/${id}/retry`, {
     method: 'POST',
   });
+}
+
+export function fetchJobAttempts(jobId: string) {
+  return socialRequest<SocialPublishAttempt[]>(`/api/social/jobs/${jobId}/attempts`);
+}
+
+export function fetchSocialAttempts(params: {
+  jobId?: string;
+  channelId?: string;
+  limit?: number;
+} = {}) {
+  return socialRequest<SocialPublishAttempt[]>(
+    `/api/social/attempts${qs({
+      jobId: params.jobId,
+      channelId: params.channelId,
+      limit: params.limit,
+    })}`,
+  );
 }
 
 // ── Audit + settings ──────────────────────────────────────
