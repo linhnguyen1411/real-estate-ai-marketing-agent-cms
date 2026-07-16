@@ -25,12 +25,16 @@ const ActionProposalsPage = React.lazy(
 const SpamControlPage = React.lazy(
   () => import('../features/agent/spam-control/pages/SpamControlPage'),
 );
+const SocialPublishingPage = React.lazy(
+  () => import('../features/agent/social-publishing/pages/SocialPublishingPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
   { path: '/admin/agents/sources', label: 'Nguồn' },
   { path: '/admin/agents/missions', label: 'Mission' },
   { path: '/admin/agents/jobs', label: 'Jobs' },
+  { path: '/admin/agents/publishing', label: 'Đăng bài' },
   { path: '/admin/agents/contents', label: 'Nội dung quét' },
   { path: '/admin/agents/findings', label: 'Lead Intelligence' },
   { path: '/admin/agents/external-inventory', label: 'Giỏ hàng ngoài' },
@@ -50,6 +54,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
   if (pathname.startsWith('/admin/agents/missions')) return 'missions';
   if (pathname.startsWith('/admin/agents/jobs')) return 'jobs';
+  if (pathname.startsWith('/admin/agents/publishing')) return 'publishing';
   if (pathname.startsWith('/admin/agents/contents')) return 'contents';
   if (pathname.startsWith('/admin/agents/findings')) return 'findings';
   if (pathname.startsWith('/admin/agents/external-inventory')) return 'external-inventory';
@@ -102,6 +107,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'jobs' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <JobsPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'publishing' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <SocialPublishingPage canManage={canManage} />
           </Suspense>
         )}
         {section === 'contents' && (
