@@ -13,11 +13,8 @@ import {
 } from '../services/contentNormalizer';
 import { saveScannedContent } from '../services/contentRepository';
 import { getLeadAnalysisLimits } from '../../agent/leadAnalyzer';
-import {
-  processFindingForContent,
-  resolveRuleSet,
-  type AnalysisBudget,
-} from '../services/findingRuleEngine';
+import { type AnalysisBudget } from '../services/findingRuleEngine';
+import { processContentAfterCollect } from '../../modules/mission-engine/application/processContentAfterCollect';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
 
 const SUPPORTED_TYPES = new Set(['website', 'forum']);
@@ -39,7 +36,6 @@ export class WebsiteAdapter implements SourceAdapter {
         config.maxPages = Math.min(25, Math.max(1, Math.floor(maxItems)));
       }
     }
-    const rules = resolveRuleSet(ctx.source, ctx.mission);
 
     const seedUrl = normalizeCanonicalUrl(ctx.source.url);
     assertSafePublicUrl(seedUrl);
@@ -97,11 +93,11 @@ export class WebsiteAdapter implements SourceAdapter {
       }
 
       if (saved) {
-        const finding = await processFindingForContent({
+        const finding = await processContentAfterCollect({
           content: saved.record,
           source: ctx.source,
           mission: ctx.mission,
-          rules,
+          job: ctx.job,
           title: parsed.title,
           analysisBudget,
         });

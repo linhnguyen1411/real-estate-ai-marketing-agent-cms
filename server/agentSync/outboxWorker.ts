@@ -1,3 +1,4 @@
+import { isLocalSyncEnabled } from './envelope';
 import { processOutboxBatch } from './outboxService';
 
 const DEFAULT_INTERVAL_MS = 15_000;
@@ -11,7 +12,9 @@ export async function flushAgentSyncOutbox(limit?: number): Promise<{
   failed: number;
   skipped?: string;
 }> {
-  // Hard-on: never skip for env/settings disable flags.
+  if (!isLocalSyncEnabled()) {
+    return { processed: 0, synced: 0, failed: 0, skipped: 'env_disabled' };
+  }
   if (running) {
     return { processed: 0, synced: 0, failed: 0, skipped: 'busy' };
   }
@@ -37,6 +40,7 @@ export async function flushAgentSyncOutbox(limit?: number): Promise<{
 
 /** Kick a non-blocking flush soon after enqueue. */
 export function scheduleAgentSyncFlush(delayMs = 500): void {
+  if (!isLocalSyncEnabled()) return;
   setTimeout(() => {
     void flushAgentSyncOutbox();
   }, delayMs);
@@ -45,12 +49,16 @@ export function scheduleAgentSyncFlush(delayMs = 500): void {
 export function startAgentSyncOutboxWorker(options?: {
   intervalMs?: number;
 }): void {
+  if (!isLocalSyncEnabled()) {
+    console.log('[agent-sync] Outbox worker disabled (AGENT_LOCAL_SYNC_ENABLED=false)');
+    return;
+  }
   if (timer) return;
   const intervalMs = Math.max(
     5_000,
     Number(options?.intervalMs || process.env.AGENT_LOCAL_SYNC_INTERVAL_MS || DEFAULT_INTERVAL_MS),
   );
-  console.log(`[agent-sync] Outbox worker started (hard-on, every ${intervalMs}ms)`);
+  console.log(`[agent-sync] Outbox worker started (every ${intervalMs}ms)`);
   void flushAgentSyncOutbox();
   timer = setInterval(() => {
     void flushAgentSyncOutbox();

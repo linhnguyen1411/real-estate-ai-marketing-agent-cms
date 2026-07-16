@@ -25,8 +25,14 @@ export type AgentIngestionEnvelopeV1 = {
   payload: Record<string, unknown>;
 };
 
-/** Hard-on: local→VPS sync is always enabled (env flag ignored). */
+/**
+ * Local→VPS sync gate.
+ * - Explicit false/0/no → OFF (production VPS must stay off).
+ * - Otherwise ON (local workers default hard-on; env true or unset).
+ */
 export function isLocalSyncEnabled(): boolean {
+  const raw = process.env.AGENT_LOCAL_SYNC_ENABLED?.trim().toLowerCase();
+  if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false;
   return true;
 }
 

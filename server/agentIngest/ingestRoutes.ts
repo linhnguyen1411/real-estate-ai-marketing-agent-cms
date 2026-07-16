@@ -79,6 +79,22 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         telegramEnabled: true,
         ingestEnabled: process.env.AGENT_INGEST_ENABLED?.trim().toLowerCase() === 'true',
         dbReady,
+        missionProvenance: {
+          supported: true,
+          continueWorkflow: true,
+          acceptedPipelineVersions: [1],
+          fields: [
+            'missionId',
+            'missionRunId',
+            'missionVersion',
+            'pipelineVersion',
+            'pipelineHash',
+            'jobId',
+            'completedLocalSteps',
+            'missionWorkflow',
+          ],
+        },
+        capabilities: ['scanned_content_upsert', 'finding_upsert', 'source_upsert', 'mission_workflow'],
       },
     });
   });

@@ -63,26 +63,111 @@ export interface AgentMission {
   status: AgentMissionStatus | string;
   rules: Record<string, unknown>;
   schedule?: Record<string, unknown> | null;
+  pipeline?: Record<string, unknown> | null;
+  pipelineVersion?: number;
+  templateKey?: string | null;
+  nextRunAt?: string | null;
+  lastRunAt?: string | null;
+  scheduler?: {
+    lastRunStatus?: string | null;
+    lastRunAt?: string | null;
+    nextRunAt?: string | null;
+    schedule?: Record<string, unknown> | null;
+    runningCount?: number;
+    sourceCount?: number;
+    pipelineStepCount?: number;
+    schedulerSkipReason?: string | null;
+  };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AgentMissionRunDetail {
+  id: string;
+  missionId: string;
+  missionName: string;
+  status: string;
+  triggerType: string;
+  triggeredBy: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  pipelineVersion: number;
+  pipelineHash: string | null;
+  sources: Array<{ id: string; name: string; url: string }>;
+  jobs: Array<{
+    id: string;
+    sourceId: string | null;
+    status: string;
+    type: string;
+    errorMessage: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }>;
+  metrics: Record<string, number>;
+  stepSummary: {
+    total: number;
+    completed: number;
+    skipped: number;
+    failed: number;
+    pending: number;
+    running: number;
+  };
+  errors: Array<{
+    stepId: string;
+    stepType: string;
+    errorCode: string | null;
+    errorMessage: string | null;
+  }>;
+  steps: Array<{
+    id: string;
+    stepId: string;
+    stepType: string;
+    status: string;
+    executionTarget: string | null;
+    sourceId: string | null;
+    scannedContentId: string | null;
+    findingId: string | null;
+    externalInventoryId: string | null;
+    attempts: number;
+    durationMs: number | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    warnings: string[];
+    errorCode: string | null;
+    errorMessage: string | null;
+  }>;
 }
 
 export interface AgentMissionTemplate {
   id: string;
   name: string;
   objective: string;
-  rules: {
-    sourceIds: string[];
-    positiveKeywords: string[];
-    negativeKeywords: string[];
-    minFindingScore: number;
-    minScore: number;
-    notifyScore: number;
-    maxItemsPerRun: number;
-    analysisInstructions: string;
-    preferredSourceTypes?: string[];
+  category?: string;
+  workflowVersion?: number;
+  pipeline?: {
+    version: number;
+    steps: Array<{
+      id: string;
+      type: string;
+      enabled?: boolean;
+      dependsOn?: string[];
+      config?: Record<string, unknown>;
+    }>;
   };
-  schedule: {
+  rules: {
+    sourceIds?: string[];
+    positiveKeywords?: string[];
+    negativeKeywords?: string[];
+    minFindingScore?: number;
+    minScore?: number;
+    notifyScore?: number;
+    maxItemsPerRun?: number;
+    analysisInstructions?: string;
+    preferredSourceTypes?: Array<'facebook_group' | 'website' | 'forum' | 'search' | string>;
+    [key: string]: unknown;
+  };
+  schedule?: {
     cadence: string;
     preferredHoursLocal?: number[];
     timezone?: string;
@@ -316,7 +401,9 @@ export interface EnqueueSourceResult {
 
 export interface EnqueueMissionResult {
   missionId: string;
+  missionRunId?: string;
   jobsCreated: number;
+  jobsSkipped?: number;
   jobIds: string[];
 }
 

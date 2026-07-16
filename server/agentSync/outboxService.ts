@@ -106,6 +106,21 @@ async function markEntitySynced(input: {
           });
         }
       }
+    } else if (input.eventType === 'source_upsert') {
+      await prisma.agentSource.update({
+        where: { id: input.entityId },
+        data: input.ok
+          ? {
+              syncStatus: 'synced',
+              remoteId: input.remoteSourceId || undefined,
+              lastSyncAt: now,
+              syncError: null,
+            }
+          : {
+              syncStatus: 'failed',
+              syncError: input.error || 'sync_failed',
+            },
+      });
     }
   } catch {
     // non-fatal mapping update

@@ -67,11 +67,8 @@ import {
   findExistingFacebookPostDetailed,
   saveFacebookScannedPost,
 } from '../services/contentRepository';
-import {
-  processFindingForContent,
-  resolveRuleSet,
-  type AnalysisBudget,
-} from '../services/findingRuleEngine';
+import { type AnalysisBudget } from '../services/findingRuleEngine';
+import { processContentAfterCollect } from '../../modules/mission-engine/application/processContentAfterCollect';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
 
 /** @deprecated use FacebookScanConfig from facebookScanConfig */
@@ -93,7 +90,6 @@ export class FacebookGroupAdapter implements SourceAdapter {
     const config = resolveFacebookScanConfig(ctx.source.config, {
       maxItemsPerRun: missionRules.maxItemsPerRun,
     });
-    const rules = resolveRuleSet(ctx.source, ctx.mission);
     const groupUrl = normalizeFacebookSourceUrl(ctx.source.url);
     const isGroupSource = isFacebookGroupUrl(groupUrl);
     const previousCheckpoint = parseFacebookCheckpoint(ctx.source.checkpoint);
@@ -235,11 +231,11 @@ export class FacebookGroupAdapter implements SourceAdapter {
         return;
       }
 
-      const finding = await processFindingForContent({
+      const finding = await processContentAfterCollect({
         content: saved.record,
         source: ctx.source,
         mission: ctx.mission,
-        rules,
+        job: ctx.job,
         title: post.title,
         analysisBudget,
       });

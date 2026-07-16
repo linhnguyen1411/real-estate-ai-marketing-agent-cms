@@ -1,15 +1,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Play, Plus, Sparkles } from 'lucide-react';
+import { Play, Plus, Sparkles, ListOrdered, X } from 'lucide-react';
 import {
+  activateAgentMission,
+  cancelAgentMissionRun,
   createAgentMission,
   createAgentMissionFromTemplate,
+  fetchAgentMissionRunDetail,
+  fetchAgentMissionRuns,
   fetchAgentMissionTemplates,
   fetchAgentMissions,
   fetchAgentSources,
+  pauseAgentMission,
+  retryFailedAgentMissionRun,
   runAgentMission,
   updateAgentMission,
 } from '../../../../services/agentPlatformApi';
-import type { AgentMission, AgentMissionTemplate, AgentSource } from '../../../../types/agentPlatform';
+import type {
+  AgentMission,
+  AgentMissionRunDetail,
+  AgentMissionTemplate,
+  AgentSource,
+} from '../../../../types/agentPlatform';
 import {
   AgentPanelEmpty,
   AgentPanelError,
@@ -32,6 +43,14 @@ const EMPTY_FORM = {
   analysisInstructions: '',
 };
 
+function stepBadge(status: string) {
+  if (status === 'completed') return '✓';
+  if (status === 'skipped') return '–';
+  if (status === 'failed') return '✗';
+  if (status === 'running' || status === 'retrying') return '…';
+  return '·';
+}
+
 export default function AgentMissions({ canManage }: Props) {
   const [missions, setMissions] = useState<AgentMission[]>([]);
   const [templates, setTemplates] = useState<AgentMissionTemplate[]>([]);
@@ -44,6 +63,11 @@ export default function AgentMissions({ canManage }: Props) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [templateSourceIds, setTemplateSourceIds] = useState<string[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [runsMissionId, setRunsMissionId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<
+    Array<{ id: string; status: string; triggerType: string; createdAt: string }>
+  >([]);
+  const [runDetail, setRunDetail] = useState<AgentMissionRunDetail | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +91,28 @@ export default function AgentMissions({ canManage }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const openRuns = async (missionId: string) => {
+    setRunsMissionId(missionId);
+    setRunDetail(null);
+    try {
+      const res = await fetchAgentMissionRuns(missionId, { page: 1, limit: 20 });
+      setRuns(
+        res.data as Array<{ id: string; status: string; triggerType: string; createdAt: string }>,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Không tải được runs.');
+    }
+  };
+
+  const openRunDetail = async (runId: string) => {
+    try {
+      const detail = await fetchAgentMissionRunDetail(runId);
+      setRunDetail(detail);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Không tải được run detail.');
+    }
+  };
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -126,7 +172,12 @@ export default function AgentMissions({ canManage }: Props) {
     setMessage('');
     try {
       const result = await runAgentMission(mission.id);
-      setMessage(`Đã enqueue ${result.jobsCreated} job — worker sẽ xử lý.`);
+      setMessage(
+        `MissionRun ${(result as { missionRunId?: string }).missionRunId || '—'} · enqueue ${result.jobsCreated} job` +
+          ((result as { jobsSkipped?: number }).jobsSkipped
+            ? ` (skip ${(result as { jobsSkipped?: number }).jobsSkipped} — source đang scan)`
+            : ''),
+      );
       load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Chạy mission thất bại.');
@@ -137,8 +188,9 @@ export default function AgentMissions({ canManage }: Props) {
 
   const togglePause = async (mission: AgentMission) => {
     if (!canManage) return;
-    const next = mission.status === 'paused' ? 'active' : 'paused';
-    await updateAgentMission(mission.id, { status: next });
+    if (mission.status === 'paused') await activateAgentMission(mission.id);
+    else if (mission.status === 'active') await pauseAgentMission(mission.id);
+    else await updateAgentMission(mission.id, { status: mission.status === 'draft' ? 'active' : 'paused' });
     load();
   };
 
@@ -148,8 +200,8 @@ export default function AgentMissions({ canManage }: Props) {
   return (
     <div className="space-y-6">
       <AgentPanelHeader
-        title="Mission AI Agent"
-        subtitle="Templates + mục tiêu quét — Chạy ngay chỉ enqueue job"
+        title="Mission Workflow Engine"
+        subtitle="Mission 2.0 — pipeline cấu hình được · Run tạo MissionRun + source jobs"
         onRefresh={load}
         actions={
           canManage ? (
@@ -189,27 +241,16 @@ export default function AgentMissions({ canManage }: Props) {
 
       {showTemplates && canManage && (
         <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Mission templates</h3>
-              <p className="text-xs text-slate-500">
-                Chọn nguồn (tuỳ chọn) rồi tạo mission draft từ template.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowTemplates(false)}
-              className="text-xs text-slate-500 hover:text-slate-300"
-            >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Mission templates</h3>
+            <button type="button" onClick={() => setShowTemplates(false)} className="text-xs text-slate-500">
               Đóng
             </button>
           </div>
           <select
             multiple
             value={templateSourceIds}
-            onChange={e => {
-              setTemplateSourceIds(Array.from(e.target.selectedOptions).map(o => o.value));
-            }}
+            onChange={e => setTemplateSourceIds(Array.from(e.target.selectedOptions).map(o => o.value))}
             className="min-h-[72px] w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
             {sources.map(s => (
@@ -220,26 +261,9 @@ export default function AgentMissions({ canManage }: Props) {
           </select>
           <div className="grid gap-3 md:grid-cols-2">
             {templates.map(template => (
-              <article
-                key={template.id}
-                className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"
-              >
+              <article key={template.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                 <h4 className="text-sm font-semibold text-white">{template.name}</h4>
                 <p className="mt-1 text-xs text-slate-400 line-clamp-3">{template.objective}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5">
-                    min {template.rules.minFindingScore}
-                  </span>
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5">
-                    notify {template.rules.notifyScore}
-                  </span>
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5">
-                    max {template.rules.maxItemsPerRun}/run
-                  </span>
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5">
-                    {template.schedule.cadence}
-                  </span>
-                </div>
                 <button
                   type="button"
                   disabled={busyId === template.id}
@@ -266,76 +290,9 @@ export default function AgentMissions({ canManage }: Props) {
           <textarea
             required
             rows={3}
-            placeholder="Mục tiêu (objective)"
+            placeholder="Mục tiêu"
             value={form.objective}
             onChange={e => setForm(prev => ({ ...prev, objective: e.target.value }))}
-            className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-          <div>
-            <label className="mb-1 block text-xs text-slate-500">Chọn nguồn</label>
-            <select
-              multiple
-              value={form.sourceIds}
-              onChange={e => {
-                const selected = Array.from(e.target.selectedOptions).map(o => o.value);
-                setForm(prev => ({ ...prev, sourceIds: selected }));
-              }}
-              className="min-h-[88px] w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-            >
-              {sources.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
-              ))}
-            </select>
-          </div>
-          <input
-            placeholder="Positive keywords (phân tách bằng dấu phẩy)"
-            value={form.keywords}
-            onChange={e => setForm(prev => ({ ...prev, keywords: e.target.value }))}
-            className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="Negative keywords"
-            value={form.negativeKeywords}
-            onChange={e => setForm(prev => ({ ...prev, negativeKeywords: e.target.value }))}
-            className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-          <div className="grid grid-cols-3 gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={form.minScore}
-              onChange={e => setForm(prev => ({ ...prev, minScore: Number(e.target.value) }))}
-              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              placeholder="minFindingScore"
-              title="minFindingScore"
-            />
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={form.notifyScore}
-              onChange={e => setForm(prev => ({ ...prev, notifyScore: Number(e.target.value) }))}
-              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              placeholder="notifyScore"
-              title="notifyScore"
-            />
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={form.maxItemsPerRun}
-              onChange={e => setForm(prev => ({ ...prev, maxItemsPerRun: Number(e.target.value) }))}
-              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              placeholder="maxItemsPerRun"
-              title="maxItemsPerRun"
-            />
-          </div>
-          <textarea
-            rows={2}
-            placeholder="Analysis instructions"
-            value={form.analysisInstructions}
-            onChange={e => setForm(prev => ({ ...prev, analysisInstructions: e.target.value }))}
             className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           />
           <div className="flex gap-2">
@@ -354,16 +311,12 @@ export default function AgentMissions({ canManage }: Props) {
       ) : (
         <div className="space-y-3">
           {missions.map(mission => {
-            const rules = (mission.rules || {}) as {
-              minScore?: number;
-              minFindingScore?: number;
-              notifyScore?: number;
-              maxItemsPerRun?: number;
-              keywords?: string[];
-              positiveKeywords?: string[];
-              templateId?: string;
-            };
-            const positives = rules.positiveKeywords ?? rules.keywords ?? [];
+            const sched = mission.scheduler;
+            const cadence = String(
+              (sched?.schedule as { cadence?: string } | null)?.cadence ||
+                (mission.schedule as { cadence?: string } | null)?.cadence ||
+                'manual',
+            );
             return (
               <article key={mission.id} className="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -372,50 +325,179 @@ export default function AgentMissions({ canManage }: Props) {
                     <p className="mt-1 text-sm text-slate-400">{mission.objective}</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                       <span className="rounded bg-slate-800 px-2 py-0.5 uppercase">{mission.status}</span>
-                      {rules.templateId && (
-                        <span className="rounded bg-rose-950/40 px-2 py-0.5 text-rose-400/80">
-                          template: {rules.templateId}
+                      {mission.templateKey && (
+                        <span className="rounded bg-emerald-900/40 px-2 py-0.5 text-emerald-300">
+                          {mission.templateKey}
                         </span>
                       )}
-                      {(rules.minFindingScore ?? rules.minScore) !== undefined && (
-                        <span>minScore: {rules.minFindingScore ?? rules.minScore}</span>
+                      <span>schedule: {cadence}</span>
+                      {sched?.pipelineStepCount != null && <span>{sched.pipelineStepCount} steps</span>}
+                      {sched?.sourceCount != null && <span>{sched.sourceCount} sources</span>}
+                      {!!sched?.runningCount && (
+                        <span className="text-amber-400">{sched.runningCount} running</span>
                       )}
-                      {rules.notifyScore !== undefined && <span>notify: {rules.notifyScore}</span>}
-                      {rules.maxItemsPerRun !== undefined && (
-                        <span>max/run: {rules.maxItemsPerRun}</span>
+                      {(sched?.lastRunAt || mission.lastRunAt) && (
+                        <span>last: {formatAgentDate(sched?.lastRunAt || mission.lastRunAt || '')}</span>
                       )}
-                      {positives.length > 0 && (
-                        <span>keywords: {positives.slice(0, 5).join(', ')}{positives.length > 5 ? '…' : ''}</span>
+                      {(sched?.nextRunAt || mission.nextRunAt) && (
+                        <span>next: {formatAgentDate(sched?.nextRunAt || mission.nextRunAt || '')}</span>
                       )}
-                      <span>Cập nhật: {formatAgentDate(mission.updatedAt)}</span>
+                      {sched?.lastRunStatus && <span>lastStatus: {sched.lastRunStatus}</span>}
+                      {sched?.schedulerSkipReason && (
+                        <span className="text-amber-400/80">skip: {sched.schedulerSkipReason}</span>
+                      )}
                     </div>
                   </div>
-                  {canManage && (
-                    <div className="flex shrink-0 gap-2">
-                      <button
-                        type="button"
-                        disabled={busyId === mission.id || mission.status === 'completed'}
-                        onClick={() => handleRun(mission)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                        Chạy ngay
-                      </button>
-                      {mission.status !== 'completed' && (
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openRuns(mission.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                    >
+                      <ListOrdered className="h-3.5 w-3.5" />
+                      View runs
+                    </button>
+                    {canManage && (
+                      <>
                         <button
                           type="button"
-                          onClick={() => togglePause(mission)}
-                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                          disabled={busyId === mission.id || mission.status === 'completed'}
+                          onClick={() => handleRun(mission)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
                         >
-                          {mission.status === 'paused' ? 'Resume' : 'Pause'}
+                          <Play className="h-3.5 w-3.5" />
+                          Run now
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {mission.status !== 'completed' && (
+                          <button
+                            type="button"
+                            onClick={() => togglePause(mission)}
+                            className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                          >
+                            {mission.status === 'paused' || mission.status === 'draft'
+                              ? 'Activate'
+                              : 'Pause'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </article>
             );
           })}
+        </div>
+      )}
+
+      {runsMissionId && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/50">
+          <div className="flex h-full w-full max-w-xl flex-col border-l border-slate-800 bg-slate-950 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+              <h3 className="text-sm font-semibold text-white">
+                {runDetail ? `Run ${runDetail.id.slice(-8)}` : 'Mission runs'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (runDetail) setRunDetail(null);
+                  else {
+                    setRunsMissionId(null);
+                    setRuns([]);
+                  }
+                }}
+                className="rounded p-1 text-slate-400 hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {!runDetail ? (
+                <ul className="space-y-2">
+                  {runs.length === 0 && <li className="text-xs text-slate-500">Chưa có run.</li>}
+                  {runs.map(run => (
+                    <li key={run.id}>
+                      <button
+                        type="button"
+                        onClick={() => openRunDetail(run.id)}
+                        className="w-full rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 text-left text-xs hover:border-slate-600"
+                      >
+                        <div className="font-medium text-white">{run.status}</div>
+                        <div className="mt-0.5 text-slate-500">
+                          {run.triggerType} · {formatAgentDate(run.createdAt)}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+                    <span className="rounded bg-slate-800 px-2 py-0.5 uppercase">{runDetail.status}</span>
+                    <span>v{runDetail.pipelineVersion}</span>
+                    {runDetail.durationMs != null && (
+                      <span>{Math.round(runDetail.durationMs / 1000)}s</span>
+                    )}
+                    <span>
+                      steps {runDetail.stepSummary.completed}/{runDetail.stepSummary.total}
+                    </span>
+                  </div>
+                  {canManage && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                        onClick={async () => {
+                          await retryFailedAgentMissionRun(runDetail.id);
+                          openRunDetail(runDetail.id);
+                        }}
+                      >
+                        Retry failed
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-rose-800 px-3 py-1.5 text-xs text-rose-300"
+                        onClick={async () => {
+                          await cancelAgentMissionRun(runDetail.id);
+                          openRunDetail(runDetail.id);
+                        }}
+                      >
+                        Cancel run
+                      </button>
+                    </div>
+                  )}
+                  <ol className="space-y-1.5">
+                    {runDetail.steps.map(step => (
+                      <li
+                        key={step.id}
+                        className="rounded border border-slate-800/80 bg-slate-900/40 px-2.5 py-1.5 text-xs"
+                      >
+                        <div className="flex gap-2">
+                          <span className="w-4 text-center text-slate-400">{stepBadge(step.status)}</span>
+                          <div>
+                            <div className="font-medium text-slate-200">
+                              {step.stepType}{' '}
+                              <span className="text-slate-500">{step.status}</span>
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                              {step.executionTarget && <span>{step.executionTarget}</span>}
+                              {step.attempts > 0 && <span>attempts {step.attempts}</span>}
+                              {step.findingId && <span>Finding …{step.findingId.slice(-6)}</span>}
+                              {step.externalInventoryId && (
+                                <span>Inv …{step.externalInventoryId.slice(-6)}</span>
+                              )}
+                              {step.errorMessage && (
+                                <span className="text-rose-400">{step.errorMessage}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

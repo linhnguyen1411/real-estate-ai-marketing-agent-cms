@@ -88,6 +88,12 @@ import {
 } from './spam/spamRuleRepository';
 import { evaluateContentSpam } from './spam/spamPolicyService';
 import { normalizeSpamPhoneInput } from './spam/phoneSpam';
+import { registerMissionEngineRoutes, syncMissionSources } from '../modules/mission-engine/api/missionRunRoutes';
+import {
+  getMissionWorkflowTemplate,
+  listMissionWorkflowTemplates,
+} from '../modules/mission-engine/domain/missionTemplates';
+import { assertValidPipeline } from '../modules/mission-engine/domain/workflowValidation';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -99,6 +105,8 @@ function isPrismaUniqueError(error: unknown): boolean {
 
 export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
   const { getAuthUser, accessDefaults } = deps;
+
+  registerMissionEngineRoutes(app, deps);
 
   function requireManage(req: Request, res: Response): boolean {
     const user = getAuthUser(req);
@@ -287,7 +295,18 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
 
   app.get('/api/agent/missions/templates', async (_req: Request, res: Response) => {
     try {
-      res.json({ status: 'success', data: listMissionTemplates() });
+      const workflow = listMissionWorkflowTemplates().map(t => ({
+        id: t.id,
+        name: t.name,
+        objective: t.objective,
+        category: t.category,
+        pipeline: t.pipeline,
+        rules: t.rulesDefaults,
+        schedule: t.schedule,
+        workflowVersion: 2,
+      }));
+      const legacy = listMissionTemplates().map(t => ({ ...t, workflowVersion: 1 }));
+      res.json({ status: 'success', data: [...workflow, ...legacy] });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tải được templates.');
     }
@@ -303,16 +322,52 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
       return;
     }
 
+    const sourceIds = Array.isArray(body.sourceIds)
+      ? body.sourceIds.map(id => String(id).trim()).filter(Boolean)
+      : undefined;
+    const status = body.status !== undefined ? String(body.status).trim() : 'draft';
+
+    const wf = getMissionWorkflowTemplate(templateId);
+    if (wf) {
+      try {
+        const defaults = accessDefaults(req, body);
+        const pipeline = assertValidPipeline(wf.pipeline);
+        const ids = sourceIds ?? [];
+        const created = await createAgentMission({
+          companyId: defaults.company_id,
+          ownerUserId: defaults.owner_user_id,
+          name: String(body.name || wf.name).trim(),
+          objective: String(body.objective || wf.objective).trim(),
+          status,
+          templateKey: wf.id,
+          pipeline: pipeline as unknown as Prisma.InputJsonValue,
+          pipelineVersion: pipeline.version,
+          rules: {
+            ...wf.rulesDefaults,
+            sourceIds: ids,
+          } as Prisma.InputJsonValue,
+          schedule: (wf.schedule || undefined) as Prisma.InputJsonValue | undefined,
+        });
+        if (ids.length) {
+          await syncMissionSources({
+            missionId: created.id,
+            companyId: created.companyId,
+            sourceIds: ids,
+          });
+        }
+        res.json({ status: 'success', data: created });
+        return;
+      } catch (error: unknown) {
+        sendError(res, 500, error instanceof Error ? error.message : 'Không tạo được mission từ template.');
+        return;
+      }
+    }
+
     const template = getMissionTemplateById(templateId);
     if (!template) {
       sendError(res, 404, 'Không tìm thấy mission template.');
       return;
     }
-
-    const sourceIds = Array.isArray(body.sourceIds)
-      ? body.sourceIds.map(id => String(id).trim()).filter(Boolean)
-      : undefined;
-    const status = body.status !== undefined ? String(body.status).trim() : 'draft';
 
     const payload = buildMissionPayloadFromTemplate(template, {
       sourceIds,
@@ -340,6 +395,18 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
           ? Prisma.JsonNull
           : (validated.value.schedule as Prisma.InputJsonValue | undefined),
       });
+      const ids =
+        sourceIds ??
+        (Array.isArray((validated.value.rules as { sourceIds?: string[] } | undefined)?.sourceIds)
+          ? ((validated.value.rules as { sourceIds: string[] }).sourceIds)
+          : []);
+      if (ids.length) {
+        await syncMissionSources({
+          missionId: created.id,
+          companyId: created.companyId,
+          sourceIds: ids,
+        });
+      }
       res.json({ status: 'success', data: created });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tạo được mission từ template.');

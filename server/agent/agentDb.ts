@@ -296,7 +296,17 @@ export async function listAgentMissions(user: AuthUser, pagination: PaginationIn
     prisma.agentMission.count({ where }),
   ]);
 
-  return { items, total };
+  const { enrichMissionListItem } = await import(
+    '../modules/mission-engine/application/missionRunDetailService'
+  );
+  const enriched = await Promise.all(
+    items.map(async m => ({
+      ...m,
+      scheduler: await enrichMissionListItem(m.id),
+    })),
+  );
+
+  return { items: enriched, total };
 }
 
 export async function getAgentMissionById(id: string) {
