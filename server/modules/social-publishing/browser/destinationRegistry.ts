@@ -2,7 +2,7 @@ import {
   FacebookGroupStubAdapter,
   FacebookPageWebStubAdapter,
 } from './adapters/facebookStubs';
-import { FacebookTimelineAdapter } from './adapters/facebookTimelineAdapter';
+import { facebookTimelineAdapter } from './adapters/facebookTimelineAdapter';
 import { getCapabilitiesForDestination } from './capabilities';
 import type {
   BrowserDestinationAdapter,
@@ -19,19 +19,18 @@ function register(reg: DestinationRegistration): void {
 function bootstrapDefaults(): void {
   if (registrations.size > 0) return;
 
-  const stubs: Array<{ key: DestinationKey; label: string; Adapter: new () => BrowserDestinationAdapter }> =
+  const defaults: Array<{ key: DestinationKey; label: string; adapter: BrowserDestinationAdapter }> =
     [
-      { key: 'facebook_timeline', label: 'Facebook Timeline', Adapter: FacebookTimelineAdapter },
-      { key: 'facebook_group', label: 'Facebook Group', Adapter: FacebookGroupStubAdapter },
-      { key: 'facebook_page_web', label: 'Facebook Page (Web)', Adapter: FacebookPageWebStubAdapter },
+      { key: 'facebook_timeline', label: 'Facebook Timeline', adapter: facebookTimelineAdapter },
+      { key: 'facebook_group', label: 'Facebook Group', adapter: new FacebookGroupStubAdapter() },
+      { key: 'facebook_page_web', label: 'Facebook Page (Web)', adapter: new FacebookPageWebStubAdapter() },
     ];
 
-  for (const { key, label, Adapter } of stubs) {
-    const adapter = new Adapter();
+  for (const { key, label, adapter } of defaults) {
     register({
       key,
       label,
-      adapter,
+      adapter: adapter,
       capabilities: getCapabilitiesForDestination(key),
     });
   }
