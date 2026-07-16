@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED — Graph API client for outbound publish only.
+ * Inbound Graph (webhook/inbox) remains in server/facebook/*.
+ */
 import { getFacebookConfig, getGraphBaseUrl } from '../../../facebook/config';
 
 export const GRAPH_PUBLISH_SCOPES = ['pages_manage_posts', 'pages_read_engagement'] as const;

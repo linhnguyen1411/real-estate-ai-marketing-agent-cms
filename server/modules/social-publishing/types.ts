@@ -32,7 +32,11 @@ export const CHANNEL_CONNECTION_STATES = [
   'permission_error',
 ] as const;
 
-export const CHANNEL_TYPES = ['facebook_profile', 'facebook_page'] as const;
+export const CHANNEL_TYPES = [
+  'facebook_profile',
+  'facebook_group',
+  'facebook_page',
+] as const;
 
 export const EXECUTION_MODES = ['browser', 'graph_api'] as const;
 

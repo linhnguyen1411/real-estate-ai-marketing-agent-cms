@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED — Graph API outbound publish. Use browser destination adapters instead.
+ * Kept for emergency rollback when SOCIAL_ALLOW_GRAPH_PUBLISH=1.
+ * @see docs/publishing/GRAPH-PUBLISHER-DEPRECATION.md
+ */
 import type { SocialChannel } from '@prisma/client';
 import { getActivePageAccessToken } from '../../../facebook/facebookDb';
 import { decryptAccessToken } from '../../../facebook/tokenCrypto';

@@ -4,21 +4,30 @@ import { facebookPageBrowserPublisher } from './facebookPageBrowserPublisher';
 import { facebookPageGraphPublisher } from './facebookPageGraphPublisher';
 import { facebookProfileBrowserPublisher } from './facebookProfileBrowserPublisher';
 
-const DEFAULT_PUBLISHERS: SocialPublisher[] = [
-  facebookPageGraphPublisher,
-  facebookProfileBrowserPublisher,
-  facebookPageBrowserPublisher,
-];
+function isGraphPublishEnabled(): boolean {
+  return process.env.SOCIAL_ALLOW_GRAPH_PUBLISH === '1';
+}
 
-let runtimePublishers: SocialPublisher[] = [...DEFAULT_PUBLISHERS];
+function buildDefaultPublishers(): SocialPublisher[] {
+  const publishers: SocialPublisher[] = [
+    facebookProfileBrowserPublisher,
+    facebookPageBrowserPublisher,
+  ];
+  if (isGraphPublishEnabled()) {
+    publishers.unshift(facebookPageGraphPublisher);
+  }
+  return publishers;
+}
+
+let runtimePublishers: SocialPublisher[] = buildDefaultPublishers();
 
 /** Worker can replace/augment publishers with browser-capable instances. */
 export function setPublisherRegistry(publishers: SocialPublisher[]): void {
-  runtimePublishers = publishers.length ? publishers : [...DEFAULT_PUBLISHERS];
+  runtimePublishers = publishers.length ? publishers : buildDefaultPublishers();
 }
 
 export function resetPublisherRegistry(): void {
-  runtimePublishers = [...DEFAULT_PUBLISHERS];
+  runtimePublishers = buildDefaultPublishers();
 }
 
 export function resolvePublisher(channel: SocialChannel): SocialPublisher {
