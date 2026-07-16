@@ -4,12 +4,16 @@
 
 import type { WorkflowPipelineDefinition } from './workflowTypes';
 import { buildDefaultLeadPipeline } from './workflowPolicies';
+import {
+  PUBLISH_BROWSER_CONTENT_PIPELINE,
+  PUBLISH_BROWSER_CONTENT_TEMPLATE_KEY,
+} from './publishMissionTemplate';
 
 export interface MissionWorkflowTemplate {
   id: string;
   name: string;
   objective: string;
-  category: 'buyer' | 'supply' | 'brand' | 'research' | 'lead_watch';
+  category: 'buyer' | 'supply' | 'brand' | 'research' | 'lead_watch' | 'publisher';
   pipeline: WorkflowPipelineDefinition;
   /** Merged into AgentMission.rules for keyword / score compatibility */
   rulesDefaults: Record<string, unknown>;
@@ -336,6 +340,19 @@ export const MISSION_WORKFLOW_TEMPLATES: MissionWorkflowTemplate[] = [
       maxItemsPerRun: 40,
     },
     schedule: { cadence: 'every_2h', timezone: TZ },
+  },
+  {
+    id: PUBLISH_BROWSER_CONTENT_TEMPLATE_KEY,
+    name: 'Publish Browser Content',
+    objective:
+      'Browser publish approved draft to configured destination — prepare → navigate → upload → fill → publish → verify → capture → cleanup.',
+    category: 'publisher',
+    pipeline: PUBLISH_BROWSER_CONTENT_PIPELINE,
+    rulesDefaults: {
+      templateId: PUBLISH_BROWSER_CONTENT_TEMPLATE_KEY,
+      publishOnly: true,
+    },
+    schedule: { cadence: 'manual' },
   },
 ];
 

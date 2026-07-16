@@ -21,6 +21,15 @@ export const WORKFLOW_STEP_TYPES = [
   'condition',
   'stop',
   'mark_ignored',
+  // Browser publish workflow (local_worker only)
+  'browser_prepare',
+  'browser_navigate',
+  'browser_upload_media',
+  'browser_fill_content',
+  'browser_publish',
+  'browser_verify_publish',
+  'browser_capture_evidence',
+  'browser_cleanup',
 ] as const;
 
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
@@ -136,6 +145,9 @@ export interface WorkflowStepContext {
   sourceId?: string | null;
   scannedContentId?: string | null;
   findingId?: string | null;
+  /** Browser publish workflow — set by executePublishWorkflow */
+  publishJobId?: string | null;
+  destinationKey?: string | null;
   previousStepOutputs: Record<string, unknown>;
   abortSignal?: AbortSignal;
 }
