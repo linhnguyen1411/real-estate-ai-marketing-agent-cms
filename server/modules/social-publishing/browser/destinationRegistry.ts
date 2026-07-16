@@ -1,8 +1,8 @@
 import {
   FacebookGroupStubAdapter,
   FacebookPageWebStubAdapter,
-  FacebookTimelineStubAdapter,
 } from './adapters/facebookStubs';
+import { FacebookTimelineAdapter } from './adapters/facebookTimelineAdapter';
 import { getCapabilitiesForDestination } from './capabilities';
 import type {
   BrowserDestinationAdapter,
@@ -21,7 +21,7 @@ function bootstrapDefaults(): void {
 
   const stubs: Array<{ key: DestinationKey; label: string; Adapter: new () => BrowserDestinationAdapter }> =
     [
-      { key: 'facebook_timeline', label: 'Facebook Timeline', Adapter: FacebookTimelineStubAdapter },
+      { key: 'facebook_timeline', label: 'Facebook Timeline', Adapter: FacebookTimelineAdapter },
       { key: 'facebook_group', label: 'Facebook Group', Adapter: FacebookGroupStubAdapter },
       { key: 'facebook_page_web', label: 'Facebook Page (Web)', Adapter: FacebookPageWebStubAdapter },
     ];

@@ -17,6 +17,7 @@ import {
 import { startPublishMissionRun } from '../publishMissionBridge';
 import type { PublishResult } from '../types';
 import { executePublishWorkflow } from '../../mission-engine/application/publishWorkflowExecutionService';
+import { configureFacebookTimelineAdapterRuntime } from '../browser/adapters/facebookTimelineAdapter';
 
 function isAlreadyPublishedResult(result: unknown): result is { externalPostId: string } {
   return Boolean(
@@ -33,8 +34,17 @@ function isAlreadyPublishedResult(result: unknown): result is { externalPostId: 
  */
 export async function runPublishSocialJob(
   agentJob: AgentJob,
-  _browser: BrowserManager,
+  browser: BrowserManager,
 ): Promise<Record<string, unknown>> {
+  configureFacebookTimelineAdapterRuntime({
+    pageFactory: {
+      getPublishPage: (options?: { initialUrl?: string; mode?: 'cdp' | 'managed' }) =>
+        browser.getPublishPage(options),
+      beginCdpJob: () => browser.beginCdpJob(),
+      releaseCdpLock: () => browser.releaseCdpLock(),
+    },
+  });
+
   const payload = (agentJob.payload || {}) as Record<string, unknown>;
   const publishJobId = String(payload.publishJobId || '').trim();
   if (!publishJobId) {
