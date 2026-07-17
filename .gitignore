@@ -62,6 +62,8 @@ public/property-images/
 # Browser automation profiles & sensitive session artifacts (AI agent / Playwright)
 **/browser-profiles/
 **/runtime/agent-browser-profile/
+**/runtime/agent-cdp-profile/
+**/runtime/publish-evidence/
 **/.browser-profile/
 **/playwright/.auth/
 cookies.json

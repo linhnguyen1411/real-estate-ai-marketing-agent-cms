@@ -20,6 +20,7 @@ export const AGENT_TAB_TO_PATH: Record<string, string> = {
   'agent-publishing-drafts': '/admin/agents/publishing/drafts',
   'agent-publishing-channels': '/admin/agents/publishing/channels',
   'agent-publishing-history': '/admin/agents/publishing/history',
+  'agent-publishing-campaigns': '/admin/agents/publishing/campaigns',
   'agent-contents': '/admin/agents/contents',
   'agent-findings': '/admin/agents/findings',
   'agent-external-inventory': '/admin/agents/external-inventory',

@@ -32,7 +32,11 @@ export const SOCIAL_CHANNEL_CONNECTION_STATES = [
   'permission_error',
 ] as const;
 
-export const SOCIAL_CHANNEL_TYPES = ['facebook_profile', 'facebook_page'] as const;
+export const SOCIAL_CHANNEL_TYPES = [
+  'facebook_profile',
+  'facebook_page',
+  'facebook_group',
+] as const;
 
 export const SOCIAL_EXECUTION_MODES = ['browser', 'graph_api'] as const;
 
@@ -236,4 +240,106 @@ export interface ConnectSocialChannelPayload {
 export interface ConnectSocialChannelResult {
   channel: SocialChannel;
   health: SocialChannelHealth | null;
+}
+
+export interface DestinationCapabilities {
+  supportsText: boolean;
+  supportsImage: boolean;
+  supportsVideo: boolean;
+  supportsLinks: boolean;
+  supportsScheduling: boolean;
+  supportsVerification: boolean;
+}
+
+export interface SocialDestinationInfo {
+  key: string;
+  label: string;
+  capabilities: DestinationCapabilities;
+}
+
+export interface PublishEvidenceEntry {
+  attemptId: string;
+  manifest: {
+    publishJobId: string;
+    missionRunId: string;
+    durationMs: number;
+    publishedUrl?: string | null;
+    screenshotBeforePath?: string | null;
+    screenshotAfterPath?: string | null;
+    htmlSnapshotPath?: string | null;
+    capturedAt: string;
+    destinationKey?: string | null;
+  } | null;
+  paths: {
+    manifestPath: string;
+    screenshotBeforePath: string;
+    screenshotAfterPath: string;
+    htmlSnapshotPath: string;
+  };
+  files: {
+    hasScreenshotBefore: boolean;
+    hasScreenshotAfter: boolean;
+    hasHtmlSnapshot: boolean;
+  };
+}
+
+export interface CampaignProgress {
+  total: number;
+  completed: number;
+  failed: number;
+  pending: number;
+  publishing: number;
+  skipped: number;
+}
+
+export interface SocialCampaignRunSummary {
+  id: string;
+  status: string;
+  progress?: CampaignProgress | Record<string, unknown> | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export interface SocialCampaignTarget {
+  id: string;
+  channelId: string;
+  destinationKey?: string | null;
+  status: string;
+  publishJobId?: string | null;
+  missionRunId?: string | null;
+  permalink?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  attempts?: number;
+}
+
+export interface SocialCampaignRunDetail extends SocialCampaignRunSummary {
+  targets?: SocialCampaignTarget[];
+  triggerType?: string;
+  triggeredBy?: string | null;
+  scheduledAt?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface SocialCampaign {
+  id: string;
+  companyId?: string | null;
+  name: string;
+  draftId: string;
+  status: string;
+  destinationChannelIds: string[] | unknown;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  draft?: Pick<SocialPostDraft, 'id' | 'title' | 'status' | 'body'> | null;
+  runs?: SocialCampaignRunDetail[];
+}
+
+export interface CreateSocialCampaignPayload {
+  name: string;
+  draftId: string;
+  channelIds: string[];
+  metadata?: Record<string, unknown>;
+  company_id?: string | null;
 }

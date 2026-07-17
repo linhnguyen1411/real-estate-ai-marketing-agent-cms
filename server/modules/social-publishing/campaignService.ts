@@ -368,3 +368,71 @@ export async function refreshCampaignRunProgress(campaignRunId: string): Promise
 export async function getCampaignRun(campaignRunId: string) {
   return refreshCampaignRunProgress(campaignRunId);
 }
+
+/** List campaigns for UI (latest run snapshot only). */
+export async function listCampaigns(input: {
+  companyId?: string | null;
+  status?: string;
+  limit?: number;
+}) {
+  return prisma.socialCampaign.findMany({
+    where: {
+      ...(input.companyId !== undefined ? { companyId: input.companyId } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    },
+    include: {
+      draft: { select: { id: true, title: true, status: true } },
+      runs: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          progress: true,
+          startedAt: true,
+          completedAt: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(Math.max(input.limit ?? 50, 1), 200),
+  });
+}
+
+/** Full campaign detail for Open Campaign UI. */
+export async function getCampaign(campaignId: string) {
+  const campaign = await prisma.socialCampaign.findUnique({
+    where: { id: campaignId },
+    include: {
+      draft: { select: { id: true, title: true, status: true, body: true } },
+      runs: {
+        orderBy: { createdAt: 'desc' },
+        include: {
+          targets: { orderBy: { sortOrder: 'asc' } },
+        },
+      },
+    },
+  });
+  if (!campaign) return null;
+
+  // Refresh progress for non-terminal latest run so UI sees live stats
+  const latest = campaign.runs[0];
+  if (latest && !['completed', 'failed', 'partial_success', 'cancelled'].includes(latest.status)) {
+    await refreshCampaignRunProgress(latest.id);
+    return prisma.socialCampaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        draft: { select: { id: true, title: true, status: true, body: true } },
+        runs: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            targets: { orderBy: { sortOrder: 'asc' } },
+          },
+        },
+      },
+    });
+  }
+
+  return campaign;
+}

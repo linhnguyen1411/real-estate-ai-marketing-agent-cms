@@ -201,6 +201,49 @@ export async function retryJob(id: string, actor?: string | null) {
   return { job: updated, skipped: false as const };
 }
 
+/** Reschedule a queued/failed job (calendar drag-drop). */
+export async function rescheduleJob(
+  id: string,
+  scheduledAt: Date,
+  actor?: string | null,
+): Promise<SocialPublishJob> {
+  const job = await prisma.socialPublishJob.findUnique({ where: { id } });
+  if (!job) throw new Error('Job not found');
+  if (!['queued', 'failed', 'skipped'].includes(job.status)) {
+    throw new Error(`Cannot reschedule job in status ${job.status}`);
+  }
+  const updated = await prisma.socialPublishJob.update({
+    where: { id },
+    data: {
+      scheduledAt,
+      status: 'queued',
+      errorCode: null,
+      errorMessage: null,
+      claimedBy: null,
+      startedAt: null,
+      completedAt: null,
+    },
+  });
+  await appendAuditLog({
+    companyId: job.companyId,
+    entityType: 'SocialPublishJob',
+    entityId: id,
+    action: 'rescheduled',
+    actor,
+    metadata: { scheduledAt: scheduledAt.toISOString() },
+  });
+
+  if (scheduledAt.getTime() <= Date.now()) {
+    await enqueueAgentJobForPublishJob(updated);
+  }
+  return updated;
+}
+
+/** Publish-now for an existing job: move to now and enqueue. */
+export async function publishJobNow(id: string, actor?: string | null): Promise<SocialPublishJob> {
+  return rescheduleJob(id, new Date(), actor);
+}
+
 /**
  * Reset ACTIVE jobs stuck longer than 10 minutes back to queued.
  */

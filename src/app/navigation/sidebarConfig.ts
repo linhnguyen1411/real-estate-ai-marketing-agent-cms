@@ -28,6 +28,7 @@ import {
   FilePenLine,
   Share2,
   History,
+  Megaphone,
 } from 'lucide-react';
 import type { NavItemConfig } from './navigationTypes';
 import { MXH_POSTS_ENABLED } from './tabPaths';
@@ -44,10 +45,11 @@ export const AGENT_SUBMENU: NavItemConfig[] = [
   { id: 'agent-sources', label: 'Nguồn', icon: Globe, path: '/admin/agents/sources', badgeKey: 'sources' },
   { id: 'agent-missions', label: 'Mission', icon: Sparkles, path: '/admin/agents/missions' },
   { id: 'agent-jobs', label: 'Jobs', icon: Clock, path: '/admin/agents/jobs', badgeKey: 'jobs' },
-  { id: 'agent-publishing', label: 'Lịch đăng bài', icon: CalendarDays, path: '/admin/agents/publishing' },
+  { id: 'agent-publishing', label: 'Lịch đăng', icon: CalendarDays, path: '/admin/agents/publishing' },
   { id: 'agent-publishing-drafts', label: 'Bản nháp', icon: FilePenLine, path: '/admin/agents/publishing/drafts' },
   { id: 'agent-publishing-channels', label: 'Kênh đăng', icon: Share2, path: '/admin/agents/publishing/channels' },
   { id: 'agent-publishing-history', label: 'Lịch sử đăng', icon: History, path: '/admin/agents/publishing/history' },
+  { id: 'agent-publishing-campaigns', label: 'Campaign', icon: Megaphone, path: '/admin/agents/publishing/campaigns' },
   { id: 'agent-contents', label: 'Nội dung quét', icon: ScanSearch, path: '/admin/agents/contents' },
   { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch, path: '/admin/agents/findings', badgeKey: 'leadIntelligence' },
   { id: 'agent-external-inventory', label: 'Giỏ hàng ngoài', icon: Package, path: '/admin/agents/external-inventory', badgeKey: 'externalInventory' },

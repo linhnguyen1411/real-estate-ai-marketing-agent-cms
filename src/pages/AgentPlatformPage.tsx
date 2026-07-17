@@ -25,8 +25,20 @@ const ActionProposalsPage = React.lazy(
 const SpamControlPage = React.lazy(
   () => import('../features/agent/spam-control/pages/SpamControlPage'),
 );
-const SocialPublishingPage = React.lazy(
-  () => import('../features/agent/social-publishing/pages/SocialPublishingPage'),
+const PublishingSchedulePage = React.lazy(
+  () => import('../features/agent/publishing-schedule/pages/PublishingSchedulePage'),
+);
+const PublishingDraftsPage = React.lazy(
+  () => import('../features/agent/publishing-drafts/pages/PublishingDraftsPage'),
+);
+const PublishingChannelsPage = React.lazy(
+  () => import('../features/agent/publishing-channels/pages/PublishingChannelsPage'),
+);
+const PublishingHistoryPage = React.lazy(
+  () => import('../features/agent/publishing-history/pages/PublishingHistoryPage'),
+);
+const PublishingCampaignsPage = React.lazy(
+  () => import('../features/agent/publishing-campaigns/pages/PublishingCampaignsPage'),
 );
 
 const NAV_ITEMS = [
@@ -66,9 +78,19 @@ function resolveSection(pathname: string) {
   return 'dashboard';
 }
 
+function resolvePublishingSection(pathname: string) {
+  if (pathname.includes('/publishing/drafts')) return 'publishing-drafts';
+  if (pathname.includes('/publishing/channels')) return 'publishing-channels';
+  if (pathname.includes('/publishing/history')) return 'publishing-history';
+  if (pathname.includes('/publishing/campaigns')) return 'publishing-campaigns';
+  if (pathname.startsWith('/admin/agents/publishing')) return 'publishing';
+  return null;
+}
+
 export default function AgentPlatformPage({ userRole }: Props) {
   const location = useLocation();
   const section = resolveSection(location.pathname);
+  const publishingSection = resolvePublishingSection(location.pathname);
   const canManage = userRole === 'owner' || userRole === 'company';
 
   return (
@@ -111,7 +133,21 @@ export default function AgentPlatformPage({ userRole }: Props) {
         )}
         {section === 'publishing' && (
           <Suspense fallback={<AgentPanelLoader />}>
-            <SocialPublishingPage canManage={canManage} />
+            {publishingSection === 'publishing-drafts' && (
+              <PublishingDraftsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-channels' && (
+              <PublishingChannelsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-history' && (
+              <PublishingHistoryPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-campaigns' && (
+              <PublishingCampaignsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing' && (
+              <PublishingSchedulePage canManage={canManage} />
+            )}
           </Suspense>
         )}
         {section === 'contents' && (

@@ -26,6 +26,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteDef[] = [
   { path: '/admin/agents/publishing/drafts', tabId: 'agent-publishing-drafts', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/publishing/channels', tabId: 'agent-publishing-channels', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/publishing/history', tabId: 'agent-publishing-history', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing/campaigns', tabId: 'agent-publishing-campaigns', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/contents', tabId: 'agent-contents', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/findings', tabId: 'agent-findings', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/external-inventory', tabId: 'agent-external-inventory', layout: 'admin', permission: 'auth', group: 'agent' },

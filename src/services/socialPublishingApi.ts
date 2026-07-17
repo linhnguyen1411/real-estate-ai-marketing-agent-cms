@@ -4,13 +4,17 @@ import type {
   ApproveSchedulePayload,
   ConnectSocialChannelPayload,
   ConnectSocialChannelResult,
+  CreateSocialCampaignPayload,
   CreateSocialChannelPayload,
   CreateSocialDraftPayload,
+  PublishEvidenceEntry,
   PublishNowPayload,
   RetryJobResult,
   ScheduleDraftPayload,
+  SocialCampaign,
   SocialChannel,
   SocialChannelHealth,
+  SocialDestinationInfo,
   SocialPostDraft,
   SocialPublishAttempt,
   SocialPublishAuditLog,
@@ -185,6 +189,24 @@ export function publishSocialDraftNow(id: string, payload: PublishNowPayload) {
   });
 }
 
+export function duplicateSocialDraft(id: string) {
+  return socialRequest<SocialPostDraft>(`/api/social/drafts/${id}/duplicate`, {
+    method: 'POST',
+  });
+}
+
+export function regenerateSocialDraft(id: string) {
+  return socialRequest<SocialPostDraft>(`/api/social/drafts/${id}/regenerate`, {
+    method: 'POST',
+  });
+}
+
+export function archiveSocialDraft(id: string) {
+  return socialRequest<SocialPostDraft>(`/api/social/drafts/${id}/archive`, {
+    method: 'POST',
+  });
+}
+
 // ── Jobs ──────────────────────────────────────────────────
 
 export function fetchSocialJobs(params: {
@@ -205,6 +227,27 @@ export function retrySocialJob(id: string) {
   return socialRequest<RetryJobResult>(`/api/social/jobs/${id}/retry`, {
     method: 'POST',
   });
+}
+
+export function rescheduleSocialJob(id: string, scheduledAt: string) {
+  return socialRequest<SocialPublishJob>(`/api/social/jobs/${id}/reschedule`, {
+    method: 'PATCH',
+    body: JSON.stringify({ scheduledAt }),
+  });
+}
+
+export function publishSocialJobNow(id: string) {
+  return socialRequest<SocialPublishJob>(`/api/social/jobs/${id}/publish-now`, {
+    method: 'POST',
+  });
+}
+
+export function fetchJobEvidence(jobId: string) {
+  return socialRequest<PublishEvidenceEntry[]>(`/api/social/jobs/${jobId}/evidence`);
+}
+
+export function evidenceFileUrl(filePath: string) {
+  return `/api/social/evidence-file${qs({ path: filePath })}`;
 }
 
 export function fetchJobAttempts(jobId: string) {
@@ -236,4 +279,43 @@ export function fetchSocialAudit(params: {
 
 export function fetchSocialSettings() {
   return socialRequest<SocialSafetySettings>('/api/social/settings');
+}
+
+// ── Destinations ──────────────────────────────────────────
+
+export function fetchSocialDestinations() {
+  return socialRequest<SocialDestinationInfo[]>('/api/social/destinations');
+}
+
+// ── Campaigns ─────────────────────────────────────────────
+
+export function fetchSocialCampaigns(params: { status?: string } = {}) {
+  return socialRequest<SocialCampaign[]>(`/api/social/campaigns${qs(params)}`);
+}
+
+export function fetchSocialCampaign(id: string) {
+  return socialRequest<SocialCampaign>(`/api/social/campaigns/${id}`);
+}
+
+export function createSocialCampaign(payload: CreateSocialCampaignPayload) {
+  return socialRequest<SocialCampaign>('/api/social/campaigns', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function startSocialCampaign(
+  id: string,
+  payload: { scheduledAt?: string } = {},
+) {
+  return socialRequest<unknown>(`/api/social/campaigns/${id}/start`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function refreshSocialCampaignRun(id: string) {
+  return socialRequest<unknown>(`/api/social/campaign-runs/${id}/refresh`, {
+    method: 'POST',
+  });
 }

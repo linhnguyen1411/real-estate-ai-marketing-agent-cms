@@ -1,14 +1,22 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { KeyRound, Pause, Play, Plus, ShieldCheck } from 'lucide-react';
 import {
   activateSocialChannel,
   connectSocialChannel,
   createSocialChannel,
   fetchSocialChannels,
+  fetchSocialDestinations,
+  fetchSocialJobs,
   pauseSocialChannel,
   testSocialChannel,
 } from '../../../../services/socialPublishingApi';
-import type { SocialChannel, SocialChannelHealth } from '../../../../types/socialPublishing';
+import type {
+  SocialChannel,
+  SocialChannelHealth,
+  SocialChannelType,
+  SocialDestinationInfo,
+  SocialPublishJob,
+} from '../../../../types/socialPublishing';
 import {
   AgentPanelEmpty,
   AgentPanelError,
@@ -17,9 +25,11 @@ import {
   formatAgentDate,
 } from '../../shared/AgentPlatformUi';
 
+type ChannelFormType = SocialChannelType;
+
 const EMPTY_FORM = {
   name: '',
-  type: 'facebook_profile' as 'facebook_profile' | 'facebook_page',
+  type: 'facebook_profile' as ChannelFormType,
   executionMode: 'browser' as 'browser' | 'graph_api',
   profileUrl: '',
   externalId: '',
@@ -57,6 +67,36 @@ function isGraphPageChannel(channel: SocialChannel) {
   return channel.type === 'facebook_page' && channel.executionMode === 'graph_api';
 }
 
+function resolveDestinationKey(channel: SocialChannel): string | null {
+  if (channel.type === 'facebook_profile') return 'facebook_timeline';
+  if (channel.type === 'facebook_group') return 'facebook_group';
+  if (channel.type === 'facebook_page' && channel.executionMode === 'browser') {
+    return 'facebook_page_web';
+  }
+  return null;
+}
+
+function formatCapabilities(caps: SocialDestinationInfo['capabilities'] | undefined) {
+  if (!caps) return '—';
+  const parts: string[] = [];
+  if (caps.supportsText) parts.push('text');
+  if (caps.supportsImage) parts.push('image');
+  if (caps.supportsVideo) parts.push('video');
+  if (caps.supportsLinks) parts.push('links');
+  if (caps.supportsScheduling) parts.push('schedule');
+  if (caps.supportsVerification) parts.push('verify');
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function channelTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    facebook_profile: 'Timeline',
+    facebook_group: 'Group',
+    facebook_page: 'Page',
+  };
+  return map[type] || type;
+}
+
 type Props = {
   canManage: boolean;
   onMessage: (msg: string) => void;
@@ -64,6 +104,8 @@ type Props = {
 
 export default function ChannelsPanel({ canManage, onMessage }: Props) {
   const [channels, setChannels] = useState<SocialChannel[]>([]);
+  const [destinations, setDestinations] = useState<SocialDestinationInfo[]>([]);
+  const [lastPublishByChannel, setLastPublishByChannel] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -74,12 +116,33 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
   const [connectToken, setConnectToken] = useState('');
   const [connectPageId, setConnectPageId] = useState('');
 
+  const destinationByKey = useMemo(
+    () => new Map(destinations.map(d => [d.key, d])),
+    [destinations],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchSocialChannels({ includeInactive: true });
-      setChannels(data);
+      const [channelData, destData, publishedJobs] = await Promise.all([
+        fetchSocialChannels({ includeInactive: true }),
+        fetchSocialDestinations(),
+        fetchSocialJobs({ status: 'published' }),
+      ]);
+      setChannels(channelData);
+      setDestinations(destData);
+
+      const byChannel: Record<string, string> = {};
+      for (const job of publishedJobs as SocialPublishJob[]) {
+        const at = job.completedAt || job.updatedAt;
+        if (!at) continue;
+        const prev = byChannel[job.channelId];
+        if (!prev || new Date(at).getTime() > new Date(prev).getTime()) {
+          byChannel[job.channelId] = at;
+        }
+      }
+      setLastPublishByChannel(byChannel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được kênh.');
     } finally {
@@ -91,11 +154,12 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
     load();
   }, [load]);
 
-  const handleTypeChange = (type: 'facebook_profile' | 'facebook_page') => {
+  const handleTypeChange = (type: ChannelFormType) => {
     setForm(f => ({
       ...f,
       type,
-      executionMode: type === 'facebook_page' ? 'graph_api' : 'browser',
+      executionMode:
+        type === 'facebook_page' ? (f.type === 'facebook_page' ? f.executionMode : 'graph_api') : 'browser',
     }));
   };
 
@@ -166,7 +230,6 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
       setConnectToken('');
       setConnectPageId('');
       setConnectOpenId(null);
-      // Re-test to refresh connectionState on channel row
       try {
         const health = await testSocialChannel(channel.id);
         setLastHealth(prev => ({ ...prev, [channel.id]: health }));
@@ -211,7 +274,7 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
     <div className="space-y-4">
       <AgentPanelHeader
         title="Kênh đăng"
-        subtitle="facebook_profile (browser) hoặc facebook_page (graph_api)"
+        subtitle="facebook_profile / facebook_group (browser) · facebook_page (browser hoặc graph_api)"
         onRefresh={load}
         refreshing={loading}
         actions={
@@ -246,13 +309,12 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
               Loại
               <select
                 value={form.type}
-                onChange={e =>
-                  handleTypeChange(e.target.value as 'facebook_profile' | 'facebook_page')
-                }
+                onChange={e => handleTypeChange(e.target.value as ChannelFormType)}
                 className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
               >
-                <option value="facebook_profile">facebook_profile (browser)</option>
-                <option value="facebook_page">facebook_page (graph_api)</option>
+                <option value="facebook_profile">facebook_profile (Timeline)</option>
+                <option value="facebook_group">facebook_group</option>
+                <option value="facebook_page">facebook_page</option>
               </select>
             </label>
             <label className="block text-xs text-slate-400">
@@ -265,23 +327,24 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                     executionMode: e.target.value as 'browser' | 'graph_api',
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
+                disabled={form.type !== 'facebook_page'}
+                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white disabled:opacity-50"
               >
                 <option value="browser">browser</option>
                 <option value="graph_api">graph_api</option>
               </select>
             </label>
             <label className="block text-xs text-slate-400">
-              Profile URL
+              Profile / Group URL
               <input
                 value={form.profileUrl}
                 onChange={e => setForm(f => ({ ...f, profileUrl: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
-                placeholder="https://www.facebook.com/me"
+                placeholder="https://www.facebook.com/..."
               />
             </label>
             <label className="block text-xs text-slate-400">
-              External / Page ID
+              External / Page / Group ID
               <input
                 value={form.externalId}
                 onChange={e => setForm(f => ({ ...f, externalId: e.target.value }))}
@@ -319,20 +382,21 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
       {channels.length === 0 ? (
         <AgentPanelEmpty
           title="Chưa có kênh"
-          description="Tạo facebook_profile (browser) hoặc facebook_page (graph_api)."
+          description="Tạo kênh Timeline, Group hoặc Page để bắt đầu đăng bài."
         />
       ) : (
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="bg-slate-900 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Tên</th>
                   <th className="px-3 py-3">Loại / Mode</th>
                   <th className="px-3 py-3">Status</th>
                   <th className="px-3 py-3">Connection</th>
+                  <th className="px-3 py-3">Capabilities</th>
+                  <th className="px-3 py-3">Last publish</th>
                   <th className="px-3 py-3">Health</th>
-                  <th className="px-3 py-3">Token / Verified</th>
                   <th className="px-3 py-3">Failures</th>
                   {canManage && <th className="px-3 py-3">Thao tác</th>}
                 </tr>
@@ -342,6 +406,10 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                   const health = lastHealth[channel.id];
                   const badge = resolveConnectionBadge(channel);
                   const graphPage = isGraphPageChannel(channel);
+                  const destKey = resolveDestinationKey(channel);
+                  const destInfo = destKey ? destinationByKey.get(destKey) : undefined;
+                  const lastPublish = lastPublishByChannel[channel.id];
+
                   return (
                     <React.Fragment key={channel.id}>
                       <tr className="border-t border-slate-800 hover:bg-slate-900/40">
@@ -352,8 +420,10 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                           </div>
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-400">
-                          {channel.type}
-                          <div className="text-slate-600">{channel.executionMode}</div>
+                          {channelTypeLabel(channel.type)}
+                          <div className="text-slate-600">
+                            {channel.type} · {channel.executionMode}
+                          </div>
                         </td>
                         <td className="px-3 py-3">
                           <span
@@ -373,23 +443,26 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-400">
-                          {health
-                            ? `${health.ok ? 'OK' : 'FAIL'} — ${health.details || health.status}`
-                            : '—'}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-400">
-                          {channel.lastVerifiedAt || channel.tokenExpiresAt ? (
-                            <div className="space-y-0.5">
-                              {channel.lastVerifiedAt && (
-                                <div>Verified: {formatAgentDate(channel.lastVerifiedAt)}</div>
-                              )}
-                              {channel.tokenExpiresAt && (
-                                <div>Expires: {formatAgentDate(channel.tokenExpiresAt)}</div>
-                              )}
+                          {destInfo ? (
+                            <div>
+                              <div className="font-medium text-slate-300">{destInfo.label}</div>
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                {formatCapabilities(destInfo.capabilities)}
+                              </div>
                             </div>
+                          ) : graphPage ? (
+                            <span className="text-slate-500">Graph API</span>
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400">
+                          {lastPublish ? formatAgentDate(lastPublish) : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400">
+                          {health
+                            ? `${health.ok ? 'OK' : 'FAIL'} — ${health.details || health.status}`
+                            : '—'}
                         </td>
                         <td className="px-3 py-3 text-xs tabular-nums text-slate-400">
                           {channel.consecutiveFailures}
@@ -414,7 +487,7 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                                   {channel.connectionState === 'connected' ||
                                   (!channel.connectionState && channel.status === 'active')
                                     ? 'Reconnect'
-                                    : 'Connect'}
+                                    : 'Graph Connect'}
                                 </button>
                               )}
                               <button
@@ -433,11 +506,11 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                               >
                                 {channel.status === 'paused' || !channel.isActive ? (
                                   <>
-                                    <Play className="h-3 w-3" /> Activate
+                                    <Play className="h-3 w-3" /> Enable
                                   </>
                                 ) : (
                                   <>
-                                    <Pause className="h-3 w-3" /> Pause
+                                    <Pause className="h-3 w-3" /> Disable
                                   </>
                                 )}
                               </button>
@@ -447,7 +520,7 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                       </tr>
                       {canManage && connectOpenId === channel.id && graphPage && (
                         <tr className="border-t border-slate-800/60 bg-slate-950/60">
-                          <td colSpan={canManage ? 8 : 7} className="px-3 py-3">
+                          <td colSpan={canManage ? 9 : 8} className="px-3 py-3">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                               <label className="block min-w-0 flex-1 text-xs text-slate-400">
                                 Page Access Token

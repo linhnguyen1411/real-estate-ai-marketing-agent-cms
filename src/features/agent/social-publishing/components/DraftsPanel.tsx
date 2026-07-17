@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Eye, Plus, Send, X } from 'lucide-react';
+import { Archive, Check, Copy, Eye, Plus, Send, Sparkles, X } from 'lucide-react';
 import {
   approveSocialDraft,
+  archiveSocialDraft,
   createSocialDraft,
+  duplicateSocialDraft,
   fetchSocialChannels,
   fetchSocialDrafts,
   publishSocialDraftNow,
+  regenerateSocialDraft,
   rejectSocialDraft,
   scheduleSocialDraft,
   submitSocialDraftReview,
@@ -465,7 +468,23 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
                             }
                             className="inline-flex items-center gap-1 rounded border border-amber-800 px-2 py-1 text-[10px] font-bold text-amber-300 hover:bg-amber-950/40 disabled:opacity-50"
                           >
-                            <Send className="h-3 w-3" /> Duyệt
+                            <Send className="h-3 w-3" /> Gửi duyệt
+                          </button>
+                        )}
+                        {draft.status === 'pending_review' && (
+                          <button
+                            type="button"
+                            disabled={busyId === draft.id}
+                            onClick={() =>
+                              runAction(
+                                draft.id,
+                                () => approveSocialDraft(draft.id),
+                                'Đã duyệt bản nháp.',
+                              )
+                            }
+                            className="inline-flex items-center gap-1 rounded border border-emerald-800 px-2 py-1 text-[10px] font-bold text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50"
+                          >
+                            <Check className="h-3 w-3" /> Approve
                           </button>
                         )}
                         {['draft', 'pending_review', 'rejected'].includes(draft.status) && (
@@ -519,6 +538,55 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
                             className="rounded border border-rose-900 px-2 py-1 text-[10px] font-bold text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
                           >
                             Reject
+                          </button>
+                        )}
+                        {!['archived', 'publishing'].includes(draft.status) && (
+                          <button
+                            type="button"
+                            disabled={busyId === draft.id}
+                            onClick={() =>
+                              runAction(
+                                draft.id,
+                                () => duplicateSocialDraft(draft.id),
+                                'Đã nhân bản bản nháp.',
+                              )
+                            }
+                            className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <Copy className="h-3 w-3" /> Duplicate
+                          </button>
+                        )}
+                        {['draft', 'pending_review', 'rejected'].includes(draft.status) && (
+                          <button
+                            type="button"
+                            disabled={busyId === draft.id}
+                            onClick={() =>
+                              runAction(
+                                draft.id,
+                                () => regenerateSocialDraft(draft.id),
+                                'Đã tái sinh nội dung AI.',
+                              )
+                            }
+                            className="inline-flex items-center gap-1 rounded border border-violet-800 px-2 py-1 text-[10px] font-bold text-violet-300 hover:bg-violet-950/40 disabled:opacity-50"
+                          >
+                            <Sparkles className="h-3 w-3" /> AI
+                          </button>
+                        )}
+                        {!['archived', 'published', 'publishing'].includes(draft.status) && (
+                          <button
+                            type="button"
+                            disabled={busyId === draft.id}
+                            onClick={() => {
+                              if (!window.confirm('Lưu trữ (archive) bản nháp này?')) return;
+                              runAction(
+                                draft.id,
+                                () => archiveSocialDraft(draft.id),
+                                'Đã lưu trữ bản nháp.',
+                              );
+                            }}
+                            className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-slate-400 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <Archive className="h-3 w-3" /> Archive
                           </button>
                         )}
                       </div>

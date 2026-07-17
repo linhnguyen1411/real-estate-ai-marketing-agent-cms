@@ -47,7 +47,15 @@ export default defineConfig(() => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {
-        ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log'],
+        // Chrome CDP / browser profiles write constantly — must not trigger Vite reloads
+        ignored: [
+          '**/db.json',
+          '**/db.json.*.bak',
+          '**/dev-server*.log',
+          '**/prod-server*.log',
+          '**/runtime/**',
+          '**/node_modules/**',
+        ],
       },
     },
   };

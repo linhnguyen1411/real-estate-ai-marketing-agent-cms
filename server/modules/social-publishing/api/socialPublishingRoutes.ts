@@ -15,18 +15,42 @@ import {
 import {
   approveDraft,
   approveAndSchedule,
+  archiveDraft,
   createDraft,
+  duplicateDraft,
   getDraftById,
   listDrafts,
   publishNow,
+  regenerateDraftForReview,
   rejectDraft,
   submitForReview,
   updateDraft,
 } from '../draftService';
 import { listAttempts, listAttemptsForJob } from '../attemptService';
-import { cancelJob, getJobById, listJobs, retryJob } from '../jobService';
+import {
+  cancelJob,
+  getJobById,
+  listJobs,
+  publishJobNow,
+  rescheduleJob,
+  retryJob,
+} from '../jobService';
+import {
+  createCampaign,
+  getCampaign,
+  getCampaignRun,
+  listCampaigns,
+  startCampaignRun,
+} from '../campaignService';
+import { listDestinationRegistrations } from '../browser/destinationRegistry';
+import {
+  getPublishEvidenceRoot,
+  listPublishEvidenceForJob,
+} from '../runtime/publishEvidenceService';
 import { canScheduleDraftStatus } from '../safetyService';
 import { DEFAULT_SAFETY_SETTINGS } from '../types';
+import path from 'path';
+import fs from 'fs/promises';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -362,6 +386,48 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
     }
   });
 
+  app.post('/api/social/drafts/:id/duplicate', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getDraftById(req.params.id);
+      if (!existing) return sendError(res, 404, 'Draft not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const data = await duplicateDraft(req.params.id, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Duplicate failed.');
+    }
+  });
+
+  app.post('/api/social/drafts/:id/regenerate', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getDraftById(req.params.id);
+      if (!existing) return sendError(res, 404, 'Draft not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const data = await regenerateDraftForReview(req.params.id, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Regenerate failed.');
+    }
+  });
+
+  app.post('/api/social/drafts/:id/archive', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getDraftById(req.params.id);
+      if (!existing) return sendError(res, 404, 'Draft not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const data = await archiveDraft(req.params.id, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Archive failed.');
+    }
+  });
+
   // ── Jobs ──────────────────────────────────────────────────
   app.get('/api/social/jobs', async (req: Request, res: Response) => {
     try {
@@ -404,6 +470,69 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 400, error instanceof Error ? error.message : 'Retry failed.');
+    }
+  });
+
+  app.patch('/api/social/jobs/:id/reschedule', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const job = await getJobById(req.params.id);
+      if (!job) return sendError(res, 404, 'Job not found');
+      if (!assertRecordAccess(req, res, job.companyId)) return;
+      const user = getAuthUser(req);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const scheduledAtRaw = String(body.scheduledAt || '').trim();
+      if (!scheduledAtRaw) return sendError(res, 400, 'scheduledAt is required');
+      const scheduledAt = new Date(scheduledAtRaw);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return sendError(res, 400, 'scheduledAt must be a valid ISO datetime');
+      }
+      const data = await rescheduleJob(req.params.id, scheduledAt, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Reschedule failed.');
+    }
+  });
+
+  app.post('/api/social/jobs/:id/publish-now', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const job = await getJobById(req.params.id);
+      if (!job) return sendError(res, 404, 'Job not found');
+      if (!assertRecordAccess(req, res, job.companyId)) return;
+      const user = getAuthUser(req);
+      const data = await publishJobNow(req.params.id, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Publish-now failed.');
+    }
+  });
+
+  app.get('/api/social/jobs/:id/evidence', async (req: Request, res: Response) => {
+    try {
+      const job = await getJobById(req.params.id);
+      if (!job) return sendError(res, 404, 'Job not found');
+      if (!assertRecordAccess(req, res, job.companyId)) return;
+      const data = await listPublishEvidenceForJob(req.params.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được evidence.');
+    }
+  });
+
+  app.get('/api/social/evidence-file', async (req: Request, res: Response) => {
+    try {
+      const raw = String(req.query.path || '').trim();
+      if (!raw) return sendError(res, 400, 'path is required');
+      const root = path.resolve(getPublishEvidenceRoot());
+      const resolved = path.resolve(raw);
+      if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+        return sendError(res, 403, 'Invalid evidence path');
+      }
+      await fs.access(resolved);
+      res.sendFile(resolved);
+    } catch (error: unknown) {
+      sendError(res, 404, error instanceof Error ? error.message : 'File not found');
     }
   });
 
@@ -460,5 +589,117 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
         allowedMime: [...DEFAULT_SAFETY_SETTINGS.allowedMime],
       },
     });
+  });
+
+  // ── Destinations (capabilities registry) ─────────────────
+  app.get('/api/social/destinations', async (_req: Request, res: Response) => {
+    const regs = listDestinationRegistrations();
+    res.json({
+      status: 'success',
+      data: regs.map(r => ({
+        key: r.key,
+        label: r.label,
+        capabilities: r.capabilities,
+      })),
+    });
+  });
+
+  // ── Campaigns ─────────────────────────────────────────────
+  app.get('/api/social/campaigns', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const data = await listCampaigns({
+        companyId,
+        status: String(req.query.status || '').trim() || undefined,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được campaigns.');
+    }
+  });
+
+  app.post('/api/social/campaigns', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const user = getAuthUser(req);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const name = String(body.name || '').trim();
+      const draftId = String(body.draftId || '').trim();
+      const channelIds = Array.isArray(body.channelIds)
+        ? body.channelIds.map(v => String(v).trim()).filter(Boolean)
+        : [];
+      if (!name || !draftId || channelIds.length === 0) {
+        return sendError(res, 400, 'name, draftId, and channelIds[] are required');
+      }
+      const data = await createCampaign({
+        companyId: user.role === 'owner' ? (body.company_id as string) || null : user.company_id,
+        name,
+        draftId,
+        channelIds,
+        createdBy: user.id,
+        metadata:
+          body.metadata && typeof body.metadata === 'object'
+            ? (body.metadata as Record<string, unknown>)
+            : undefined,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Create campaign failed.');
+    }
+  });
+
+  app.get('/api/social/campaigns/:id', async (req: Request, res: Response) => {
+    try {
+      const data = await getCampaign(req.params.id);
+      if (!data) return sendError(res, 404, 'Campaign not found');
+      if (!assertRecordAccess(req, res, data.companyId)) return;
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được campaign.');
+    }
+  });
+
+  app.post('/api/social/campaigns/:id/start', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getCampaign(req.params.id);
+      if (!existing) return sendError(res, 404, 'Campaign not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const scheduledAtRaw = body.scheduledAt ? String(body.scheduledAt).trim() : '';
+      const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : undefined;
+      if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
+        return sendError(res, 400, 'scheduledAt must be a valid ISO datetime');
+      }
+      const data = await startCampaignRun({
+        campaignId: req.params.id,
+        triggeredBy: user.id,
+        triggerType: 'ui',
+        scheduledAt,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Start campaign failed.');
+    }
+  });
+
+  app.get('/api/social/campaign-runs/:id', async (req: Request, res: Response) => {
+    try {
+      const data = await getCampaignRun(req.params.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 404, error instanceof Error ? error.message : 'Campaign run not found.');
+    }
+  });
+
+  app.post('/api/social/campaign-runs/:id/refresh', async (req: Request, res: Response) => {
+    try {
+      const data = await getCampaignRun(req.params.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 404, error instanceof Error ? error.message : 'Campaign run not found.');
+    }
   });
 }

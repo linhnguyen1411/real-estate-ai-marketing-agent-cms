@@ -79,6 +79,89 @@ export async function readPublishEvidenceManifest(
   }
 }
 
+/** List evidence attempt folders for a publish job (UI history). */
+export async function listPublishEvidenceForJob(publishJobId: string): Promise<
+  Array<{
+    attemptId: string;
+    manifest: PublishEvidenceBundle | null;
+    paths: {
+      manifestPath: string;
+      screenshotBeforePath: string;
+      screenshotAfterPath: string;
+      htmlSnapshotPath: string;
+    };
+    files: {
+      hasScreenshotBefore: boolean;
+      hasScreenshotAfter: boolean;
+      hasHtmlSnapshot: boolean;
+    };
+  }>
+> {
+  const dir = getEvidenceDirForJob(publishJobId);
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const results: Array<{
+    attemptId: string;
+    manifest: PublishEvidenceBundle | null;
+    paths: {
+      manifestPath: string;
+      screenshotBeforePath: string;
+      screenshotAfterPath: string;
+      htmlSnapshotPath: string;
+    };
+    files: {
+      hasScreenshotBefore: boolean;
+      hasScreenshotAfter: boolean;
+      hasHtmlSnapshot: boolean;
+    };
+  }> = [];
+
+  for (const attemptId of entries) {
+    const paths = buildEvidencePaths(publishJobId, attemptId);
+    let isDir = false;
+    try {
+      const st = await fs.stat(paths.baseDir);
+      isDir = st.isDirectory();
+    } catch {
+      continue;
+    }
+    if (!isDir) continue;
+
+    const manifest = await readPublishEvidenceManifest(publishJobId, attemptId);
+    const fileExists = async (p: string) => {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    results.push({
+      attemptId,
+      manifest,
+      paths: {
+        manifestPath: paths.manifestPath,
+        screenshotBeforePath: paths.screenshotBeforePath,
+        screenshotAfterPath: paths.screenshotAfterPath,
+        htmlSnapshotPath: paths.htmlSnapshotPath,
+      },
+      files: {
+        hasScreenshotBefore: await fileExists(paths.screenshotBeforePath),
+        hasScreenshotAfter: await fileExists(paths.screenshotAfterPath),
+        hasHtmlSnapshot: await fileExists(paths.htmlSnapshotPath),
+      },
+    });
+  }
+
+  return results.sort((a, b) => a.attemptId.localeCompare(b.attemptId));
+}
+
 export function createStubEvidenceBundle(input: {
   publishJobId: string;
   missionRunId: string;

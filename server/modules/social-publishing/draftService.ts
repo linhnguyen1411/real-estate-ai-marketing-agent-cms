@@ -243,6 +243,58 @@ export async function archiveDraft(id: string, actor?: string | null) {
   return updated;
 }
 
+/** Duplicate draft for UI (new draft row; no auto-approve). */
+export async function duplicateDraft(id: string, actor?: string | null) {
+  const existing = await getDraftById(id);
+  if (!existing) throw new Error('Draft not found');
+  return createDraft({
+    companyId: existing.companyId,
+    title: existing.title ? `${existing.title} (copy)` : 'Copy',
+    body: existing.body,
+    linkUrl: existing.linkUrl,
+    createdBy: actor ?? existing.createdBy,
+    status: 'draft',
+    media: (existing.media || []).map((m, index) => ({
+      type: m.type,
+      fileUrl: m.fileUrl,
+      sortOrder: m.sortOrder ?? index,
+      altText: m.altText ?? undefined,
+    })),
+    metadata: {
+      ...((existing.metadata && typeof existing.metadata === 'object'
+        ? existing.metadata
+        : {}) as Record<string, unknown>),
+      duplicated_from: id,
+    },
+  });
+}
+
+/**
+ * UI “AI regenerate”: create a pending_review copy flagged ai_generated.
+ * Does not invoke model engines — marks for human review only.
+ */
+export async function regenerateDraftForReview(id: string, actor?: string | null) {
+  const existing = await getDraftById(id);
+  if (!existing) throw new Error('Draft not found');
+  return createAiGeneratedDraft({
+    companyId: existing.companyId,
+    title: existing.title ? `${existing.title} (AI regenerate)` : 'AI regenerate',
+    body: existing.body,
+    linkUrl: existing.linkUrl,
+    createdBy: actor ?? 'ui_regenerate',
+    media: (existing.media || []).map((m, index) => ({
+      type: m.type,
+      fileUrl: m.fileUrl,
+      sortOrder: m.sortOrder ?? index,
+      altText: m.altText ?? undefined,
+    })),
+    metadata: {
+      regenerated_from: id,
+      ui_regenerate: true,
+    },
+  });
+}
+
 export async function approveAndSchedule(
   draftId: string,
   channelId: string,
