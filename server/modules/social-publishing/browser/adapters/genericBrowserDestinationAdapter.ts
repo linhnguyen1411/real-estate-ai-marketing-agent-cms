@@ -1,3 +1,8 @@
+/**
+ * Generic destination runtime — selectors, navigation, browser utilities, evidence.
+ * Publish-specific orchestration lives in PublishAction (Action Framework).
+ */
+
 import fs from 'fs/promises';
 import type { Locator, Page } from 'playwright';
 import type {
@@ -9,6 +14,15 @@ import type {
   DestinationKey,
 } from '../types';
 import { buildEvidencePaths, hashDomContent } from '../../runtime/publishEvidenceService';
+import {
+  type DestinationActionHost,
+  type DestinationActionState,
+  type SelectorMap,
+} from '../actions/destinationActionHost';
+import { PublishAction } from '../actions/publishAction';
+import { registerAutomationAction } from '../actions/actionRegistry';
+
+export type { SelectorMap } from '../actions/destinationActionHost';
 
 export interface DestinationPageFactory {
   getPublishPage(options?: { initialUrl?: string; mode?: 'cdp' | 'managed' }): Promise<Page>;
@@ -16,52 +30,52 @@ export interface DestinationPageFactory {
   releaseCdpLock?(): void;
 }
 
-export interface SelectorMap {
-  composer: string;
-  fileInput: string;
-  publishButtonRoleName: RegExp;
-}
-
-type DestinationState = {
-  startedAt: number;
-  page?: Page;
-  evidenceDir?: string;
-  screenshotBeforePath?: string;
-  screenshotAfterPath?: string;
-  htmlSnapshotPath?: string;
-  publishedUrl?: string;
-  domHash?: string;
-};
-
-export abstract class GenericBrowserDestinationAdapter implements BrowserDestinationAdapter {
+export abstract class GenericBrowserDestinationAdapter
+  implements BrowserDestinationAdapter, DestinationActionHost
+{
   abstract readonly key: DestinationKey;
   abstract readonly capabilities: DestinationCapabilities;
-  protected abstract readonly selectorMap: SelectorMap;
-  protected abstract initialUrl(ctx: BrowserDestinationContext): string;
+  abstract readonly selectorMap: SelectorMap;
+
+  abstract initialUrl(ctx: BrowserDestinationContext): string;
   protected abstract ensureAuthenticatedImpl(
     page: Page,
     ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult>;
-  protected abstract composeStrategy(
+  abstract composeStrategy(
     page: Page,
     composer: Locator,
     ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult>;
-  protected abstract publishStrategy(
+  abstract publishStrategy(
     page: Page,
     ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult>;
-  protected abstract verifyStrategy(
+  abstract verifyStrategy(
     page: Page | null,
     ctx: BrowserDestinationContext,
-    state: DestinationState,
+    state: DestinationActionState,
   ): Promise<BrowserDestinationPhaseResult>;
 
-  private readonly stateByJob = new Map<string, DestinationState>();
+  private readonly stateByJob = new Map<string, DestinationActionState>();
   private runtimeFactory?: DestinationPageFactory;
+  private readonly publishAction = new PublishAction(this);
+
+  constructor() {
+    registerAutomationAction(this.publishAction, true);
+  }
 
   configureRuntime(factory?: DestinationPageFactory): void {
     this.runtimeFactory = factory;
+  }
+
+  /** Bound PublishAction for this destination (Action Framework entry). */
+  getPublishAction(): PublishAction {
+    return this.publishAction;
+  }
+
+  mapError(error: unknown, phase: string): Error {
+    return this.mapAdapterError(error, phase);
   }
 
   protected mapAdapterError(error: unknown, phase: string): Error {
@@ -82,19 +96,19 @@ export abstract class GenericBrowserDestinationAdapter implements BrowserDestina
     throw lastErr;
   }
 
-  protected async wait(ms: number): Promise<void> {
+  async wait(ms: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  protected stateFor(ctx: BrowserDestinationContext): DestinationState {
+  stateFor(ctx: BrowserDestinationContext): DestinationActionState {
     const existing = this.stateByJob.get(ctx.publishJobId);
     if (existing) return existing;
-    const created: DestinationState = { startedAt: Date.now() };
+    const created: DestinationActionState = { startedAt: Date.now() };
     this.stateByJob.set(ctx.publishJobId, created);
     return created;
   }
 
-  protected async ensurePage(ctx: BrowserDestinationContext): Promise<Page | null> {
+  async ensurePage(ctx: BrowserDestinationContext): Promise<Page | null> {
     const state = this.stateFor(ctx);
     if (state.page && !state.page.isClosed()) return state.page;
     const factory = this.runtimeFactory;
@@ -105,11 +119,11 @@ export abstract class GenericBrowserDestinationAdapter implements BrowserDestina
     return page;
   }
 
-  protected ok(phase: string, data?: Record<string, unknown>): BrowserDestinationPhaseResult {
+  ok(phase: string, data?: Record<string, unknown>): BrowserDestinationPhaseResult {
     return { ok: true, phase, data };
   }
 
-  async prepare(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+  async prepareHost(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const state = this.stateFor(ctx);
     const attemptId = `wf_${ctx.missionRunId}_browser_capture_evidence`;
     const paths = buildEvidencePaths(ctx.publishJobId, attemptId);
@@ -121,65 +135,34 @@ export abstract class GenericBrowserDestinationAdapter implements BrowserDestina
     return this.ok('prepare', { dryRun: ctx.dryRun, evidenceDir: paths.baseDir });
   }
 
+  async cleanupHost(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    this.runtimeFactory?.releaseCdpLock?.();
+    this.stateByJob.delete(ctx.publishJobId);
+    return this.ok('cleanup', { released: true });
+  }
+
   async navigate(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
     if (!page) return this.ok('navigate', { mode: 'dry_run_no_browser' });
     await this.withRetry(
-      () => page.goto(this.initialUrl(ctx), { waitUntil: 'domcontentloaded', timeout: 60_000 }).then(() => undefined),
+      () =>
+        page
+          .goto(this.initialUrl(ctx), { waitUntil: 'domcontentloaded', timeout: 60_000 })
+          .then(() => undefined),
       1,
       500,
     ).catch(() => undefined);
     return this.ok('navigate', { url: page.url() });
   }
 
-  async uploadMedia(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+  async ensureAuthenticated(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
-    if (!page || ctx.dryRun) return this.ok('uploadMedia', { mediaCount: ctx.media.length, dryRun: true });
-    const mediaFiles = ctx.media
-      .map(m => m.fileUrl)
-      .filter(p => typeof p === 'string' && p.trim().length > 0 && !/^https?:\/\//i.test(p));
-    if (mediaFiles.length === 0) return this.ok('uploadMedia', { mediaCount: 0 });
-
-    const input = page.locator(this.selectorMap.fileInput).first();
-    if (await input.count().catch(() => 0)) {
-      await input.setInputFiles(mediaFiles).catch(() => undefined);
-      return this.ok('uploadMedia', { mediaCount: mediaFiles.length, method: 'file_input' });
-    }
-    return this.ok('uploadMedia', { mediaCount: 0, skipped: 'no_file_input' });
+    if (!page) return this.ok('ensureAuthenticated', { mode: 'dry_run_no_browser' });
+    return this.ensureAuthenticatedImpl(page, ctx);
   }
 
-  async fillContent(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
-    const page = await this.ensurePage(ctx);
-    if (!page || ctx.dryRun) return this.ok('compose', { dryRun: true });
-    const composer = page.locator(this.selectorMap.composer).first();
-    try {
-      return await this.composeStrategy(page, composer, ctx);
-    } catch (error) {
-      throw this.mapAdapterError(error, 'compose');
-    }
-  }
-
-  async publish(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
-    const page = await this.ensurePage(ctx);
-    const state = this.stateFor(ctx);
-    if (!page || ctx.dryRun) {
-      state.publishedUrl = `${this.initialUrl(ctx)}?story_fbid=stub_${ctx.publishJobId}`;
-      return this.ok('publish', { dryRun: true, publishedUrl: state.publishedUrl });
-    }
-    try {
-      const result = await this.publishStrategy(page, ctx);
-      if (result.data?.publishedUrl && typeof result.data.publishedUrl === 'string') {
-        state.publishedUrl = result.data.publishedUrl;
-      } else {
-        state.publishedUrl = page.url();
-      }
-      return result;
-    } catch (error) {
-      throw this.mapAdapterError(error, 'publish');
-    }
-  }
-
-  async captureEvidence(ctx: BrowserDestinationContext): Promise<BrowserDestinationEvidence> {
+  /** DestinationActionHost: browser evidence utility */
+  async captureBrowserEvidence(ctx: BrowserDestinationContext): Promise<BrowserDestinationEvidence> {
     const page = await this.ensurePage(ctx);
     const state = this.stateFor(ctx);
     if (!state.evidenceDir) {
@@ -217,21 +200,33 @@ export abstract class GenericBrowserDestinationAdapter implements BrowserDestina
     };
   }
 
-  async cleanup(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
-    this.runtimeFactory?.releaseCdpLock?.();
-    this.stateByJob.delete(ctx.publishJobId);
-    return this.ok('cleanup', { released: true });
+  // ── BrowserDestinationAdapter publish phases → PublishAction ─
+
+  async prepare(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    return this.publishAction.prepare(ctx);
   }
 
-  async ensureAuthenticated(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
-    const page = await this.ensurePage(ctx);
-    if (!page) return this.ok('ensureAuthenticated', { mode: 'dry_run_no_browser' });
-    return this.ensureAuthenticatedImpl(page, ctx);
+  async uploadMedia(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    return this.publishAction.uploadMedia(ctx);
+  }
+
+  async fillContent(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    return this.publishAction.fillContent(ctx);
+  }
+
+  async publish(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    return this.publishAction.publish(ctx);
   }
 
   async verify(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
-    const page = await this.ensurePage(ctx);
-    const state = this.stateFor(ctx);
-    return this.verifyStrategy(page, ctx, state);
+    return this.publishAction.verify(ctx);
+  }
+
+  async captureEvidence(ctx: BrowserDestinationContext): Promise<BrowserDestinationEvidence> {
+    return this.publishAction.captureEvidence(ctx);
+  }
+
+  async cleanup(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
+    return this.publishAction.cleanup(ctx);
   }
 }

@@ -5,6 +5,7 @@ import type {
   BrowserDestinationContext,
   BrowserDestinationPhaseResult,
 } from '../types';
+import type { DestinationActionState } from '../actions/destinationActionHost';
 import {
   type DestinationPageFactory,
   GenericBrowserDestinationAdapter,
@@ -13,13 +14,13 @@ import {
 export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
   readonly key = 'facebook_timeline' as const;
   readonly capabilities = DESTINATION_CAPABILITY_PRESETS.facebook_timeline;
-  protected readonly selectorMap = {
+  readonly selectorMap = {
     composer: '[contenteditable="true"][role="textbox"], div[contenteditable="true"]',
     fileInput: 'input[type="file"]',
     publishButtonRoleName: /^(post|publish|đăng|share)$/i,
   };
 
-  protected initialUrl(_ctx: BrowserDestinationContext): string {
+  initialUrl(_ctx: BrowserDestinationContext): string {
     return 'https://www.facebook.com/';
   }
 
@@ -34,7 +35,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     return this.ok('ensureAuthenticated', { url: page.url() });
   }
 
-  protected async composeStrategy(
+  async composeStrategy(
     page: Page,
     composer: Locator,
     ctx: BrowserDestinationContext,
@@ -49,7 +50,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     return this.ok('compose', { bodyLength: ctx.body.length, hasLink: Boolean(ctx.linkUrl) });
   }
 
-  protected async publishStrategy(
+  async publishStrategy(
     page: Page,
     _ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult> {
@@ -59,10 +60,10 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     return this.ok('publish', { publishedUrl: page.url() });
   }
 
-  protected async verifyStrategy(
+  async verifyStrategy(
     _page: Page | null,
     _ctx: BrowserDestinationContext,
-    state: { publishedUrl?: string },
+    state: DestinationActionState,
   ): Promise<BrowserDestinationPhaseResult> {
     return this.ok('verify', { publishedUrl: state.publishedUrl ?? null });
   }
@@ -70,6 +71,8 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
 
 export const facebookTimelineAdapter = new FacebookTimelineAdapter();
 
-export function configureFacebookTimelineAdapterRuntime(deps: { pageFactory?: DestinationPageFactory }): void {
+export function configureFacebookTimelineAdapterRuntime(deps: {
+  pageFactory?: DestinationPageFactory;
+}): void {
   facebookTimelineAdapter.configureRuntime(deps.pageFactory);
 }
