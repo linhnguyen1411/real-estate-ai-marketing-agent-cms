@@ -1,13 +1,11 @@
 /**
- * Facebook Timeline browser destination — live DOM publisher.
- * Completes compose / multi-image upload / publish / verify / permalink /
- * evidence / retry. No Graph API. Reuses Browser Runtime via page factory.
+ * Facebook Timeline adapter — selectors / flow / platform rules only.
+ * All DOM ops go through the shared DOM Framework (DomToolkit).
  */
 
-import fs from 'fs/promises';
 import type { Locator, Page } from 'playwright';
 import { detectFacebookAuthBlock } from '../../../../agent-worker/facebook/facebookCheckpointDetector';
-import { buildEvidencePaths, hashDomContent } from '../../runtime/publishEvidenceService';
+import { buildEvidencePaths } from '../../runtime/publishEvidenceService';
 import { DESTINATION_CAPABILITY_PRESETS } from '../capabilities';
 import type {
   BrowserDestinationContext,
@@ -16,22 +14,20 @@ import type {
 } from '../types';
 import type { DestinationActionState } from '../actions/destinationActionHost';
 import {
+  createDomToolkit,
+  domWithRetry,
+  localMediaPaths,
+  type DomToolkit,
+} from '../dom';
+import {
   type DestinationPageFactory,
   GenericBrowserDestinationAdapter,
 } from './genericBrowserDestinationAdapter';
 import {
-  clickTimelinePublish,
-  collectPermalinkCandidates,
-  dismissTimelineDialogs,
-  extractFacebookPermalink,
-  findTimelineComposer,
-  localMediaPaths,
-  openTimelineComposer,
-  parsePublishSuccess,
-  recoverAfterPublishClickTimeout,
-  typeIntoComposer,
-  uploadTimelineMedia,
-} from './facebookTimelineDom';
+  FACEBOOK_TIMELINE_DOM,
+  FACEBOOK_TIMELINE_HOME,
+  FACEBOOK_TIMELINE_SELECTORS,
+} from './facebookTimelineConfig';
 
 type TimelineJobMeta = {
   postId?: string;
@@ -44,19 +40,23 @@ type TimelineJobMeta = {
 export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
   readonly key = 'facebook_timeline' as const;
   readonly capabilities = DESTINATION_CAPABILITY_PRESETS.facebook_timeline;
+
+  /** DestinationActionHost selector surface (derived from platform selector map) */
   readonly selectorMap = {
-    composer:
-      '[role="dialog"] [contenteditable="true"][role="textbox"], [contenteditable="true"][role="textbox"], div[contenteditable="true"]',
-    fileInput: 'input[type="file"]',
-    publishButtonRoleName: /^(post|publish|đăng|share)$/i,
+    composer: FACEBOOK_TIMELINE_SELECTORS.composerCss,
+    fileInput: FACEBOOK_TIMELINE_SELECTORS.fileInput,
+    publishButtonRoleName: FACEBOOK_TIMELINE_SELECTORS.publishButtonRoleName,
   };
+
+  /** Platform DOM toolkit — selectors + flow + rules */
+  protected readonly dom: DomToolkit = createDomToolkit(FACEBOOK_TIMELINE_DOM);
 
   private readonly timelineMeta = new Map<string, TimelineJobMeta>();
 
   initialUrl(ctx: BrowserDestinationContext): string {
     const configured = ctx.destinationConfig?.profileUrl;
     if (typeof configured === 'string' && configured.trim()) return configured.trim();
-    return 'https://www.facebook.com/';
+    return FACEBOOK_TIMELINE_HOME;
   }
 
   private metaFor(ctx: BrowserDestinationContext): TimelineJobMeta {
@@ -78,36 +78,30 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     return this.ok('ensureAuthenticated', { url: page.url() });
   }
 
-  private async snapshotBefore(ctx: BrowserDestinationContext, page: Page): Promise<void> {
+  private evidencePaths(ctx: BrowserDestinationContext) {
     const state = this.stateFor(ctx);
-    const meta = this.metaFor(ctx);
-    if (!state.screenshotBeforePath || meta.screenshotBeforeTaken) return;
-    await fs.mkdir(state.evidenceDir || '.', { recursive: true }).catch(() => undefined);
-    await page.screenshot({ path: state.screenshotBeforePath, fullPage: true }).catch(() => undefined);
-    meta.screenshotBeforeTaken = true;
-  }
-
-  private async snapshotAfter(ctx: BrowserDestinationContext, page: Page): Promise<void> {
-    const state = this.stateFor(ctx);
-    const meta = this.metaFor(ctx);
-    if (!state.screenshotAfterPath) return;
-    await fs.mkdir(state.evidenceDir || '.', { recursive: true }).catch(() => undefined);
-    await page.screenshot({ path: state.screenshotAfterPath, fullPage: true }).catch(() => undefined);
-    meta.screenshotAfterTaken = true;
+    return {
+      evidenceDir: state.evidenceDir,
+      screenshotBeforePath: state.screenshotBeforePath,
+      screenshotAfterPath: state.screenshotAfterPath,
+      htmlSnapshotPath: state.htmlSnapshotPath,
+    };
   }
 
   private async ensureComposerOpen(page: Page, ctx: BrowserDestinationContext): Promise<Locator> {
     const meta = this.metaFor(ctx);
-    return this.withRetry(async () => {
-      const composer = await openTimelineComposer(page);
-      meta.composerOpened = true;
-      return composer;
-    }, 2, 700);
+    const flow = this.dom.config.flow;
+    return domWithRetry(
+      async () => {
+        const composer = await this.dom.navigator.openComposer(page);
+        meta.composerOpened = true;
+        return composer;
+      },
+      flow.openRetries,
+      flow.openRetryWaitMs,
+    );
   }
 
-  /**
-   * Multi-image upload — opens composer first (workflow runs upload before fill).
-   */
   async uploadMedia(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
     const files = localMediaPaths(ctx.media);
@@ -118,7 +112,8 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
       });
     }
 
-    await this.snapshotBefore(ctx, page);
+    const meta = this.metaFor(ctx);
+    await this.dom.evidence.screenshotBefore(page, this.evidencePaths(ctx), meta);
 
     try {
       await this.ensureComposerOpen(page, ctx);
@@ -126,10 +121,11 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
         return this.ok('uploadMedia', { mediaCount: 0 });
       }
 
-      const result = await this.withRetry(
-        () => uploadTimelineMedia(page, files),
-        2,
-        800,
+      const flow = this.dom.config.flow;
+      const result = await domWithRetry(
+        () => this.dom.uploader.uploadFiles(page, files),
+        flow.uploadRetries,
+        flow.uploadRetryWaitMs,
       );
       return this.ok('uploadMedia', {
         mediaCount: result.uploaded,
@@ -146,21 +142,21 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     _composer: Locator,
     ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult> {
-    await this.snapshotBefore(ctx, page);
+    const meta = this.metaFor(ctx);
+    await this.dom.evidence.screenshotBefore(page, this.evidencePaths(ctx), meta);
 
     const composer = await this.ensureComposerOpen(page, ctx);
-    await this.withRetry(
-      () => typeIntoComposer(page, composer, ctx.body, ctx.linkUrl),
-      2,
-      500,
+    const flow = this.dom.config.flow;
+    await domWithRetry(
+      () => this.dom.editor.typeContent(page, composer, ctx.body, ctx.linkUrl),
+      flow.composeRetries,
+      flow.composeRetryWaitMs,
     );
 
-    // Confirm editor still present and non-empty when possible
-    const active = (await findTimelineComposer(page)) || composer;
+    const active = (await this.dom.navigator.findComposer(page)) || composer;
     const text = await active.innerText().catch(() => '');
     if (ctx.body.trim() && text.trim().length === 0) {
-      // Retry type once more if fill didn't stick
-      await typeIntoComposer(page, active, ctx.body, ctx.linkUrl);
+      await this.dom.editor.typeContent(page, active, ctx.body, ctx.linkUrl);
     }
 
     return this.ok('compose', {
@@ -176,31 +172,36 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
   ): Promise<BrowserDestinationPhaseResult> {
     const state = this.stateFor(ctx);
     const meta = this.metaFor(ctx);
+    const flow = this.dom.config.flow;
 
     let timedOut = false;
     let clicked = false;
     try {
-      clicked = await this.withRetry(async () => {
-        const ok = await clickTimelinePublish(page);
-        if (!ok) throw new Error('browser_publish_button_not_found');
-        return true;
-      }, 2, 600);
+      clicked = await domWithRetry(
+        async () => {
+          const ok = await this.dom.publisher.clickPublish(page);
+          if (!ok) throw new Error('browser_publish_button_not_found');
+          return true;
+        },
+        flow.publishRetries,
+        flow.publishRetryWaitMs,
+      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (/timeout/i.test(msg)) timedOut = true;
       else throw error;
     }
 
-    await this.wait(2_500);
+    await this.wait(flow.afterPublishWaitMs);
 
-    const signals = await collectPermalinkCandidates(page);
-    let parsed = parsePublishSuccess({
+    const signals = await this.dom.verifier.collectSignals(page);
+    let parsed = this.dom.verifier.parseSuccess({
       currentUrl: signals.currentUrl,
       bodyText: signals.bodyText,
     });
 
     if (!parsed.success) {
-      const recovered = recoverAfterPublishClickTimeout({
+      const recovered = this.dom.verifier.recoverAfterTimeout({
         timedOut: timedOut || !clicked,
         currentUrl: signals.currentUrl,
         bodyText: signals.bodyText,
@@ -210,7 +211,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
       }
     }
 
-    const permalinkInfo = extractFacebookPermalink(signals);
+    const permalinkInfo = this.dom.verifier.extractPermalink(signals);
     if (permalinkInfo.permalink) {
       meta.permalink = permalinkInfo.permalink;
       state.publishedUrl = permalinkInfo.permalink;
@@ -227,7 +228,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
       state.publishedUrl = permalinkInfo.permalink || signals.currentUrl;
     }
 
-    await this.snapshotAfter(ctx, page);
+    await this.dom.evidence.screenshotAfter(page, this.evidencePaths(ctx), meta);
 
     return this.ok('publish', {
       clicked,
@@ -253,12 +254,12 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
       });
     }
 
-    const signals = await collectPermalinkCandidates(page);
-    const parsed = parsePublishSuccess({
+    const signals = await this.dom.verifier.collectSignals(page);
+    const parsed = this.dom.verifier.parseSuccess({
       currentUrl: signals.currentUrl,
       bodyText: signals.bodyText,
     });
-    const permalinkInfo = extractFacebookPermalink({
+    const permalinkInfo = this.dom.verifier.extractPermalink({
       ...signals,
       currentUrl: state.publishedUrl || signals.currentUrl,
     });
@@ -276,7 +277,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
       throw new Error(`browser_verify_failed:${parsed.reason}`);
     }
 
-    await this.snapshotAfter(ctx, page);
+    await this.dom.evidence.screenshotAfter(page, this.evidencePaths(ctx), meta);
 
     return this.ok('verify', {
       publishedUrl: state.publishedUrl ?? meta.permalink ?? null,
@@ -286,7 +287,6 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     });
   }
 
-  /** Host + adapter entry — used by PublishAction and workflow steps. */
   async captureBrowserEvidence(ctx: BrowserDestinationContext): Promise<BrowserDestinationEvidence> {
     const page = await this.ensurePage(ctx);
     const state = this.stateFor(ctx);
@@ -302,28 +302,31 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
     }
 
     if (page) {
-      if (!meta.screenshotBeforeTaken) await this.snapshotBefore(ctx, page);
-      if (!meta.screenshotAfterTaken) await this.snapshotAfter(ctx, page);
+      const paths = this.evidencePaths(ctx);
+      if (!meta.screenshotBeforeTaken) {
+        await this.dom.evidence.screenshotBefore(page, paths, meta);
+      }
+      if (!meta.screenshotAfterTaken) {
+        await this.dom.evidence.screenshotAfter(page, paths, meta);
+      }
 
-      if (state.htmlSnapshotPath) {
-        await fs.mkdir(state.evidenceDir, { recursive: true }).catch(() => undefined);
-        const html = await page.content().catch(() => '');
-        if (html) {
-          state.domHash = hashDomContent(html);
-          await fs.writeFile(state.htmlSnapshotPath, html, 'utf8').catch(() => undefined);
+      const { html, domHash } = await this.dom.evidence.captureHtml(
+        page,
+        state.htmlSnapshotPath,
+        state.evidenceDir,
+      );
+      if (domHash) state.domHash = domHash;
 
-          if (!meta.permalink) {
-            const found = extractFacebookPermalink({
-              currentUrl: page.url(),
-              html,
-            });
-            if (found.permalink) {
-              meta.permalink = found.permalink;
-              state.publishedUrl = found.permalink;
-            }
-            if (found.postId) meta.postId = found.postId;
-          }
+      if (html && !meta.permalink) {
+        const found = this.dom.verifier.extractPermalink({
+          currentUrl: page.url(),
+          html,
+        });
+        if (found.permalink) {
+          meta.permalink = found.permalink;
+          state.publishedUrl = found.permalink;
         }
+        if (found.postId) meta.postId = found.postId;
       }
 
       state.publishedUrl = meta.permalink || state.publishedUrl || page.url();
@@ -347,7 +350,7 @@ export class FacebookTimelineAdapter extends GenericBrowserDestinationAdapter {
   async cleanup(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
     if (page && !ctx.dryRun) {
-      await dismissTimelineDialogs(page).catch(() => undefined);
+      await this.dom.navigator.dismissDialogs(page).catch(() => undefined);
     }
     this.timelineMeta.delete(ctx.publishJobId);
     return super.cleanup(ctx);
@@ -362,9 +365,20 @@ export function configureFacebookTimelineAdapterRuntime(deps: {
   facebookTimelineAdapter.configureRuntime(deps.pageFactory);
 }
 
-/** Test helpers */
-export {
-  extractFacebookPermalink,
-  extractPostIdFromUrl,
-  localMediaPaths,
-} from './facebookTimelineDom';
+/** Test helpers — platform rules via DomVerifier */
+const _timelineDom = createDomToolkit(FACEBOOK_TIMELINE_DOM);
+
+export function extractFacebookPermalink(input: {
+  currentUrl?: string | null;
+  hrefs?: string[];
+  html?: string | null;
+  bodyText?: string | null;
+}) {
+  return _timelineDom.verifier.extractPermalink(input);
+}
+
+export function extractPostIdFromUrl(url: string) {
+  return _timelineDom.verifier.extractPostIdFromUrl(url);
+}
+
+export { localMediaPaths };

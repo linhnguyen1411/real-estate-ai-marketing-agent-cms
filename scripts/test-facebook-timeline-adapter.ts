@@ -129,7 +129,22 @@ await test('6. publish workflow pipeline still valid', () => {
   }
 });
 
-await test('7. no Graph API imports in timeline adapter module', async () => {
+await test('7. no Graph API in timeline + DOM framework', async () => {
+  const fs = await import('node:fs/promises');
+  const paths = [
+    '../server/modules/social-publishing/browser/adapters/facebookTimelineAdapter.ts',
+    '../server/modules/social-publishing/browser/adapters/facebookTimelineConfig.ts',
+    '../server/modules/social-publishing/browser/dom/DomNavigator.ts',
+    '../server/modules/social-publishing/browser/dom/DomUploader.ts',
+    '../server/modules/social-publishing/browser/dom/DomPublisher.ts',
+  ];
+  for (const rel of paths) {
+    const src = await fs.readFile(new URL(rel, import.meta.url), 'utf8');
+    assert.equal(/graphApi|graph\.facebook|facebookPageGraph/i.test(src), false, rel);
+  }
+});
+
+await test('8. timeline adapter uses DomToolkit (no inline selector loops)', async () => {
   const fs = await import('node:fs/promises');
   const adapterSrc = await fs.readFile(
     new URL(
@@ -138,15 +153,14 @@ await test('7. no Graph API imports in timeline adapter module', async () => {
     ),
     'utf8',
   );
-  const domSrc = await fs.readFile(
-    new URL(
-      '../server/modules/social-publishing/browser/adapters/facebookTimelineDom.ts',
-      import.meta.url,
-    ),
-    'utf8',
-  );
-  assert.equal(/graphApi|graph\.facebook|facebookPageGraph/i.test(adapterSrc), false);
-  assert.equal(/graphApi|graph\.facebook|facebookPageGraph/i.test(domSrc), false);
+  assert.ok(adapterSrc.includes('createDomToolkit'));
+  assert.ok(adapterSrc.includes('this.dom.navigator'));
+  assert.ok(adapterSrc.includes('this.dom.editor'));
+  assert.ok(adapterSrc.includes('this.dom.uploader'));
+  assert.ok(adapterSrc.includes('this.dom.publisher'));
+  assert.ok(adapterSrc.includes('this.dom.verifier'));
+  assert.ok(adapterSrc.includes('this.dom.evidence'));
+  assert.equal(adapterSrc.includes('getByRole'), false);
 });
 
 if (!process.exitCode) {
