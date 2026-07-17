@@ -26,4 +26,5 @@ export * from './adapters/stubDestinationAdapter';
 export * from './adapters/facebookStubs';
 export * from './adapters/genericBrowserDestinationAdapter';
 export * from './adapters/facebookTimelineAdapter';
+export * from './adapters/facebookGroupAdapter';
 export * from './actions';

@@ -144,7 +144,7 @@ await test('7. no Graph API in timeline + DOM framework', async () => {
   }
 });
 
-await test('8. timeline adapter uses DomToolkit (no inline selector loops)', async () => {
+await test('8. timeline adapter uses DomConfiguredDestinationAdapter', async () => {
   const fs = await import('node:fs/promises');
   const adapterSrc = await fs.readFile(
     new URL(
@@ -153,14 +153,10 @@ await test('8. timeline adapter uses DomToolkit (no inline selector loops)', asy
     ),
     'utf8',
   );
-  assert.ok(adapterSrc.includes('createDomToolkit'));
-  assert.ok(adapterSrc.includes('this.dom.navigator'));
-  assert.ok(adapterSrc.includes('this.dom.editor'));
-  assert.ok(adapterSrc.includes('this.dom.uploader'));
-  assert.ok(adapterSrc.includes('this.dom.publisher'));
-  assert.ok(adapterSrc.includes('this.dom.verifier'));
-  assert.ok(adapterSrc.includes('this.dom.evidence'));
+  assert.ok(adapterSrc.includes('DomConfiguredDestinationAdapter'));
+  assert.ok(adapterSrc.includes('FACEBOOK_TIMELINE_DOM'));
   assert.equal(adapterSrc.includes('getByRole'), false);
+  assert.equal(/facebookGroup/i.test(adapterSrc), false);
 });
 
 if (!process.exitCode) {

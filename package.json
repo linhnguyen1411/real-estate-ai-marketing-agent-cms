@@ -81,6 +81,7 @@
     "test:publisher-production": "tsx scripts/test-social-publishing.ts",
     "test:browser-publisher-foundation": "tsx scripts/test-browser-publisher-foundation.ts",
     "test:facebook-timeline": "tsx scripts/test-facebook-timeline-adapter.ts",
+    "test:facebook-group": "tsx scripts/test-facebook-group-adapter.ts",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "test:automation-engine": "tsx scripts/test-automation-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",

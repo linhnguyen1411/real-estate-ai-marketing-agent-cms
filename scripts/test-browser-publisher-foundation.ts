@@ -74,7 +74,20 @@ async function main() {
     destinationConfig: {},
     dryRun: true,
   });
-  ok('stub prepare dryRun', stubResult.ok === true && stubResult.dryRun === true);
+  ok('stub prepare dryRun', stubResult.ok === true && (stubResult.dryRun === true || stubResult.data?.dryRun === true));
+
+  const groupAdapter = resolveDestinationAdapter('facebook_group');
+  ok('group adapter is live (not stub message)', !String((await groupAdapter.prepare({
+    publishJobId: 'job_g',
+    draftId: 'd_g',
+    destinationId: 'c_g',
+    missionRunId: 'mr_g',
+    body: 'g',
+    linkUrl: null,
+    media: [],
+    destinationConfig: { groupUrl: 'https://www.facebook.com/groups/1/' },
+    dryRun: true,
+  })).message || '').includes('stub:'));
 
   // ── Capability registry ──────────────────────────────────────
   const {

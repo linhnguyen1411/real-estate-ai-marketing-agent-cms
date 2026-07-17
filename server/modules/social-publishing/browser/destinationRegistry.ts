@@ -1,7 +1,5 @@
-import {
-  FacebookGroupStubAdapter,
-  FacebookPageWebStubAdapter,
-} from './adapters/facebookStubs';
+import { FacebookPageWebStubAdapter } from './adapters/facebookStubs';
+import { facebookGroupAdapter } from './adapters/facebookGroupAdapter';
 import { facebookTimelineAdapter } from './adapters/facebookTimelineAdapter';
 import { getCapabilitiesForDestination } from './capabilities';
 import type {
@@ -22,7 +20,7 @@ function bootstrapDefaults(): void {
   const defaults: Array<{ key: DestinationKey; label: string; adapter: BrowserDestinationAdapter }> =
     [
       { key: 'facebook_timeline', label: 'Facebook Timeline', adapter: facebookTimelineAdapter },
-      { key: 'facebook_group', label: 'Facebook Group', adapter: new FacebookGroupStubAdapter() },
+      { key: 'facebook_group', label: 'Facebook Group', adapter: facebookGroupAdapter },
       { key: 'facebook_page_web', label: 'Facebook Page (Web)', adapter: new FacebookPageWebStubAdapter() },
     ];
 
