@@ -1,74 +1,56 @@
-# Facebook Timeline Adapter (Phase C3)
+# Facebook Timeline Adapter — Live (Phase D1)
 
-**Date:** 2026-07-16  
-**Status:** Implemented (`facebook_timeline`)
+**Date:** 2026-07-17  
+**Status:** Live-ready (`facebook_timeline`)
 
-## Scope
+## Goal
 
-Implemented first real `BrowserDestinationAdapter` for `facebook_timeline` with DOM lifecycle logic contained in adapter module only.
+Complete the `facebook_timeline` browser publisher for real posts: compose, multi-image upload, publish, verify, permalink, evidence, and retry. **No Graph API.**
 
-No changes made to:
+## Scope Guard
 
+Unchanged:
+
+- Automation Engine
 - Mission Runtime
-- Queue design
-- Worker Runtime architecture
-- Scanner
-- Browser Runtime internals
-- Graph API usage
+- Worker Runtime
+- Destination / Action / Workflow registries
 
-## Adapter Implementation
+Changed:
 
-- File: `server/modules/social-publishing/browser/adapters/facebookTimelineAdapter.ts`
-- Registered in destination registry:
-  - `server/modules/social-publishing/browser/destinationRegistry.ts`
+- `server/modules/social-publishing/browser/adapters/facebookTimelineAdapter.ts`
+- `server/modules/social-publishing/browser/adapters/facebookTimelineDom.ts` (DOM helpers)
 
-### Lifecycle Coverage
+## Lifecycle
 
-- `prepare()`
-- `navigate()`
-- `ensureAuthenticated()`
-- `fillContent()` (compose phase implementation lives inside adapter)
-- `uploadMedia()`
-- `publish()`
-- `verify()`
-- `captureEvidence()`
-- `cleanup()`
+| Phase | Behavior |
+|-------|----------|
+| `prepare` | Evidence paths + timer |
+| `navigate` / `ensureAuthenticated` | Home URL + Facebook auth block detect |
+| `uploadMedia` | Open composer → attach **all** local images (file input / chooser) with retry |
+| `fillContent` | Open/focus composer → type body + link with retry |
+| `publish` | Click Post/Đăng with retry → success heuristics → permalink |
+| `verify` | Re-check success / permalink / postId |
+| `captureEvidence` | Before/after screenshots, HTML snapshot, permalink, postId |
+| `cleanup` | Dismiss dialogs + release CDP lock |
 
-## Runtime Reuse
+## Permalink
 
-Adapter reuses existing worker browser runtime via injected page factory:
+Extracted from feed/dialog links matching:
 
-- `BrowserManager.getPublishPage()`
-- `BrowserManager.beginCdpJob()`
-- `BrowserManager.releaseCdpLock()`
+- `/posts/{id}`
+- `permalink.php?story_fbid=`
+- `story.php?story_fbid=`
+- `/activity/{id}`
 
-Injection point:
+## Runtime
 
-- `server/modules/social-publishing/worker/publishSocialHandler.ts`
-
-Worker still only orchestrates workflow execution; DOM selectors are confined to adapter implementation.
-
-## Evidence
-
-Adapter captures and returns:
-
-- screenshot before
-- screenshot after
-- html snapshot
-- published url (when available)
-- latency/duration
-
-Paths are aligned with publish evidence structure under `runtime/publish-evidence`.
+Reuses injected Browser Runtime (`BrowserManager.getPublishPage` / CDP locks) via `configureFacebookTimelineAdapterRuntime`.
 
 ## Tests
 
-- Adapter tests:
-  - `scripts/test-facebook-timeline-adapter.ts`
-- Existing publishing tests:
-  - `npm run test:social-publishing`
-- Mission tests:
-  - `npm run test:mission-engine`
-- Lint:
-  - `npm run lint`
-- Build:
-  - `npm run build` (environment-dependent due to local Prisma DLL lock)
+```bash
+npm run test:facebook-timeline
+npm run test:social-publishing
+npm run lint
+```
