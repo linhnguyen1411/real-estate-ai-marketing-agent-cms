@@ -50,6 +50,20 @@ export async function enqueueSourceScan(input: {
     throw new Error('Nguồn không active, không thể quét.');
   }
 
+  // Serialize: never create a second active scan_source for the same source.
+  const existing = await prisma.agentJob.findFirst({
+    where: {
+      sourceId: source.id,
+      type: 'scan_source',
+      status: { in: ['queued', 'claimed', 'running'] },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  if (existing) {
+    return { sourceId: source.id, jobId: existing.id };
+  }
+
   const now = new Date();
   const job = await prisma.agentJob.create({
     data: {
