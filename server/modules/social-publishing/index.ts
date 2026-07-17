@@ -5,6 +5,7 @@ export * from './mediaValidation';
 export * from './channelService';
 export * from './draftService';
 export * from './jobService';
+export * from './campaignService';
 export * from './attemptService';
 export * from './notificationBridge';
 export * from './missionIntegration';
