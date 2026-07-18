@@ -74,4 +74,6 @@ export type ControlPlaneReportKind =
   | 'campaign'
   | 'publish'
   | 'scanner'
-  | 'runtime_health';
+  | 'runtime_health'
+  | 'agent'
+  | 'browser';

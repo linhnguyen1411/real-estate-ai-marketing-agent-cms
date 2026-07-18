@@ -1368,19 +1368,47 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
       const user = getAuthUser(req);
       const { ControlPlane } = await import('../modules/control-plane');
       const kindRaw = String(req.query.kind || 'daily').trim().toLowerCase();
-      const kind =
-        kindRaw === 'weekly' ||
-        kindRaw === 'campaign' ||
-        kindRaw === 'publish' ||
-        kindRaw === 'scanner' ||
-        kindRaw === 'runtime_health'
-          ? kindRaw
-          : 'daily';
+      const allowed = new Set([
+        'daily',
+        'weekly',
+        'campaign',
+        'publish',
+        'scanner',
+        'runtime_health',
+        'agent',
+        'browser',
+      ]);
+      const kind = allowed.has(kindRaw) ? kindRaw : 'daily';
       const date = String(req.query.date || '').trim() || undefined;
-      const data = await ControlPlane.report(user, kind, { date });
+      const data = await ControlPlane.report(user, kind as never, { date });
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tạo được control-plane report.');
+    }
+  });
+
+  /** Shared Command Engine — Web / CLI / any client */
+  app.post('/api/agent/console/command', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const text = String(req.body?.text || req.body?.command || '').trim();
+      if (!text) {
+        sendError(res, 400, 'Thiếu text command.');
+        return;
+      }
+      const { ControlPlane } = await import('../modules/control-plane');
+      const data = await ControlPlane.command(text, {
+        user,
+        companyId:
+          typeof req.body?.companyId === 'string'
+            ? req.body.companyId
+            : user.company_id ?? null,
+        client: 'web',
+        triggeredBy: user.id,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Console command thất bại.');
     }
   });
 

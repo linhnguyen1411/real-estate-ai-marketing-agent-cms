@@ -83,6 +83,25 @@ export async function buildControlPlaneReport(
         campaignEvents: events.filter(e => e.type.startsWith('CAMPAIGN_')),
       };
 
+    case 'agent':
+      return {
+        ...base,
+        agentsDetail: agents,
+        agentEvents: events.filter(e => e.type.startsWith('AGENT_')),
+        online: agents.filter(a => a.status === 'online').length,
+      };
+
+    case 'browser':
+      return {
+        ...base,
+        browsers: runtime.browsers,
+        slots: runtime.slots,
+        browserEvents: events.filter(
+          e => e.type.startsWith('BROWSER_') || e.type.startsWith('SLOT_'),
+        ),
+        browserUtilization: runtime.metrics.browserUtilization,
+      };
+
     case 'weekly':
       return {
         ...base,

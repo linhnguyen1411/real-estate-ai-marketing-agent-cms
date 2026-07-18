@@ -10,10 +10,22 @@ import { selectAgent } from './agentSelector';
 import { emitRuntimeEvent, listRuntimeEvents } from './runtimeEventBus';
 import { buildControlPlaneReport } from './reportEngine';
 import { handleTelegramControlCommand } from './telegramRemoteConsole';
+import {
+  executeControlCommand,
+  formatCommandText,
+  getCommandRegistry,
+} from './command-engine';
 import type { ControlPlaneReportKind, RuntimeEventType } from './types';
 import { RUNTIME_EVENT_TYPES } from './types';
+import type { CommandClient } from './command-engine/types';
 
 export { registerRuntimeAgentRoutes } from './runtimeAgentRoutes';
+export {
+  executeControlCommand,
+  formatCommandText,
+  createCommandEngine,
+  getCommandRegistry,
+} from './command-engine';
 
 export const ControlPlane = {
   name: 'ControlPlane',
@@ -33,9 +45,10 @@ export const ControlPlane = {
       agents,
       events,
       controlPlane: {
-        version: 1,
+        version: 2,
         eventTypes: RUNTIME_EVENT_TYPES,
         clients: ['web_dashboard', 'telegram_bot', 'cli', 'report_engine', 'execution_agent'],
+        commands: getCommandRegistry().list().map(c => c.name),
       },
     };
   },
@@ -51,6 +64,20 @@ export const ControlPlane = {
     return buildControlPlaneReport(user, kind, options);
   },
 
+  /** Shared Command Engine — Web / Telegram / CLI */
+  async command(
+    text: string,
+    options?: {
+      user?: AuthUser;
+      companyId?: string | null;
+      client?: CommandClient;
+      triggeredBy?: string;
+    },
+  ) {
+    return executeControlCommand(text, options);
+  },
+
+  /** Telegram is a thin client over Command Engine */
   async telegramCommand(text: string, options?: { companyId?: string | null }) {
     return handleTelegramControlCommand(text, options);
   },
@@ -58,23 +85,38 @@ export const ControlPlane = {
   describe() {
     return {
       name: 'ControlPlane',
-      role: 'orchestration observability + remote console + execution-agent API',
+      role: 'control plane console + runtime observability',
+      layers: {
+        runtimeApi: true,
+        runtimeEvents: true,
+        agentRegistry: true,
+        reportEngine: true,
+        commandEngine: true,
+        clients: ['web', 'telegram', 'cli'],
+      },
       reuses: [
         'Mission Engine',
         'Execution Pool',
         'Browser Pool',
         'Runtime API',
         'Runtime Monitor',
+        'Execution Agent',
       ],
       nonGoals: [
+        'new worker',
         'new queue',
         'new scheduler',
-        'scanner/publisher rewrite',
+        'scanner/publisher/mission rewrite',
       ],
       executionAgent: {
         process: 'server/automation-agent',
         script: 'npm run automation-agent',
         transport: 'Runtime API (/api/agent/runtime/*)',
+      },
+      console: {
+        commandEngine: 'server/modules/control-plane/command-engine',
+        cli: 'npm run automation-cli',
+        telegram: 'thin client',
       },
       eventTypes: RUNTIME_EVENT_TYPES as readonly RuntimeEventType[],
     };
