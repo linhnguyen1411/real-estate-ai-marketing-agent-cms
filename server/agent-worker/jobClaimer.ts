@@ -127,3 +127,38 @@ export async function requeueRunningJob(jobId: string, reason: string): Promise<
     },
   });
 }
+
+/**
+ * Recover jobs left in claimed/running after a hard worker kill (no graceful shutdown).
+ * Called once on worker boot. Does not change business publish semantics.
+ */
+export async function reclaimOrphanedAgentJobs(input: {
+  workerId: string;
+  staleMs?: number;
+}): Promise<number> {
+  const staleMs = input.staleMs ?? 90_000;
+  const cutoff = new Date(Date.now() - staleMs);
+  const result = await prisma.agentJob.updateMany({
+    where: {
+      status: { in: ['claimed', 'running'] },
+      OR: [
+        { startedAt: { lt: cutoff } },
+        { claimedAt: { lt: cutoff } },
+        {
+          AND: [{ startedAt: null }, { claimedAt: null }, { updatedAt: { lt: cutoff } }],
+        },
+      ],
+      // Never steal a job this same process just claimed
+      NOT: { claimedBy: input.workerId },
+    },
+    data: {
+      status: 'queued',
+      claimedBy: null,
+      claimedAt: null,
+      startedAt: null,
+      availableAt: new Date(),
+      errorMessage: 'Reclaimed orphaned running job after worker death',
+    },
+  });
+  return result.count;
+}

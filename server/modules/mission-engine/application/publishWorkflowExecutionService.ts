@@ -192,9 +192,12 @@ export async function executePublishWorkflow(
       if (policy === 'stop_workflow') {
         stopped = true;
         for (const id of collectDownstreamStepIds(pipeline, step.id)) {
+          const downstream = pipeline.steps.find(s => s.id === id);
+          // Always allow browser_cleanup so CDP/session locks are released.
+          if (downstream?.type === 'browser_cleanup') continue;
           blocked.add(id);
         }
-        break;
+        continue;
       }
     }
   }

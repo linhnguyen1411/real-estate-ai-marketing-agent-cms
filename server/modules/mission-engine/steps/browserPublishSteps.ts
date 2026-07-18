@@ -133,6 +133,9 @@ export const browserCaptureEvidenceStep: WorkflowStepHandler = {
     });
     bundle.publishedUrl = captured.publishedUrl ?? null;
     bundle.domHash = captured.domHash ?? bundle.domHash;
+    bundle.screenshotBeforePath = captured.screenshotBeforePath ?? null;
+    bundle.screenshotAfterPath = captured.screenshotAfterPath ?? null;
+    bundle.htmlSnapshotPath = captured.htmlSnapshotPath ?? null;
 
     const manifest = await writePublishEvidenceManifest(attemptId, bundle);
     return completed({ evidence: manifest, capture: captured });

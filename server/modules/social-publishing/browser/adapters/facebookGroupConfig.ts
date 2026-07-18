@@ -45,10 +45,12 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
     '[role="button"]:has-text("Write something"), [role="button"]:has-text("Viết gì đó"), [role="button"]:has-text("Create a public post"), [role="button"]:has-text("Tạo bài viết"), [role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì")',
   fileInput: 'input[type="file"]',
   photoButtonRoleName: /photo|video|ảnh|hình|image|media/i,
-  publishButtonRoleName: /^(post|publish|đăng|share)$/i,
-  publishAriaCss: '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"]',
+  // VN UI often uses "Đăng bài viết" / "Đăng" — avoid ^$ anchors.
+  publishButtonRoleName: /^(post|publish|đăng|share)\b|đăng bài|post now/i,
+  publishAriaCss:
+    '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"], [aria-label*="Đăng" i], [aria-label*="Post" i]',
   publishDialogAriaCss:
-    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"]',
+    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label*="Đăng" i], [role="dialog"] [aria-label*="Post" i]',
   closeDialogAriaCss: '[aria-label="Close"], [aria-label="Đóng"], [aria-label="Cancel"]',
   permalinkHrefCss:
     'a[href*="/groups/"][href*="/posts/"], a[href*="story_fbid"], a[href*="/posts/"], a[href*="permalink"], a[href*="story.php"]',

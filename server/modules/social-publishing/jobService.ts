@@ -16,6 +16,16 @@ import {
 } from './types';
 import { startPublishMissionRun } from './publishMissionBridge';
 
+async function syncCampaignTargetForPublishJob(publishJobId: string): Promise<void> {
+  const target = await prisma.socialCampaignTarget.findFirst({
+    where: { publishJobId },
+    select: { campaignRunId: true },
+  });
+  if (!target) return;
+  const { refreshCampaignRunProgress } = await import('./campaignService');
+  await refreshCampaignRunProgress(target.campaignRunId);
+}
+
 export function buildIdempotencyKey(
   draftId: string,
   channelId: string,
@@ -445,6 +455,7 @@ export async function completePublishJob(
     action: 'published',
     metadata: storedResult as unknown as Record<string, unknown>,
   });
+  await syncCampaignTargetForPublishJob(id);
   return job;
 }
 
@@ -456,7 +467,19 @@ export async function failPublishJob(
   const existing = await prisma.socialPublishJob.findUnique({ where: { id } });
   if (!existing) throw new Error('Job not found');
 
-  const exhausted = existing.attempts >= existing.maxAttempts;
+  // Safety / channel-state errors can fire before claim increments attempts.
+  // Treat them as terminal so jobs do not requeue forever at attempts < maxAttempts.
+  const nonRetryable = new Set([
+    'channel_paused',
+    'channel_inactive',
+    'channel_needs_login',
+    'channel_disconnected',
+    'already_published',
+    'daily_cap',
+    'duplicate_content',
+  ]);
+  const exhausted =
+    existing.attempts >= existing.maxAttempts || nonRetryable.has(String(errorCode));
   const job = await prisma.socialPublishJob.update({
     where: { id },
     data: {
@@ -489,6 +512,9 @@ export async function failPublishJob(
     action: exhausted ? 'failed' : 'requeued',
     metadata: { errorCode, errorMessage, attempts: job.attempts },
   });
+  if (exhausted || job.status === 'queued') {
+    await syncCampaignTargetForPublishJob(id);
+  }
   return job;
 }
 

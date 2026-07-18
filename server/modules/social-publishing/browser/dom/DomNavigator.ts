@@ -31,12 +31,14 @@ export class DomNavigator {
   }
 
   async openComposer(page: Page): Promise<Locator> {
-    let composer = await this.findComposer(page);
-    if (composer) {
-      await composer.click({ timeout: this.flow.clickTimeoutMs }).catch(() => undefined);
-      await domSleep(this.flow.afterFocusWaitMs + 100);
-      composer = (await this.findComposer(page)) || composer;
-      return composer;
+    // Prefer an already-open create-post dialog (avoid random feed contenteditables).
+    const dialogComposer = page
+      .locator('[role="dialog"] [contenteditable="true"][role="textbox"]')
+      .first();
+    if (await dialogComposer.isVisible().catch(() => false)) {
+      await dialogComposer.click({ timeout: this.flow.clickTimeoutMs }).catch(() => undefined);
+      await domSleep(this.flow.afterFocusWaitMs);
+      return dialogComposer;
     }
 
     for (const name of this.selectors.composerOpenTriggers) {
@@ -54,7 +56,13 @@ export class DomNavigator {
       await domSleep(this.flow.afterOpenWaitMs);
     }
 
-    composer = await this.findComposer(page);
+    if (await dialogComposer.isVisible().catch(() => false)) {
+      await dialogComposer.click({ timeout: this.flow.clickTimeoutMs }).catch(() => undefined);
+      await domSleep(this.flow.afterFocusWaitMs);
+      return dialogComposer;
+    }
+
+    let composer = await this.findComposer(page);
     if (!composer) {
       throw new Error('browser_composer_not_found');
     }

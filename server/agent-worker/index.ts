@@ -5,6 +5,7 @@ import { BrowserManager } from './browserManager';
 import { buildBrowserSessionMetadata, loadWorkerConfig } from './config';
 import { registerGracefulShutdown } from './gracefulShutdown';
 import { HeartbeatService } from './heartbeat';
+import { reclaimOrphanedAgentJobs } from './jobClaimer';
 import { WorkerLoop } from './workerLoop';
 import './scanSourceHandler';
 
@@ -22,6 +23,11 @@ async function main(): Promise<void> {
   console.log(
     `[agent-worker] Settings ready — AGENT_LOCAL_SYNC=${process.env.AGENT_LOCAL_SYNC_ENABLED || 'false'}`,
   );
+
+  const reclaimed = await reclaimOrphanedAgentJobs({ workerId: config.workerId, staleMs: 60_000 });
+  if (reclaimed > 0) {
+    console.log(`[agent-worker] Reclaimed ${reclaimed} orphaned claimed/running job(s)`);
+  }
 
   console.log('[agent-worker] Starting Browser Worker');
   console.log(`  workerId:    ${config.workerId}`);

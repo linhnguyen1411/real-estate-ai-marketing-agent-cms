@@ -18,14 +18,21 @@ export class DomEditor {
     await composer.click({ timeout: this.flow.clickTimeoutMs }).catch(() => undefined);
     await domSleep(200);
 
-    const filled = await composer
-      .fill(body)
-      .then(() => true)
-      .catch(() => false);
-    if (!filled) {
-      await composer.click().catch(() => undefined);
-      await page.keyboard.press('Control+A').catch(() => undefined);
-      await page.keyboard.type(body, { delay: this.flow.afterTypeKeyDelayMs });
+    // Facebook contenteditable often rejects Locator.fill — prefer keyboard.
+    await page.keyboard.press('Control+A').catch(() => undefined);
+    await page.keyboard.press('Backspace').catch(() => undefined);
+    await page.keyboard.type(body, { delay: this.flow.afterTypeKeyDelayMs });
+
+    const text = ((await composer.innerText().catch(() => '')) || '').trim();
+    if (!text && body.trim()) {
+      const filled = await composer
+        .fill(body)
+        .then(() => true)
+        .catch(() => false);
+      if (!filled) {
+        await composer.click().catch(() => undefined);
+        await page.keyboard.type(body, { delay: this.flow.afterTypeKeyDelayMs });
+      }
     }
 
     if (linkUrl) {
@@ -33,5 +40,6 @@ export class DomEditor {
         .type(`\n${linkUrl}`, { delay: this.flow.afterTypeKeyDelayMs })
         .catch(() => undefined);
     }
+    await domSleep(400);
   }
 }
