@@ -111,13 +111,28 @@ export async function completeMissionRunIfSettled(missionRunId: string): Promise
   if (pendingSteps > 0 || activeJobs > 0) return run;
 
   const status: MissionRunStatus = failedSteps > 0 ? 'completed_with_errors' : 'completed';
-  return prisma.agentMissionRun.update({
+  const updated = await prisma.agentMissionRun.update({
     where: { id: missionRunId },
     data: {
       status,
       completedAt: new Date(),
     },
   });
+
+  try {
+    const { emitRuntimeEventAsync } = await import('../../control-plane/runtimeEventBus');
+    emitRuntimeEventAsync({
+      type: failedSteps > 0 ? 'MISSION_FAILED' : 'MISSION_COMPLETED',
+      companyId: updated.companyId,
+      entityType: 'mission_run',
+      entityId: updated.id,
+      payload: { status, failedSteps, missionId: updated.missionId },
+    });
+  } catch {
+    /* ignore */
+  }
+
+  return updated;
 }
 
 export async function mergeMissionRunMetrics(

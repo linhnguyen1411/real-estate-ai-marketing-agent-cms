@@ -78,6 +78,8 @@ function isResourceBusyError(error: unknown): boolean {
  */
 export class WorkerLoop {
   private readonly inflight = new Map<string, Promise<void>>();
+  /** Soft-reserves so fire-and-forget claim does not overbook a slot before acquire(). */
+  private readonly reserved = new Map<string, number>();
   private running = false;
 
   constructor(
@@ -96,6 +98,36 @@ export class WorkerLoop {
     return [...this.inflight.keys()];
   }
 
+  private reservedCount(kind: string): number {
+    return this.reserved.get(kind) ?? 0;
+  }
+
+  private reserve(kind: string): void {
+    this.reserved.set(kind, this.reservedCount(kind) + 1);
+  }
+
+  private unreserve(kind: string): void {
+    const n = this.reservedCount(kind) - 1;
+    if (n <= 0) this.reserved.delete(kind);
+    else this.reserved.set(kind, n);
+  }
+
+  /** True if slot has room after counting in-flight reserves not yet in pool.running. */
+  private canAccept(kind: string | null): boolean {
+    if (!kind) return true;
+    if (!this.executionPool.hasFreeCapacity(kind as Parameters<ExecutionPool['hasFreeCapacity']>[0])) {
+      return false;
+    }
+    // Pool free by 1+; refuse if we already soft-reserved that last seat.
+    const snap = this.executionPool.snapshot().find(s => s.kind === kind);
+    if (!snap || snap.maxConcurrency <= 0 || snap.status === 'stopped') return false;
+    return snap.runningJobs + this.reservedCount(kind) < snap.maxConcurrency;
+  }
+
+  private anyAcceptableSlot(): boolean {
+    return this.executionPool.snapshot().some(s => this.canAccept(s.kind));
+  }
+
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -110,7 +142,7 @@ export class WorkerLoop {
         this.executionPool.tickHeartbeat();
         this.browserPool.tickHeartbeat();
 
-        if (!this.executionPool.hasFreeCapacity()) {
+        if (!this.anyAcceptableSlot()) {
           await sleep(this.config.pollIntervalMs);
           continue;
         }
@@ -121,14 +153,29 @@ export class WorkerLoop {
           continue;
         }
 
+        const kind = slotKindForJobType(job.type);
+        if (kind && !this.canAccept(kind)) {
+          // Publish-free + scan-busy used to cause tight SLOT_BUSY claim loops.
+          await releaseJobToQueue(
+            job.id,
+            `SLOT_BUSY: ${kind} — running=${this.executionPool.snapshot().find(s => s.kind === kind)?.runningJobs ?? '?'}/${this.executionPool.snapshot().find(s => s.kind === kind)?.maxConcurrency ?? '?'}`,
+          );
+          await sleep(this.config.pollIntervalMs);
+          continue;
+        }
+
         console.log(`[agent-worker] Claimed job ${job.id} type=${job.type}`);
+        if (kind) this.reserve(kind);
         const run = this.dispatch(job).finally(() => {
+          if (kind) this.unreserve(kind);
           this.inflight.delete(job.id);
         });
         this.inflight.set(job.id, run);
 
-        // Opportunistically claim another job for a free slot (scan ∥ publish).
-        continue;
+        // Opportunistically claim another job only when a different slot is free.
+        if (!this.anyAcceptableSlot()) {
+          await sleep(this.config.pollIntervalMs);
+        }
       } catch (error) {
         console.error('[agent-worker] Loop error:', error);
         await sleep(this.config.pollIntervalMs);
@@ -209,6 +256,20 @@ export class WorkerLoop {
             workerId: this.config.workerId,
           });
 
+          try {
+            const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+            emitRuntimeEventAsync({
+              type: 'BROWSER_LEASED',
+              companyId: job.companyId,
+              agentId: this.config.workerId,
+              entityType: 'job',
+              entityId: job.id,
+              payload: { purpose: kind, browserId: browserLease.browserId },
+            });
+          } catch {
+            /* ignore */
+          }
+
           const result = await executeJob(job, this.browserPool.getManager());
           try {
             await completeJob(job.id, {
@@ -246,7 +307,32 @@ export class WorkerLoop {
       await releaseJobToQueue(job.id, message);
     } finally {
       try {
-        browserLease?.release();
+        if (browserLease) {
+          browserLease.release();
+          try {
+            const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+            emitRuntimeEventAsync({
+              type: 'BROWSER_RELEASED',
+              companyId: job.companyId,
+              agentId: this.config.workerId,
+              entityType: 'job',
+              entityId: job.id,
+              payload: { purpose: kind },
+            });
+            if (slotLease) {
+              emitRuntimeEventAsync({
+                type: 'SLOT_RELEASED',
+                companyId: job.companyId,
+                agentId: this.config.workerId,
+                entityType: 'job',
+                entityId: job.id,
+                payload: { slot: kind },
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
       } catch {
         /* ignore */
       }

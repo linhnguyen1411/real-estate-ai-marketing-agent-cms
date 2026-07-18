@@ -259,6 +259,19 @@ export async function startCampaignRun(input: {
     },
   });
 
+  try {
+    const { emitRuntimeEventAsync } = await import('../control-plane/runtimeEventBus');
+    emitRuntimeEventAsync({
+      type: 'CAMPAIGN_STARTED',
+      companyId: campaign.companyId,
+      entityType: 'campaign_run',
+      entityId: run.id,
+      payload: { campaignId: campaign.id, targets: plan.targets.length },
+    });
+  } catch {
+    /* ignore */
+  }
+
   return {
     campaign,
     run: refreshed.run,
@@ -342,6 +355,21 @@ export async function refreshCampaignRunProgress(campaignRunId: string): Promise
       completedAt: terminal ? run.completedAt ?? new Date() : null,
     },
   });
+
+  if (terminal && !run.completedAt) {
+    try {
+      const { emitRuntimeEventAsync } = await import('../control-plane/runtimeEventBus');
+      emitRuntimeEventAsync({
+        type: 'CAMPAIGN_COMPLETED',
+        companyId: updated.companyId,
+        entityType: 'campaign_run',
+        entityId: updated.id,
+        payload: { status, campaignId: updated.campaignId },
+      });
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     run: {

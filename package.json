@@ -86,6 +86,7 @@
     "test:campaign-engine": "tsx scripts/test-campaign-engine.ts",
     "test:execution-pool": "tsx scripts/test-execution-pool.ts",
     "test:runtime-observability": "tsx scripts/test-runtime-observability.ts",
+    "test:control-plane": "tsx scripts/test-control-plane.ts",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "test:automation-engine": "tsx scripts/test-automation-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",

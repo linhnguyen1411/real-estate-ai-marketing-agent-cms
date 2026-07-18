@@ -3,12 +3,14 @@ import { Prisma } from '@prisma/client';
 import { notifyJobFailed } from '../agent/agentNotificationService';
 import { prisma } from '../prisma';
 import { isNonRetryableBrowserErrorMessage } from './facebook/facebookCheckpointDetector';
+import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
 
 export type ClaimedJob = AgentJob;
 
 /**
  * Atomically claim the next queued job using PostgreSQL row locking (SKIP LOCKED).
  * Priority: lower number = higher priority; then oldest createdAt.
+ * Multi-agent prep: jobs with payload.targetAgentId only match that worker.
  */
 export async function claimNextJob(workerId: string): Promise<ClaimedJob | null> {
   return prisma.$transaction(async tx => {
@@ -17,6 +19,11 @@ export async function claimNextJob(workerId: string): Promise<ClaimedJob | null>
       FROM agent_jobs
       WHERE status = 'queued'
         AND available_at <= NOW()
+        AND (
+          payload->>'targetAgentId' IS NULL
+          OR payload->>'targetAgentId' = ''
+          OR payload->>'targetAgentId' = ${workerId}
+        )
       ORDER BY priority ASC, created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -25,7 +32,7 @@ export async function claimNextJob(workerId: string): Promise<ClaimedJob | null>
     const jobId = rows[0]?.id;
     if (!jobId) return null;
 
-    return tx.agentJob.update({
+    const job = await tx.agentJob.update({
       where: { id: jobId },
       data: {
         status: 'running',
@@ -34,11 +41,23 @@ export async function claimNextJob(workerId: string): Promise<ClaimedJob | null>
         startedAt: new Date(),
       },
     });
+
+    emitRuntimeEventAsync({
+      type: 'JOB_CLAIMED',
+      companyId: job.companyId,
+      agentId: workerId,
+      entityType: 'job',
+      entityId: job.id,
+      payload: { type: job.type, missionRunId: job.missionRunId },
+    });
+
+    return job;
   });
 }
 
 export async function completeJob(jobId: string, result: Record<string, unknown>): Promise<void> {
-  await prisma.agentJob.update({
+  const existing = await prisma.agentJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.agentJob.update({
     where: { id: jobId },
     data: {
       status: 'completed',
@@ -48,6 +67,14 @@ export async function completeJob(jobId: string, result: Record<string, unknown>
       claimedBy: null,
       claimedAt: null,
     },
+  });
+  emitRuntimeEventAsync({
+    type: 'JOB_COMPLETED',
+    companyId: job.companyId,
+    agentId: existing?.claimedBy ?? null,
+    entityType: 'job',
+    entityId: job.id,
+    payload: { type: job.type, missionRunId: job.missionRunId },
   });
 }
 
@@ -68,6 +95,16 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         errorMessage: errorMessage.slice(0, 500),
       },
     });
+    if (/^SLOT_BUSY/.test(errorMessage)) {
+      emitRuntimeEventAsync({
+        type: 'SLOT_BUSY',
+        companyId: job.companyId,
+        agentId: job.claimedBy,
+        entityType: 'job',
+        entityId: jobId,
+        payload: { errorMessage: errorMessage.slice(0, 200) },
+      });
+    }
     return;
   }
 
@@ -101,6 +138,15 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
       claimedBy: null,
       claimedAt: null,
     },
+  });
+
+  emitRuntimeEventAsync({
+    type: 'JOB_FAILED',
+    companyId: job.companyId,
+    agentId: job.claimedBy,
+    entityType: 'job',
+    entityId: job.id,
+    payload: { type: job.type, errorMessage: errorMessage.slice(0, 200) },
   });
 
   await notifyJobFailed({

@@ -83,5 +83,18 @@ export async function enqueueSourceScan(input: {
     },
   });
 
+  try {
+    const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+    emitRuntimeEventAsync({
+      type: 'JOB_CREATED',
+      companyId: job.companyId,
+      entityType: 'job',
+      entityId: job.id,
+      payload: { type: job.type, sourceId: source.id },
+    });
+  } catch {
+    /* ignore */
+  }
+
   return { sourceId: source.id, jobId: job.id };
 }

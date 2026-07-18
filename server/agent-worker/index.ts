@@ -8,6 +8,8 @@ import { HeartbeatService } from './heartbeat';
 import { reclaimOrphanedAgentJobs } from './jobClaimer';
 import { BrowserPool, ExecutionPool } from './runtime';
 import { WorkerLoop } from './workerLoop';
+import { buildAgentRegistryMetadata } from '../modules/control-plane/agentRegistry';
+import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
 import './scanSourceHandler';
 
 async function main(): Promise<void> {
@@ -61,10 +63,26 @@ async function main(): Promise<void> {
 
   const buildRuntimeMetadata = () => {
     const mem = process.memoryUsage();
+    const slots = executionPool.snapshot();
+    const browsers = browserPool.snapshot();
+    const caps = ['scan', 'publish', 'browser'] as Array<
+      'scan' | 'publish' | 'messaging' | 'comment' | 'browser' | 'cdp'
+    >;
+    for (const s of slots) {
+      if (s.kind === 'messaging' && s.maxConcurrency > 0) caps.push('messaging');
+      if (s.kind === 'comment' && s.maxConcurrency > 0) caps.push('comment');
+    }
+    if (config.browserMode === 'cdp') caps.push('cdp');
+
     return {
       ...buildBrowserSessionMetadata(config),
-      executionPool: executionPool.snapshot(),
-      browserPool: browserPool.snapshot(),
+      ...buildAgentRegistryMetadata({
+        workerId: config.workerId,
+        browserMode: config.browserMode,
+        capabilities: [...new Set(caps)],
+      }),
+      executionPool: slots,
+      browserPool: browsers,
       resources: browser.getResourceDiagnostics(),
       process: {
         pid: process.pid,
@@ -87,15 +105,39 @@ async function main(): Promise<void> {
     // Managed: closes owned Chrome. CDP: does NOT close external Chrome.
     await browser.shutdown();
     await heartbeat.markOffline();
+    emitRuntimeEventAsync({
+      type: 'AGENT_OFFLINE',
+      agentId: config.workerId,
+      companyId: config.companyId,
+      entityType: 'agent',
+      entityId: config.workerId,
+      payload: { signal },
+    });
   });
 
   try {
     await browser.launch();
     await heartbeat.setStatus('ready');
+    emitRuntimeEventAsync({
+      type: 'AGENT_ONLINE',
+      agentId: config.workerId,
+      companyId: config.companyId,
+      entityType: 'agent',
+      entityId: config.workerId,
+      payload: { hostname: process.env.COMPUTERNAME || process.env.HOSTNAME || null },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Browser launch/connect failed.';
     console.error('[agent-worker] Browser start failed:', message);
     await heartbeat.markOffline(message);
+    emitRuntimeEventAsync({
+      type: 'AGENT_OFFLINE',
+      agentId: config.workerId,
+      companyId: config.companyId,
+      entityType: 'agent',
+      entityId: config.workerId,
+      payload: { error: message },
+    });
     process.exit(1);
   }
 

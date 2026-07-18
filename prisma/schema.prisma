@@ -789,6 +789,24 @@ model BrowserSession {
   @@map("browser_sessions")
 }
 
+/// Control Plane — append-only runtime event bus (observability / Telegram / reports)
+model AgentRuntimeEvent {
+  id         String   @id @default(cuid())
+  companyId  String?  @map("company_id")
+  type       String
+  agentId    String?  @map("agent_id")
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@index([agentId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([createdAt])
+  @@map("agent_runtime_events")
+}
+
 model ScannedContent {
   id                       String    @id @default(cuid())
   companyId                String?   @map("company_id")

@@ -1325,11 +1325,80 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
   app.get('/api/agent/runtime', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const { buildAutomationRuntimeSnapshot } = await import('./runtimeObservability');
-      const data = await buildAutomationRuntimeSnapshot(user);
+      const { ControlPlane } = await import('../modules/control-plane');
+      const data = await ControlPlane.getRuntime(user);
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tải được runtime observability.');
+    }
+  });
+
+  app.get('/api/agent/agents', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { ControlPlane } = await import('../modules/control-plane');
+      const onlineOnly = String(req.query.onlineOnly || '').trim() === '1';
+      const data = await ControlPlane.listAgents({
+        companyId: user.role === 'owner' ? undefined : user.company_id ?? '__none__',
+        onlineOnly,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được agent registry.');
+    }
+  });
+
+  app.get('/api/agent/runtime/events', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { ControlPlane } = await import('../modules/control-plane');
+      const limit = Number(req.query.limit || 50);
+      const data = await ControlPlane.listEvents({
+        companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+        limit: Number.isFinite(limit) ? limit : 50,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được runtime events.');
+    }
+  });
+
+  app.get('/api/agent/reports/control-plane', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { ControlPlane } = await import('../modules/control-plane');
+      const kindRaw = String(req.query.kind || 'daily').trim().toLowerCase();
+      const kind =
+        kindRaw === 'weekly' ||
+        kindRaw === 'campaign' ||
+        kindRaw === 'publish' ||
+        kindRaw === 'scanner' ||
+        kindRaw === 'runtime_health'
+          ? kindRaw
+          : 'daily';
+      const date = String(req.query.date || '').trim() || undefined;
+      const data = await ControlPlane.report(user, kind, { date });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tạo được control-plane report.');
+    }
+  });
+
+  app.post('/api/agent/telegram/command', async (req: Request, res: Response) => {
+    try {
+      getAuthUser(req);
+      const text = String(req.body?.text || req.body?.command || '').trim();
+      if (!text) {
+        sendError(res, 400, 'Thiếu text command.');
+        return;
+      }
+      const { ControlPlane } = await import('../modules/control-plane');
+      const data = await ControlPlane.telegramCommand(text, {
+        companyId: typeof req.body?.companyId === 'string' ? req.body.companyId : null,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Telegram command thất bại.');
     }
   });
 

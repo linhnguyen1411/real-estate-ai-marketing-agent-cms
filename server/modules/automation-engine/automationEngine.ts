@@ -13,6 +13,7 @@
 import { ActionRegistry } from './actionRegistryFacade';
 import { DestinationRegistry } from './destinationRegistryFacade';
 import { WorkflowRegistry } from './workflowRegistry';
+import { ControlPlane } from '../control-plane';
 import type { AutomationWorkflowKey, AutomationWorkflowRegistration } from './types';
 
 export const AutomationEngine = {
@@ -24,6 +25,9 @@ export const AutomationEngine = {
 
   /** Browser destination catalog (facebook_timeline, …) */
   destinations: DestinationRegistry,
+
+  /** Control Plane — Agent Registry, Runtime API, Events, Reports, Telegram */
+  controlPlane: ControlPlane,
 
   /**
    * Resolve a registered workflow. Throws if missing or not implemented
@@ -51,6 +55,7 @@ export const AutomationEngine = {
         mission: 'server/modules/mission-engine',
         worker: 'server/agent-worker',
         browser: 'server/agent-worker/browserManager',
+        controlPlane: 'server/modules/control-plane',
       },
       registries: {
         workflows: WorkflowRegistry.list().map(w => ({
@@ -67,6 +72,7 @@ export const AutomationEngine = {
           label: d.label,
         })),
       },
+      controlPlane: ControlPlane.describe(),
     };
   },
 };

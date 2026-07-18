@@ -117,7 +117,7 @@ async function testUiAndApiWiring() {
 
   const routesSrc = fs.readFileSync(routes, 'utf8');
   assert.match(routesSrc, /\/api\/agent\/runtime/);
-  assert.match(routesSrc, /buildAutomationRuntimeSnapshot/);
+  assert.match(routesSrc, /ControlPlane/);
 
   const typesSrc = fs.readFileSync(types, 'utf8');
   assert.match(typesSrc, /export interface AutomationRuntimeSnapshot/);
