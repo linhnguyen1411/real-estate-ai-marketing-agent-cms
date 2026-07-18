@@ -6,6 +6,7 @@ import { buildBrowserSessionMetadata, loadWorkerConfig } from './config';
 import { registerGracefulShutdown } from './gracefulShutdown';
 import { HeartbeatService } from './heartbeat';
 import { reclaimOrphanedAgentJobs } from './jobClaimer';
+import { BrowserPool, ExecutionPool } from './runtime';
 import { WorkerLoop } from './workerLoop';
 import './scanSourceHandler';
 
@@ -43,14 +44,28 @@ async function main(): Promise<void> {
   console.log(`  poll:        ${config.pollIntervalMs}ms`);
 
   const browser = new BrowserManager(config);
+  const executionPool = new ExecutionPool();
+  const browserPool = new BrowserPool(browser, config);
   const heartbeat = new HeartbeatService(config);
-  const loop = new WorkerLoop(config, browser);
+  const loop = new WorkerLoop(config, browser, executionPool, browserPool);
+
+  console.log(
+    `[agent-worker] Execution pool: ${JSON.stringify(
+      executionPool.snapshot().map(s => ({
+        kind: s.kind,
+        max: s.maxConcurrency,
+        status: s.status,
+      })),
+    )}`,
+  );
 
   await heartbeat.register(() => browser.currentUrl(), buildBrowserSessionMetadata(config));
 
   registerGracefulShutdown(async signal => {
     loop.stop();
     await loop.releaseCurrentJob(`Worker shutdown (${signal})`);
+    browserPool.releaseAll();
+    executionPool.releaseAll();
     // Managed: closes owned Chrome. CDP: does NOT close external Chrome.
     await browser.shutdown();
     await heartbeat.markOffline();

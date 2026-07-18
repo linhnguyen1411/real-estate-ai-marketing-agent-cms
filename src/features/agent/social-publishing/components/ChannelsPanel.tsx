@@ -125,13 +125,25 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
     setLoading(true);
     setError('');
     try {
-      const [channelData, destData, publishedJobs] = await Promise.all([
+      const [channelData, publishedJobs, destResult] = await Promise.all([
         fetchSocialChannels({ includeInactive: true }),
-        fetchSocialDestinations(),
         fetchSocialJobs({ status: 'published' }),
+        fetchSocialDestinations().then(
+          data => ({ ok: true as const, data }),
+          err => ({
+            ok: false as const,
+            message: err instanceof Error ? err.message : 'Không tải destinations',
+          }),
+        ),
       ]);
       setChannels(channelData);
-      setDestinations(destData);
+      if (destResult.ok) {
+        setDestinations(destResult.data);
+      } else {
+        setDestinations([]);
+        const msg = 'message' in destResult ? destResult.message : 'Không tải destinations';
+        onMessage(`Capabilities: ${msg}`);
+      }
 
       const byChannel: Record<string, string> = {};
       for (const job of publishedJobs as SocialPublishJob[]) {
@@ -148,7 +160,7 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onMessage]);
 
   useEffect(() => {
     load();

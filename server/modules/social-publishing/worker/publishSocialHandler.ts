@@ -68,8 +68,8 @@ export async function runPublishSocialJob(
   const pageFactory = {
     getPublishPage: (options?: { initialUrl?: string; mode?: 'cdp' | 'managed' }) =>
       browser.getPublishPage(options),
-    beginCdpJob: () => browser.beginCdpJob(),
-    releaseCdpLock: () => browser.releaseCdpLock(),
+    beginCdpJob: () => browser.beginCdpJob('publish'),
+    releaseCdpLock: () => browser.releaseCdpLock('publish'),
   };
   configureFacebookTimelineAdapterRuntime({ pageFactory });
   configureFacebookGroupAdapterRuntime({ pageFactory });

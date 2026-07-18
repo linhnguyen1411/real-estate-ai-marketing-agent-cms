@@ -55,8 +55,8 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
   const job = await prisma.agentJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  // CDP busy — defer without burning attempts
-  if (/^CDP_BUSY/.test(errorMessage)) {
+  // CDP busy / slot / browser busy — defer without burning attempts
+  if (/^(CDP_BUSY|SLOT_BUSY|SLOT_STOPPED|BROWSER_BUSY)/.test(errorMessage)) {
     await prisma.agentJob.update({
       where: { id: jobId },
       data: {
@@ -65,7 +65,7 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         claimedBy: null,
         claimedAt: null,
         startedAt: null,
-        errorMessage: 'CDP_BUSY',
+        errorMessage: errorMessage.slice(0, 500),
       },
     });
     return;

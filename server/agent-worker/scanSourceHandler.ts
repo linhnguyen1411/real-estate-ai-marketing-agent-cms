@@ -35,8 +35,10 @@ export async function runScanSourceJob(
 
   const workerConfig = loadWorkerConfig();
   const mode = resolveBrowserModeForSource(source, workerConfig);
+  // CDP lock is purpose-scoped; ALS + BrowserPool lease already hold scan purpose.
+  // Re-acquire is reentrant for the same job.
   if (mode === 'cdp') {
-    await browser.beginCdpJob();
+    await browser.beginCdpJob('scan');
   }
 
   try {
@@ -66,6 +68,6 @@ export async function runScanSourceJob(
     });
     throw error;
   } finally {
-    if (mode === 'cdp') browser.releaseCdpLock();
+    if (mode === 'cdp') browser.releaseCdpLock('scan');
   }
 }
