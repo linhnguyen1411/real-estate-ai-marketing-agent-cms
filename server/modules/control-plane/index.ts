@@ -26,6 +26,12 @@ export {
   createCommandEngine,
   getCommandRegistry,
 } from './command-engine';
+export {
+  registerTelegramControlPlaneRoutes,
+  startTelegramControlPlane,
+  stopTelegramControlPlane,
+  getTelegramConsoleStatus,
+} from './telegram';
 
 export const ControlPlane = {
   name: 'ControlPlane',
@@ -116,7 +122,9 @@ export const ControlPlane = {
       console: {
         commandEngine: 'server/modules/control-plane/command-engine',
         cli: 'npm run automation-cli',
-        telegram: 'thin client',
+        telegram: 'server/modules/control-plane/telegram (thin client)',
+        telegramFlow:
+          'Telegram → UpdateReceiver → ACL → Command Engine → Control Plane → Mission/Runtime → Execution Agent',
       },
       eventTypes: RUNTIME_EVENT_TYPES as readonly RuntimeEventType[],
     };

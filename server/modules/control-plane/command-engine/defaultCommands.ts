@@ -303,26 +303,46 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'publish',
-    description: 'Start campaign publish now',
-    usage: '/publish now <campaign>',
+    description: 'Publish queue or start campaign publish via Mission',
+    usage: '/publish queue | /publish now <campaign>',
     handler: async (args, ctx) => {
-      if ((args[0] || '').toLowerCase() !== 'now') {
-        return fail('publish', 'Usage: /publish now <campaign>');
-      }
-      const target = args[1];
-      if (!target) {
+      const sub = (args[0] || '').toLowerCase();
+
+      if (!sub || sub === 'queue') {
+        const { listJobs } = await import('../../social-publishing/jobService');
+        const jobs = await listJobs({
+          companyId: ctx.companyId,
+          status: 'queued',
+          limit: 20,
+        });
         const snap = await buildAutomationRuntimeSnapshot(ctx.user);
-        const pubs = snap.activeJobs.filter(j => j.type === 'publish_social');
+        const active = snap.activeJobs.filter(j => j.type === 'publish_social');
         return ok(
           'publish',
           [
-            'Active publish jobs (pass campaign id to start):',
-            `publish/hour: ${snap.metrics.publishPerHour}`,
-            ...pubs.slice(0, 5).map(j => `• ${j.id.slice(0, 8)} ${j.status}`),
-            pubs.length === 0 ? '(none)' : '',
+            'Publish queue (SocialPublishJob queued → Mission → Agent poll):',
+            ...jobs.slice(0, 12).map(j => {
+              const when = j.scheduledAt ? new Date(j.scheduledAt).toISOString() : '—';
+              return `• ${j.id.slice(0, 10)} channel=${j.channelId.slice(0, 8)} at=${when}`;
+            }),
+            jobs.length === 0 ? '(no queued SocialPublishJob)' : '',
+            `Agent publish_social active: ${active.length}`,
+            'Start campaign: /publish now <campaign>',
           ].filter(Boolean),
-          { activePublishJobs: pubs.length },
+          {
+            queued: jobs.length,
+            activePublishJobs: active.length,
+            jobIds: jobs.slice(0, 12).map(j => j.id),
+          },
         );
+      }
+
+      if (sub !== 'now') {
+        return fail('publish', 'Usage: /publish queue | /publish now <campaign>');
+      }
+      const target = args[1];
+      if (!target) {
+        return fail('publish', 'Usage: /publish now <campaign>');
       }
       const campaign = await resolveCampaign(target);
       if (!campaign) return fail('publish', `Campaign not found: ${target}`);
@@ -341,6 +361,7 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
           `Publish now campaign=${campaign.name}`,
           `run=${started.run.id} status=${started.run.status}`,
           `targets=${started.progress.total}`,
+          'Flow: Mission → Production Queue → Execution Agent poll → Local schedule → Browser',
         ],
         {
           campaignId: campaign.id,
@@ -348,6 +369,48 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
           status: started.run.status,
           progress: started.progress,
         },
+      );
+    },
+  });
+
+  registry.register({
+    name: 'pause',
+    description: 'Pause a mission (Control Plane → Mission status)',
+    usage: '/pause <mission>',
+    handler: async (args, _ctx) => {
+      const target = args[0];
+      if (!target) return fail('pause', 'Usage: /pause <mission>');
+      const mission = await resolveMission(target);
+      if (!mission) return fail('pause', `Mission not found: ${target}`);
+      const updated = await prisma.agentMission.update({
+        where: { id: mission.id },
+        data: { status: 'paused' },
+      });
+      return ok(
+        'pause',
+        [`Paused mission ${updated.name || updated.id}`, `status=${updated.status}`],
+        { missionId: updated.id, status: updated.status },
+      );
+    },
+  });
+
+  registry.register({
+    name: 'resume',
+    description: 'Resume (activate) a paused mission',
+    usage: '/resume <mission>',
+    handler: async (args, _ctx) => {
+      const target = args[0];
+      if (!target) return fail('resume', 'Usage: /resume <mission>');
+      const mission = await resolveMission(target);
+      if (!mission) return fail('resume', `Mission not found: ${target}`);
+      const updated = await prisma.agentMission.update({
+        where: { id: mission.id },
+        data: { status: 'active' },
+      });
+      return ok(
+        'resume',
+        [`Resumed mission ${updated.name || updated.id}`, `status=${updated.status}`],
+        { missionId: updated.id, status: updated.status },
       );
     },
   });
@@ -468,7 +531,10 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
         '/report today|week|health|publish|scanner|campaign|agent|browser',
         '/scan start <mission>',
         '/scan stop <mission>',
+        '/publish queue',
         '/publish now <campaign>',
+        '/pause <mission>',
+        '/resume <mission>',
         '/cancel <mission>',
         '/retry <mission>',
       ];

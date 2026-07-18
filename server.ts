@@ -76,7 +76,12 @@ import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './se
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
-import { registerRuntimeAgentRoutes } from './server/modules/control-plane/runtimeAgentRoutes';
+import {
+  registerRuntimeAgentRoutes,
+  registerTelegramControlPlaneRoutes,
+  startTelegramControlPlane,
+  stopTelegramControlPlane,
+} from './server/modules/control-plane';
 import {
   maskSettingsSecrets,
   sendTestTelegram,
@@ -1349,6 +1354,7 @@ if (AGENT_ENABLED) {
   registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
   registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
   registerRuntimeAgentRoutes(app);
+  registerTelegramControlPlaneRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
@@ -3522,6 +3528,13 @@ async function main() {
     if (AGENT_ENABLED) {
       startAgentScheduler();
       startAgentSyncOutboxWorker();
+      void startTelegramControlPlane().then(r => {
+        if (r.started) {
+          console.log('[telegram-console] Control Plane client ready', r.status);
+        } else {
+          console.log(`[telegram-console] not started (${r.reason || 'disabled'})`);
+        }
+      });
     } else {
       console.warn('[agent] Scheduler/outbox worker skipped (AGENT_ENABLED=false)');
     }
@@ -3533,6 +3546,7 @@ async function main() {
     console.log(`[Server] ${signal} — stopping scheduler…`);
     stopAgentScheduler();
     stopAgentSyncOutboxWorker();
+    void stopTelegramControlPlane();
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

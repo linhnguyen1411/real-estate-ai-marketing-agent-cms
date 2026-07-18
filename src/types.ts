@@ -342,6 +342,13 @@ export interface AppSettings {
   telegram_include_link?: boolean;
   telegram_quiet_hours_start?: string;
   telegram_quiet_hours_end?: string;
+  /** Control Plane Telegram Console */
+  telegram_console_enabled?: boolean;
+  telegram_console_mode?: 'polling' | 'webhook';
+  telegram_allowed_user_ids?: string;
+  telegram_allowed_chat_ids?: string;
+  telegram_admin_user_ids?: string;
+  telegram_webhook_secret?: string;
   /** AI Agent → VPS sync */
   agent_sync_enabled?: boolean;
   agent_sync_vps_url?: string;
