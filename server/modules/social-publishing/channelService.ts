@@ -33,6 +33,7 @@ export async function listChannels(input: {
   type?: string;
   status?: string;
   includeInactive?: boolean;
+  includeDeleted?: boolean;
 }) {
   return prisma.socialChannel.findMany({
     where: {
@@ -40,6 +41,7 @@ export async function listChannels(input: {
       ...(input.type ? { type: input.type } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.includeInactive ? {} : { isActive: true }),
+      ...(input.includeDeleted || input.status === 'deleted' ? {} : { NOT: { status: 'deleted' } }),
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -175,6 +177,47 @@ export async function activateChannel(id: string, actor?: string | null): Promis
     actor,
   });
   return channel;
+}
+
+/** Soft-delete — keep jobs (FK Restrict); hide from default channel lists. */
+export async function deleteChannel(id: string, actor?: string | null): Promise<SocialChannel> {
+  const existing = await getChannelById(id);
+  if (!existing) throw new Error('Channel not found');
+  if (existing.status === 'deleted') return existing;
+
+  const channel = await prisma.socialChannel.update({
+    where: { id },
+    data: {
+      status: 'deleted',
+      isActive: false,
+    },
+  });
+  await appendAuditLog({
+    companyId: channel.companyId,
+    entityType: 'SocialChannel',
+    entityId: id,
+    action: 'deleted',
+    actor,
+  });
+  return channel;
+}
+
+export async function deleteChannels(
+  ids: string[],
+  actor?: string | null,
+): Promise<{ deleted: SocialChannel[]; skipped: string[] }> {
+  const unique = [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))];
+  const deleted: SocialChannel[] = [];
+  const skipped: string[] = [];
+  for (const id of unique) {
+    const existing = await getChannelById(id);
+    if (!existing || existing.status === 'deleted') {
+      skipped.push(id);
+      continue;
+    }
+    deleted.push(await deleteChannel(id, actor));
+  }
+  return { deleted, skipped };
 }
 
 export async function markNeedsLogin(
@@ -361,9 +404,13 @@ export async function verifyChannel(id: string) {
   if (!channel) throw new Error('Channel not found');
   const publisher = resolvePublisher(channel);
   const health = (await publisher.verifyChannel(channel)) as GraphVerifyDetails;
-  const connectionState = mapHealthToConnectionState(health);
-  const statusUpdate =
-    health.ok
+  const skippedCmsBrowserVerify = health.errorCode === 'browser_verify_skipped_cms';
+  const connectionState = skippedCmsBrowserVerify
+    ? ((channel.connectionState as ChannelConnectionState | null) ?? 'connected')
+    : mapHealthToConnectionState(health);
+  const statusUpdate = skippedCmsBrowserVerify
+    ? {}
+    : health.ok
       ? { status: 'active' as const }
       : (CHANNEL_STATUSES as readonly string[]).includes(String(health.status))
         ? { status: String(health.status) }
@@ -374,7 +421,9 @@ export async function verifyChannel(id: string) {
     data: {
       ...statusUpdate,
       lastVerifiedAt: new Date(),
-      lastVerifyError: health.ok ? null : health.details || health.errorCode || 'verify failed',
+      lastVerifyError: health.ok || skippedCmsBrowserVerify
+        ? null
+        : health.details || health.errorCode || 'verify failed',
       connectionState,
       ...(health.tokenExpiresAt !== undefined
         ? { tokenExpiresAt: health.tokenExpiresAt }
@@ -390,6 +439,7 @@ export async function verifyChannel(id: string) {
     metadata: {
       ...(health as unknown as Record<string, unknown>),
       connectionState,
+      skippedCmsBrowserVerify,
     },
   });
   return { ...health, connectionState };

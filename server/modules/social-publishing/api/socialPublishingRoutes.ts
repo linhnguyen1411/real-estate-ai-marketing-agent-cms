@@ -6,6 +6,8 @@ import {
   activateChannel,
   connectPageToken,
   createChannel,
+  deleteChannel,
+  deleteChannels,
   getChannelById,
   listChannels,
   pauseChannel,
@@ -188,6 +190,50 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 400, error instanceof Error ? error.message : 'Activate failed.');
+    }
+  });
+
+  app.post('/api/social/channels/bulk-delete', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const user = getAuthUser(req);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const ids = Array.isArray(body.ids)
+        ? body.ids.map(id => String(id || '').trim()).filter(Boolean)
+        : [];
+      if (ids.length === 0) return sendError(res, 400, 'ids required');
+
+      for (const id of ids) {
+        const existing = await getChannelById(id);
+        if (!existing) return sendError(res, 404, `Channel not found: ${id}`);
+        if (!assertRecordAccess(req, res, existing.companyId)) return;
+      }
+
+      const data = await deleteChannels(ids, user.id);
+      res.json({
+        status: 'success',
+        data: {
+          deletedCount: data.deleted.length,
+          deletedIds: data.deleted.map(c => c.id),
+          skipped: data.skipped,
+        },
+      });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Bulk delete failed.');
+    }
+  });
+
+  app.delete('/api/social/channels/:id', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const existing = await getChannelById(req.params.id);
+      if (!existing) return sendError(res, 404, 'Channel not found');
+      if (!assertRecordAccess(req, res, existing.companyId)) return;
+      const user = getAuthUser(req);
+      const data = await deleteChannel(req.params.id, user.id);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Delete failed.');
     }
   });
 

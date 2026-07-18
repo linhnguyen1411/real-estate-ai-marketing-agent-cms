@@ -125,6 +125,22 @@ export function activateSocialChannel(id: string) {
   });
 }
 
+export function deleteSocialChannel(id: string) {
+  return socialRequest<SocialChannel>(`/api/social/channels/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function bulkDeleteSocialChannels(ids: string[]) {
+  return socialRequest<{ deletedCount: number; deletedIds: string[]; skipped: string[] }>(
+    '/api/social/channels/bulk-delete',
+    {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    },
+  );
+}
+
 export function connectSocialChannel(id: string, payload: ConnectSocialChannelPayload) {
   return socialRequest<ConnectSocialChannelResult>(`/api/social/channels/${id}/connect`, {
     method: 'POST',

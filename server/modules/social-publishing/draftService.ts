@@ -361,6 +361,12 @@ export async function publishNow(
   if (draft.status !== 'approved' && draft.status !== 'scheduled') {
     if (['draft', 'pending_review', 'rejected'].includes(draft.status)) {
       await approveDraft(draftId, actor);
+    } else if (draft.status === 'published') {
+      // Allow live republish after a prior dry-run / voided attempt.
+      await prisma.socialPostDraft.update({
+        where: { id: draftId },
+        data: { status: 'approved' },
+      });
     } else {
       throw new Error(`Draft must be approved before publish-now (status=${draft.status})`);
     }

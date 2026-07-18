@@ -281,12 +281,15 @@ export const facebookProfileBrowserPublisher: SocialPublisher = {
     return channel.type === 'facebook_profile' && channel.executionMode === 'browser';
   },
   async verifyChannel() {
+    // CMS has no Playwright page factory. Do NOT mark the channel error/disconnected —
+    // real auth check happens on the agent worker during publish.
     return {
-      ok: false,
-      status: 'error',
+      ok: true,
+      status: 'active',
       checkedAt: new Date().toISOString(),
-      details: 'Browser publisher requires worker page factory',
-      errorCode: 'unknown',
+      details:
+        'Browser channel: CMS Test skipped (no page factory). Worker verifies login when publishing.',
+      errorCode: 'browser_verify_skipped_cms',
     };
   },
   async publish() {

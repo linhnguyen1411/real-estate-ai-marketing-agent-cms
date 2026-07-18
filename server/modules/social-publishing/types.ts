@@ -22,7 +22,7 @@ export const JOB_STATUSES = [
   'skipped',
 ] as const;
 
-export const CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error'] as const;
+export const CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error', 'deleted'] as const;
 
 /** UI connection health; distinct from CHANNEL_STATUSES operational status. */
 export const CHANNEL_CONNECTION_STATES = [

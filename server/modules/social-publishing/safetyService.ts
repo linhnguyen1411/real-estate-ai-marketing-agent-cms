@@ -174,15 +174,30 @@ export async function checkDuplicate(input: {
   }
 
   const draftIds = drafts.map(d => d.id);
-  const matched = await prisma.socialPublishJob.findFirst({
+  const candidates = await prisma.socialPublishJob.findMany({
     where: {
       channelId: input.channelId,
       draftId: { in: draftIds },
       status: 'published',
       completedAt: { gte: since },
     },
-    select: { id: true },
+    select: { id: true, result: true },
     orderBy: { completedAt: 'desc' },
+    take: 30,
+  });
+
+  // Dry-run / stub publishes must not block a later live publish of the same content.
+  const matched = candidates.find(job => {
+    const result =
+      job.result && typeof job.result === 'object'
+        ? (job.result as Record<string, unknown>)
+        : null;
+    if (result?.dryRun === true) return false;
+    const urlCandidates = [result?.facebookPostUrl, result?.externalUrl, result?.publishedUrl];
+    for (const raw of urlCandidates) {
+      if (typeof raw === 'string' && /story_fbid=stub_/i.test(raw)) return false;
+    }
+    return true;
   });
 
   return {
