@@ -3,6 +3,7 @@
  */
 
 import type { AuthUser } from '../../../../src/types';
+import type { InlineKeyboard } from '../inlineKeyboard';
 
 export type CommandClient = 'web' | 'telegram' | 'cli';
 
@@ -22,9 +23,7 @@ export type CommandResult = {
   lines: string[];
   error?: string;
   /** Optional Telegram inline keyboard (ignored by CLI/web text) */
-  replyMarkup?: {
-    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
-  };
+  replyMarkup?: InlineKeyboard;
 };
 
 export type CommandHandler = (

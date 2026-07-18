@@ -78,4 +78,5 @@ export type ControlPlaneReportKind =
   | 'scanner'
   | 'runtime_health'
   | 'agent'
-  | 'browser';
+  | 'browser'
+  | 'failed';

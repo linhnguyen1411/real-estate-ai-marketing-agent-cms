@@ -1,68 +1,42 @@
 /**
- * Push Control Plane Runtime Events to Telegram (ops notifications).
+ * Push Control Plane Runtime Events to Telegram (smart ops notifications).
  * Pulls Event Bus — does not subscribe to Worker or DB directly beyond Control Plane API.
  */
 
 import { listRuntimeEvents } from '../runtimeEventBus';
-import type { RuntimeEventType } from '../types';
+import {
+  agentJobKeyboard,
+  missionActionKeyboard,
+  publishJobKeyboard,
+  type InlineKeyboard,
+} from '../inlineKeyboard';
+import {
+  formatSmartNotificationBullet,
+  mapRuntimeEventToSmartKind,
+  type SmartNotificationKind,
+} from './smartNotifications';
 import type { TelegramReplyPort } from './outbound';
 import type { TelegramConsoleConfig } from './types';
 
-const NOTIFY_TYPES: RuntimeEventType[] = [
-  'MISSION_STARTED',
-  'MISSION_COMPLETED',
-  'MISSION_FAILED',
-  'JOB_FAILED',
-  'AGENT_ONLINE',
-  'AGENT_OFFLINE',
-  'BROWSER_LEASED',
-  'CAMPAIGN_STARTED',
-  'CAMPAIGN_COMPLETED',
-];
-
-/** Map event → human label (publish success/fail approximated via JOB_* + payload). */
-function formatEventLine(ev: {
-  type: string;
-  entityId: string | null;
-  agentId: string | null;
-  payload: Record<string, unknown>;
-  createdAt: string;
-}): string | null {
-  const id = ev.entityId || ev.agentId || '—';
-  switch (ev.type) {
-    case 'MISSION_STARTED':
-      return `Mission Started: ${id}`;
-    case 'MISSION_COMPLETED':
-      return `Mission Completed: ${id}`;
-    case 'MISSION_FAILED':
-      return `Mission Failed: ${id}`;
-    case 'AGENT_ONLINE':
-      return `Agent Online: ${ev.agentId || id}`;
-    case 'AGENT_OFFLINE':
-      return `Agent Offline: ${ev.agentId || id}`;
-    case 'JOB_FAILED': {
-      const kind = String(ev.payload?.type || ev.payload?.jobType || '');
-      if (kind.includes('publish')) return `Publish Failed: ${id}`;
-      return `Queue Error / Job Failed: ${id}`;
-    }
-    case 'JOB_COMPLETED': {
-      const kind = String(ev.payload?.type || ev.payload?.jobType || '');
-      if (kind.includes('publish')) return `Publish Success: ${id}`;
-      return null;
-    }
-    case 'BROWSER_LEASED':
-      // Noise — only alert on explicit browser errors in payload
-      if (ev.payload?.error || ev.payload?.crashed) {
-        return `Browser Error: ${String(ev.payload.error || 'crash')} (${id})`;
-      }
-      return null;
-    case 'CAMPAIGN_STARTED':
-      return `Campaign Started: ${id}`;
-    case 'CAMPAIGN_COMPLETED':
-      return `Campaign Completed: ${id}`;
-    default:
-      return null;
+function keyboardForKind(
+  kind: SmartNotificationKind,
+  entityId: string | null,
+): InlineKeyboard | undefined {
+  if (!entityId) return undefined;
+  if (
+    kind === 'MISSION_STARTED' ||
+    kind === 'MISSION_COMPLETED' ||
+    kind === 'MISSION_FAILED'
+  ) {
+    return missionActionKeyboard(entityId);
   }
+  if (kind === 'PUBLISH_SUCCESS' || kind === 'PUBLISH_FAILED') {
+    return publishJobKeyboard(entityId);
+  }
+  if (kind === 'CAMPAIGN_COMPLETED') {
+    return agentJobKeyboard(entityId);
+  }
+  return undefined;
 }
 
 export type EventNotifier = {
@@ -92,7 +66,19 @@ export function createTelegramEventNotifier(input: {
     if (!chatId || !input.config.botToken || !input.config.enabled) return 0;
     const events = await list({
       companyId: input.config.companyId,
-      types: [...NOTIFY_TYPES, 'JOB_COMPLETED', 'OPS_REQUEST'],
+      types: [
+        'MISSION_STARTED',
+        'MISSION_COMPLETED',
+        'MISSION_FAILED',
+        'JOB_FAILED',
+        'JOB_COMPLETED',
+        'AGENT_ONLINE',
+        'AGENT_OFFLINE',
+        'BROWSER_LEASED',
+        'BROWSER_RELEASED',
+        'CAMPAIGN_COMPLETED',
+        'OPS_REQUEST',
+      ],
       since: new Date(sinceMs),
       limit: 40,
     });
@@ -100,18 +86,30 @@ export function createTelegramEventNotifier(input: {
 
     let newestMs = sinceMs;
     const lines: string[] = [];
+    let lastMarkup: InlineKeyboard | undefined;
     const now = Date.now();
     for (const ev of events) {
       const t = Date.parse(ev.createdAt);
       if (Number.isFinite(t) && t > newestMs) newestMs = t;
-      const line = formatEventLine(ev);
-      if (!line) continue;
-      // Rate-limit spammy alerts (agent offline, queue fail, browser)
-      const key = `${ev.type}:${ev.entityId || ev.agentId || line.slice(0, 40)}`;
+      const smartKind = mapRuntimeEventToSmartKind(ev);
+      if (!smartKind) continue;
+      const key = `${smartKind}:${ev.entityId || ev.agentId || smartKind}`;
       const prev = lastSent.get(key) || 0;
       if (now - prev < cooldown) continue;
       lastSent.set(key, now);
-      lines.push(`• ${line}`);
+      lines.push(
+        formatSmartNotificationBullet(smartKind, {
+          entityId: ev.entityId,
+          agentId: ev.agentId,
+          detail:
+            typeof ev.payload?.error === 'string'
+              ? ev.payload.error
+              : typeof ev.payload?.reason === 'string'
+                ? ev.payload.reason
+                : null,
+        }),
+      );
+      lastMarkup = keyboardForKind(smartKind, ev.entityId) || lastMarkup;
     }
     sinceMs = newestMs;
 
@@ -121,6 +119,7 @@ export function createTelegramEventNotifier(input: {
       botToken: input.config.botToken,
       chatId,
       text,
+      replyMarkup: lastMarkup,
     });
     return lines.length;
   };

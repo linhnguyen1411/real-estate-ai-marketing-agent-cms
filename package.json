@@ -94,6 +94,7 @@
     "test:browser-actions": "tsx scripts/test-browser-actions.ts",
     "test:telegram-control-plane": "tsx scripts/test-telegram-control-plane.ts",
     "test:telegram-operations": "tsx scripts/test-telegram-operations.ts",
+    "test:telegram-smart-operations": "tsx scripts/test-telegram-smart-operations.ts",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "test:automation-engine": "tsx scripts/test-automation-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",

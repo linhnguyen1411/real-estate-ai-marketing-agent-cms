@@ -23,6 +23,9 @@ import {
   opsRetryMission,
   opsRetryPublish,
   opsRetryScan,
+  opsLeadSkip,
+  opsLeadCreateMission,
+  opsLeadRetryNotify,
 } from '../operationsService';
 import {
   agentJobKeyboard,
@@ -55,6 +58,7 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
   if (scope === 'campaign' || scope === 'campaigns') return 'campaign';
   if (scope === 'agent' || scope === 'agents') return 'agent';
   if (scope === 'browser' || scope === 'browsers') return 'browser';
+  if (scope === 'failed' || scope === 'fail' || scope === 'failures') return 'failed';
   return 'daily';
 }
 
@@ -319,7 +323,7 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'report',
     description: 'Control Plane reports',
-    usage: '/report today|week|publish|scan|agents|browser',
+    usage: '/report today|week|publish|scan|failed|agent|browser',
     handler: async (args, ctx) => {
       const kind = parseReportKind(args[0]);
       const report = await opsReport(ctx.user, kind);
@@ -330,7 +334,39 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
         `events=${JSON.stringify(report.eventCounts ?? {}).slice(0, 200)}`,
         `agents=${Array.isArray(report.agents) ? (report.agents as unknown[]).length : 0}`,
       ];
+      if (kind === 'failed') {
+        lines.push(
+          `failedMissions=${String(report.failedMissions ?? '—')}`,
+          `deadLetter=${String(report.deadLetter ?? '—')}`,
+        );
+      }
       return ok('report', lines, { kind, report });
+    },
+  });
+
+  registry.register({
+    name: 'lead',
+    description: 'Lead alert actions (skip / mission / retry notify)',
+    usage: '/lead skip|mission|retry <findingId>',
+    handler: async (args, ctx) => {
+      const action = (args[0] || '').toLowerCase();
+      const id = args[1];
+      if (!id || !['skip', 'mission', 'retry'].includes(action)) {
+        return fail('lead', 'Usage: /lead skip|mission|retry <findingId>');
+      }
+      if (action === 'skip') {
+        const r = await opsLeadSkip(id, ctx.triggeredBy);
+        return ok('lead', [`Lead skipped ${r.findingId}`], r);
+      }
+      if (action === 'mission') {
+        const r = await opsLeadCreateMission(id, ctx.triggeredBy);
+        return ok('lead', [`Lead mission requested ${r.findingId}`], r);
+      }
+      const r = await opsLeadRetryNotify(id);
+      if (!r.ok) {
+        return fail('lead', r.reason || r.error || 'retry notify failed');
+      }
+      return ok('lead', [`Lead notify retried ${id}`], { messageId: r.messageId });
     },
   });
 
@@ -382,7 +418,8 @@ export function operationsHelpLines(): string[] {
     '/publish queue|now|retry|cancel',
     '/agents · /agent <id>|restart <id>',
     '/browser [release|recover|screenshot]',
-    '/report today|week|publish|scan|agents|browser',
+    '/report today|week|publish|scan|failed|agent|browser',
+    '/lead skip|mission|retry <id>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

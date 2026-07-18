@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
+import { normalizeSocialLinks } from '../../link-normalization';
+import { isMobileFriendlyUrl } from '../../link-normalization';
 
 export interface PublishEvidenceBundle {
   publishJobId: string;
@@ -10,6 +12,14 @@ export interface PublishEvidenceBundle {
   destinationKey?: string | null;
   durationMs: number;
   publishedUrl?: string | null;
+  /** Normalized permalink metadata (link-normalization module). */
+  postId?: string | null;
+  postUrl?: string | null;
+  groupId?: string | null;
+  groupUrl?: string | null;
+  canonicalUrl?: string | null;
+  verified?: boolean;
+  mobileVerified?: boolean;
   domHash?: string | null;
   screenshotBeforePath?: string | null;
   screenshotAfterPath?: string | null;
@@ -51,6 +61,32 @@ export function buildEvidencePaths(publishJobId: string, attemptId: string) {
  * Persist evidence manifest under runtime/publish-evidence/{jobId}/{attemptId}/.
  * Screenshot/HTML files are placeholders in foundation phase (paths only).
  */
+/** Enrich evidence with normalized post/group permalinks (no browser calls). */
+export function enrichPublishEvidenceLinks(
+  bundle: PublishEvidenceBundle,
+): PublishEvidenceBundle {
+  const links = normalizeSocialLinks({
+    publishedUrl: bundle.publishedUrl,
+    postUrl: bundle.postUrl || bundle.publishedUrl,
+    groupUrl: bundle.groupUrl,
+    postId: bundle.postId,
+    groupId: bundle.groupId,
+    canonicalUrl: bundle.canonicalUrl || bundle.publishedUrl,
+  });
+  const openUrl = links.postUrl || links.groupUrl || bundle.publishedUrl || null;
+  return {
+    ...bundle,
+    publishedUrl: openUrl || bundle.publishedUrl || null,
+    postId: links.postId ?? bundle.postId ?? null,
+    postUrl: links.postUrl ?? bundle.postUrl ?? null,
+    groupId: links.groupId ?? bundle.groupId ?? null,
+    groupUrl: links.groupUrl ?? bundle.groupUrl ?? null,
+    canonicalUrl: links.canonicalUrl ?? bundle.canonicalUrl ?? openUrl,
+    verified: bundle.verified ?? Boolean(links.postUrl || links.groupUrl),
+    mobileVerified: bundle.mobileVerified ?? isMobileFriendlyUrl(openUrl),
+  };
+}
+
 export async function writePublishEvidenceManifest(
   attemptId: string,
   bundle: PublishEvidenceBundle,
@@ -58,12 +94,13 @@ export async function writePublishEvidenceManifest(
   const paths = buildEvidencePaths(bundle.publishJobId, attemptId);
   await fs.mkdir(paths.baseDir, { recursive: true });
 
+  const enriched = enrichPublishEvidenceLinks(bundle);
   const record: PublishEvidenceBundle = {
-    ...bundle,
-    screenshotBeforePath: bundle.screenshotBeforePath ?? paths.screenshotBeforePath,
-    screenshotAfterPath: bundle.screenshotAfterPath ?? paths.screenshotAfterPath,
-    htmlSnapshotPath: bundle.htmlSnapshotPath ?? paths.htmlSnapshotPath,
-    capturedAt: bundle.capturedAt || new Date().toISOString(),
+    ...enriched,
+    screenshotBeforePath: enriched.screenshotBeforePath ?? paths.screenshotBeforePath,
+    screenshotAfterPath: enriched.screenshotAfterPath ?? paths.screenshotAfterPath,
+    htmlSnapshotPath: enriched.htmlSnapshotPath ?? paths.htmlSnapshotPath,
+    capturedAt: enriched.capturedAt || new Date().toISOString(),
   };
 
   await fs.writeFile(paths.manifestPath, JSON.stringify(record, null, 2), 'utf8');

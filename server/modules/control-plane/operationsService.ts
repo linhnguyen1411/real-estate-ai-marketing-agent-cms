@@ -338,3 +338,45 @@ export async function opsReport(
 ) {
   return buildControlPlaneReport(user, kind, options);
 }
+
+/** Soft lead ops — Control Plane only (Telegram never touches DB). */
+export async function opsLeadSkip(findingId: string, triggeredBy: string) {
+  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  await prisma.agentFinding.update({
+    where: { id: findingId },
+    data: { status: 'dismissed' },
+  });
+  await emitRuntimeEvent({
+    type: 'OPS_REQUEST',
+    companyId: finding.companyId,
+    entityType: 'finding',
+    entityId: findingId,
+    payload: { action: 'lead_skip', triggeredBy, requestedAt: new Date().toISOString() },
+  });
+  return { findingId, status: 'dismissed' as const };
+}
+
+export async function opsLeadCreateMission(findingId: string, triggeredBy: string) {
+  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  await emitRuntimeEvent({
+    type: 'OPS_REQUEST',
+    companyId: finding.companyId,
+    entityType: 'finding',
+    entityId: findingId,
+    payload: {
+      action: 'lead_create_mission',
+      triggeredBy,
+      requestedAt: new Date().toISOString(),
+    },
+  });
+  return { findingId, requested: true as const };
+}
+
+export async function opsLeadRetryNotify(findingId: string) {
+  const { notifyFindingIfEligible } = await import(
+    '../../notifications/telegramNotificationService'
+  );
+  return notifyFindingIfEligible({ findingId, force: true });
+}

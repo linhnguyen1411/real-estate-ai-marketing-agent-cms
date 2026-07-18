@@ -41,8 +41,8 @@ function ok(name: string, cond: boolean) {
     includeLink: false,
   });
 
-  ok('message has score structure', /^Lead mới \d+\/100/m.test(msg));
-  ok('message has classification line', msg.includes('Loại:'));
+  ok('message has score structure', /^Lead mới \(\d+\/100\)/m.test(msg));
+  ok('message has classification line', msg.includes('👤') || msg.includes('Loại:'));
   ok('message includes phone when enabled', msg.includes('0905111222'));
   ok('message includes need/summary', msg.includes('Mua đất') || msg.includes('Khách mua'));
 }

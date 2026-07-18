@@ -102,6 +102,20 @@ export async function buildControlPlaneReport(
         browserUtilization: runtime.metrics.browserUtilization,
       };
 
+    case 'failed':
+      return {
+        ...base,
+        failedMissions: runtime.missions.failed,
+        deadLetter: runtime.queue.deadLetter,
+        failedEvents: events.filter(
+          e =>
+            e.type === 'MISSION_FAILED' ||
+            e.type === 'JOB_FAILED' ||
+            String(e.payload?.error || ''),
+        ),
+        activeFailedJobs: runtime.activeJobs.filter(j => j.status === 'failed'),
+      };
+
     case 'weekly':
       return {
         ...base,

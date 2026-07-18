@@ -4,7 +4,7 @@
 
 import { executeControlCommand, formatCommandText } from '../command-engine';
 import { checkTelegramAcl, canMutateViaTelegram } from './acl';
-import { callbackDataToCommand } from '../inlineKeyboard';
+import { callbackDataToCommand, type InlineKeyboard } from '../inlineKeyboard';
 import { normalizeTelegramInbound } from './normalizeUpdate';
 import type { TelegramReplyPort } from './outbound';
 import type { TelegramConsoleConfig } from './types';
@@ -17,6 +17,7 @@ const MUTATING_PREFIXES = [
   '/pause',
   '/resume',
   '/mission',
+  '/lead',
   '/agent restart',
   '/browser release',
   '/browser recover',
@@ -32,9 +33,7 @@ export type TelegramRouterDeps = {
     ok: boolean;
     command: string;
     text: string;
-    replyMarkup?: {
-      inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
-    };
+    replyMarkup?: InlineKeyboard;
   }>;
 };
 

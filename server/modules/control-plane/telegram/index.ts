@@ -24,6 +24,7 @@ export {
   missionActionKeyboard,
   publishJobKeyboard,
   agentJobKeyboard,
+  leadAlertKeyboard,
   callbackDataToCommand,
 } from '../inlineKeyboard';
 export {
@@ -32,6 +33,14 @@ export {
   createWebhookReceiver,
 } from './updateReceiver';
 export { createTelegramEventNotifier } from './eventNotifier';
+export {
+  SMART_NOTIFICATION_KINDS,
+  formatSmartNotification,
+  formatSmartNotificationBullet,
+  mapRuntimeEventToSmartKind,
+  smartNotificationLabel,
+} from './smartNotifications';
+export type { SmartNotificationKind } from './smartNotifications';
 export {
   startTelegramControlPlane,
   stopTelegramControlPlane,

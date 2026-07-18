@@ -46,6 +46,7 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
   if (scope === 'campaign' || scope === 'campaigns') return 'campaign';
   if (scope === 'agent' || scope === 'agents') return 'agent';
   if (scope === 'browser' || scope === 'browsers') return 'browser';
+  if (scope === 'failed' || scope === 'fail' || scope === 'failures') return 'failed';
   return 'daily';
 }
 
