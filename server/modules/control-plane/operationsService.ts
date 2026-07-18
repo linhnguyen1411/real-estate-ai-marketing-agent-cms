@@ -240,11 +240,12 @@ export async function opsRetryMission(
 export async function opsListPublishQueue(input: {
   companyId?: string | null;
   limit?: number;
+  status?: string;
 }) {
   const { listJobs } = await import('../social-publishing/jobService');
   return listJobs({
     companyId: input.companyId,
-    status: 'queued',
+    status: input.status || 'queued',
     limit: input.limit ?? 20,
   });
 }

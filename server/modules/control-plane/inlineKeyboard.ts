@@ -100,6 +100,40 @@ export function leadAlertKeyboard(input: LeadKeyboardInput): InlineKeyboard {
   return { inline_keyboard: rows };
 }
 
+/** Interactive approval: Approve / Reject / Edit / Create Mission */
+export function approvalKeyboard(findingId: string): InlineKeyboard {
+  const id = truncId(findingId);
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Approve', callback_data: `a:a:${id}` },
+        { text: 'Reject', callback_data: `a:j:${id}` },
+      ],
+      [
+        { text: 'Edit', callback_data: `a:e:${id}` },
+        { text: 'Create Mission', callback_data: `a:m:${id}` },
+      ],
+    ],
+  };
+}
+
+/** Incident: Acknowledge / Retry / Mute / Escalate */
+export function incidentKeyboard(entityId: string): InlineKeyboard {
+  const id = truncId(entityId);
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Acknowledge', callback_data: `i:a:${id}` },
+        { text: 'Retry', callback_data: `i:r:${id}` },
+      ],
+      [
+        { text: 'Mute', callback_data: `i:m:${id}` },
+        { text: 'Escalate', callback_data: `i:e:${id}` },
+      ],
+    ],
+  };
+}
+
 /** Map callback_data → console command text */
 export function callbackDataToCommand(data: string): string | null {
   const raw = String(data || '').trim();
@@ -134,6 +168,18 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'r') return `/lead retry ${id}`;
     if (action === 's') return `/lead skip ${id}`;
     if (action === 'm') return `/lead mission ${id}`;
+  }
+  if (scope === 'a') {
+    if (action === 'a') return `/approval approve ${id}`;
+    if (action === 'j') return `/approval reject ${id}`;
+    if (action === 'e') return `/approval edit ${id}`;
+    if (action === 'm') return `/approval mission ${id}`;
+  }
+  if (scope === 'i') {
+    if (action === 'a') return `/incident ack ${id}`;
+    if (action === 'r') return `/incident retry ${id}`;
+    if (action === 'm') return `/incident mute ${id}`;
+    if (action === 'e') return `/incident escalate ${id}`;
   }
   return null;
 }

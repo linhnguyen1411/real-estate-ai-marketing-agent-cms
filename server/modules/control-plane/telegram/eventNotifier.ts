@@ -6,6 +6,7 @@
 import { listRuntimeEvents } from '../runtimeEventBus';
 import {
   agentJobKeyboard,
+  incidentKeyboard,
   missionActionKeyboard,
   publishJobKeyboard,
   type InlineKeyboard,
@@ -32,6 +33,9 @@ function keyboardForKind(
   }
   if (kind === 'PUBLISH_SUCCESS' || kind === 'PUBLISH_FAILED') {
     return publishJobKeyboard(entityId);
+  }
+  if (kind === 'AGENT_OFFLINE' || kind === 'BROWSER_CRASH' || kind === 'QUEUE_BLOCKED') {
+    return incidentKeyboard(entityId);
   }
   if (kind === 'CAMPAIGN_COMPLETED') {
     return agentJobKeyboard(entityId);

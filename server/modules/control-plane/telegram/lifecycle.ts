@@ -1,5 +1,5 @@
 /**
- * Telegram Control Plane lifecycle — start/stop receiver + event push.
+ * Telegram Control Plane lifecycle — start/stop receiver + event push + Copilot summaries.
  */
 
 import { loadTelegramConsoleConfig } from './config';
@@ -10,6 +10,8 @@ import {
   createWebhookReceiver,
   createTelegramUpdateReceiver,
 } from './updateReceiver';
+import { createControlPlanePort } from '../copilot/controlPlanePort';
+import { createSummaryScheduler } from '../copilot/summaryScheduler';
 import type { TelegramConsoleConfig, TelegramUpdateReceiver } from './types';
 
 type WebhookReceiver = ReturnType<typeof createWebhookReceiver>;
@@ -19,6 +21,7 @@ let config: TelegramConsoleConfig | null = null;
 let receiver: TelegramUpdateReceiver | null = null;
 let webhookReceiver: WebhookReceiver | null = null;
 let eventNotifier: EventNotifier | null = null;
+let summaryScheduler: ReturnType<typeof createSummaryScheduler> | null = null;
 
 export function getTelegramConsoleStatus() {
   return {
@@ -29,6 +32,7 @@ export function getTelegramConsoleStatus() {
     primaryChatId: config?.primaryChatId || null,
     allowedUsers: config?.allowedUserIds.length ?? 0,
     allowedChats: config?.allowedChatIds.length ?? 0,
+    summaryScheduler: Boolean(summaryScheduler),
   };
 }
 
@@ -66,7 +70,6 @@ export async function startTelegramControlPlane(options?: {
       routerDeps,
       onError: err => console.error('[telegram-console] poll error', err),
     });
-    // Ensure polling adapter
     if (receiver.mode !== 'polling') {
       receiver = createPollingReceiver({ config, routerDeps });
     }
@@ -75,14 +78,38 @@ export async function startTelegramControlPlane(options?: {
   await receiver.start();
   eventNotifier = createTelegramEventNotifier({ config, replyPort });
   eventNotifier.start();
+
+  const cfg = config;
+  summaryScheduler = createSummaryScheduler({
+    portFactory: async () =>
+      createControlPlanePort({
+        companyId: cfg.companyId,
+        useLlmInsights: process.env.TELEGRAM_COPILOT_LLM === '1',
+      }),
+    notifier: {
+      async send(text) {
+        if (!cfg.primaryChatId || !cfg.botToken) return;
+        await replyPort.reply({
+          botToken: cfg.botToken,
+          chatId: cfg.primaryChatId,
+          text,
+        });
+      },
+    },
+    tickMs: Number(process.env.TELEGRAM_SUMMARY_TICK_MS || 60_000),
+  });
+  summaryScheduler.start();
+
   running = true;
   console.log(
-    `[telegram-console] started mode=${config.mode} chats=${config.allowedChatIds.length} users=${config.allowedUserIds.length}`,
+    `[telegram-console] started mode=${config.mode} chats=${config.allowedChatIds.length} users=${config.allowedUserIds.length} copilot=on`,
   );
   return { started: true, status: getTelegramConsoleStatus() };
 }
 
 export async function stopTelegramControlPlane(): Promise<void> {
+  summaryScheduler?.stop();
+  summaryScheduler = null;
   eventNotifier?.stop();
   eventNotifier = null;
   await receiver?.stop();
@@ -97,7 +124,6 @@ export async function handleTelegramWebhookUpdate(
   secret?: string | null,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!running || !config || !webhookReceiver) {
-    // Lazy start webhook handler with fresh config for tests / late enable
     const cfg = config ?? (await loadTelegramConsoleConfig());
     if (!cfg.enabled || !cfg.botToken) return { ok: false, reason: 'not_running' };
     if (cfg.mode !== 'webhook') return { ok: false, reason: 'mode_not_webhook' };
@@ -118,6 +144,8 @@ export async function handleTelegramWebhookUpdate(
 
 /** Test-only */
 export function _resetTelegramControlPlaneForTests(): void {
+  summaryScheduler?.stop();
+  summaryScheduler = null;
   eventNotifier?.stop();
   void receiver?.stop();
   eventNotifier = null;

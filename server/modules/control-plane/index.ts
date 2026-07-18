@@ -31,8 +31,30 @@ export {
   startTelegramControlPlane,
   stopTelegramControlPlane,
   getTelegramConsoleStatus,
+  approvalKeyboard,
+  incidentKeyboard,
+  callbackDataToCommand,
+  routeTelegramUpdate,
+  _resetTelegramCopilotForTests,
+  _resetTelegramControlPlaneForTests,
+  resetTelegramAclRateLimitForTests,
 } from './telegram';
 export * from './operationsService';
+export {
+  createCopilotEngine,
+  type CopilotEngine,
+} from './copilot';
+export {
+  createSummaryScheduler,
+  resolveSummarySlot,
+} from './copilot/summaryScheduler';
+export { classifyByRules } from './copilot/ruleClassifier';
+export { buildRuleInsights } from './copilot/insightEngine';
+export {
+  resetCopilotContextForTests,
+  rememberJobList,
+  getCopilotContext,
+} from './copilot/contextStore';
 
 export const ControlPlane = {
   name: 'ControlPlane',
@@ -124,8 +146,9 @@ export const ControlPlane = {
         commandEngine: 'server/modules/control-plane/command-engine',
         cli: 'npm run automation-cli',
         telegram: 'server/modules/control-plane/telegram (thin client)',
+        copilot: 'server/modules/control-plane/copilot (channel-agnostic)',
         telegramFlow:
-          'Telegram → UpdateReceiver → ACL → Command Engine → Control Plane → Mission/Runtime → Execution Agent',
+          'Telegram → UpdateReceiver → ACL → Copilot/Command Engine → Control Plane → Mission/Runtime → Execution Agent',
       },
       eventTypes: RUNTIME_EVENT_TYPES as readonly RuntimeEventType[],
     };

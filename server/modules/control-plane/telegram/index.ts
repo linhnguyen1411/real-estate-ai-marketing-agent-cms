@@ -19,12 +19,13 @@ export {
 } from './acl';
 export { createTelegramReplyPort } from './outbound';
 export { normalizeTelegramUpdate, normalizeTelegramInbound } from './normalizeUpdate';
-export { routeTelegramUpdate } from './router';
 export {
   missionActionKeyboard,
   publishJobKeyboard,
   agentJobKeyboard,
   leadAlertKeyboard,
+  approvalKeyboard,
+  incidentKeyboard,
   callbackDataToCommand,
 } from '../inlineKeyboard';
 export {
@@ -41,6 +42,11 @@ export {
   smartNotificationLabel,
 } from './smartNotifications';
 export type { SmartNotificationKind } from './smartNotifications';
+export {
+  routeTelegramUpdate,
+  getTelegramCopilot,
+  _resetTelegramCopilotForTests,
+} from './router';
 export {
   startTelegramControlPlane,
   stopTelegramControlPlane,
