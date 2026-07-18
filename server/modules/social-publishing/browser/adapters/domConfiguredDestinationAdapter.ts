@@ -4,7 +4,8 @@
  */
 
 import type { Locator, Page } from 'playwright';
-import { buildEvidencePaths } from '../../runtime/publishEvidenceService';
+import fs from 'fs/promises';
+import { buildEvidencePaths, hashDomContent } from '../../runtime/publishEvidenceService';
 import type {
   BrowserDestinationContext,
   BrowserDestinationEvidence,
@@ -308,6 +309,23 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
       }
 
       state.publishedUrl = meta.permalink || state.publishedUrl || page.url();
+    } else {
+      await fs.mkdir(state.evidenceDir, { recursive: true });
+      const stubHtml = `<html><body data-dry-run="1" data-job="${ctx.publishJobId}"></body></html>`;
+      state.domHash = hashDomContent(stubHtml);
+      if (state.htmlSnapshotPath) {
+        await fs.writeFile(state.htmlSnapshotPath, stubHtml, 'utf8').catch(() => undefined);
+      }
+      if (state.screenshotBeforePath) {
+        await fs
+          .writeFile(state.screenshotBeforePath, 'dry-run-screenshot-before', 'utf8')
+          .catch(() => undefined);
+      }
+      if (state.screenshotAfterPath) {
+        await fs
+          .writeFile(state.screenshotAfterPath, 'dry-run-screenshot-after', 'utf8')
+          .catch(() => undefined);
+      }
     }
 
     return {

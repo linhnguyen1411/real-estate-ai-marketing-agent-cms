@@ -30,6 +30,9 @@ export const WORKFLOW_STEP_TYPES = [
   'browser_verify_publish',
   'browser_capture_evidence',
   'browser_cleanup',
+  // Browser Action Framework (comment / reply / react / …)
+  'browser_action',
+  'browser_suggest_action',
 ] as const;
 
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];

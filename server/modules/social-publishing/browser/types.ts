@@ -51,6 +51,10 @@ export interface BrowserDestinationEvidence {
   screenshotAfterPath?: string;
   htmlSnapshotPath?: string;
   durationMs?: number;
+  /** Interaction action metadata (reuse publish evidence paths). */
+  actionKey?: string;
+  result?: string;
+  error?: string | null;
 }
 
 /**

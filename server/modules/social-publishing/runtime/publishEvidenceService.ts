@@ -15,6 +15,10 @@ export interface PublishEvidenceBundle {
   screenshotAfterPath?: string | null;
   htmlSnapshotPath?: string | null;
   capturedAt: string;
+  /** Browser Action Framework (comment/reply/…); optional for publish-only runs. */
+  actionKey?: string | null;
+  result?: string | null;
+  error?: string | null;
 }
 
 const RUNTIME_ROOT = path.resolve(process.cwd(), 'runtime', 'publish-evidence');

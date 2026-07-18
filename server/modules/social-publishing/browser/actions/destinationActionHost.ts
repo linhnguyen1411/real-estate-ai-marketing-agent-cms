@@ -11,6 +11,8 @@ import type {
   DestinationCapabilities,
   DestinationKey,
 } from '../types';
+import type { AutomationActionKey } from './types';
+import type { InteractionSelectorMap } from './interactionSelectors';
 
 /** Destination selector surface — Action chooses which keys to use. */
 export interface SelectorMap {
@@ -28,6 +30,10 @@ export type DestinationActionState = {
   htmlSnapshotPath?: string;
   publishedUrl?: string;
   domHash?: string;
+  lastActionKey?: AutomationActionKey;
+  lastActionResult?: 'success' | 'failed' | 'skipped' | 'awaiting_approval' | 'unknown';
+  lastActionError?: string | null;
+  lastActionData?: Record<string, unknown>;
 };
 
 /**
@@ -70,6 +76,15 @@ export interface DestinationActionHost {
 
   /** Shared evidence capture (browser utilities) */
   captureBrowserEvidence(ctx: BrowserDestinationContext): Promise<BrowserDestinationEvidence>;
+
+  /** Optional phased screenshot (before/after action). */
+  captureScreenshotPhase?(
+    ctx: BrowserDestinationContext,
+    phase: 'before' | 'after',
+  ): Promise<void>;
+
+  /** Destination-owned interaction CSS / aria candidates (DOM strategy only). */
+  getInteractionSelectors(): InteractionSelectorMap;
 
   /** Release locks / clear per-job state */
   cleanupHost(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult>;

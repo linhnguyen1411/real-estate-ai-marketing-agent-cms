@@ -1,6 +1,5 @@
 /**
- * Stub actions — registered in the Action Framework, not yet implemented.
- * Do not execute against a live browser.
+ * Stub actions — bootstrap placeholders until a Destination binds real implementations.
  */
 
 import type {
@@ -37,23 +36,23 @@ function makeStub(key: AutomationActionKey, label: string): AutomationAction {
   };
 }
 
-export const CommentAction = makeStub('comment', 'Comment');
-export const ReplyAction = makeStub('reply', 'Reply');
-export const ReactAction = makeStub('react', 'React');
-export const JoinGroupAction = makeStub('join_group', 'Join Group');
-export const FollowAction = makeStub('follow', 'Follow');
-export const InviteAction = makeStub('invite', 'Invite');
-export const MessageAction = makeStub('message', 'Message');
+export const CommentActionStub = makeStub('comment', 'Comment');
+export const ReplyActionStub = makeStub('reply', 'Reply');
+export const ReactActionStub = makeStub('react', 'React');
+export const JoinGroupActionStub = makeStub('join_group', 'Join Group');
+export const FollowActionStub = makeStub('follow', 'Follow');
+export const InviteActionStub = makeStub('invite', 'Invite');
+export const MessageActionStub = makeStub('message', 'Message');
 /** Placeholder until a destination binds PublishAction to a host. */
 export const PublishActionStub = makeStub('publish', 'Publish');
 
 export const STUB_AUTOMATION_ACTIONS: AutomationAction[] = [
   PublishActionStub,
-  CommentAction,
-  ReplyAction,
-  ReactAction,
-  JoinGroupAction,
-  FollowAction,
-  InviteAction,
-  MessageAction,
+  CommentActionStub,
+  ReplyActionStub,
+  ReactActionStub,
+  JoinGroupActionStub,
+  FollowActionStub,
+  InviteActionStub,
+  MessageActionStub,
 ];
