@@ -34,6 +34,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteDef[] = [
   { path: '/admin/agents/spam', tabId: 'agent-spam', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/notifications', tabId: 'agent-notifications', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/sessions', tabId: 'agent-sessions', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/runtime', tabId: 'agent-runtime', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/reports', tabId: 'agent-reports', layout: 'admin', permission: 'auth', group: 'agent' },
 ];
 

@@ -46,16 +46,6 @@ export interface BrowserLease {
   release: () => void;
 }
 
-export interface ExecutionSlotSnapshot {
-  kind: ExecutionSlotKind;
-  maxConcurrency: number;
-  runningJobs: number;
-  queuedWaiters: number;
-  status: SlotStatus;
-  heartbeatAt: number | null;
-  owners: Array<{ jobId: string; leaseId: string; missionRunId: string | null }>;
-}
-
 export interface BrowserHandleSnapshot {
   browserId: string;
   purpose: BrowserPurpose;
@@ -64,6 +54,26 @@ export interface BrowserHandleSnapshot {
   ownerJob: string | null;
   ownerMission: string | null;
   heartbeatAt: number | null;
+  /** Epoch ms when current lease started (null if idle). */
+  leasedAt: number | null;
+  /** Seconds since lease start. */
+  leaseAgeSec: number | null;
+}
+
+export interface ExecutionSlotSnapshot {
+  kind: ExecutionSlotKind;
+  maxConcurrency: number;
+  runningJobs: number;
+  queuedWaiters: number;
+  status: SlotStatus;
+  heartbeatAt: number | null;
+  owners: Array<{ jobId: string; leaseId: string; missionRunId: string | null }>;
+  /** In-process counters since worker boot */
+  completedSinceBoot: number;
+  failedSinceBoot: number;
+  totalRuntimeMsSinceBoot: number;
+  avgRuntimeMsSinceBoot: number | null;
+  busyPercent: number;
 }
 
 export class SlotBusyError extends Error {

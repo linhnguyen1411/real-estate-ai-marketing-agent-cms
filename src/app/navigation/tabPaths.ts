@@ -28,6 +28,7 @@ export const AGENT_TAB_TO_PATH: Record<string, string> = {
   'agent-spam': '/admin/agents/spam',
   'agent-notifications': '/admin/agents/notifications',
   'agent-sessions': '/admin/agents/sessions',
+  'agent-runtime': '/admin/agents/runtime',
   'agent-reports': '/admin/agents/reports',
 };
 

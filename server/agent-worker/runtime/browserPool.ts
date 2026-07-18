@@ -23,6 +23,7 @@ interface HandleRecord {
   ownerMission: string | null;
   leaseId: string | null;
   heartbeatAt: number | null;
+  leasedAt: number | null;
 }
 
 const PURPOSES: BrowserPurpose[] = ['scan', 'publish', 'messaging', 'comment'];
@@ -55,6 +56,7 @@ export class BrowserPool {
         ownerMission: null,
         leaseId: null,
         heartbeatAt: Date.now(),
+        leasedAt: null,
       });
     }
   }
@@ -84,6 +86,7 @@ export class BrowserPool {
     handle.ownerMission = req.missionRunId ?? null;
     handle.leaseId = leaseId;
     handle.heartbeatAt = Date.now();
+    handle.leasedAt = Date.now();
 
     let released = false;
     return {
@@ -111,6 +114,7 @@ export class BrowserPool {
     handle.ownerJob = null;
     handle.ownerMission = null;
     handle.leaseId = null;
+    handle.leasedAt = null;
     handle.heartbeatAt = Date.now();
   }
 
@@ -149,6 +153,7 @@ export class BrowserPool {
     handle.ownerJob = null;
     handle.ownerMission = null;
     handle.leaseId = null;
+    handle.leasedAt = null;
     handle.heartbeatAt = Date.now();
   }
 
@@ -157,6 +162,7 @@ export class BrowserPool {
     if (!handle) return;
     if (handle.state === 'crashed') {
       handle.state = 'idle';
+      handle.leasedAt = null;
       handle.heartbeatAt = Date.now();
     }
   }
@@ -185,8 +191,13 @@ export class BrowserPool {
   }
 
   snapshot(): BrowserHandleSnapshot[] {
+    const now = Date.now();
     return PURPOSES.map(purpose => {
       const h = this.handles.get(purpose)!;
+      const leaseAgeSec =
+        h.leasedAt && h.state === 'leased'
+          ? Math.max(0, Math.round((now - h.leasedAt) / 1000))
+          : null;
       return {
         browserId: h.browserId,
         purpose: h.purpose,
@@ -195,6 +206,8 @@ export class BrowserPool {
         ownerJob: h.ownerJob,
         ownerMission: h.ownerMission,
         heartbeatAt: h.heartbeatAt,
+        leasedAt: h.leasedAt,
+        leaseAgeSec,
       };
     });
   }

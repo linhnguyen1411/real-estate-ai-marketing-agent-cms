@@ -18,6 +18,7 @@ import type {
   ExternalInventoryItem,
   ScannedContentItem,
   AgentSpamRule,
+  AutomationRuntimeSnapshot,
 } from '../types/agentPlatform';
 
 type ApiStatus = 'success' | 'error';
@@ -601,6 +602,10 @@ export function fetchAgentSessions(params: {
   status?: string;
 } = {}) {
   return agentListRequest<BrowserSession>(`/api/agent/sessions${qs(params)}`);
+}
+
+export function fetchAutomationRuntime() {
+  return agentRequest<AutomationRuntimeSnapshot>('/api/agent/runtime');
 }
 
 export function fetchAgentDailyReport(params: {

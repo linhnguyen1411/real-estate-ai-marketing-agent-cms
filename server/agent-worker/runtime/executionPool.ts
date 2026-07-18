@@ -41,6 +41,9 @@ interface SlotState {
   running: Map<string, RunningEntry>;
   waiters: Waiter[];
   heartbeatAt: number | null;
+  completedSinceBoot: number;
+  failedSinceBoot: number;
+  totalRuntimeMsSinceBoot: number;
 }
 
 function readMax(kind: ExecutionSlotKind, fallback: number): number {
@@ -81,6 +84,9 @@ export class ExecutionPool {
         running: new Map(),
         waiters: [],
         heartbeatAt: Date.now(),
+        completedSinceBoot: 0,
+        failedSinceBoot: 0,
+        totalRuntimeMsSinceBoot: 0,
       });
     }
   }
@@ -212,9 +218,27 @@ export class ExecutionPool {
     }
   }
 
+  /** Record terminal outcome for observability (call from WorkerLoop after job ends). */
+  recordOutcome(
+    kind: ExecutionSlotKind,
+    outcome: 'completed' | 'failed',
+    runtimeMs: number,
+  ): void {
+    const slot = this.require(kind);
+    if (outcome === 'completed') slot.completedSinceBoot += 1;
+    else slot.failedSinceBoot += 1;
+    slot.totalRuntimeMsSinceBoot += Math.max(0, runtimeMs);
+    slot.heartbeatAt = Date.now();
+  }
+
   snapshot(): ExecutionSlotSnapshot[] {
     return EXECUTION_SLOT_KINDS.map(kind => {
       const s = this.require(kind);
+      const terminal = s.completedSinceBoot + s.failedSinceBoot;
+      const busyPercent =
+        s.maxConcurrency <= 0
+          ? 0
+          : Math.min(100, Math.round((s.running.size / s.maxConcurrency) * 100));
       return {
         kind,
         maxConcurrency: s.maxConcurrency,
@@ -227,6 +251,12 @@ export class ExecutionPool {
           leaseId: e.leaseId,
           missionRunId: e.missionRunId,
         })),
+        completedSinceBoot: s.completedSinceBoot,
+        failedSinceBoot: s.failedSinceBoot,
+        totalRuntimeMsSinceBoot: s.totalRuntimeMsSinceBoot,
+        avgRuntimeMsSinceBoot:
+          terminal > 0 ? Math.round(s.totalRuntimeMsSinceBoot / terminal) : null,
+        busyPercent,
       };
     });
   }

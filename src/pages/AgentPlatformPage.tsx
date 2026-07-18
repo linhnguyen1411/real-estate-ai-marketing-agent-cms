@@ -18,6 +18,9 @@ const ExternalInventoryPage = React.lazy(
 );
 const NotificationsPage = React.lazy(() => import('../features/agent/notifications/pages/NotificationsPage'));
 const SessionsPage = React.lazy(() => import('../features/agent/sessions/pages/SessionsPage'));
+const RuntimeMonitorPage = React.lazy(
+  () => import('../features/agent/runtime-monitor/pages/RuntimeMonitorPage'),
+);
 const ReportsPage = React.lazy(() => import('../features/agent/reports/pages/ReportsPage'));
 const ActionProposalsPage = React.lazy(
   () => import('../features/agent/action-proposals/pages/ActionProposalsPage'),
@@ -54,6 +57,7 @@ const NAV_ITEMS = [
   { path: '/admin/agents/spam', label: 'Spam Control' },
   { path: '/admin/agents/notifications', label: 'Thông báo' },
   { path: '/admin/agents/sessions', label: 'Sessions' },
+  { path: '/admin/agents/runtime', label: 'Runtime' },
   { path: '/admin/agents/reports', label: 'Báo cáo' },
 ] as const;
 
@@ -74,6 +78,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/spam')) return 'spam';
   if (pathname.startsWith('/admin/agents/notifications')) return 'notifications';
   if (pathname.startsWith('/admin/agents/sessions')) return 'sessions';
+  if (pathname.startsWith('/admin/agents/runtime')) return 'runtime';
   if (pathname.startsWith('/admin/agents/reports')) return 'reports';
   return 'dashboard';
 }
@@ -183,6 +188,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'sessions' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <SessionsPage />
+          </Suspense>
+        )}
+        {section === 'runtime' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <RuntimeMonitorPage />
           </Suspense>
         )}
         {section === 'reports' && (

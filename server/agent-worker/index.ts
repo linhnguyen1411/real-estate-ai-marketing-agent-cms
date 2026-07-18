@@ -59,7 +59,25 @@ async function main(): Promise<void> {
     )}`,
   );
 
-  await heartbeat.register(() => browser.currentUrl(), buildBrowserSessionMetadata(config));
+  const buildRuntimeMetadata = () => {
+    const mem = process.memoryUsage();
+    return {
+      ...buildBrowserSessionMetadata(config),
+      executionPool: executionPool.snapshot(),
+      browserPool: browserPool.snapshot(),
+      resources: browser.getResourceDiagnostics(),
+      process: {
+        pid: process.pid,
+        rssMb: Math.round(mem.rss / 1024 / 1024),
+        heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+        uptimeSec: Math.round(process.uptime()),
+      },
+      publishedAt: new Date().toISOString(),
+    };
+  };
+
+  await heartbeat.register(() => browser.currentUrl(), buildRuntimeMetadata);
 
   registerGracefulShutdown(async signal => {
     loop.stop();

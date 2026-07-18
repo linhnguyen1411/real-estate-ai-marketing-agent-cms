@@ -174,6 +174,7 @@ export class WorkerLoop {
     const kind = slotKindForJobType(job.type);
     let slotLease: SlotLease | null = null;
     let browserLease: BrowserLease | null = null;
+    const startedAt = Date.now();
 
     try {
       if (!kind) {
@@ -219,6 +220,7 @@ export class WorkerLoop {
                 browserId: browserLease.browserId,
               },
             });
+            this.executionPool.recordOutcome(kind, 'completed', Date.now() - startedAt);
             console.log(`[agent-worker] Completed job ${job.id} slot=${kind}`);
           } catch (completeError) {
             const msg =
@@ -233,6 +235,9 @@ export class WorkerLoop {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Job thất bại.';
+      if (kind && !isResourceBusyError(error)) {
+        this.executionPool.recordOutcome(kind, 'failed', Date.now() - startedAt);
+      }
       if (isResourceBusyError(error)) {
         console.log(`[agent-worker] Job ${job.id} deferred: ${message}`);
       } else {

@@ -1322,6 +1322,17 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
     }
   });
 
+  app.get('/api/agent/runtime', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { buildAutomationRuntimeSnapshot } = await import('./runtimeObservability');
+      const data = await buildAutomationRuntimeSnapshot(user);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được runtime observability.');
+    }
+  });
+
   app.get('/api/agent/reports/daily', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);

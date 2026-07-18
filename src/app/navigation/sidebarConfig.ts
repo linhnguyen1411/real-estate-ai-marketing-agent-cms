@@ -29,6 +29,7 @@ import {
   Share2,
   History,
   Megaphone,
+  Activity,
 } from 'lucide-react';
 import type { NavItemConfig } from './navigationTypes';
 import { MXH_POSTS_ENABLED } from './tabPaths';
@@ -57,6 +58,7 @@ export const AGENT_SUBMENU: NavItemConfig[] = [
   { id: 'agent-spam', label: 'Spam Control', icon: ShieldCheck, path: '/admin/agents/spam' },
   { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare, path: '/admin/agents/notifications', badgeKey: 'notifications' },
   { id: 'agent-sessions', label: 'Sessions', icon: Cpu, path: '/admin/agents/sessions' },
+  { id: 'agent-runtime', label: 'Runtime', icon: Activity, path: '/admin/agents/runtime' },
   { id: 'agent-reports', label: 'Báo cáo', icon: FileBarChart, path: '/admin/agents/reports' },
 ];
 

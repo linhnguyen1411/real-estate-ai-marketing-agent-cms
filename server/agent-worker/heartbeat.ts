@@ -11,21 +11,29 @@ export type BrowserSessionStatus =
   | 'error'
   | 'offline';
 
+export type MetadataProvider = () => Record<string, unknown> | Promise<Record<string, unknown>>;
+
 export class HeartbeatService {
   private sessionId: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private status: BrowserSessionStatus = 'starting';
+  private getMetadata: MetadataProvider | null = null;
 
   constructor(private readonly config: WorkerConfig) {}
 
   async register(
     getCurrentUrl?: () => Promise<string | null>,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, unknown> | MetadataProvider,
   ): Promise<BrowserSession> {
+    this.getMetadata =
+      typeof metadata === 'function' ? metadata : metadata ? () => metadata : null;
+
     const existing = await prisma.browserSession.findFirst({
       where: { workerId: this.config.workerId },
       orderBy: { updatedAt: 'desc' },
     });
+
+    const initialMeta = this.getMetadata ? await this.getMetadata() : {};
 
     const data = {
       name: this.config.sessionName,
@@ -35,7 +43,7 @@ export class HeartbeatService {
       status: 'starting' as const,
       lastHeartbeatAt: new Date(),
       lastError: null as string | null,
-      metadata: (metadata ?? {}) as Prisma.InputJsonValue,
+      metadata: initialMeta as Prisma.InputJsonValue,
     };
 
     const session = existing
@@ -73,12 +81,22 @@ export class HeartbeatService {
       currentUrl = null;
     }
 
+    let metadata: Prisma.InputJsonValue | undefined;
+    if (this.getMetadata) {
+      try {
+        metadata = (await this.getMetadata()) as Prisma.InputJsonValue;
+      } catch {
+        metadata = undefined;
+      }
+    }
+
     await prisma.browserSession.update({
       where: { id: this.sessionId },
       data: {
         status: this.status === 'starting' ? 'ready' : this.status,
         lastHeartbeatAt: new Date(),
         ...(currentUrl ? { currentUrl } : {}),
+        ...(metadata !== undefined ? { metadata } : {}),
       },
     });
   }
