@@ -1,0 +1,109 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+=== Dual-host verify session=m2dh_1784165884719 ===
+
+Γ£ô VPS mission provenance supported
+Γ£ô HMAC valid signature
+Γ£ô HMAC bad signature rejected
+Γ£ô HMAC expired timestamp rejected
+Γ£ô HMAC replay nonce rejected
+Γ£ô Remote missions upserted {"ok":true,"session":"m2dh_1784165884719","missions":3,"runs":3}
+Γ£ô Buyer Hunter Dual Host {"findingCount":1,"inventoryCount":0,"steps":9,"findingId":"cmrmuc80x003mle0hig5nygka","inventoryId":null,"retryDuplicate":true}
+Γ£ô Supply Hunter Dual Host {"findingCount":0,"inventoryCount":1,"steps":8,"findingId":null,"inventoryId":"cmrmucbpi004fle0hrcsajr20","retryDuplicate":true}
+Γ£ô Brand Monitor Dual Host {"findingCount":0,"inventoryCount":0,"steps":6,"findingId":null,"inventoryId":null,"retryDuplicate":true}
+
+=== SUMMARY ===
+{
+  "session": "m2dh_1784165884719",
+  "deployedCommitHint": "local HEAD deployed via archive",
+  "health": {
+    "tenant": "comp-da-nang",
+    "missionProvenance": {
+      "supported": true,
+      "continueWorkflow": true,
+      "acceptedPipelineVersions": [
+        1
+      ],
+      "fields": [
+        "missionId",
+        "missionRunId",
+        "missionVersion",
+        "pipelineVersion",
+        "pipelineHash",
+        "jobId",
+        "completedLocalSteps",
+        "missionWorkflow"
+      ]
+    }
+  },
+  "missions": {
+    "buyer": "cmrmuavyg0000hhyt8sfrj6c3",
+    "supply": "cmrmuavyj0001hhyt1ot4svei",
+    "brand": "cmrmuavyl0002hhytvs82pv20"
+  },
+  "runs": {
+    "buyer": "cmrmuavym0004hhytpedqy9fh",
+    "supply": "cmrmuavyq0006hhytg9rq8jn8",
+    "brand": "cmrmuavyr0008hhytxv2l32op"
+  },
+  "results": [
+    {
+      "case": "Buyer Hunter Dual Host",
+      "localMissionId": "cmrmuavyg0000hhyt8sfrj6c3",
+      "localRunId": "cmrmuavym0004hhytpedqy9fh",
+      "remoteContentId": "cmrmubxbr0037le0h0hq11sz3",
+      "remoteFindingId": "cmrmuc80x003mle0hig5nygka",
+      "remoteInventoryId": null,
+      "findingCount": 1,
+      "inventoryCount": 0,
+      "stepCount": 9,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    },
+    {
+      "case": "Supply Hunter Dual Host",
+      "localMissionId": "cmrmuavyj0001hhyt1ot4svei",
+      "localRunId": "cmrmuavyq0006hhytg9rq8jn8",
+      "remoteContentId": "cmrmucbl60041le0ht0lxe2tj",
+      "remoteFindingId": null,
+      "remoteInventoryId": "cmrmucbpi004fle0hrcsajr20",
+      "findingCount": 0,
+      "inventoryCount": 1,
+      "stepCount": 8,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    },
+    {
+      "case": "Brand Monitor Dual Host",
+      "localMissionId": "cmrmuavyl0002hhytvs82pv20",
+      "localRunId": "cmrmuavyr0008hhytxv2l32op",
+      "remoteContentId": "cmrmucepy0052le0hxjiafg4a",
+      "remoteFindingId": null,
+      "remoteInventoryId": null,
+      "findingCount": 0,
+      "inventoryCount": 0,
+      "stepCount": 6,
+      "warnings": [
+        "mission_workflow_continued_on_vps"
+      ],
+      "retryDuplicate": true,
+      "status": "PASS"
+    }
+  ],
+  "allPass": true
+}
+
+Report: F:\workspace\real-estate-ai-marketing-agent-cms\runtime\dual-host-report-m2dh_1784165884719.json

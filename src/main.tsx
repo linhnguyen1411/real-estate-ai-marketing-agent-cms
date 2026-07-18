@@ -159,6 +159,11 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/sources" element={<AdminRoute />} />
           <Route path="/admin/agents/missions" element={<AdminRoute />} />
           <Route path="/admin/agents/jobs" element={<AdminRoute />} />
+          <Route path="/admin/agents/publishing" element={<AdminRoute />} />
+          <Route path="/admin/agents/publishing/drafts" element={<AdminRoute />} />
+          <Route path="/admin/agents/publishing/channels" element={<AdminRoute />} />
+          <Route path="/admin/agents/publishing/history" element={<AdminRoute />} />
+          <Route path="/admin/agents/publishing/campaigns" element={<AdminRoute />} />
           <Route path="/admin/agents/contents" element={<AdminRoute />} />
           <Route path="/admin/agents/findings" element={<AdminRoute />} />
           <Route path="/admin/agents/external-inventory" element={<AdminRoute />} />

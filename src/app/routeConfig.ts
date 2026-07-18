@@ -22,6 +22,11 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteDef[] = [
   { path: '/admin/agents/sources', tabId: 'agent-sources', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/missions', tabId: 'agent-missions', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/jobs', tabId: 'agent-jobs', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing', tabId: 'agent-publishing', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing/drafts', tabId: 'agent-publishing-drafts', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing/channels', tabId: 'agent-publishing-channels', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing/history', tabId: 'agent-publishing-history', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/publishing/campaigns', tabId: 'agent-publishing-campaigns', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/contents', tabId: 'agent-contents', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/findings', tabId: 'agent-findings', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/external-inventory', tabId: 'agent-external-inventory', layout: 'admin', permission: 'auth', group: 'agent' },
@@ -29,6 +34,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteDef[] = [
   { path: '/admin/agents/spam', tabId: 'agent-spam', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/notifications', tabId: 'agent-notifications', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/sessions', tabId: 'agent-sessions', layout: 'admin', permission: 'auth', group: 'agent' },
+  { path: '/admin/agents/runtime', tabId: 'agent-runtime', layout: 'admin', permission: 'auth', group: 'agent' },
   { path: '/admin/agents/reports', tabId: 'agent-reports', layout: 'admin', permission: 'auth', group: 'agent' },
 ];
 

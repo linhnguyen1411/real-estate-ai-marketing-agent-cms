@@ -495,3 +495,108 @@ export interface AgentSpamRule {
   createdAt: string;
   updatedAt: string;
 }
+
+/** GET /api/agent/runtime - Automation Observability snapshot */
+export interface AutomationRuntimeSnapshot {
+  generatedAt: string;
+  healthScore: number;
+  health: {
+    worker: number;
+    browser: number;
+    queue: number;
+    mission: number;
+    scheduler: number;
+  };
+  workers: Array<{
+    id: string;
+    workerId: string | null;
+    name: string;
+    status: string;
+    lastHeartbeatAt: string | null;
+    currentUrl: string | null;
+    lastError: string | null;
+    online: boolean;
+    heartbeatAgeMs: number | null;
+    runtime: {
+      mode: unknown;
+      executionPool: unknown;
+      browserPool: unknown;
+      resources: unknown;
+      process: unknown;
+      publishedAt: unknown;
+    };
+  }>;
+  slots: unknown[];
+  browsers: unknown[];
+  process: unknown;
+  queue: {
+    waiting: number;
+    claimed: number;
+    running: number;
+    retry: number;
+    deadLetter: number;
+    cancelled: number;
+    completed: number;
+  };
+  activeJobs: Array<{
+    id: string;
+    type: string;
+    status: string;
+    priority: number;
+    claimedBy: string | null;
+    missionRunId: string | null;
+    startedAt: string | null;
+    claimedAt: string | null;
+    availableAt: string | null;
+    createdAt: string;
+    errorMessage: string | null;
+  }>;
+  missions: {
+    waiting: number;
+    running: number;
+    retry: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+  };
+  missionTimeline: Array<{
+    id: string;
+    missionId: string;
+    status: string;
+    triggerType: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    error: string | null;
+  }>;
+  campaigns: Array<{
+    id: string;
+    campaignId: string;
+    status: string;
+    progress: {
+      total: number;
+      completed: number;
+      failed: number;
+      publishing: number;
+      pending: number;
+      skipped: number;
+    };
+    success: number;
+    failed: number;
+    partialSuccess: boolean;
+    etaSec: number | null;
+    startedAt: string | null;
+    completedAt: string | null;
+  }>;
+  metrics: {
+    publishPerHour: number;
+    scanPerHour: number;
+    successRate: number | null;
+    retryRate: number | null;
+    browserUtilization: number | null;
+    slotUtilization: number | null;
+    completedLastHour: number;
+    failedLastHour: number;
+  };
+}

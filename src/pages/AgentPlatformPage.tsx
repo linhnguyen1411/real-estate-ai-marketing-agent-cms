@@ -18,6 +18,9 @@ const ExternalInventoryPage = React.lazy(
 );
 const NotificationsPage = React.lazy(() => import('../features/agent/notifications/pages/NotificationsPage'));
 const SessionsPage = React.lazy(() => import('../features/agent/sessions/pages/SessionsPage'));
+const RuntimeMonitorPage = React.lazy(
+  () => import('../features/agent/runtime-monitor/pages/RuntimeMonitorPage'),
+);
 const ReportsPage = React.lazy(() => import('../features/agent/reports/pages/ReportsPage'));
 const ActionProposalsPage = React.lazy(
   () => import('../features/agent/action-proposals/pages/ActionProposalsPage'),
@@ -25,12 +28,28 @@ const ActionProposalsPage = React.lazy(
 const SpamControlPage = React.lazy(
   () => import('../features/agent/spam-control/pages/SpamControlPage'),
 );
+const PublishingSchedulePage = React.lazy(
+  () => import('../features/agent/publishing-schedule/pages/PublishingSchedulePage'),
+);
+const PublishingDraftsPage = React.lazy(
+  () => import('../features/agent/publishing-drafts/pages/PublishingDraftsPage'),
+);
+const PublishingChannelsPage = React.lazy(
+  () => import('../features/agent/publishing-channels/pages/PublishingChannelsPage'),
+);
+const PublishingHistoryPage = React.lazy(
+  () => import('../features/agent/publishing-history/pages/PublishingHistoryPage'),
+);
+const PublishingCampaignsPage = React.lazy(
+  () => import('../features/agent/publishing-campaigns/pages/PublishingCampaignsPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
   { path: '/admin/agents/sources', label: 'Nguồn' },
   { path: '/admin/agents/missions', label: 'Mission' },
   { path: '/admin/agents/jobs', label: 'Jobs' },
+  { path: '/admin/agents/publishing', label: 'Đăng bài' },
   { path: '/admin/agents/contents', label: 'Nội dung quét' },
   { path: '/admin/agents/findings', label: 'Lead Intelligence' },
   { path: '/admin/agents/external-inventory', label: 'Giỏ hàng ngoài' },
@@ -38,6 +57,7 @@ const NAV_ITEMS = [
   { path: '/admin/agents/spam', label: 'Spam Control' },
   { path: '/admin/agents/notifications', label: 'Thông báo' },
   { path: '/admin/agents/sessions', label: 'Sessions' },
+  { path: '/admin/agents/runtime', label: 'Runtime' },
   { path: '/admin/agents/reports', label: 'Báo cáo' },
 ] as const;
 
@@ -50,6 +70,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
   if (pathname.startsWith('/admin/agents/missions')) return 'missions';
   if (pathname.startsWith('/admin/agents/jobs')) return 'jobs';
+  if (pathname.startsWith('/admin/agents/publishing')) return 'publishing';
   if (pathname.startsWith('/admin/agents/contents')) return 'contents';
   if (pathname.startsWith('/admin/agents/findings')) return 'findings';
   if (pathname.startsWith('/admin/agents/external-inventory')) return 'external-inventory';
@@ -57,13 +78,24 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/spam')) return 'spam';
   if (pathname.startsWith('/admin/agents/notifications')) return 'notifications';
   if (pathname.startsWith('/admin/agents/sessions')) return 'sessions';
+  if (pathname.startsWith('/admin/agents/runtime')) return 'runtime';
   if (pathname.startsWith('/admin/agents/reports')) return 'reports';
   return 'dashboard';
+}
+
+function resolvePublishingSection(pathname: string) {
+  if (pathname.includes('/publishing/drafts')) return 'publishing-drafts';
+  if (pathname.includes('/publishing/channels')) return 'publishing-channels';
+  if (pathname.includes('/publishing/history')) return 'publishing-history';
+  if (pathname.includes('/publishing/campaigns')) return 'publishing-campaigns';
+  if (pathname.startsWith('/admin/agents/publishing')) return 'publishing';
+  return null;
 }
 
 export default function AgentPlatformPage({ userRole }: Props) {
   const location = useLocation();
   const section = resolveSection(location.pathname);
+  const publishingSection = resolvePublishingSection(location.pathname);
   const canManage = userRole === 'owner' || userRole === 'company';
 
   return (
@@ -104,6 +136,25 @@ export default function AgentPlatformPage({ userRole }: Props) {
             <JobsPage canManage={canManage} />
           </Suspense>
         )}
+        {section === 'publishing' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            {publishingSection === 'publishing-drafts' && (
+              <PublishingDraftsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-channels' && (
+              <PublishingChannelsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-history' && (
+              <PublishingHistoryPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing-campaigns' && (
+              <PublishingCampaignsPage canManage={canManage} />
+            )}
+            {publishingSection === 'publishing' && (
+              <PublishingSchedulePage canManage={canManage} />
+            )}
+          </Suspense>
+        )}
         {section === 'contents' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <ScannedContentPage userRole={userRole} />
@@ -137,6 +188,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'sessions' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <SessionsPage />
+          </Suspense>
+        )}
+        {section === 'runtime' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <RuntimeMonitorPage />
           </Suspense>
         )}
         {section === 'reports' && (

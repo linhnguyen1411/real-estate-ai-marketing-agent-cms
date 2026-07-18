@@ -4,6 +4,8 @@
 
 import type { WorkflowPipelineDefinition, StepFailurePolicy } from './workflowTypes';
 
+const BROWSER_PUBLISH_STEP_PREFIX = 'browser_';
+
 export function resolveFailurePolicy(
   stepOnFailure: StepFailurePolicy | undefined,
   pipelineDefault: StepFailurePolicy | undefined,
@@ -15,6 +17,9 @@ export function resolveFailurePolicy(
   if (stepType === 'notify_telegram' || stepType === 'notify_cms') return 'continue';
   if (stepType === 'spam_filter') return 'stop_workflow';
   if (stepType === 'create_lead_intelligence' || stepType === 'create_external_inventory_candidate') {
+    return 'stop_workflow';
+  }
+  if (stepType.startsWith(BROWSER_PUBLISH_STEP_PREFIX)) {
     return 'stop_workflow';
   }
   return 'continue';

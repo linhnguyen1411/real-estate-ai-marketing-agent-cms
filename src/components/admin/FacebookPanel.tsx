@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED publisher UI — inbound Graph / inbox only.
+ * Unmounted from App; do not remount as an outbound Facebook auto-publisher.
+ * Outbound publishing lives in server/modules/social-publishing.
+ */
 import React, { useEffect, useState } from 'react';
 import {
   createLeadFromFacebookComment,

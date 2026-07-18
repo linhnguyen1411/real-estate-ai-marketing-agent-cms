@@ -126,6 +126,33 @@ export async function startMissionRun(input: StartMissionRunInput): Promise<Star
     });
   });
 
+  // Control Plane event (best-effort) — does not alter mission behavior
+  try {
+    const { emitRuntimeEventAsync } = await import('../../control-plane/runtimeEventBus');
+    emitRuntimeEventAsync({
+      type: 'MISSION_STARTED',
+      companyId: mission.companyId ?? input.companyId,
+      entityType: 'mission_run',
+      entityId: run.id,
+      payload: {
+        missionId: mission.id,
+        jobsCreated: jobIds.length,
+        jobsSkipped,
+      },
+    });
+    for (const jobId of jobIds) {
+      emitRuntimeEventAsync({
+        type: 'JOB_CREATED',
+        companyId: mission.companyId ?? input.companyId,
+        entityType: 'job',
+        entityId: jobId,
+        payload: { missionRunId: run.id, missionId: mission.id },
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
   return {
     missionRunId: run.id,
     jobsCreated: jobIds.length,

@@ -15,6 +15,8 @@ import {
   resolveBrowserModeForUrl,
 } from './browserModeResolver';
 import { detectFacebookAuthBlock } from './facebook/facebookCheckpointDetector';
+import { getRuntimeJobContext } from './runtime/als';
+import type { BrowserPurpose } from './runtime/types';
 
 export interface GetPageOptions extends GetOrCreatePageOptions {
   source?: Pick<AgentSource, 'type' | 'config'>;
@@ -23,15 +25,24 @@ export interface GetPageOptions extends GetOrCreatePageOptions {
 
 /**
  * Facade: lazy managed + CDP connections.
- * CDP Facebook concurrency = 1 via beginCdpJob / releaseCdpLock.
+ * CDP concurrency is purpose-scoped (scan ∥ publish) via beginCdpJob(purpose) / releaseCdpLock(purpose).
+ * Execution Pool owns slot limits; this mutex prevents same-purpose overlap only.
  */
+
+export type CdpLockPurpose = BrowserPurpose | 'shared';
+
+type CdpLockEntry = { owner: string; refs: number };
+
 export class BrowserManager {
   private managed: AgentBrowserConnection | null = null;
   private cdp: AgentBrowserConnection | null = null;
-  private cdpBusy = false;
+  /** Purpose → owner + refcount (reentrant for same job via ALS / explicit owner). */
+  private readonly cdpLocks = new Map<CdpLockPurpose, CdpLockEntry>();
   private readonly config: WorkerConfig;
   /** Single worker-owned scan tab, reused across jobs (never the user's tab). */
   private scanPage: Page | null = null;
+  /** Separate worker-owned publish tab — never reuse scan tab for posting. */
+  private publishPage: Page | null = null;
   /** Safety guard: warn if the context accumulates more tabs than this. */
   private readonly maxContextPages = 10;
   readonly scanMetrics = {
@@ -42,6 +53,7 @@ export class BrowserManager {
   };
   /** Mode used for the most recent getScanPage call. */
   private lastScanPageMode: 'created' | 'reused' | 'recreated' = 'created';
+  private lastPublishPageMode: 'created' | 'reused' | 'recreated' = 'created';
 
   constructor(config: WorkerConfig) {
     this.config = config;
@@ -113,6 +125,66 @@ export class BrowserManager {
     return page;
   }
 
+  /**
+   * Get the worker-owned Facebook publish tab (separate from scan).
+   * Created once and reused; closed on worker shutdown without touching user tabs.
+   */
+  async getPublishPage(options: GetPageOptions = {}): Promise<Page> {
+    const mode = this.resolveMode(options);
+    const conn = await this.ensureConnection(mode);
+
+    if (this.publishPage && !this.publishPage.isClosed()) {
+      this.lastPublishPageMode = 'reused';
+      if (options.initialUrl) {
+        const current = this.publishPage.url();
+        if (shouldReloadScanPage(current, options.initialUrl)) {
+          await this.publishPage
+            .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+            .catch(() => undefined);
+        }
+      }
+      return this.publishPage;
+    }
+
+    if (this.publishPage && this.publishPage.isClosed()) {
+      this.lastPublishPageMode = 'recreated';
+    } else {
+      this.lastPublishPageMode = 'created';
+    }
+    this.publishPage = null;
+
+    const pageCount = conn.context.pages().length;
+    if (pageCount >= this.maxContextPages) {
+      console.warn(
+        `[browser-manager] context has ${pageCount} tabs (>= ${this.maxContextPages}); ` +
+          'not closing user tabs — only worker-owned publish tab is managed.',
+      );
+    }
+
+    const page = await conn.context.newPage();
+    this.publishPage = page;
+    if (options.initialUrl) {
+      await page
+        .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(() => undefined);
+    }
+    return page;
+  }
+
+  publishPageInfo(): { browserPageMode: 'created' | 'reused' | 'recreated'; contextPageCount: number } {
+    return {
+      browserPageMode: this.lastPublishPageMode,
+      contextPageCount: this.currentContextPageCount(),
+    };
+  }
+
+  async closePublishPage(): Promise<void> {
+    if (this.publishPage && !this.publishPage.isClosed()) {
+      await this.publishPage.close().catch(() => undefined);
+    }
+    this.publishPage = null;
+  }
+
   get profilePath(): string {
     return this.config.profileDir;
   }
@@ -125,8 +197,12 @@ export class BrowserManager {
     return this.config.browserMode;
   }
 
-  isCdpBusy(): boolean {
-    return this.cdpBusy;
+  isCdpBusy(purpose?: CdpLockPurpose): boolean {
+    if (purpose) return (this.cdpLocks.get(purpose)?.refs || 0) > 0;
+    for (const e of this.cdpLocks.values()) {
+      if (e.refs > 0) return true;
+    }
+    return false;
   }
 
   sessionMetadata(activeMode?: AgentBrowserMode): Record<string, unknown> {
@@ -148,18 +224,25 @@ export class BrowserManager {
     const contexts =
       (this.cdp ? 1 : 0) + (this.managed ? 1 : 0);
     const pageCount = this.currentContextPageCount();
-    const workerOwned =
+    const workerOwnedScan =
       this.scanPage && !this.scanPage.isClosed() ? 1 : 0;
+    const workerOwnedPublish =
+      this.publishPage && !this.publishPage.isClosed() ? 1 : 0;
+    const workerOwned = workerOwnedScan + workerOwnedPublish;
+    const locks: Record<string, { owner: string; refs: number }> = {};
+    for (const [k, v] of this.cdpLocks) locks[k] = { owner: v.owner, refs: v.refs };
     return {
       browserContexts: contexts,
       contextPageCount: pageCount,
-      workerOwnedScanPages: workerOwned,
+      workerOwnedScanPages: workerOwnedScan,
+      workerOwnedPublishPages: workerOwnedPublish,
       userOwnedPagesEstimate: Math.max(0, pageCount - workerOwned),
       scanPageCreated: this.scanMetrics.scanPageCreated,
       scanPageReused: this.scanMetrics.scanPageReused,
       scanPageRecreatedAfterCrash: this.scanMetrics.scanPageRecreatedAfterCrash,
       facebookConcurrentJobRejected: this.scanMetrics.facebookConcurrentJobRejected,
-      cdpBusy: this.cdpBusy,
+      cdpBusy: this.isCdpBusy(),
+      cdpLocks: locks,
       lastBrowserHeartbeatAt: new Date().toISOString(),
     };
   }
@@ -173,16 +256,36 @@ export class BrowserManager {
     return null;
   }
 
-  async beginCdpJob(): Promise<void> {
-    if (this.cdpBusy) {
-      this.scanMetrics.facebookConcurrentJobRejected += 1;
-      throw new Error('CDP_BUSY: another Facebook/CDP job is using the session.');
+  /**
+   * Purpose-scoped CDP lock. Scan and publish do not block each other.
+   * Same job (ALS / owner) is reentrant; another job on same purpose → CDP_BUSY.
+   */
+  async beginCdpJob(purpose?: CdpLockPurpose): Promise<void> {
+    const ctx = getRuntimeJobContext();
+    const p: CdpLockPurpose = purpose ?? ctx?.purpose ?? 'shared';
+    const owner = ctx?.jobId ?? 'anonymous';
+    const cur = this.cdpLocks.get(p);
+    if (!cur) {
+      this.cdpLocks.set(p, { owner, refs: 1 });
+      return;
     }
-    this.cdpBusy = true;
+    if (cur.owner === owner) {
+      cur.refs += 1;
+      return;
+    }
+    this.scanMetrics.facebookConcurrentJobRejected += 1;
+    throw new Error(
+      `CDP_BUSY: purpose=${p} held by job=${cur.owner} (requested by ${owner}).`,
+    );
   }
 
-  releaseCdpLock(): void {
-    this.cdpBusy = false;
+  releaseCdpLock(purpose?: CdpLockPurpose): void {
+    const ctx = getRuntimeJobContext();
+    const p: CdpLockPurpose = purpose ?? ctx?.purpose ?? 'shared';
+    const cur = this.cdpLocks.get(p);
+    if (!cur) return;
+    if (cur.refs <= 1) this.cdpLocks.delete(p);
+    else cur.refs -= 1;
   }
 
   async getPage(options?: GetPageOptions): Promise<Page> {
@@ -202,7 +305,7 @@ export class BrowserManager {
     const mode = resolveBrowserModeForUrl(url, this.config);
     const preferredDomain = /facebook\.com/i.test(url) ? 'facebook.com' : undefined;
 
-    if (mode === 'cdp') await this.beginCdpJob();
+    if (mode === 'cdp') await this.beginCdpJob('scan');
     try {
       const page = await this.getPage({
         mode,
@@ -232,7 +335,7 @@ export class BrowserManager {
 
       return { title, currentUrl };
     } finally {
-      if (mode === 'cdp') this.releaseCdpLock();
+      if (mode === 'cdp') this.releaseCdpLock('scan');
     }
   }
 
@@ -247,6 +350,8 @@ export class BrowserManager {
     }
     this.scanPage = null;
 
+    await this.closePublishPage();
+
     // CDP: disconnect refs only — never close external Chrome.
     if (this.cdp) {
       await this.cdp.shutdown();
@@ -256,7 +361,7 @@ export class BrowserManager {
       await this.managed.shutdown();
       this.managed = null;
     }
-    this.cdpBusy = false;
+    this.cdpLocks.clear();
   }
 
   private resolveMode(options?: GetPageOptions): AgentBrowserMode {

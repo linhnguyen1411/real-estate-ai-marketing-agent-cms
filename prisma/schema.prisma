@@ -789,6 +789,24 @@ model BrowserSession {
   @@map("browser_sessions")
 }
 
+/// Control Plane — append-only runtime event bus (observability / Telegram / reports)
+model AgentRuntimeEvent {
+  id         String   @id @default(cuid())
+  companyId  String?  @map("company_id")
+  type       String
+  agentId    String?  @map("agent_id")
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@index([agentId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([createdAt])
+  @@map("agent_runtime_events")
+}
+
 model ScannedContent {
   id                       String    @id @default(cuid())
   companyId                String?   @map("company_id")
@@ -1265,4 +1283,227 @@ model TelegramDeliveryLog {
   @@index([findingId])
   @@index([status, createdAt])
   @@map("telegram_delivery_logs")
+}
+
+/// Social Publishing MVP — outbound Facebook profile/page posts
+model SocialChannel {
+  id                   String    @id @default(cuid())
+  companyId            String?   @map("company_id")
+  type                 String
+  name                 String
+  externalId           String?   @map("external_id")
+  profileUrl           String?   @map("profile_url") @db.Text
+  status               String    @default("active")
+  executionMode        String    @map("execution_mode")
+  browserSessionId     String?   @map("browser_session_id")
+  config               Json      @default("{}")
+  isActive             Boolean   @default(true) @map("is_active")
+  consecutiveFailures  Int       @default(0) @map("consecutive_failures")
+  lastVerifiedAt       DateTime? @map("last_verified_at")
+  lastVerifyError      String?   @map("last_verify_error") @db.Text
+  tokenExpiresAt       DateTime? @map("token_expires_at")
+  connectionState      String?   @map("connection_state")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  jobs SocialPublishJob[]
+
+  @@index([companyId])
+  @@index([type])
+  @@index([status])
+  @@map("social_channels")
+}
+
+model SocialPostDraft {
+  id                  String    @id @default(cuid())
+  companyId           String?   @map("company_id")
+  title               String?
+  body                String    @db.Text
+  linkUrl             String?   @map("link_url") @db.Text
+  status              String    @default("draft")
+  createdBy           String?   @map("created_by")
+  approvedBy          String?   @map("approved_by")
+  approvedAt          DateTime? @map("approved_at")
+  bodyHash            String?   @map("body_hash")
+  normalizedBodyHash  String?   @map("normalized_body_hash")
+  metadata            Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  media SocialPostMedia[]
+  jobs  SocialPublishJob[]
+  campaigns SocialCampaign[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([bodyHash])
+  @@index([normalizedBodyHash])
+  @@map("social_post_drafts")
+}
+
+model SocialPostMedia {
+  id        String   @id @default(cuid())
+  draftId   String   @map("draft_id")
+  type      String
+  fileUrl   String   @map("file_url") @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  altText   String?  @map("alt_text")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  draft SocialPostDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([draftId])
+  @@map("social_post_media")
+}
+
+model SocialPublishJob {
+  id             String    @id @default(cuid())
+  companyId      String?   @map("company_id")
+  draftId        String    @map("draft_id")
+  channelId      String    @map("channel_id")
+  scheduledAt    DateTime  @map("scheduled_at")
+  status         String    @default("queued")
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  idempotencyKey String    @unique @map("idempotency_key")
+  claimedBy      String?   @map("claimed_by")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message") @db.Text
+  result         Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  draft           SocialPostDraft       @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  channel         SocialChannel         @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  publishAttempts SocialPublishAttempt[]
+
+  @@index([status, scheduledAt])
+  @@index([channelId, status])
+  @@index([companyId])
+  @@index([draftId])
+  @@map("social_publish_jobs")
+}
+
+model SocialPublishAttempt {
+  id              String    @id @default(cuid())
+  companyId       String?   @map("company_id")
+  jobId           String    @map("job_id")
+  draftId         String    @map("draft_id")
+  channelId       String    @map("channel_id")
+  workerId        String?   @map("worker_id")
+  attemptNumber   Int       @map("attempt_number")
+  status          String
+  startedAt       DateTime  @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  durationMs      Int?      @map("duration_ms")
+  facebookPostId  String?   @map("facebook_post_id")
+  facebookPostUrl String?   @map("facebook_post_url") @db.Text
+  requestJson     Json?     @map("request_json")
+  responseJson    Json?     @map("response_json")
+  errorCode       String?   @map("error_code")
+  errorMessage    String?   @map("error_message") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  job SocialPublishJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([channelId, createdAt])
+  @@index([companyId])
+  @@map("social_publish_attempts")
+}
+
+model SocialPublishAuditLog {
+  id         String   @id @default(cuid())
+  companyId  String?  @map("company_id")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  action     String
+  actor      String?
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("social_publish_audit_logs")
+}
+
+/// Multi-destination publish campaign (plan)
+model SocialCampaign {
+  id                      String   @id @default(cuid())
+  companyId               String?  @map("company_id")
+  name                    String
+  draftId                 String   @map("draft_id")
+  status                  String   @default("draft")
+  /// Ordered channel ids — execution plan destinations
+  destinationChannelIds   Json     @default("[]") @map("destination_channel_ids")
+  schedule                Json?
+  metadata                Json     @default("{}")
+  createdBy               String?  @map("created_by")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  draft SocialPostDraft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  runs  SocialCampaignRun[]
+
+  @@index([companyId])
+  @@index([draftId])
+  @@index([status])
+  @@map("social_campaigns")
+}
+
+/// One execution of a campaign
+model SocialCampaignRun {
+  id           String    @id @default(cuid())
+  companyId    String?   @map("company_id")
+  campaignId   String    @map("campaign_id")
+  status       String    @default("queued")
+  triggerType  String    @default("manual") @map("trigger_type")
+  triggeredBy  String?   @map("triggered_by")
+  scheduledAt  DateTime? @map("scheduled_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  /// { total, completed, failed, pending, publishing, skipped }
+  progress     Json?
+  errorMessage String?   @map("error_message") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  campaign SocialCampaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  targets  SocialCampaignTarget[]
+
+  @@index([companyId])
+  @@index([campaignId, createdAt])
+  @@index([status])
+  @@map("social_campaign_runs")
+}
+
+/// Per-destination execution within a campaign run (1 target → 1 SocialPublishJob)
+model SocialCampaignTarget {
+  id             String    @id @default(cuid())
+  companyId      String?   @map("company_id")
+  campaignRunId  String    @map("campaign_run_id")
+  channelId      String    @map("channel_id")
+  destinationKey String?   @map("destination_key")
+  sortOrder      Int       @default(0) @map("sort_order")
+  status         String    @default("pending")
+  publishJobId   String?   @unique @map("publish_job_id")
+  missionRunId   String?   @map("mission_run_id")
+  permalink      String?   @db.Text
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message") @db.Text
+  attempts       Int       @default(0)
+  result         Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  campaignRun SocialCampaignRun @relation(fields: [campaignRunId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([campaignRunId, sortOrder])
+  @@index([channelId])
+  @@index([status])
+  @@map("social_campaign_targets")
 }

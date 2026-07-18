@@ -3,30 +3,52 @@ import { Prisma } from '@prisma/client';
 import { notifyJobFailed } from '../agent/agentNotificationService';
 import { prisma } from '../prisma';
 import { isNonRetryableBrowserErrorMessage } from './facebook/facebookCheckpointDetector';
+import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
+import type { ClaimOptions } from './ports';
+import { capabilityForJobType } from './ports';
 
 export type ClaimedJob = AgentJob;
 
 /**
  * Atomically claim the next queued job using PostgreSQL row locking (SKIP LOCKED).
  * Priority: lower number = higher priority; then oldest createdAt.
+ * Multi-agent: payload.targetAgentId only match that worker.
+ * Capabilities: only claim job types the agent can run.
  */
-export async function claimNextJob(workerId: string): Promise<ClaimedJob | null> {
+export async function claimNextJob(
+  workerId: string,
+  options?: ClaimOptions,
+): Promise<ClaimedJob | null> {
+  const capabilities = options?.capabilities?.filter(Boolean) ?? [];
+
   return prisma.$transaction(async tx => {
-    const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id
+    // Fetch a small candidate window then pick first matching capability
+    // (keeps SQL simple; SKIP LOCKED still prevents double-claim).
+    const rows = await tx.$queryRaw<{ id: string; type: string }[]>`
+      SELECT id, type
       FROM agent_jobs
       WHERE status = 'queued'
         AND available_at <= NOW()
+        AND (
+          payload->>'targetAgentId' IS NULL
+          OR payload->>'targetAgentId' = ''
+          OR payload->>'targetAgentId' = ${workerId}
+        )
       ORDER BY priority ASC, created_at ASC
-      LIMIT 1
+      LIMIT 20
       FOR UPDATE SKIP LOCKED
     `;
 
-    const jobId = rows[0]?.id;
-    if (!jobId) return null;
+    const match = rows.find(r => {
+      if (capabilities.length === 0) return true;
+      const need = capabilityForJobType(r.type);
+      if (!need) return true;
+      return capabilities.includes(need);
+    });
+    if (!match) return null;
 
-    return tx.agentJob.update({
-      where: { id: jobId },
+    const job = await tx.agentJob.update({
+      where: { id: match.id },
       data: {
         status: 'running',
         claimedBy: workerId,
@@ -34,11 +56,23 @@ export async function claimNextJob(workerId: string): Promise<ClaimedJob | null>
         startedAt: new Date(),
       },
     });
+
+    emitRuntimeEventAsync({
+      type: 'JOB_CLAIMED',
+      companyId: job.companyId,
+      agentId: workerId,
+      entityType: 'job',
+      entityId: job.id,
+      payload: { type: job.type, missionRunId: job.missionRunId },
+    });
+
+    return job;
   });
 }
 
 export async function completeJob(jobId: string, result: Record<string, unknown>): Promise<void> {
-  await prisma.agentJob.update({
+  const existing = await prisma.agentJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.agentJob.update({
     where: { id: jobId },
     data: {
       status: 'completed',
@@ -49,14 +83,22 @@ export async function completeJob(jobId: string, result: Record<string, unknown>
       claimedAt: null,
     },
   });
+  emitRuntimeEventAsync({
+    type: 'JOB_COMPLETED',
+    companyId: job.companyId,
+    agentId: existing?.claimedBy ?? null,
+    entityType: 'job',
+    entityId: job.id,
+    payload: { type: job.type, missionRunId: job.missionRunId },
+  });
 }
 
 export async function releaseJobToQueue(jobId: string, errorMessage: string): Promise<void> {
   const job = await prisma.agentJob.findUnique({ where: { id: jobId } });
   if (!job) return;
 
-  // CDP busy — defer without burning attempts
-  if (/^CDP_BUSY/.test(errorMessage)) {
+  // CDP busy / slot / browser busy — defer without burning attempts
+  if (/^(CDP_BUSY|SLOT_BUSY|SLOT_STOPPED|BROWSER_BUSY)/.test(errorMessage)) {
     await prisma.agentJob.update({
       where: { id: jobId },
       data: {
@@ -65,9 +107,19 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         claimedBy: null,
         claimedAt: null,
         startedAt: null,
-        errorMessage: 'CDP_BUSY',
+        errorMessage: errorMessage.slice(0, 500),
       },
     });
+    if (/^SLOT_BUSY/.test(errorMessage)) {
+      emitRuntimeEventAsync({
+        type: 'SLOT_BUSY',
+        companyId: job.companyId,
+        agentId: job.claimedBy,
+        entityType: 'job',
+        entityId: jobId,
+        payload: { errorMessage: errorMessage.slice(0, 200) },
+      });
+    }
     return;
   }
 
@@ -103,6 +155,15 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
     },
   });
 
+  emitRuntimeEventAsync({
+    type: 'JOB_FAILED',
+    companyId: job.companyId,
+    agentId: job.claimedBy,
+    entityType: 'job',
+    entityId: job.id,
+    payload: { type: job.type, errorMessage: errorMessage.slice(0, 200) },
+  });
+
   await notifyJobFailed({
     companyId: job.companyId,
     jobId: job.id,
@@ -126,4 +187,39 @@ export async function requeueRunningJob(jobId: string, reason: string): Promise<
       errorMessage: reason,
     },
   });
+}
+
+/**
+ * Recover jobs left in claimed/running after a hard worker kill (no graceful shutdown).
+ * Called once on worker boot. Does not change business publish semantics.
+ */
+export async function reclaimOrphanedAgentJobs(input: {
+  workerId: string;
+  staleMs?: number;
+}): Promise<number> {
+  const staleMs = input.staleMs ?? 90_000;
+  const cutoff = new Date(Date.now() - staleMs);
+  const result = await prisma.agentJob.updateMany({
+    where: {
+      status: { in: ['claimed', 'running'] },
+      OR: [
+        { startedAt: { lt: cutoff } },
+        { claimedAt: { lt: cutoff } },
+        {
+          AND: [{ startedAt: null }, { claimedAt: null }, { updatedAt: { lt: cutoff } }],
+        },
+      ],
+      // Never steal a job this same process just claimed
+      NOT: { claimedBy: input.workerId },
+    },
+    data: {
+      status: 'queued',
+      claimedBy: null,
+      claimedAt: null,
+      startedAt: null,
+      availableAt: new Date(),
+      errorMessage: 'Reclaimed orphaned running job after worker death',
+    },
+  });
+  return result.count;
 }

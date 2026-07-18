@@ -4,6 +4,7 @@ import {
   enqueueDueScheduledMissions,
   settleOpenMissionRuns,
 } from '../modules/mission-engine/application/missionRunService';
+import { enqueueDueSocialPublishJobs } from '../modules/social-publishing/jobService';
 
 /** Fixed class/id pair for pg_try_advisory_xact_lock (agent scheduler). */
 export const AGENT_SCHEDULER_LOCK_CLASS = 41871;
@@ -239,6 +240,19 @@ export async function runAgentSchedulerTick(now = new Date()): Promise<Scheduler
       } catch (error) {
         console.warn(
           '[agent-scheduler] Mission schedule failed:',
+          error instanceof Error ? error.message : error,
+        );
+      }
+      try {
+        const socialTick = await enqueueDueSocialPublishJobs(now);
+        if (socialTick.created > 0 || socialTick.due > 0) {
+          console.log(
+            `[agent-scheduler] Social publish: due=${socialTick.due} created=${socialTick.created} skipped=${socialTick.skipped}`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          '[agent-scheduler] Social publish enqueue failed:',
           error instanceof Error ? error.message : error,
         );
       }
