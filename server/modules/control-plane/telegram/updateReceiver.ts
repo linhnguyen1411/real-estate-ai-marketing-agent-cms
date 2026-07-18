@@ -38,7 +38,7 @@ export function createPollingReceiver(deps: ReceiverFactoryDeps): TelegramUpdate
       const raw = await telegramApi(config.botToken, 'getUpdates', {
         offset,
         timeout: 25,
-        allowed_updates: ['message', 'edited_message'],
+        allowed_updates: ['message', 'edited_message', 'callback_query'],
       });
       const results = Array.isArray(raw.result) ? raw.result : [];
       for (const update of results) {

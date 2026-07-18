@@ -21,6 +21,10 @@ export type CommandResult = {
   /** Human-readable lines (Telegram / CLI text mode) */
   lines: string[];
   error?: string;
+  /** Optional Telegram inline keyboard (ignored by CLI/web text) */
+  replyMarkup?: {
+    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+  };
 };
 
 export type CommandHandler = (

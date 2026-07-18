@@ -6,6 +6,7 @@ import type { AuthUser } from '../../../../src/types';
 import { createCommandRegistry } from './registry';
 import { parseCommandLine } from './parse';
 import { registerDefaultCommands, consoleSystemUser } from './defaultCommands';
+import { registerOperationsCommands } from './operationsCommands';
 import type { CommandClient, CommandContext, CommandResult } from './types';
 
 export { parseCommandLine } from './parse';
@@ -18,6 +19,7 @@ export function getCommandRegistry() {
   if (!sharedRegistry) {
     sharedRegistry = createCommandRegistry();
     registerDefaultCommands(sharedRegistry);
+    registerOperationsCommands(sharedRegistry);
   }
   return sharedRegistry;
 }
@@ -75,6 +77,7 @@ async function runCommand(
 export function createCommandEngine() {
   const registry = createCommandRegistry();
   registerDefaultCommands(registry);
+  registerOperationsCommands(registry);
   return {
     registry,
     async execute(

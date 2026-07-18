@@ -18,8 +18,14 @@ export {
   resetTelegramAclRateLimitForTests,
 } from './acl';
 export { createTelegramReplyPort } from './outbound';
-export { normalizeTelegramUpdate } from './normalizeUpdate';
+export { normalizeTelegramUpdate, normalizeTelegramInbound } from './normalizeUpdate';
 export { routeTelegramUpdate } from './router';
+export {
+  missionActionKeyboard,
+  publishJobKeyboard,
+  agentJobKeyboard,
+  callbackDataToCommand,
+} from '../inlineKeyboard';
 export {
   createTelegramUpdateReceiver,
   createPollingReceiver,
@@ -34,3 +40,4 @@ export {
   _resetTelegramControlPlaneForTests,
 } from './lifecycle';
 export { registerTelegramControlPlaneRoutes } from './routes';
+

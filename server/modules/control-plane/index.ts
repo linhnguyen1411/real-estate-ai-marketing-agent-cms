@@ -32,6 +32,7 @@ export {
   stopTelegramControlPlane,
   getTelegramConsoleStatus,
 } from './telegram';
+export * from './operationsService';
 
 export const ControlPlane = {
   name: 'ControlPlane',

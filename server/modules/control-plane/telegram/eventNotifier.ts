@@ -72,21 +72,27 @@ export type EventNotifier = {
   tickOnce(): Promise<number>;
 };
 
+const ALERT_COOLDOWN_MS = 60_000;
+
 export function createTelegramEventNotifier(input: {
   config: TelegramConsoleConfig;
   replyPort: TelegramReplyPort;
   listEvents?: typeof listRuntimeEvents;
+  /** Alert cooldown window (anti-spam) */
+  alertCooldownMs?: number;
 }): EventNotifier {
   let timer: ReturnType<typeof setInterval> | null = null;
   let sinceMs = Date.now();
   const list = input.listEvents ?? listRuntimeEvents;
   const chatId = input.config.primaryChatId;
+  const cooldown = input.alertCooldownMs ?? ALERT_COOLDOWN_MS;
+  const lastSent = new Map<string, number>();
 
   const tickOnce = async (): Promise<number> => {
     if (!chatId || !input.config.botToken || !input.config.enabled) return 0;
     const events = await list({
       companyId: input.config.companyId,
-      types: [...NOTIFY_TYPES, 'JOB_COMPLETED'],
+      types: [...NOTIFY_TYPES, 'JOB_COMPLETED', 'OPS_REQUEST'],
       since: new Date(sinceMs),
       limit: 40,
     });
@@ -94,16 +100,23 @@ export function createTelegramEventNotifier(input: {
 
     let newestMs = sinceMs;
     const lines: string[] = [];
+    const now = Date.now();
     for (const ev of events) {
       const t = Date.parse(ev.createdAt);
       if (Number.isFinite(t) && t > newestMs) newestMs = t;
       const line = formatEventLine(ev);
-      if (line) lines.push(`• ${line}`);
+      if (!line) continue;
+      // Rate-limit spammy alerts (agent offline, queue fail, browser)
+      const key = `${ev.type}:${ev.entityId || ev.agentId || line.slice(0, 40)}`;
+      const prev = lastSent.get(key) || 0;
+      if (now - prev < cooldown) continue;
+      lastSent.set(key, now);
+      lines.push(`• ${line}`);
     }
     sinceMs = newestMs;
 
     if (lines.length === 0) return 0;
-    const text = ['[Control Plane]', ...lines.slice(0, 15)].join('\n');
+    const text = ['[Ops Alert]', ...lines.slice(0, 15)].join('\n');
     await input.replyPort.reply({
       botToken: input.config.botToken,
       chatId,

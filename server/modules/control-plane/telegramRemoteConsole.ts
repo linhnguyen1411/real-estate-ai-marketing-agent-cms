@@ -7,11 +7,13 @@ import {
   executeControlCommand,
   formatCommandText,
 } from './command-engine';
+import type { CommandResult } from './command-engine/types';
 
 export type TelegramCommandResult = {
   ok: boolean;
   command: string;
   text: string;
+  replyMarkup?: CommandResult['replyMarkup'];
 };
 
 export async function handleTelegramControlCommand(
@@ -27,5 +29,6 @@ export async function handleTelegramControlCommand(
     ok: result.ok,
     command: result.command,
     text: formatCommandText(result),
+    replyMarkup: result.replyMarkup,
   };
 }

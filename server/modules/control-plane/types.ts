@@ -19,6 +19,8 @@ export const RUNTIME_EVENT_TYPES = [
   'BROWSER_RELEASED',
   'CAMPAIGN_STARTED',
   'CAMPAIGN_COMPLETED',
+  /** Ops Center soft commands (restart / browser release) — Event Bus only */
+  'OPS_REQUEST',
 ] as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[number];
