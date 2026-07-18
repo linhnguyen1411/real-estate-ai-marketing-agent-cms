@@ -1,15 +1,7 @@
 import type { AgentJob } from '@prisma/client';
 import type { BrowserManager } from './browserManager';
-import {
-  claimNextJob,
-  completeJob,
-  requeueRunningJob,
-  releaseJobToQueue,
-} from './jobClaimer';
 import { isShuttingDown } from './gracefulShutdown';
 import type { WorkerConfig } from './config';
-import { runScanSourceJob } from './scanSourceHandler';
-import { runPublishSocialJob } from '../modules/social-publishing/worker/publishSocialHandler';
 import { runtimeJobAls } from './runtime/als';
 import type { BrowserPool } from './runtime/browserPool';
 import type { ExecutionPool } from './runtime/executionPool';
@@ -21,47 +13,9 @@ import {
   type BrowserLease,
   type SlotLease,
 } from './runtime/types';
-
-type JobHandler = (
-  job: AgentJob,
-  browser: BrowserManager,
-) => Promise<Record<string, unknown>>;
-
-const HANDLERS: Record<string, JobHandler> = {
-  health_check: async () => ({
-    ok: true,
-    checkedAt: new Date().toISOString(),
-    message: 'Worker alive',
-  }),
-
-  visit_url: async (job, browser) => {
-    const payload = (job.payload || {}) as Record<string, unknown>;
-    const url = String(payload.url || '').trim();
-    if (!url) {
-      throw new Error('visit_url thiếu payload.url');
-    }
-    const visited = await browser.visitUrl(url);
-    return {
-      ...visited,
-      visitedAt: new Date().toISOString(),
-    };
-  },
-
-  scan_source: async (job, browser) => runScanSourceJob(job, browser),
-
-  /** @deprecated use scan_source */
-  source_scan: async (job, browser) => runScanSourceJob(job, browser),
-
-  publish_social: async (job, browser) => runPublishSocialJob(job, browser),
-};
-
-async function executeJob(job: AgentJob, browser: BrowserManager): Promise<Record<string, unknown>> {
-  const handler = HANDLERS[job.type];
-  if (!handler) {
-    throw new Error(`Job type "${job.type}" chưa được triển khai.`);
-  }
-  return handler(job, browser);
-}
+import type { JobHandlerRegistry, JobQueuePort } from './ports';
+import { createPrismaJobQueuePort } from './prismaJobQueue';
+import { createDefaultJobHandlerRegistry } from './defaultHandlers';
 
 function isResourceBusyError(error: unknown): boolean {
   if (error instanceof SlotBusyError || error instanceof SlotStoppedError || error instanceof BrowserBusyError) {
@@ -71,15 +25,23 @@ function isResourceBusyError(error: unknown): boolean {
   return /^(SLOT_BUSY|SLOT_STOPPED|BROWSER_BUSY|CDP_BUSY)/.test(msg);
 }
 
+export type WorkerLoopDeps = {
+  queue?: JobQueuePort;
+  handlers?: JobHandlerRegistry;
+  /** Declared agent capabilities for claim filtering */
+  capabilities?: string[];
+};
+
 /**
- * Worker process loop — claims from existing AgentJob queue, then routes through
- * Execution Pool (slots) + Browser Pool (leases). Does not stop the process on
- * stopSlot / stopJob; only releases resources.
+ * Worker process loop — claims from JobQueuePort, routes through
+ * Execution Pool (slots) + Browser Pool (leases). Pure orchestration.
  */
 export class WorkerLoop {
   private readonly inflight = new Map<string, Promise<void>>();
-  /** Soft-reserves so fire-and-forget claim does not overbook a slot before acquire(). */
   private readonly reserved = new Map<string, number>();
+  private readonly queue: JobQueuePort;
+  private readonly handlers: JobHandlerRegistry;
+  private readonly capabilities: string[];
   private running = false;
 
   constructor(
@@ -87,7 +49,12 @@ export class WorkerLoop {
     private readonly browser: BrowserManager,
     private readonly executionPool: ExecutionPool,
     private readonly browserPool: BrowserPool,
-  ) {}
+    deps: WorkerLoopDeps = {},
+  ) {
+    this.queue = deps.queue ?? createPrismaJobQueuePort();
+    this.handlers = deps.handlers ?? createDefaultJobHandlerRegistry();
+    this.capabilities = deps.capabilities ?? [];
+  }
 
   getCurrentJobId(): string | null {
     const ids = [...this.inflight.keys()];
@@ -112,13 +79,11 @@ export class WorkerLoop {
     else this.reserved.set(kind, n);
   }
 
-  /** True if slot has room after counting in-flight reserves not yet in pool.running. */
   private canAccept(kind: string | null): boolean {
     if (!kind) return true;
     if (!this.executionPool.hasFreeCapacity(kind as Parameters<ExecutionPool['hasFreeCapacity']>[0])) {
       return false;
     }
-    // Pool free by 1+; refuse if we already soft-reserved that last seat.
     const snap = this.executionPool.snapshot().find(s => s.kind === kind);
     if (!snap || snap.maxConcurrency <= 0 || snap.status === 'stopped') return false;
     return snap.runningJobs + this.reservedCount(kind) < snap.maxConcurrency;
@@ -147,7 +112,9 @@ export class WorkerLoop {
           continue;
         }
 
-        const job = await claimNextJob(this.config.workerId);
+        const job = await this.queue.claimNext(this.config.workerId, {
+          capabilities: this.capabilities.length ? this.capabilities : undefined,
+        });
         if (!job) {
           await sleep(this.config.pollIntervalMs);
           continue;
@@ -155,8 +122,7 @@ export class WorkerLoop {
 
         const kind = slotKindForJobType(job.type);
         if (kind && !this.canAccept(kind)) {
-          // Publish-free + scan-busy used to cause tight SLOT_BUSY claim loops.
-          await releaseJobToQueue(
+          await this.queue.release(
             job.id,
             `SLOT_BUSY: ${kind} — running=${this.executionPool.snapshot().find(s => s.kind === kind)?.runningJobs ?? '?'}/${this.executionPool.snapshot().find(s => s.kind === kind)?.maxConcurrency ?? '?'}`,
           );
@@ -172,7 +138,6 @@ export class WorkerLoop {
         });
         this.inflight.set(job.id, run);
 
-        // Opportunistically claim another job only when a different slot is free.
         if (!this.anyAcceptableSlot()) {
           await sleep(this.config.pollIntervalMs);
         }
@@ -189,7 +154,6 @@ export class WorkerLoop {
     this.running = false;
   }
 
-  /** Soft-stop a slot only — worker process keeps running. */
   stopSlot(kind: Parameters<ExecutionPool['stopSlot']>[0]): void {
     this.executionPool.stopSlot(kind);
     console.log(`[agent-worker] Slot stopped: ${kind}`);
@@ -203,7 +167,7 @@ export class WorkerLoop {
   async stopJob(jobId: string, reason: string): Promise<void> {
     this.browserPool.releaseJob(jobId);
     this.executionPool.stopJob(jobId);
-    await requeueRunningJob(jobId, reason);
+    await this.queue.requeue(jobId, reason);
     this.inflight.delete(jobId);
   }
 
@@ -212,7 +176,7 @@ export class WorkerLoop {
     for (const id of ids) {
       this.browserPool.releaseJob(id);
       this.executionPool.stopJob(id);
-      await requeueRunningJob(id, reason);
+      await this.queue.requeue(id, reason);
     }
     this.inflight.clear();
   }
@@ -225,9 +189,8 @@ export class WorkerLoop {
 
     try {
       if (!kind) {
-        // health_check — no slot / browser lease
-        const result = await executeJob(job, this.browser);
-        await completeJob(job.id, {
+        const result = await this.handlers.execute(job, this.browser);
+        await this.queue.complete(job.id, {
           ...result,
           executionPool: { slot: null },
         });
@@ -270,9 +233,9 @@ export class WorkerLoop {
             /* ignore */
           }
 
-          const result = await executeJob(job, this.browserPool.getManager());
+          const result = await this.handlers.execute(job, this.browserPool.getManager());
           try {
-            await completeJob(job.id, {
+            await this.queue.complete(job.id, {
               ...result,
               executionPool: {
                 slot: kind,
@@ -304,7 +267,7 @@ export class WorkerLoop {
       } else {
         console.error(`[agent-worker] Job ${job.id} failed:`, message);
       }
-      await releaseJobToQueue(job.id, message);
+      await this.queue.release(job.id, message);
     } finally {
       try {
         if (browserLease) {

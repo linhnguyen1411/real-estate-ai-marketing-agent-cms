@@ -13,6 +13,8 @@ import { handleTelegramControlCommand } from './telegramRemoteConsole';
 import type { ControlPlaneReportKind, RuntimeEventType } from './types';
 import { RUNTIME_EVENT_TYPES } from './types';
 
+export { registerRuntimeAgentRoutes } from './runtimeAgentRoutes';
+
 export const ControlPlane = {
   name: 'ControlPlane',
 
@@ -33,7 +35,7 @@ export const ControlPlane = {
       controlPlane: {
         version: 1,
         eventTypes: RUNTIME_EVENT_TYPES,
-        clients: ['web_dashboard', 'telegram_bot', 'cli', 'report_engine'],
+        clients: ['web_dashboard', 'telegram_bot', 'cli', 'report_engine', 'execution_agent'],
       },
     };
   },
@@ -56,7 +58,7 @@ export const ControlPlane = {
   describe() {
     return {
       name: 'ControlPlane',
-      role: 'orchestration observability + remote console',
+      role: 'orchestration observability + remote console + execution-agent API',
       reuses: [
         'Mission Engine',
         'Execution Pool',
@@ -65,12 +67,15 @@ export const ControlPlane = {
         'Runtime Monitor',
       ],
       nonGoals: [
-        'new worker',
         'new queue',
         'new scheduler',
-        'new browser runtime',
         'scanner/publisher rewrite',
       ],
+      executionAgent: {
+        process: 'server/automation-agent',
+        script: 'npm run automation-agent',
+        transport: 'Runtime API (/api/agent/runtime/*)',
+      },
       eventTypes: RUNTIME_EVENT_TYPES as readonly RuntimeEventType[],
     };
   },

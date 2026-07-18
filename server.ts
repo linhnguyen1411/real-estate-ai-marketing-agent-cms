@@ -76,6 +76,7 @@ import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './se
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
+import { registerRuntimeAgentRoutes } from './server/modules/control-plane/runtimeAgentRoutes';
 import {
   maskSettingsSecrets,
   sendTestTelegram,
@@ -1347,6 +1348,7 @@ if (FACEBOOK_GRAPH_LEGACY_ENABLED) {
 if (AGENT_ENABLED) {
   registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
   registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
+  registerRuntimeAgentRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
@@ -1360,6 +1362,13 @@ if (!AGENT_ENABLED) {
     });
   });
 }
+// Unknown /api/social/* must stay JSON (never SPA HTML → "Phản hồi không đúng JSON").
+app.use('/api/social', (_req: Request, res: Response) => {
+  res.status(404).json({
+    status: 'error',
+    message: 'Social API route không tồn tại. Restart server nếu vừa thêm endpoint mới.',
+  });
+});
 
 function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);

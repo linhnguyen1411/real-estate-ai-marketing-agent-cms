@@ -4,18 +4,28 @@ import { notifyJobFailed } from '../agent/agentNotificationService';
 import { prisma } from '../prisma';
 import { isNonRetryableBrowserErrorMessage } from './facebook/facebookCheckpointDetector';
 import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
+import type { ClaimOptions } from './ports';
+import { capabilityForJobType } from './ports';
 
 export type ClaimedJob = AgentJob;
 
 /**
  * Atomically claim the next queued job using PostgreSQL row locking (SKIP LOCKED).
  * Priority: lower number = higher priority; then oldest createdAt.
- * Multi-agent prep: jobs with payload.targetAgentId only match that worker.
+ * Multi-agent: payload.targetAgentId only match that worker.
+ * Capabilities: only claim job types the agent can run.
  */
-export async function claimNextJob(workerId: string): Promise<ClaimedJob | null> {
+export async function claimNextJob(
+  workerId: string,
+  options?: ClaimOptions,
+): Promise<ClaimedJob | null> {
+  const capabilities = options?.capabilities?.filter(Boolean) ?? [];
+
   return prisma.$transaction(async tx => {
-    const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id
+    // Fetch a small candidate window then pick first matching capability
+    // (keeps SQL simple; SKIP LOCKED still prevents double-claim).
+    const rows = await tx.$queryRaw<{ id: string; type: string }[]>`
+      SELECT id, type
       FROM agent_jobs
       WHERE status = 'queued'
         AND available_at <= NOW()
@@ -25,15 +35,20 @@ export async function claimNextJob(workerId: string): Promise<ClaimedJob | null>
           OR payload->>'targetAgentId' = ${workerId}
         )
       ORDER BY priority ASC, created_at ASC
-      LIMIT 1
+      LIMIT 20
       FOR UPDATE SKIP LOCKED
     `;
 
-    const jobId = rows[0]?.id;
-    if (!jobId) return null;
+    const match = rows.find(r => {
+      if (capabilities.length === 0) return true;
+      const need = capabilityForJobType(r.type);
+      if (!need) return true;
+      return capabilities.includes(need);
+    });
+    if (!match) return null;
 
     const job = await tx.agentJob.update({
-      where: { id: jobId },
+      where: { id: match.id },
       data: {
         status: 'running',
         claimedBy: workerId,
