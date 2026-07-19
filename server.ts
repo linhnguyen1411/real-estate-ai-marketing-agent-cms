@@ -1239,7 +1239,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     req.path === '/health' ||
     req.path === '/auth/login' ||
     req.path.startsWith('/public/') ||
-    req.path.startsWith('/agent-ingest/')
+    req.path.startsWith('/agent-ingest/') ||
+    // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
+    req.path.startsWith('/agent/runtime/')
   ) {
     return next();
   }
