@@ -76,11 +76,19 @@ fi
 
 echo "==> pm2 restart"
 pm2 restart "$PM2_NAME" --update-env
-sleep 3
+sleep 15
 pm2 status "$PM2_NAME"
 
 echo "==> Health (local)"
-if curl -fsS "http://127.0.0.1:3025/api/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+HEALTH_OK=0
+for i in 1 2 3 4 5 6; do
+  if curl -fsS "http://127.0.0.1:3025/api/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 5
+done
+if [ "$HEALTH_OK" -eq 1 ]; then
   echo "HEALTH_OK"
 else
   echo "HEALTH_FAIL — attempting app rollback to dist.prev"
