@@ -14,6 +14,7 @@ import {
 } from '../../agent-worker/jobClaimer';
 import { emitRuntimeEventAsync } from './runtimeEventBus';
 import { buildAgentRegistryMetadata } from './agentRegistry';
+import { drainRemoteCommands, ingestAgentHeartbeat } from './telemetry';
 
 export async function runtimeAgentRegister(input: {
   agentId: string;
@@ -72,11 +73,26 @@ export async function runtimeAgentRegister(input: {
     payload: { sessionId: session.id, hostname: input.hostname },
   });
 
+  const snapshot = ingestAgentHeartbeat({
+    agentId,
+    metadata: metadata as Record<string, unknown>,
+    status: session.status,
+    heartbeatAt: session.lastHeartbeatAt
+      ? new Date(session.lastHeartbeatAt).toISOString()
+      : undefined,
+  });
+
   return {
     sessionId: session.id,
     agentId,
     status: session.status,
     lastHeartbeatAt: session.lastHeartbeatAt,
+    telemetry: {
+      schemaVersion: snapshot.schemaVersion,
+      chromeCount: snapshot.chromeCount,
+      jobsRunning: snapshot.jobs.running,
+      jobsWaiting: snapshot.jobs.waiting,
+    },
   };
 }
 
@@ -118,11 +134,33 @@ export async function runtimeAgentHeartbeat(input: {
     },
   });
 
+  const mergedMeta =
+    updated.metadata && typeof updated.metadata === 'object' && !Array.isArray(updated.metadata)
+      ? (updated.metadata as Record<string, unknown>)
+      : {};
+  const snapshot = ingestAgentHeartbeat({
+    agentId,
+    metadata: mergedMeta,
+    currentUrl: updated.currentUrl,
+    status: updated.status,
+    heartbeatAt: updated.lastHeartbeatAt
+      ? new Date(updated.lastHeartbeatAt).toISOString()
+      : undefined,
+  });
+  const opsCommands = drainRemoteCommands(agentId);
+
   return {
     sessionId: updated.id,
     agentId,
     status: updated.status,
     lastHeartbeatAt: updated.lastHeartbeatAt,
+    telemetry: {
+      schemaVersion: snapshot.schemaVersion,
+      chromeCount: snapshot.chromeCount,
+      jobsRunning: snapshot.jobs.running,
+      jobsWaiting: snapshot.jobs.waiting,
+    },
+    opsCommands,
   };
 }
 

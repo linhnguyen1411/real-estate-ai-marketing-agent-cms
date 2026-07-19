@@ -289,12 +289,18 @@ export async function opsGetAgent(agentId: string) {
   return getAgentById(agentId);
 }
 
-/** Soft restart request — Event Bus only (no SSH). */
+/** Soft restart request — Event Bus + heartbeat OPS delivery (no SSH). */
 export async function opsRequestAgentRestart(agentId: string, companyId?: string | null) {
   const agent = await getAgentById(agentId);
   if (!agent) throw new Error(`Agent not found: ${agentId}`);
+  const { requestRemoteControl } = await import('./telemetry');
+  await requestRemoteControl({
+    agentId: agent.agentId,
+    action: 'restart_agent',
+    companyId: companyId ?? agent.companyId,
+  });
   await emitRuntimeEvent({
-    type: 'OPS_REQUEST',
+    type: 'AGENT_RESTART',
     companyId: companyId ?? agent.companyId,
     agentId: agent.agentId,
     entityType: 'agent',
@@ -306,6 +312,7 @@ export async function opsRequestAgentRestart(agentId: string, companyId?: string
 
 export async function opsBrowserStatus(user: AuthUser) {
   const snap = await buildAutomationRuntimeSnapshot(user);
+  const { listAgentSnapshots, getLastAgentSnapshot } = await import('./telemetry');
   return {
     workers: snap.workers.map(w => ({
       workerId: w.workerId,
@@ -313,23 +320,79 @@ export async function opsBrowserStatus(user: AuthUser) {
       browserPool: w.runtime?.browserPool ?? null,
       currentUrl: w.currentUrl,
       lastError: w.lastError,
+      telemetry: w.workerId ? getLastAgentSnapshot(w.workerId) : null,
     })),
     healthBrowser: snap.health.browser,
+    snapshots: listAgentSnapshots(),
   };
 }
 
 export async function opsBrowserCommand(
-  action: 'release' | 'recover' | 'screenshot',
+  action: 'release' | 'recover' | 'screenshot' | 'profiles' | 'restart',
   companyId?: string | null,
+  agentId?: string | null,
 ) {
-  await emitRuntimeEvent({
-    type: 'OPS_REQUEST',
-    companyId: companyId ?? null,
-    entityType: 'browser',
-    entityId: action,
-    payload: { action: `browser_${action}`, requestedAt: new Date().toISOString() },
+  const { requestRemoteControl, listAgentSnapshots } = await import('./telemetry');
+  if (action === 'profiles') {
+    return {
+      action,
+      profiles: listAgentSnapshots().flatMap(s =>
+        s.browserProfiles.map(p => ({ agentId: s.agentId, ...p })),
+      ),
+    };
+  }
+
+  const mapped =
+    action === 'release'
+      ? 'release_browser'
+      : action === 'recover' || action === 'restart'
+        ? 'restart_browser'
+        : 'refresh_runtime';
+
+  const target =
+    agentId ||
+    (await listRegisteredAgents({ companyId: companyId ?? undefined, onlineOnly: true }))[0]
+      ?.agentId;
+
+  if (target) {
+    await requestRemoteControl({
+      agentId: target,
+      action: mapped,
+      companyId,
+    });
+  } else {
+    await emitRuntimeEvent({
+      type: 'OPS_REQUEST',
+      companyId: companyId ?? null,
+      entityType: 'browser',
+      entityId: action,
+      payload: { action: `browser_${action}`, requestedAt: new Date().toISOString() },
+    });
+  }
+  return { action, requested: true, agentId: target || null };
+}
+
+export async function opsRefreshRuntime(agentId?: string | null, companyId?: string | null) {
+  const { requestRemoteControl } = await import('./telemetry');
+  const target =
+    agentId ||
+    (await listRegisteredAgents({ companyId: companyId ?? undefined, onlineOnly: true }))[0]
+      ?.agentId;
+  if (!target) throw new Error('No online agent for refresh');
+  await requestRemoteControl({
+    agentId: target,
+    action: 'refresh_runtime',
+    companyId,
   });
-  return { action, requested: true };
+  return { agentId: target, requested: true };
+}
+
+export async function opsGetAgentTelemetry(agentId: string) {
+  const { getLastAgentSnapshot } = await import('./telemetry');
+  const agent = await getAgentById(agentId);
+  if (!agent) return null;
+  const snap = getLastAgentSnapshot(agent.agentId);
+  return { agent, snapshot: snap };
 }
 
 export async function opsReport(

@@ -10,7 +10,6 @@ import {
   opsBrowserStatus,
   opsCancelMission,
   opsCancelPublish,
-  opsGetAgent,
   opsGetDashboard,
   opsGetMission,
   opsListAgentJobs,
@@ -26,12 +25,15 @@ import {
   opsLeadSkip,
   opsLeadCreateMission,
   opsLeadRetryNotify,
+  opsGetAgentTelemetry,
+  opsRefreshRuntime,
 } from '../operationsService';
 import {
   agentJobKeyboard,
   missionActionKeyboard,
   publishJobKeyboard,
 } from '../inlineKeyboard';
+import { formatAgentTelemetryLines, formatBrowserTelemetryLines, listAgentSnapshots } from '../telemetry';
 import type { ControlPlaneReportKind } from '../types';
 import { listRegisteredAgents } from '../agentRegistry';
 import { buildAutomationRuntimeSnapshot } from '../../../agent/runtimeObservability';
@@ -95,26 +97,27 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'jobs',
     description: 'List agent jobs',
-    usage: '/jobs [running|pending|failed|completed]',
+    usage: '/jobs [running|pending|waiting|failed|completed]',
     handler: async (args, ctx) => {
-      const filter = (args[0] || 'all').toLowerCase() as
+      const raw = (args[0] || 'all').toLowerCase();
+      const mapped = raw === 'waiting' ? 'pending' : raw;
+      const allowed = ['running', 'pending', 'failed', 'completed', 'all'];
+      const status = (allowed.includes(mapped) ? mapped : 'all') as
         | 'running'
         | 'pending'
         | 'failed'
         | 'completed'
         | 'all';
-      const allowed = ['running', 'pending', 'failed', 'completed', 'all'];
-      const status = (allowed.includes(filter) ? filter : 'all') as typeof filter;
       const jobs = await opsListAgentJobs({
         companyId: ctx.companyId,
         status,
         limit: 12,
       });
       if (jobs.length === 0) {
-        return ok('jobs', [`No jobs (${status}).`], { jobs: [] });
+        return ok('jobs', [`No jobs (${raw}).`], { jobs: [] });
       }
       const lines = [
-        `Jobs · ${status} (${jobs.length})`,
+        `Jobs · ${raw} (${jobs.length})`,
         ...jobs.map(j => {
           const err = j.errorMessage ? ` err=${j.errorMessage.slice(0, 40)}` : '';
           return `• ${j.id.slice(0, 10)} ${j.type} [${j.status}] agent=${j.claimedBy || '—'} try=${j.attempts} t=${fmtDuration(j.durationMs)} m=${j.missionId?.slice(0, 8) || '—'}${err}`;
@@ -233,6 +236,14 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       const jobs = await opsListPublishQueue({ companyId: ctx.companyId, limit: 12 });
       const snap = await buildAutomationRuntimeSnapshot(ctx.user);
       const active = snap.activeJobs.filter(j => j.type === 'publish_social');
+      const locals = listAgentSnapshots();
+      const publishTel = locals
+        .filter(a => a.publish?.destination || a.publish?.phase)
+        .slice(0, 5)
+        .map(
+          a =>
+            `• ${a.agentId} ${a.publish?.phase || '—'} → ${a.publish?.destination || '—'} url=${(a.publish?.publishedUrl || '—').slice(0, 40)} retries=${a.publish?.retryCount ?? 0}`,
+        );
       const lines = [
         'Publish queue',
         ...jobs.slice(0, 10).map(j => {
@@ -241,6 +252,8 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
         }),
         jobs.length === 0 ? '(empty)' : '',
         `Agent publish_social active: ${active.length}`,
+        publishTel.length ? 'Local publish telemetry:' : '',
+        ...publishTel,
         '/publish now <campaign> · /publish retry <id> · /publish cancel <id>',
       ].filter(Boolean);
       const first = jobs[0];
@@ -272,50 +285,76 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
           'agent',
           [
             `Agents (${agents.length}) — use /agent <id>`,
-            ...agents.slice(0, 10).map(a => `• ${a.agentId} [${a.status}]`),
+            ...agents.slice(0, 10).map(a => {
+              const age =
+                a.heartbeatAgeMs != null ? `${Math.round(a.heartbeatAgeMs / 1000)}s` : '—';
+              return `• ${a.agentId} [${a.status}] host=${a.hostname} hb=${age}`;
+            }),
           ],
           { agents: agents.map(a => a.agentId) },
         );
       }
-      const agent = await opsGetAgent(id);
-      if (!agent) return fail('agent', `Agent not found: ${id}`);
-      return ok(
-        'agent',
-        [
-          `Agent ${agent.agentId}`,
-          `status=${agent.status} host=${agent.hostname}`,
-          `caps=${agent.capabilities.join(',')}`,
-          `heartbeatAgeMs=${agent.heartbeatAgeMs ?? '—'}`,
-          `slotUtil=${agent.metrics.slotUtilization ?? '—'}% browserUtil=${agent.metrics.browserUtilization ?? '—'}%`,
-          agent.lastError ? `lastError=${agent.lastError}` : '',
-        ].filter(Boolean),
-        { agentId: agent.agentId, status: agent.status },
-      );
+      const tel = await opsGetAgentTelemetry(id);
+      if (!tel) return fail('agent', `Agent not found: ${id}`);
+      const lines = tel.snapshot
+        ? formatAgentTelemetryLines(tel.snapshot)
+        : [
+            `Agent ${tel.agent.agentId}`,
+            `status=${tel.agent.status} host=${tel.agent.hostname}`,
+            `caps=${tel.agent.capabilities.join(',')}`,
+            `heartbeatAgeMs=${tel.agent.heartbeatAgeMs ?? '—'}`,
+            `(no telemetry snapshot yet — waiting for heartbeat)`,
+          ];
+      return ok('agent', lines, { agentId: tel.agent.agentId, snapshot: tel.snapshot });
     },
   });
 
   registry.register({
     name: 'browser',
     description: 'Browser pool ops (soft commands via Event Bus)',
-    usage: '/browser | /browser release|recover|screenshot',
+    usage: '/browser | /browser profiles|release|recover|restart|screenshot',
     handler: async (args, ctx) => {
       const sub = (args[0] || '').toLowerCase();
-      if (sub === 'release' || sub === 'recover' || sub === 'screenshot') {
-        const r = await opsBrowserCommand(sub, ctx.companyId);
-        return ok('browser', [`Browser ${sub} requested (OPS_REQUEST event)`], r);
+      if (sub === 'profiles') {
+        const r = await opsBrowserCommand('profiles', ctx.companyId);
+        const profiles = (r as { profiles?: Array<Record<string, unknown>> }).profiles || [];
+        return ok(
+          'browser',
+          [
+            `Browser profiles (${profiles.length})`,
+            ...profiles.slice(0, 12).map(p => {
+              return `• ${p.agentId}/${p.profile} [${p.state}] busy=${p.busy} url=${String(p.currentUrl || '—').slice(0, 40)}`;
+            }),
+            profiles.length === 0 ? '(none — no agent heartbeat yet)' : '',
+          ].filter(Boolean),
+          r,
+        );
+      }
+      if (sub === 'release' || sub === 'recover' || sub === 'screenshot' || sub === 'restart') {
+        const agentId = args[1] || null;
+        const r = await opsBrowserCommand(sub === 'restart' ? 'restart' : sub, ctx.companyId, agentId);
+        return ok('browser', [`Browser ${sub} requested (OPS via heartbeat — no SSH)`], r);
+      }
+      if (sub === 'refresh') {
+        const r = await opsRefreshRuntime(args[1] || null, ctx.companyId);
+        return ok('browser', [`Runtime refresh requested for ${r.agentId}`], r);
       }
       const st = await opsBrowserStatus(ctx.user);
-      const lines = [
-        'Browser pool',
-        `health=${st.healthBrowser}`,
-        ...st.workers.slice(0, 8).map(w => {
-          const pool = w.browserPool ? JSON.stringify(w.browserPool).slice(0, 80) : '—';
-          return `• ${w.workerId || 'worker'} online=${w.online} url=${w.currentUrl || '—'} pool=${pool}`;
-        }),
-        st.workers.length === 0 ? '(no workers)' : '',
-        '/browser release|recover|screenshot',
-      ].filter(Boolean);
-      return ok('browser', lines, { workers: st.workers.length });
+      const snaps = st.snapshots || [];
+      const lines =
+        snaps.length > 0
+          ? snaps.flatMap(s => formatBrowserTelemetryLines(s)).slice(0, 20)
+          : [
+              'Browser pool',
+              `health=${st.healthBrowser}`,
+              ...st.workers.slice(0, 8).map(w => {
+                const pool = w.browserPool ? JSON.stringify(w.browserPool).slice(0, 80) : '—';
+                return `• ${w.workerId || 'worker'} online=${w.online} url=${w.currentUrl || '—'} pool=${pool}`;
+              }),
+              st.workers.length === 0 ? '(no workers)' : '',
+              '/browser profiles|release|recover|restart',
+            ];
+      return ok('browser', lines.filter(Boolean), { workers: st.workers.length, snapshots: snaps.length });
     },
   });
 
@@ -413,11 +452,13 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 export function operationsHelpLines(): string[] {
   return [
     '/dashboard',
-    '/jobs [running|pending|failed|completed]',
+    '/jobs [running|waiting|pending|failed|completed]',
     '/mission <id> | retry|cancel|pause|resume',
     '/publish queue|now|retry|cancel',
+    '/scan | start|stop <mission>',
     '/agents · /agent <id>|restart <id>',
-    '/browser [release|recover|screenshot]',
+    '/browser [profiles|release|recover|restart|refresh]',
+    '/runtime · /health',
     '/report today|week|publish|scan|failed|agent|browser',
     '/lead skip|mission|retry <id>',
     '/retry <mission>|publish|scan|campaign',

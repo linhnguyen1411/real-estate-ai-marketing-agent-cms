@@ -22,6 +22,7 @@ import { buildAgentRegistryMetadata } from '../modules/control-plane/agentRegist
 import { createHttpJobQueuePort } from './httpJobQueue';
 import { HttpAgentHeartbeat } from './httpHeartbeat';
 import { RuntimeAgentClient } from './runtimeClient';
+import { buildExecutionTelemetryMetadata } from './telemetryCollector';
 
 function runtimeBaseUrl(): string {
   return (
@@ -69,25 +70,34 @@ async function main(): Promise<void> {
 
   const buildMetadata = () => {
     const mem = process.memoryUsage();
-    return {
-      ...buildAgentRegistryMetadata({
-        workerId: config.workerId,
-        browserMode: config.browserMode,
-        capabilities: capabilities as never,
-      }),
+    const processMeta = {
+      pid: process.pid,
+      rssMb: Math.round(mem.rss / 1024 / 1024),
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+      uptimeSec: Math.round(process.uptime()),
+    };
+    const registry = buildAgentRegistryMetadata({
+      workerId: config.workerId,
+      browserMode: config.browserMode,
+      capabilities: capabilities as never,
+    });
+    const telemetry = buildExecutionTelemetryMetadata({
+      agentId: config.workerId,
+      version: String(registry.version || ''),
       hostname: os.hostname(),
+      browserPool: browserPool.snapshot(),
+      executionPool: executionPool.snapshot(),
+      resources: browser.getResourceDiagnostics(),
+      process: processMeta,
+    });
+    return {
+      ...registry,
+      ...telemetry,
       mode: config.browserMode,
       profilePath: config.profileDir,
       executionPool: executionPool.snapshot(),
       browserPool: browserPool.snapshot(),
-      resources: browser.getResourceDiagnostics(),
-      process: {
-        pid: process.pid,
-        rssMb: Math.round(mem.rss / 1024 / 1024),
-        heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
-        heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
-        uptimeSec: Math.round(process.uptime()),
-      },
       publishedAt: new Date().toISOString(),
       executionAgent: true,
     };
@@ -99,6 +109,34 @@ async function main(): Promise<void> {
     config.heartbeatIntervalMs,
     buildMetadata,
     () => browser.currentUrl(),
+    async cmds => {
+      for (const cmd of cmds) {
+        const action = String(cmd.action || '');
+        try {
+          if (action === 'release_browser' || action === 'browser_release') {
+            browserPool.releaseAll();
+            console.log(`[automation-agent] OPS release_browser ${cmd.id}`);
+          } else if (action === 'restart_browser' || action === 'browser_recover') {
+            browserPool.releaseAll();
+            await browser.shutdown().catch(() => undefined);
+            await browser.launch();
+            console.log(`[automation-agent] OPS restart_browser ${cmd.id}`);
+          } else if (action === 'refresh_runtime') {
+            console.log(`[automation-agent] OPS refresh_runtime ${cmd.id}`);
+          } else if (action === 'restart_agent') {
+            console.log(`[automation-agent] OPS restart_agent ${cmd.id} — exiting for process manager`);
+            process.exit(0);
+          } else {
+            console.log(`[automation-agent] OPS ignored action=${action} id=${cmd.id}`);
+          }
+        } catch (err) {
+          console.warn(
+            `[automation-agent] OPS failed action=${action}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    },
   );
 
   // Recovery before register

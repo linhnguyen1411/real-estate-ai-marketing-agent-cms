@@ -55,6 +55,12 @@ export class RuntimeAgentClient {
       agentId: string;
       status: string;
       lastHeartbeatAt: string | null;
+      opsCommands?: Array<{
+        id: string;
+        action: string;
+        requestedAt?: string;
+        payload?: Record<string, unknown>;
+      }>;
     }>('POST', '/api/agent/runtime/heartbeat', body);
   }
 

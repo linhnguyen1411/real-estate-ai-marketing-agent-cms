@@ -8,6 +8,7 @@ import { buildAutomationRuntimeSnapshot } from '../../../agent/runtimeObservabil
 import { prisma } from '../../../prisma';
 import { listRegisteredAgents } from '../agentRegistry';
 import { buildControlPlaneReport } from '../reportEngine';
+import { listAgentSnapshots } from '../telemetry';
 import type { ControlPlaneReportKind } from '../types';
 import { subscribeRuntimeEvents, summarizeEventStream } from './eventSubscription';
 import type { CommandRegistry } from './registry';
@@ -53,7 +54,7 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
 export function registerDefaultCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'health',
-    description: 'Runtime health score',
+    description: 'Runtime health score + local agent heartbeats',
     usage: '/health',
     handler: async (_args, ctx) => {
       const snap = await buildAutomationRuntimeSnapshot(ctx.user);
@@ -62,6 +63,7 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
         limit: 10,
       });
       const summary = summarizeEventStream(events);
+      const locals = listAgentSnapshots();
       return ok(
         'health',
         [
@@ -69,20 +71,32 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
           `worker=${snap.health.worker} browser=${snap.health.browser} queue=${snap.health.queue}`,
           `mission=${snap.health.mission} scheduler=${snap.health.scheduler}`,
           `queue waiting=${snap.queue.waiting} running=${snap.queue.running} dead=${snap.queue.deadLetter}`,
+          `local agents=${locals.length}`,
+          ...locals.slice(0, 5).map(
+            a =>
+              `• ${a.agentId} host=${a.hostname} hb=${a.heartbeatAt} jobs=${a.jobs.running}/${a.jobs.waiting}`,
+          ),
           `events: ${summary.recent.join(', ') || 'none'}`,
         ],
-        { healthScore: snap.healthScore, health: snap.health, queue: snap.queue, eventCounts: summary.counts },
+        {
+          healthScore: snap.healthScore,
+          health: snap.health,
+          queue: snap.queue,
+          eventCounts: summary.counts,
+          localAgents: locals.length,
+        },
       );
     },
   });
 
   registry.register({
     name: 'runtime',
-    description: 'Runtime snapshot',
+    description: 'Runtime snapshot (VPS + local Execution Agents)',
     usage: '/runtime',
     handler: async (_args, ctx) => {
       const snap = await buildAutomationRuntimeSnapshot(ctx.user);
       const events = await subscribeRuntimeEvents({ companyId: ctx.companyId, limit: 5 });
+      const locals = listAgentSnapshots();
       return ok(
         'runtime',
         [
@@ -90,9 +104,19 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
           `publish/h=${snap.metrics.publishPerHour} scan/h=${snap.metrics.scanPerHour}`,
           `success=${snap.metrics.successRate ?? '—'}% slotUtil=${snap.metrics.slotUtilization ?? '—'}%`,
           `missions running=${snap.missions.running} failed=${snap.missions.failed}`,
+          `Execution Agents (${locals.length})`,
+          ...locals.slice(0, 6).map(
+            a =>
+              `• ${a.agentId} ${a.platform} v${a.version} chrome=${a.chromeCount} rss=${a.process.rssMb ?? '—'}MB`,
+          ),
           `recent: ${events.map(e => e.type).join(', ') || 'none'}`,
         ],
-        { metrics: snap.metrics, missions: snap.missions, generatedAt: snap.generatedAt },
+        {
+          metrics: snap.metrics,
+          missions: snap.missions,
+          generatedAt: snap.generatedAt,
+          agents: locals,
+        },
       );
     },
   });
@@ -203,11 +227,26 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'scan',
-    description: 'Start/stop scan via Mission Engine',
-    usage: '/scan start <mission> | /scan stop <mission>',
+    description: 'Scanner telemetry / start / stop via Mission Engine',
+    usage: '/scan | /scan start <mission> | /scan stop <mission>',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const target = args[1];
+
+      if (!action || action === 'status') {
+        const locals = listAgentSnapshots();
+        const lines = [
+          `Scanner telemetry · agents=${locals.length}`,
+          ...locals.slice(0, 8).map(a => {
+            const s = a.scanner;
+            return `• ${a.agentId} source=${s?.currentSource || s?.currentGroup || '—'} posts=${s?.postsScanned ?? '—'} rem=${s?.postsRemaining ?? '—'} findings=${s?.findings ?? '—'} kw=${s?.currentKeyword || '—'}`;
+          }),
+          locals.length === 0 ? '(no agent heartbeat yet)' : '',
+          '/scan start <mission> · /scan stop <mission>',
+        ].filter(Boolean);
+        return ok('scan', lines, { agents: locals.map(a => a.agentId) });
+      }
+
       if (action === 'start') {
         if (!target) {
           // Legacy: enqueue all active sources when no mission given
@@ -298,7 +337,7 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
         );
       }
 
-      return fail('scan', 'Usage: /scan start <mission> | /scan stop <mission>');
+      return fail('scan', 'Usage: /scan | /scan start <mission> | /scan stop <mission>');
     },
   });
 

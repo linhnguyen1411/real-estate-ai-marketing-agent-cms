@@ -55,6 +55,16 @@ export {
   rememberJobList,
   getCopilotContext,
 } from './copilot/contextStore';
+export {
+  ingestAgentHeartbeat,
+  getLastAgentSnapshot,
+  listAgentSnapshots,
+  requestRemoteControl,
+  normalizeRuntimeSnapshot,
+  resetTelemetryCollectorForTests,
+  formatAgentTelemetryLines,
+  TELEMETRY_SCHEMA_VERSION,
+} from './telemetry';
 
 export const ControlPlane = {
   name: 'ControlPlane',

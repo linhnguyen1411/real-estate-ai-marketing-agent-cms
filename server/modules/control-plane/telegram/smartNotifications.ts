@@ -69,6 +69,8 @@ export function mapRuntimeEventToSmartKind(ev: {
       return 'AGENT_ONLINE';
     case 'AGENT_OFFLINE':
       return 'AGENT_OFFLINE';
+    case 'AGENT_RESTART':
+      return 'AGENT_OFFLINE';
     case 'CAMPAIGN_COMPLETED':
       return 'CAMPAIGN_COMPLETED';
     case 'JOB_COMPLETED':
@@ -82,14 +84,22 @@ export function mapRuntimeEventToSmartKind(ev: {
       if (kind.includes('publish')) return 'PUBLISH_FAILED';
       return null;
     }
+    case 'QUEUE_BLOCKED':
+      return 'QUEUE_BLOCKED';
+    case 'BROWSER_CRASH':
+      return 'BROWSER_CRASH';
     case 'BROWSER_LEASED':
     case 'BROWSER_RELEASED': {
       const err = String(payload.error || payload.reason || '').toLowerCase();
-      if (payload.crashed === true || err.includes('crash') || err.includes('browser')) {
+      if (payload.crashed === true || err.includes('crash')) {
         return 'BROWSER_CRASH';
       }
       return null;
     }
+    case 'PUBLISH_STARTED':
+      return null;
+    case 'PUBLISH_FINISHED':
+      return 'PUBLISH_SUCCESS';
     case 'OPS_REQUEST':
       if (String(payload.action || '').includes('queue_blocked')) return 'QUEUE_BLOCKED';
       return null;
