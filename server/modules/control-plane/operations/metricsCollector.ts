@@ -109,6 +109,10 @@ async function loadDbBlocks(companyId?: string | null): Promise<{
   mission: MissionMetricsBlock;
   workload: FleetWorkloadBlock;
   completedByClaimed: Map<string, number>;
+  liveJobsByClaimed: Map<
+    string,
+    { running: number; waiting: number; currentStep: string | null; scanRunning: number }
+  >;
 }> {
   const companyFilter = companyId ? { companyId } : {};
   const today = startOfToday();
@@ -227,6 +231,34 @@ async function loadDbBlocks(companyId?: string | null): Promise<{
     completedByClaimed.set(key, (completedByClaimed.get(key) || 0) + 1);
   }
 
+  // Live claimed/running jobs — SSOT for Fleet/Scanner job counters (heartbeat can lag).
+  const liveClaimed = await prisma.agentJob.findMany({
+    where: {
+      ...companyFilter,
+      status: { in: ['claimed', 'running'] },
+      claimedBy: { not: null },
+    },
+    select: { claimedBy: true, type: true, status: true },
+    take: 2000,
+  });
+  const liveJobsByClaimed = new Map<
+    string,
+    { running: number; waiting: number; currentStep: string | null; scanRunning: number }
+  >();
+  for (const row of liveClaimed) {
+    const key = String(row.claimedBy);
+    const prev = liveJobsByClaimed.get(key) || {
+      running: 0,
+      waiting: 0,
+      currentStep: null as string | null,
+      scanRunning: 0,
+    };
+    prev.running += 1;
+    if (!prev.currentStep) prev.currentStep = row.type;
+    if (row.type === 'scan_source' || row.type === 'source_scan') prev.scanRunning += 1;
+    liveJobsByClaimed.set(key, prev);
+  }
+
   // Assigned ≈ distinct sources with open scan jobs.
   const assignedRaw = await prisma.agentJob.findMany({
     where: {
@@ -278,7 +310,14 @@ async function loadDbBlocks(companyId?: string | null): Promise<{
     failedJobs,
   };
 
-  return { scanner, publisher, mission, workload, completedByClaimed };
+  return {
+    scanner,
+    publisher,
+    mission,
+    workload,
+    completedByClaimed,
+    liveJobsByClaimed,
+  };
 }
 
 /** Collect a fresh Operations Metrics Snapshot (read-only projections). */
@@ -288,7 +327,8 @@ export async function collectOperationsMetrics(input?: {
 }): Promise<OperationsMetricsSnapshot> {
   const companyId = input?.companyId ?? null;
   const reason = input?.reason ?? 'manual';
-  const fleet = await getFleetState({ companyId });
+  // Operations Center Fleet = live workstations only (1 card per machineId).
+  const fleet = await getFleetState({ companyId, onlineOnly: true });
   const db = await loadDbBlocks(companyId);
 
   const machines = fleet.agents.map(a => {
@@ -297,7 +337,29 @@ export async function collectOperationsMetrics(input?: {
       db.completedByClaimed.get(a.agentId) ||
       db.completedByClaimed.get(a.workerId || '') ||
       0;
-    return { ...row, completed };
+    const live =
+      db.liveJobsByClaimed.get(a.agentId) ||
+      db.liveJobsByClaimed.get(a.workerId || '') ||
+      null;
+    if (!live) return { ...row, completed };
+
+    const running = Math.max(row.running, live.running);
+    const waiting = Math.max(row.waiting, live.waiting);
+    const activity =
+      live.scanRunning > 0
+        ? 'scanning'
+        : running > 0 && row.activity === 'idle'
+          ? 'busy'
+          : row.activity;
+    return {
+      ...row,
+      completed,
+      running,
+      waiting,
+      assigned: running + waiting,
+      currentStep: live.currentStep || row.currentStep,
+      activity,
+    };
   });
 
   const snapshot: OperationsMetricsSnapshot = {

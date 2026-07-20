@@ -34,7 +34,17 @@ export type CopilotIntentName =
   | 'contextual_cancel'
   | 'help'
   | 'unknown'
-  | 'raw_command';
+  | 'raw_command'
+  /** F4 — AI Operations Copilot */
+  | 'fleet_summary'
+  | 'scanner_summary'
+  | 'publisher_summary'
+  | 'mission_summary'
+  | 'incident_summary'
+  | 'machine_detail'
+  | 'browser_detail'
+  | 'runtime_explain'
+  | 'ops_recommendation';
 
 export type CopilotSlots = {
   location?: string;

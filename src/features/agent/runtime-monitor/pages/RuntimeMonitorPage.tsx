@@ -1,6 +1,6 @@
 /**
  * Operations Center — Mission Control UI (presentation only).
- * Data: GET /api/agent/runtime snapshot. Refresh: manual + 5 minutes.
+ * Data: GET /api/agent/runtime snapshot. Refresh: manual + 30s live metrics.
  */
 import React, { Component, useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchAutomationRuntime } from '../../../../services/agentPlatformApi';
@@ -29,7 +29,116 @@ import {
   mapRuntimeEventsToTimeline,
 } from '../utils/deriveAlerts';
 
-const REFRESH_MS = 5 * 60 * 1000;
+const REFRESH_MS = 30 * 1000;
+
+function dedupeMachinesByHost(
+  machines: OperationsMetricsSnapshot['machines'],
+): OperationsMetricsSnapshot['machines'] {
+  const byKey = new Map<string, OperationsMetricsSnapshot['machines'][number]>();
+  for (const m of machines) {
+    const key = (m.machineId || m.hostname || m.agentId).toLowerCase();
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, m);
+      continue;
+    }
+    const prevOnline = prev.status === 'online' || prev.status === 'degraded' ? 1 : 0;
+    const nextOnline = m.status === 'online' || m.status === 'degraded' ? 1 : 0;
+    if (nextOnline > prevOnline) {
+      byKey.set(key, m);
+      continue;
+    }
+    if (
+      nextOnline === prevOnline &&
+      (m.running || 0) + (m.waiting || 0) > (prev.running || 0) + (prev.waiting || 0)
+    ) {
+      byKey.set(key, m);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function overlayActiveJobs(
+  machines: OperationsMetricsSnapshot['machines'],
+  activeJobs: AutomationRuntimeSnapshot['activeJobs'] | undefined,
+): OperationsMetricsSnapshot['machines'] {
+  if (!activeJobs?.length) return machines;
+  return machines.map(m => {
+    const mine = activeJobs.filter(
+      j => j.claimedBy && (j.claimedBy === m.agentId || j.claimedBy === m.machineId),
+    );
+    if (!mine.length) return m;
+    const running = mine.filter(j => j.status === 'running' || j.status === 'claimed').length;
+    const scanRunning = mine.filter(
+      j =>
+        (j.status === 'running' || j.status === 'claimed') &&
+        (j.type === 'scan_source' || j.type === 'source_scan'),
+    ).length;
+    return {
+      ...m,
+      running: Math.max(m.running || 0, running),
+      assigned: Math.max(m.assigned || 0, running),
+      currentStep: mine[0]?.type || m.currentStep,
+      activity:
+        scanRunning > 0
+          ? 'scanning'
+          : running > 0 && m.activity === 'idle'
+            ? 'busy'
+            : m.activity,
+    };
+  });
+}
+
+function machinesFromWorkers(
+  data: AutomationRuntimeSnapshot,
+): OperationsMetricsSnapshot['machines'] {
+  return dedupeMachinesByHost(
+    (data.workers || [])
+      .filter(w => w.online)
+      .map(w => {
+        const proc =
+          w.runtime?.process && typeof w.runtime.process === 'object'
+            ? (w.runtime.process as Record<string, unknown>)
+            : {};
+        const jobs = (data.activeJobs || []).filter(
+          j => j.claimedBy && (j.claimedBy === w.workerId || j.claimedBy === w.id),
+        );
+        const host = w.name || w.workerId || w.id;
+        return {
+          agentId: w.workerId || w.id,
+          hostname: host,
+          machineId: w.workerId || w.id,
+          displayName: host,
+          status: w.online ? 'online' : 'offline',
+          activity: w.online
+            ? jobs.some(j => j.type === 'scan_source' || j.type === 'source_scan')
+              ? 'scanning'
+              : jobs.length
+                ? 'busy'
+                : 'idle'
+            : 'offline',
+          assigned: jobs.length,
+          running: jobs.filter(j => j.status === 'running' || j.status === 'claimed').length,
+          completed: 0,
+          waiting: 0,
+          cpuLoad1m: null,
+          memFreeMb: null,
+          memTotalMb: null,
+          rssMb: typeof proc.rssMb === 'number' ? proc.rssMb : null,
+          heapUsedMb: typeof proc.heapUsedMb === 'number' ? proc.heapUsedMb : null,
+          chromeCount: Array.isArray(w.runtime?.browserPool)
+            ? (w.runtime.browserPool as unknown[]).length
+            : 0,
+          browserBusy: 0,
+          browserIdle: 0,
+          executionSlots: 1,
+          missionName: jobs[0]?.missionRunId || null,
+          currentStep: jobs[0]?.type || null,
+          heartbeatAgeMs: w.heartbeatAgeMs,
+        };
+      }),
+  );
+}
 
 class RuntimeErrorBoundary extends Component<
   { children: React.ReactNode; onRetry: () => void },
@@ -55,46 +164,6 @@ class RuntimeErrorBoundary extends Component<
     }
     return this.props.children;
   }
-}
-
-function machinesFromWorkers(
-  data: AutomationRuntimeSnapshot,
-): OperationsMetricsSnapshot['machines'] {
-  return (data.workers || []).map(w => {
-    const proc =
-      w.runtime?.process && typeof w.runtime.process === 'object'
-        ? (w.runtime.process as Record<string, unknown>)
-        : {};
-    const jobs = (data.activeJobs || []).filter(
-      j => j.claimedBy && (j.claimedBy === w.workerId || j.claimedBy === w.id),
-    );
-    return {
-      agentId: w.workerId || w.id,
-      hostname: w.name || w.workerId || w.id,
-      machineId: w.workerId || w.id,
-      displayName: w.name || w.workerId || 'Agent',
-      status: w.online ? 'online' : 'offline',
-      activity: w.online ? (jobs.length ? 'busy' : 'idle') : 'offline',
-      assigned: jobs.length,
-      running: jobs.filter(j => j.status === 'running' || j.status === 'claimed').length,
-      completed: 0,
-      waiting: 0,
-      cpuLoad1m: null,
-      memFreeMb: null,
-      memTotalMb: null,
-      rssMb: typeof proc.rssMb === 'number' ? proc.rssMb : null,
-      heapUsedMb: typeof proc.heapUsedMb === 'number' ? proc.heapUsedMb : null,
-      chromeCount: Array.isArray(w.runtime?.browserPool)
-        ? (w.runtime.browserPool as unknown[]).length
-        : 0,
-      browserBusy: 0,
-      browserIdle: 0,
-      executionSlots: 1,
-      missionName: jobs[0]?.missionRunId || null,
-      currentStep: jobs[0]?.type || null,
-      heartbeatAgeMs: w.heartbeatAgeMs,
-    };
-  });
 }
 
 function emptyOps(data: AutomationRuntimeSnapshot): OperationsMetricsSnapshot {
@@ -188,18 +257,47 @@ function RuntimeMonitorInner() {
   }, []);
 
   useEffect(() => {
-    load({ refresh: false });
-    const t = setInterval(() => load({ silent: true, refresh: false }), REFRESH_MS);
+    load({ refresh: true });
+    const t = setInterval(() => load({ silent: true, refresh: true }), REFRESH_MS);
     return () => clearInterval(t);
   }, [load]);
 
   const ops = useMemo(() => {
     if (!data) return null;
-    if (data.operations && data.operations.machines) {
-      if (data.operations.machines.length > 0) return data.operations;
-      return { ...data.operations, machines: machinesFromWorkers(data) };
-    }
-    return emptyOps(data);
+    const base =
+      data.operations?.machines && data.operations.machines.length > 0
+        ? data.operations
+        : data.operations
+          ? {
+              ...data.operations,
+              machines: machinesFromWorkers(data),
+              fleet: {
+                ...data.operations.fleet,
+                machinesOnline: (data.workers || []).filter(w => w.online).length,
+                machinesOffline: 0,
+              },
+            }
+          : emptyOps(data);
+
+    const machines = overlayActiveJobs(
+      dedupeMachinesByHost(base.machines || []),
+      data.activeJobs,
+    );
+    const online = machines.filter(m => m.status === 'online' || m.status === 'degraded');
+    const busy = machines.filter(m =>
+      ['busy', 'scanning', 'publishing', 'campaign', 'browser_hold'].includes(m.activity),
+    );
+    return {
+      ...base,
+      machines,
+      fleet: {
+        ...base.fleet,
+        machinesOnline: online.length,
+        machinesOffline: Math.max(0, machines.length - online.length),
+        machinesBusy: busy.length,
+        machinesIdle: machines.filter(m => m.activity === 'idle').length,
+      },
+    };
   }, [data]);
 
   const alerts = useMemo(

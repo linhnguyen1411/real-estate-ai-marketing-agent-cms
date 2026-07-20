@@ -86,16 +86,23 @@ function resolveSnapshot(
   status: string,
   heartbeatAt: string | null,
 ): ExecutionAgentRuntimeSnapshot | null {
+  const fromMeta = Object.keys(meta).length
+    ? normalizeRuntimeSnapshot({
+        agentId,
+        metadata: meta,
+        currentUrl,
+        status,
+        heartbeatAt: heartbeatAt || undefined,
+      })
+    : null;
   const warm = getLastAgentSnapshot(agentId);
-  if (warm) return warm;
-  if (!Object.keys(meta).length) return null;
-  return normalizeRuntimeSnapshot({
-    agentId,
-    metadata: meta,
-    currentUrl,
-    status,
-    heartbeatAt: heartbeatAt || undefined,
-  });
+  if (!warm) return fromMeta;
+  if (!fromMeta) return warm;
+  // Prefer fresher DB heartbeat metadata over stale in-process warm snapshot
+  // (agent:worker writes BrowserSession directly and may never call ingestAgentHeartbeat).
+  const warmAt = Date.parse(warm.heartbeatAt || '') || 0;
+  const metaAt = Date.parse(heartbeatAt || '') || 0;
+  return metaAt >= warmAt ? fromMeta : warm;
 }
 
 export function enrichFleetAgent(
@@ -124,16 +131,20 @@ export function enrichFleetAgent(
     str(meta.platform) ||
     'unknown';
 
-  const displayName =
+  const machineId =
+    str(meta.machineId) || hostname || node.agentId;
+
+  // Fleet card = physical workstation: prefer human host label over worker id.
+  const rawDisplay =
     str(meta.displayName) ||
     str(meta.sessionName) ||
     (session?.name && session.name !== `Execution Agent (${node.agentId})`
       ? session.name
-      : null) ||
-    node.agentId;
-
-  const machineId =
-    str(meta.machineId) || hostname || node.agentId;
+      : null);
+  const displayName =
+    rawDisplay && !/^Execution Agent\b/i.test(rawDisplay)
+      ? rawDisplay
+      : hostname || machineId || node.agentId;
 
   const tags = parseTags(meta.tags);
   const activity = deriveActivity(node.status, snap, node.lastError);

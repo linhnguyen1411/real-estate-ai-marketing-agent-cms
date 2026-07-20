@@ -80,9 +80,10 @@ export function parseAndSanitizeCdpEndpoint(raw: string | undefined | null): San
 }
 
 export function loadWorkerConfig(): WorkerConfig {
+  // Stable by default — PID in workerId created a new Fleet "machine" every restart.
   const workerId =
     process.env.AGENT_WORKER_ID?.trim() ||
-    `worker-${os.hostname().replace(/[^a-zA-Z0-9-]/g, '-')}-${process.pid}`;
+    `worker-${os.hostname().replace(/[^a-zA-Z0-9-]/g, '-')}`;
 
   const browserMode = parseAgentBrowserMode(process.env.AGENT_BROWSER_MODE, 'managed');
   const profileDir = resolveAgentBrowserProfileDir();

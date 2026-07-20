@@ -62,9 +62,19 @@ export async function runScanSourceJob(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Scan thất bại.';
+    // Pull next due forward so scheduler re-enqueues soon (auto reclaim cadence).
+    // nextScanAt was already advanced at enqueue time — without this, a browser
+    // crash waits the full scanIntervalMinutes before the source is due again.
+    const backoffMs = Math.min(
+      2 * 60_000,
+      Math.max(60_000, Math.floor((source.scanIntervalMinutes || 10) * 60_000) / 5),
+    );
     await prisma.agentSource.update({
       where: { id: source.id },
-      data: { lastError: message.slice(0, 500) },
+      data: {
+        lastError: message.slice(0, 500),
+        nextScanAt: new Date(Date.now() + backoffMs),
+      },
     });
     throw error;
   } finally {

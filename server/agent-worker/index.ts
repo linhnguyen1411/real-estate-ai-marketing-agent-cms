@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import os from 'os';
 import { checkDatabaseConnection } from '../prisma';
 import { ensureDatabaseReady } from '../dbHelper';
 import { BrowserManager } from './browserManager';
@@ -74,6 +75,24 @@ async function main(): Promise<void> {
     }
     if (config.browserMode === 'cdp') caps.push('cdp');
 
+    let running = 0;
+    let waiting = 0;
+    const owners: string[] = [];
+    let currentStep: string | null = null;
+    for (const s of slots) {
+      running += s.runningJobs || 0;
+      waiting += s.queuedWaiters || 0;
+      for (const o of s.owners || []) {
+        if (o?.jobId) owners.push(o.jobId);
+        if (!currentStep && (s.runningJobs || 0) > 0) currentStep = s.kind;
+      }
+    }
+
+    const load = typeof os.loadavg === 'function' ? os.loadavg() : [0, 0, 0];
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const resources = browser.getResourceDiagnostics();
+
     return {
       ...buildBrowserSessionMetadata(config),
       ...buildAgentRegistryMetadata({
@@ -83,7 +102,31 @@ async function main(): Promise<void> {
       }),
       executionPool: slots,
       browserPool: browsers,
-      resources: browser.getResourceDiagnostics(),
+      jobs: {
+        running,
+        waiting,
+        owners,
+        currentStep,
+        completed: slots.reduce((n, s) => n + (s.completedSinceBoot || 0), 0),
+        failed: slots.reduce((n, s) => n + (s.failedSinceBoot || 0), 0),
+      },
+      scanner: {
+        currentSource: resources.currentSource ?? null,
+        currentGroup: resources.currentGroup ?? null,
+        postsScanned: resources.postsScanned ?? resources.scannedPosts ?? null,
+        findings: resources.findings ?? null,
+        currentKeyword: resources.currentKeyword ?? null,
+      },
+      host: {
+        platform: `${os.platform()}/${os.arch()}`,
+        arch: os.arch(),
+        hostname: os.hostname(),
+        uptimeSec: Math.round(os.uptime()),
+        loadAvg1m: Array.isArray(load) ? Math.round((load[0] || 0) * 100) / 100 : null,
+        memTotalMb: Math.round(totalMem / 1024 / 1024),
+        memFreeMb: Math.round(freeMem / 1024 / 1024),
+      },
+      resources,
       process: {
         pid: process.pid,
         rssMb: Math.round(mem.rss / 1024 / 1024),

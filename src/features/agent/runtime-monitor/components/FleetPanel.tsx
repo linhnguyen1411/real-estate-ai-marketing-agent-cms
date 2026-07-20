@@ -172,7 +172,7 @@ export const FleetPanel = memo(function FleetPanel({
   return (
     <GlassPanel
       title="Fleet"
-      subtitle={`${machines.length} machines · cards = current work`}
+      subtitle={`${machines.length} workstation${machines.length === 1 ? '' : 's'} · 1 card / machine`}
       actions={
         <StatusBadge
           label={`${machines.filter(m => m.status === 'online').length} online`}

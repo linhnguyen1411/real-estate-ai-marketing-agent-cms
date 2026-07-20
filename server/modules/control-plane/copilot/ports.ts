@@ -4,7 +4,9 @@
 
 import type { AuthUser } from '../../../../src/types';
 import type { CommandResult } from '../command-engine/types';
+import type { OperationsMetricsSnapshot } from '../operations/types';
 import type { ControlPlaneReportKind } from '../types';
+import type { OpsIncident, OpsSignalBundle } from './operationalIntelligence';
 
 export type CopilotLeadHit = {
   id: string;
@@ -20,10 +22,23 @@ export type CopilotInsightBundle = {
   metrics: Record<string, unknown>;
 };
 
+export type CopilotBrowserRow = {
+  agentId: string;
+  profile: string;
+  facebookAccount: string | null;
+  busy: boolean;
+  currentUrl: string | null;
+  lockedBy: string | null;
+  state: string;
+  hostname?: string | null;
+};
+
 export type CopilotControlPlanePort = {
   user: AuthUser;
   runCommand(raw: string): Promise<CommandResult>;
   getDashboard(): Promise<Record<string, unknown>>;
+  /** Operations Center snapshot (via Control Plane — not Metrics Collector internals). */
+  getOpsMetrics(refresh?: boolean): Promise<OperationsMetricsSnapshot>;
   listOfflineAgents(): Promise<Array<{ agentId: string; status: string }>>;
   countLeadsToday(filters?: { location?: string }): Promise<{ total: number; items: CopilotLeadHit[] }>;
   searchLeads(input: {
@@ -40,4 +55,9 @@ export type CopilotControlPlanePort = {
   report(kind: ControlPlaneReportKind): Promise<Record<string, unknown>>;
   buildInsights(): Promise<CopilotInsightBundle>;
   buildSummary(slot: 'morning' | 'noon' | 'evening'): Promise<{ text: string; lines: string[] }>;
+  /** F4 */
+  detectIncidents(): Promise<OpsSignalBundle>;
+  listBrowsers(): Promise<CopilotBrowserRow[]>;
+  findMachine(query: string): Promise<OperationsMetricsSnapshot['machines'][number] | null>;
+  explainScanner(): Promise<string[]>;
 };

@@ -18,7 +18,14 @@ export const ScannerPanel = memo(function ScannerPanel({
   scanner: OperationsMetricsSnapshot['scanner'];
   machines: OperationsMetricsSnapshot['machines'];
 }) {
-  const scanning = machines.filter(m => m.activity === 'scanning');
+  const scanning = machines.filter(
+    m =>
+      m.activity === 'scanning' ||
+      ((m.running || 0) > 0 &&
+        String(m.currentStep || '')
+          .toLowerCase()
+          .includes('scan')),
+  );
   const progress =
     scanner.sources > 0
       ? Math.round((scanner.completed / Math.max(scanner.sources, scanner.assigned || 1)) * 100)

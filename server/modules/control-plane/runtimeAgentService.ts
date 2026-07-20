@@ -64,6 +64,19 @@ export async function runtimeAgentRegister(input: {
     ? await prisma.browserSession.update({ where: { id: existing.id }, data })
     : await prisma.browserSession.create({ data });
 
+  try {
+    const { retireSiblingSessions } = await import('./agentRegistry');
+    const metaRec = metadata as Record<string, unknown>;
+    await retireSiblingSessions({
+      keepSessionId: session.id,
+      machineId: String(metaRec.machineId || input.hostname || ''),
+      hostname: input.hostname || String(metaRec.hostname || ''),
+      workerIdPrefix: agentId.replace(/-\d+$/, ''),
+    });
+  } catch {
+    /* best-effort */
+  }
+
   emitRuntimeEventAsync({
     type: 'AGENT_ONLINE',
     agentId,

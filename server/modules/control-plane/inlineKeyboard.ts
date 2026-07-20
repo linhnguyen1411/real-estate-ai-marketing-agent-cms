@@ -134,6 +134,60 @@ export function incidentKeyboard(entityId: string): InlineKeyboard {
   };
 }
 
+/** F4 — smart ops actions on any Copilot reply */
+export function opsActionKeyboard(entityId?: string | null): InlineKeyboard {
+  const id = truncId(entityId || 'ops');
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Refresh', callback_data: `o:f:${id}` },
+        { text: 'Retry', callback_data: `o:r:${id}` },
+      ],
+      [
+        { text: 'Release Browser', callback_data: `o:b:${id}` },
+        { text: 'Restart Agent', callback_data: `o:a:${id}` },
+      ],
+      [
+        { text: 'View Logs', callback_data: `o:l:${id}` },
+        { text: 'Ignore', callback_data: `o:i:${id}` },
+      ],
+    ],
+  };
+}
+
+export function machineActionKeyboard(agentId: string): InlineKeyboard {
+  const id = truncId(agentId);
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Logs', callback_data: `k:l:${id}` },
+        { text: 'Restart Browser', callback_data: `k:b:${id}` },
+      ],
+      [
+        { text: 'Release Browser', callback_data: `k:e:${id}` },
+        { text: 'Restart Agent', callback_data: `k:a:${id}` },
+      ],
+      [{ text: 'Refresh', callback_data: `k:f:${id}` }],
+    ],
+  };
+}
+
+export function browserActionKeyboard(agentId?: string | null): InlineKeyboard {
+  const id = truncId(agentId || 'browser');
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Screenshot', callback_data: `b:s:${id}` },
+        { text: 'Release', callback_data: `b:e:${id}` },
+      ],
+      [
+        { text: 'Recover', callback_data: `b:r:${id}` },
+        { text: 'Refresh', callback_data: `b:f:${id}` },
+      ],
+    ],
+  };
+}
+
 /** Map callback_data → console command text */
 export function callbackDataToCommand(data: string): string | null {
   const raw = String(data || '').trim();
@@ -180,6 +234,27 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'r') return `/incident retry ${id}`;
     if (action === 'm') return `/incident mute ${id}`;
     if (action === 'e') return `/incident escalate ${id}`;
+  }
+  if (scope === 'o') {
+    if (action === 'f') return `/dashboard`;
+    if (action === 'r') return `/jobs failed`;
+    if (action === 'b') return `/browser release`;
+    if (action === 'a') return id !== 'ops' ? `/agent restart ${id}` : `/agents`;
+    if (action === 'l') return `/jobs failed`;
+    if (action === 'i') return `/incident mute ${id}`;
+  }
+  if (scope === 'k') {
+    if (action === 'l') return `/agent ${id}`;
+    if (action === 'b') return `/browser recover`;
+    if (action === 'e') return `/browser release`;
+    if (action === 'a') return `/agent restart ${id}`;
+    if (action === 'f') return `/fleet`;
+  }
+  if (scope === 'b') {
+    if (action === 's') return `/browser screenshot`;
+    if (action === 'e') return `/browser release`;
+    if (action === 'r') return `/browser recover`;
+    if (action === 'f') return `/browser`;
   }
   return null;
 }

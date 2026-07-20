@@ -52,7 +52,86 @@ const RULES: Rule[] = [
     name: 'whats_new',
     confidence: 0.92,
     test: t =>
-      /có gì mới|co gi moi|what'?s new|tin mới|tinh hinh|tình hình|what'?s up/.test(t),
+      /có gì mới|co gi moi|what'?s new|tin mới|tinh hinh|tình hình|what'?s up|hệ thống đang làm gì|he thong dang lam gi/.test(
+        t,
+      ),
+  },
+  {
+    name: 'fleet_summary',
+    confidence: 0.95,
+    test: t =>
+      /máy nào đang bận|may nao dang ban|fleet|máy nào|may nao|workstation|ai đang làm|ai dang lam|machines?/.test(
+        t,
+      ) && !/offline|mất|mat/.test(t),
+  },
+  {
+    name: 'incident_summary',
+    confidence: 0.95,
+    test: t =>
+      /có lỗi không|co loi khong|incident|sự cố|su co|có vấn đề|co van de|cảnh báo|canh bao|alert/.test(
+        t,
+      ),
+  },
+  {
+    name: 'scanner_summary',
+    confidence: 0.94,
+    test: t =>
+      /scanner sao|scan sao|scanner thế|scanner the|scanner thế nào|scanner the nao|scanner\??$|tình hình scan|tinh hinh scan/.test(
+        t,
+      ) ||
+      (/scanner|scan/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t)),
+  },
+  {
+    name: 'publisher_summary',
+    confidence: 0.94,
+    test: t =>
+      /publisher thế|publisher the|publish thế|publish the|publisher\??$|đăng bài sao|dang bai sao/.test(t) ||
+      (/publisher|publish|đăng bài|dang bai/.test(t) &&
+        /sao|thế nào|the nao|status|queue|tóm tắt|tom tat/.test(t)),
+  },
+  {
+    name: 'mission_summary',
+    confidence: 0.93,
+    test: t =>
+      /mission thế|mission the|mission sao|mission\??$|nhiệm vụ/.test(t) ||
+      (/mission|nhiệm vụ|nhiem vu/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t)),
+  },
+  {
+    name: 'runtime_explain',
+    confidence: 0.96,
+    test: t =>
+      /tại sao scanner|tai sao scanner|why scanner|scanner không chạy|scanner khong chay|không scan|khong scan/.test(
+        t,
+      ),
+  },
+  {
+    name: 'machine_detail',
+    confidence: 0.9,
+    test: t =>
+      /chi tiết máy|chi tiet may|machine detail|máy\s+\S+|may\s+\S+|linh-?pc|mini-?pc|vps/.test(t) &&
+      !/fleet|bận|ban/.test(t),
+    slots: (_n, o) => {
+      const m =
+        o.match(/(?:máy|may|machine|host)\s+([a-zA-Z0-9_\-.]+)/i) ||
+        o.match(/\b(linh-?pc|mini-?pc|vps|[A-Za-z0-9_\-.]{3,})\b/i);
+      return { agentId: m?.[1], query: o.trim() };
+    },
+  },
+  {
+    name: 'browser_detail',
+    confidence: 0.92,
+    test: t =>
+      /browser detail|chi tiết browser|chi tiet browser|trình duyệt|trinh duyet|chrome profile|browser\??$/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ops_recommendation',
+    confidence: 0.9,
+    test: t =>
+      /nên làm gì|nen lam gi|khuyến nghị|khuyen nghi|recommend|cần mình xử lý|can minh xu ly|làm gì tiếp|lam gi tiep/.test(
+        t,
+      ),
   },
   {
     name: 'lead_count',

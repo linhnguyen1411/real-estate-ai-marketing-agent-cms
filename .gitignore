@@ -85,3 +85,4 @@ runtime/logs/
 *.bak
 desktop.ini
 docs/
+runtime/

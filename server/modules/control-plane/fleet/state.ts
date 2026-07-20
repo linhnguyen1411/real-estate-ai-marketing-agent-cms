@@ -89,7 +89,11 @@ export function aggregateFleetState(agents: FleetAgent[]): FleetState {
 
 export async function getFleetState(input?: {
   companyId?: string | null;
+  onlineOnly?: boolean;
 }): Promise<FleetState> {
-  const agents = await listFleetAgents({ companyId: input?.companyId });
+  const agents = await listFleetAgents({
+    companyId: input?.companyId,
+    onlineOnly: input?.onlineOnly,
+  });
   return aggregateFleetState(agents);
 }
