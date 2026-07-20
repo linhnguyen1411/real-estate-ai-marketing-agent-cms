@@ -15,6 +15,10 @@ export type CopilotLeadHit = {
   location: string | null;
   classification: string | null;
   createdAt: string;
+  intent?: string | null;
+  budget?: string | null;
+  source?: string | null;
+  link?: string | null;
 };
 
 export type CopilotInsightBundle = {

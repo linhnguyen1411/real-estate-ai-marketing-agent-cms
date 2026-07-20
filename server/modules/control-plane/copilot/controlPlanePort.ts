@@ -31,12 +31,41 @@ import type { CopilotBrowserRow, CopilotControlPlanePort, CopilotLeadHit } from 
 import type { SummarySlot } from './summaryScheduler';
 
 function mapFinding(row: Record<string, unknown>): CopilotLeadHit {
+  const intel =
+    row.intelligence && typeof row.intelligence === 'object'
+      ? (row.intelligence as Record<string, unknown>)
+      : {};
+  const demand =
+    intel.demand && typeof intel.demand === 'object'
+      ? (intel.demand as Record<string, unknown>)
+      : {};
+  const budgetMin = demand.budgetMin ?? row.budgetMin;
+  const budgetMax = demand.budgetMax ?? row.budgetMax;
+  let budget: string | null = null;
+  if (budgetMin != null || budgetMax != null) {
+    budget = [budgetMin, budgetMax].filter(v => v != null).join('–');
+  }
   return {
     id: String(row.id || ''),
-    title: (row.title as string | null) ?? null,
+    title:
+      (row.title as string | null) ??
+      (row.summary as string | null) ??
+      (row.needSummary as string | null) ??
+      null,
     score: (row.finalScore as number | null) ?? (row.score as number | null) ?? null,
     location: (row.primaryLocation as string | null) ?? null,
     classification: (row.classification as string | null) ?? null,
+    intent: (row.intent as string | null) ?? (intel.intent as string | null) ?? null,
+    budget,
+    source:
+      (row.sourceName as string | null) ??
+      (row.sourceId as string | null) ??
+      null,
+    link:
+      (row.postUrl as string | null) ??
+      (row.url as string | null) ??
+      (row.permalink as string | null) ??
+      null,
     createdAt:
       row.createdAt instanceof Date
         ? row.createdAt.toISOString()
@@ -158,7 +187,7 @@ export function createControlPlanePort(input: {
       const bounds = todayBounds();
       const result = await listAgentFindings(
         user,
-        { skip: 0, take: 10, page: 1 },
+        { skip: 0, limit: 10, page: 1 },
         {
           createdFrom: bounds.from,
           createdTo: bounds.to,
@@ -176,7 +205,7 @@ export function createControlPlanePort(input: {
     async searchLeads(search) {
       const result = await listAgentFindings(
         user,
-        { skip: 0, take: search.limit ?? 10, page: 1 },
+        { skip: 0, limit: search.limit ?? 10, page: 1 },
         {
           createdFrom: search.createdFrom,
           createdTo: search.createdTo,
@@ -244,7 +273,7 @@ export function createControlPlanePort(input: {
       const yBounds = yesterdayBounds();
       const yesterday = await listAgentFindings(
         user,
-        { skip: 0, take: 1, page: 1 },
+        { skip: 0, limit: 1, page: 1 },
         {
           createdFrom: yBounds.from,
           createdTo: yBounds.to,

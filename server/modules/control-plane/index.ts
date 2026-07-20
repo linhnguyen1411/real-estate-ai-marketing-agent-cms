@@ -66,6 +66,8 @@ export {
   formatMissionSummaryLines,
   formatIncidentCenterLines,
   formatDailyBriefingLines,
+  formatLeadSummaryLines,
+  formatDashboardBriefLines,
 } from './copilot/opsSummaries';
 export {
   resetCopilotContextForTests,

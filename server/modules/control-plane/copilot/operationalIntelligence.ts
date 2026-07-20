@@ -9,6 +9,7 @@ export type IncidentSeverity = 'info' | 'warning' | 'critical';
 
 export type OpsIncidentKind =
   | 'idle_machine'
+  | 'busy_machine'
   | 'hot_browser'
   | 'memory_high'
   | 'retry_loop'
@@ -21,6 +22,8 @@ export type OpsIncidentKind =
   | 'browser_locked'
   | 'slot_full'
   | 'scanner_idle'
+  | 'publisher_idle'
+  | 'duplicate_publish'
   | 'health_low';
 
 export type OpsIncident = {
@@ -87,6 +90,21 @@ export function detectOperationalIncidents(
         severity: 'info',
         title: 'Idle Machine',
         detail: `${m.displayName || m.hostname} đang idle trong khi queue còn ${ops.workload.waitingJobs} job.`,
+        entityId: m.agentId,
+        machineId: m.machineId,
+      });
+    }
+
+    if (
+      ['scanning', 'publishing', 'busy', 'campaign', 'browser_hold'].includes(m.activity) &&
+      (m.running || 0) > 0
+    ) {
+      push({
+        id: `busy_${m.agentId}`,
+        kind: 'busy_machine',
+        severity: 'info',
+        title: 'Busy Machine',
+        detail: `${m.displayName || m.hostname} · ${m.activity} · jobs ${m.running}.`,
         entityId: m.agentId,
         machineId: m.machineId,
       });
@@ -164,6 +182,30 @@ export function detectOperationalIncidents(
       severity: 'info',
       title: 'Scanner Idle',
       detail: 'Không còn source đang assigned / running.',
+    });
+  }
+
+  if (
+    ops.publisher.publishing === 0 &&
+    ops.publisher.queue === 0 &&
+    ops.fleet.machinesOnline > 0
+  ) {
+    push({
+      id: 'publisher_idle',
+      kind: 'publisher_idle',
+      severity: 'info',
+      title: 'Publisher Idle',
+      detail: 'Không có publish đang chạy hoặc trong queue.',
+    });
+  }
+
+  if (ops.publisher.publishing >= 2) {
+    push({
+      id: 'duplicate_publish',
+      kind: 'duplicate_publish',
+      severity: 'warning',
+      title: 'Duplicate Publish Risk',
+      detail: `${ops.publisher.publishing} publish đang chạy song song — kiểm tra destination.`,
     });
   }
 

@@ -68,7 +68,7 @@ const RULES: Rule[] = [
     name: 'incident_summary',
     confidence: 0.95,
     test: t =>
-      /có lỗi không|co loi khong|incident|sự cố|su co|có vấn đề|co van de|cảnh báo|canh bao|alert/.test(
+      /có lỗi không|co loi khong|có lỗi gì|co loi gi|incident|sự cố|su co|có vấn đề|co van de|cảnh báo|canh bao|alert/.test(
         t,
       ),
   },
@@ -100,31 +100,38 @@ const RULES: Rule[] = [
   },
   {
     name: 'mission_summary',
-    confidence: 0.93,
+    confidence: 0.95,
     test: t =>
+      /mission nào đang chạy|mission nao dang chay|nhiệm vụ nào|nhiem vu nao|mission đang chạy|mission dang chay/.test(
+        t,
+      ) ||
       /mission thế|mission the|mission sao|mission\??$|nhiệm vụ/.test(t) ||
-      (/mission|nhiệm vụ|nhiem vu/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t)),
+      (/mission|nhiệm vụ|nhiem vu/.test(t) &&
+        /sao|thế nào|the nao|status|tóm tắt|tom tat|đang chạy|dang chay/.test(t)),
+  },
+  {
+    name: 'browser_detail',
+    confidence: 0.94,
+    test: t =>
+      /browser nào đang bận|browser nao dang ban|browser đang bận|browser dang ban|trình duyệt đang|trinh duyet dang/.test(
+        t,
+      ) ||
+      /browser detail|chi tiết browser|chi tiet browser|trình duyệt|trinh duyet|chrome profile|browser\??$/.test(
+        t,
+      ),
   },
   {
     name: 'machine_detail',
     confidence: 0.9,
     test: t =>
       /chi tiết máy|chi tiet may|machine detail|máy\s+\S+|may\s+\S+|linh-?pc|mini-?pc|vps/.test(t) &&
-      !/fleet|bận|ban/.test(t),
+      !/fleet|bận|ban|browser/.test(t),
     slots: (_n, o) => {
       const m =
         o.match(/(?:máy|may|machine|host)\s+([a-zA-Z0-9_\-.]+)/i) ||
         o.match(/\b(linh-?pc|mini-?pc|vps|[A-Za-z0-9_\-.]{3,})\b/i);
       return { agentId: m?.[1], query: o.trim() };
     },
-  },
-  {
-    name: 'browser_detail',
-    confidence: 0.92,
-    test: t =>
-      /browser detail|chi tiết browser|chi tiet browser|trình duyệt|trinh duyet|chrome profile|browser\??$/.test(
-        t,
-      ),
   },
   {
     name: 'ops_recommendation',
@@ -139,7 +146,7 @@ const RULES: Rule[] = [
     confidence: 0.93,
     test: t =>
       /(bao nhiêu|bao nhieu|how many).*(lead|finding)/.test(t) ||
-      /hôm nay có.*lead|hom nay co.*lead/.test(t),
+      /hôm nay có.*lead|hom nay co.*lead|lead hôm nay|lead hom nay|lead today|top lead/.test(t),
     slots: t => ({
       dateHint: 'today',
       location: extractLocation(t),

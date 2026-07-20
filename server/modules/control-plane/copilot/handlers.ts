@@ -24,6 +24,7 @@ import {
   formatDashboardBriefLines,
   formatFleetAwarenessLines,
   formatIncidentCenterLines,
+  formatLeadSummaryLines,
   formatMachineDetailLines,
   formatMissionSummaryLines,
   formatPublisherSummaryLines,
@@ -147,10 +148,19 @@ const incidentSummary: IntentHandler = {
   supports: i => i.name === 'incident_summary',
   async execute({ intent, port, ctx }) {
     const signals = await port.detectIncidents();
-    const recs = recommendAll(signals.incidents);
-    ctx.lastAgentIds = signals.incidents.map(i => i.entityId).filter(Boolean) as string[];
-    const lines = formatIncidentCenterLines(signals.incidents, recs);
-    const entity = signals.incidents[0]?.entityId;
+    // Prefer actionable incidents for "Có lỗi không?"
+    const focused = signals.incidents.filter(
+      i =>
+        i.severity === 'critical' ||
+        i.severity === 'warning' ||
+        ['source_removed', 'checkpoint', 'offline_agent', 'publish_failure'].includes(i.kind),
+    );
+    const list = focused.length ? focused : signals.incidents.filter(i => i.severity !== 'info');
+    const show = list.length ? list : signals.incidents.slice(0, 5);
+    const recs = recommendAll(show);
+    ctx.lastAgentIds = show.map(i => i.entityId).filter(Boolean) as string[];
+    const lines = formatIncidentCenterLines(show, recs);
+    const entity = show[0]?.entityId;
     return replyOk(
       intent.name,
       lines,
@@ -263,17 +273,13 @@ const leadCount: IntentHandler = {
       ctx,
       result.items.map(x => x.id),
     );
-    const loc = intent.slots.location ? ` tại ${intent.slots.location}` : '';
-    const lines = [
-      `Hôm nay có ${result.total} lead${loc}.`,
-      ...formatLeadLines(result.items, result.total).slice(1),
-    ];
+    const lines = formatLeadSummaryLines(result.total, result.items);
     const first = result.items[0];
     return replyOk(
       intent.name,
       lines,
       result,
-      first ? approvalKeyboard(first.id) : undefined,
+      first ? approvalKeyboard(first.id) : opsActionKeyboard(),
     );
   },
 };
@@ -381,9 +387,11 @@ const searchLeads: IntentHandler = {
     const first = result.items[0];
     return replyOk(
       intent.name,
-      lines,
+      formatLeadSummaryLines(result.total, result.items).length > 2
+        ? formatLeadSummaryLines(result.total, result.items)
+        : lines,
       result,
-      first ? approvalKeyboard(first.id) : undefined,
+      first ? approvalKeyboard(first.id) : opsActionKeyboard(),
     );
   },
 };
@@ -589,11 +597,10 @@ const helpHandler: IntentHandler = {
     return replyOk(
       intent.name,
       [
-        'AI Operations Copilot — hỏi tiếng Việt, không cần slash.',
-        '• Có gì mới? · Máy nào đang bận? · Có lỗi không?',
-        '• Scanner / Publisher / Mission summary',
-        '• Chi tiết máy · Browser · Khuyến nghị',
-        'Mọi thao tác qua Control Plane · nút inline sẵn trên mỗi trả lời.',
+        'AI Operations Center — hỏi tiếng Việt, không cần slash.',
+        '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
+        '• Scanner / Publisher / Mission / Browser / Lead',
+        '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
       opsActionKeyboard(),

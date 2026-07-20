@@ -134,21 +134,26 @@ export function incidentKeyboard(entityId: string): InlineKeyboard {
   };
 }
 
-/** F4 — smart ops actions on any Copilot reply */
+/** F4/F5 — smart ops actions on any Copilot reply */
 export function opsActionKeyboard(entityId?: string | null): InlineKeyboard {
   const id = truncId(entityId || 'ops');
   return {
     inline_keyboard: [
       [
         { text: 'Refresh', callback_data: `o:f:${id}` },
+        { text: 'Fleet', callback_data: `o:e:${id}` },
+        { text: 'Jobs', callback_data: `o:j:${id}` },
+      ],
+      [
+        { text: 'Mission', callback_data: `o:m:${id}` },
         { text: 'Retry', callback_data: `o:r:${id}` },
+        { text: 'Logs', callback_data: `o:l:${id}` },
       ],
       [
         { text: 'Release Browser', callback_data: `o:b:${id}` },
-        { text: 'Restart Agent', callback_data: `o:a:${id}` },
+        { text: 'Restart Browser', callback_data: `o:c:${id}` },
       ],
       [
-        { text: 'View Logs', callback_data: `o:l:${id}` },
         { text: 'Ignore', callback_data: `o:i:${id}` },
       ],
     ],
@@ -237,8 +242,12 @@ export function callbackDataToCommand(data: string): string | null {
   }
   if (scope === 'o') {
     if (action === 'f') return `/dashboard`;
+    if (action === 'e') return `/fleet`;
+    if (action === 'j') return `/jobs running`;
+    if (action === 'm') return `/mission`;
     if (action === 'r') return `/jobs failed`;
     if (action === 'b') return `/browser release`;
+    if (action === 'c') return `/browser recover`;
     if (action === 'a') return id !== 'ops' ? `/agent restart ${id}` : `/agents`;
     if (action === 'l') return `/jobs failed`;
     if (action === 'i') return `/incident mute ${id}`;

@@ -19,14 +19,15 @@ import {
   browserActionKeyboard,
   callbackDataToCommand,
   routeTelegramUpdate,
-  detectOperationalIncidents,
-  explainScannerIdle,
-  recommendForIncident,
   formatFleetAwarenessLines,
   formatScannerSummaryLines,
   formatPublisherSummaryLines,
   formatMissionSummaryLines,
   formatIncidentCenterLines,
+  formatDailyBriefingLines,
+  detectOperationalIncidents,
+  explainScannerIdle,
+  recommendForIncident,
   _resetTelegramControlPlaneForTests,
   _resetTelegramCopilotForTests,
   resetTelegramAclRateLimitForTests,
@@ -289,11 +290,14 @@ async function main() {
   // --- Conversation classification ---
   assert.equal(classifyByRules('Có gì mới?').name, 'whats_new');
   assert.equal(classifyByRules('Máy nào đang bận?').name, 'fleet_summary');
-  assert.equal(classifyByRules('Có lỗi không?').name, 'incident_summary');
+  assert.equal(classifyByRules('Có lỗi gì không?').name, 'incident_summary');
   assert.equal(classifyByRules('Scanner sao rồi?').name, 'scanner_summary');
   assert.equal(classifyByRules('Publisher thế nào?').name, 'publisher_summary');
+  assert.equal(classifyByRules('Mission nào đang chạy?').name, 'mission_summary');
+  assert.equal(classifyByRules('Browser nào đang bận?').name, 'browser_detail');
   assert.equal(classifyByRules('Tại sao Scanner không chạy?').name, 'runtime_explain');
   assert.equal(classifyByRules('Nên làm gì tiếp?').name, 'ops_recommendation');
+  assert.equal(classifyByRules('Lead hôm nay').name, 'lead_count');
   console.log('PASS Conversation');
 
   const engine = createCopilotEngine({ port: mockPort(), useLlm: false });
@@ -306,7 +310,7 @@ async function main() {
     text: 'Máy nào đang bận?',
   });
   assert.equal(fleet.ok, true);
-  assert.match(fleet.text, /Fleet|LINH-PC|Scanner|Publisher/i);
+  assert.match(fleet.text, /Fleet|LINH-PC|Scanner|Publisher|online/i);
   assert.ok(fleet.replyMarkup);
   assert.ok(formatFleetAwarenessLines(sampleOps()).some(l => /LINH-PC/.test(l)));
   console.log('PASS Fleet');
@@ -319,7 +323,7 @@ async function main() {
     text: 'Scanner sao rồi?',
   });
   assert.equal(scanner.ok, true);
-  assert.match(scanner.text, /Scanner Summary|Sources|Findings|ETA/i);
+  assert.match(scanner.text, /Scanner|Sources|Leads|ETA|Posts/i);
   assert.ok(formatScannerSummaryLines(sampleOps()).join('\n').includes('Sources'));
   console.log('PASS Scanner');
 
@@ -331,19 +335,46 @@ async function main() {
     text: 'Publisher thế nào?',
   });
   assert.equal(publisher.ok, true);
-  assert.match(publisher.text, /Publisher Summary|Queue|Publishing/i);
+  assert.match(publisher.text, /Publisher|Queue|Publishing|Published Today/i);
   assert.ok(formatPublisherSummaryLines(sampleOps()).join('\n').includes('Queue'));
   console.log('PASS Publisher');
 
   // --- Mission ---
-  const mission = await engine.handleClassified(
-    { name: 'mission_summary', confidence: 1, slots: {}, source: 'rule' },
-    { channel: 'telegram', chatId: '100', userId: '42', text: 'Mission' },
-  );
+  const mission = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Mission nào đang chạy?',
+  });
   assert.equal(mission.ok, true);
-  assert.match(mission.text, /Mission Summary|Running/i);
+  assert.equal(mission.intent, 'mission_summary');
+  assert.match(mission.text, /Mission|Running/i);
   assert.ok(formatMissionSummaryLines(sampleOps()).join('\n').includes('Running'));
   console.log('PASS Mission');
+
+  // --- Browser ---
+  const browser = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Browser nào đang bận?',
+  });
+  assert.equal(browser.ok, true);
+  assert.equal(browser.intent, 'browser_detail');
+  assert.match(browser.text, /Browser|Profile|URL|Locked/i);
+  assert.ok(browser.replyMarkup);
+  console.log('PASS Browser');
+
+  // --- Lead ---
+  const lead = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Lead hôm nay',
+  });
+  assert.equal(lead.ok, true);
+  assert.match(lead.text, /Lead Today|Top Leads|Hòa Xuân|80/i);
+  console.log('PASS Lead');
 
   // --- Incident + Recommendation ---
   const signals = detectOperationalIncidents(sampleOps(), {
@@ -359,10 +390,11 @@ async function main() {
     channel: 'telegram',
     chatId: '100',
     userId: '42',
-    text: 'Có lỗi không?',
+    text: 'Có lỗi gì không?',
   });
   assert.equal(incident.ok, true);
-  assert.match(incident.text, /Incident|Source Removed|⚠|❌/i);
+  assert.match(incident.text, /Incident|Source Removed|⚠|❌|Publish/i);
+  assert.ok(!/\{\s*"/.test(incident.text));
   assert.ok(formatIncidentCenterLines(signals.incidents).join('\n').includes('Source Removed'));
   console.log('PASS Incident');
   console.log('PASS Recommendation');
@@ -370,7 +402,10 @@ async function main() {
   // --- Inline Actions ---
   const okb = opsActionKeyboard('worker-linh');
   assert.ok(okb.inline_keyboard.flat().some(b => 'text' in b && b.text === 'Release Browser'));
+  assert.ok(okb.inline_keyboard.flat().some(b => 'text' in b && b.text === 'Fleet'));
   assert.equal(callbackDataToCommand('o:b:worker-linh'), '/browser release');
+  assert.equal(callbackDataToCommand('o:e:worker-linh'), '/fleet');
+  assert.equal(callbackDataToCommand('o:c:worker-linh'), '/browser recover');
   assert.equal(callbackDataToCommand('k:a:worker-linh'), '/agent restart worker-linh');
   assert.ok(machineActionKeyboard('worker-linh').inline_keyboard.length >= 2);
   assert.ok(browserActionKeyboard('worker-linh').inline_keyboard.flat().some(b => 'text' in b && b.text === 'Recover'));
@@ -382,12 +417,24 @@ async function main() {
     text: 'Có gì mới?',
   });
   assert.ok(whatsNew.replyMarkup);
+  assert.match(whatsNew.text, /AI Briefing|ổn định|lead/i);
+  assert.ok(!whatsNew.text.includes('{'));
   console.log('PASS Inline Actions');
 
   // --- Daily Briefing ---
   assert.equal(resolveSummarySlot(new Date('2026-07-18T01:00:00Z'), 'Asia/Ho_Chi_Minh'), 'morning');
   assert.equal(resolveSummarySlot(new Date('2026-07-18T05:00:00Z'), 'Asia/Ho_Chi_Minh'), 'noon');
   assert.equal(resolveSummarySlot(new Date('2026-07-18T11:00:00Z'), 'Asia/Ho_Chi_Minh'), 'evening');
+  const briefLines = formatDailyBriefingLines({
+    slotLabel: '08:00',
+    ops: sampleOps(),
+    leadsToday: 6,
+    topLeads: [{ title: 'Buyer', score: 100 }],
+    incidents: signals.incidents.slice(0, 2),
+    recommendations: [rec.summary],
+  });
+  assert.ok(briefLines.length <= 15);
+  assert.match(briefLines.join('\n'), /AI Operations Briefing/i);
   let summaryText = '';
   const sched = createSummaryScheduler({
     forceSlot: 'morning',
@@ -399,7 +446,7 @@ async function main() {
     },
   });
   assert.equal(await sched.tickOnce(), true);
-  assert.match(summaryText, /Summary|Lead|Health/i);
+  assert.match(summaryText, /Summary|Lead|Health|Briefing/i);
   assert.equal(await sched.tickOnce(), false);
   sched.stop();
   console.log('PASS Daily Briefing');
@@ -441,6 +488,13 @@ async function main() {
   assert.match(replies[0], /Fleet|LINH-PC/i);
   console.log('PASS Telegram');
 
+  // Mobile readability — short lines, no JSON walls
+  for (const line of briefLines) {
+    assert.ok(line.length <= 120, `line too long for mobile: ${line}`);
+  }
+  assert.ok(whatsNew.text.split('\n').every(l => l.length <= 160));
+  console.log('PASS Mobile');
+
   // Legacy surfaces still ok
   assert.equal(classifyByRules('Hôm nay có bao nhiêu lead?').name, 'lead_count');
   const kb = approvalKeyboard('finding123');
@@ -454,7 +508,7 @@ async function main() {
   rememberJobList(getCopilotContext('telegram', '100', '42', null), ['job-a'], 't');
 
   console.log('PASS Lint');
-  console.log('\nAI OPERATIONS COPILOT TESTS PASSED');
+  console.log('\nAI OPERATIONS EXPERIENCE TESTS PASSED');
 }
 
 main().catch(err => {

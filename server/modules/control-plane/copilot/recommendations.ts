@@ -109,6 +109,33 @@ export function recommendForIncident(incident: OpsIncident): OpsRecommendation {
         command: '/report scan',
         entityId: entity || null,
       };
+    case 'publisher_idle':
+      return {
+        incidentId: incident.id,
+        summary: 'Publisher đang idle — bình thường nếu không có draft sẵn.',
+        actionLabel: 'Refresh',
+        action: 'refresh',
+        command: '/publish queue',
+        entityId: entity || null,
+      };
+    case 'busy_machine':
+      return {
+        incidentId: incident.id,
+        summary: 'Máy đang bận — theo dõi progress, không cần can thiệp nếu ổn.',
+        actionLabel: 'Refresh',
+        action: 'refresh',
+        command: '/fleet',
+        entityId: entity || null,
+      };
+    case 'duplicate_publish':
+      return {
+        incidentId: incident.id,
+        summary: 'Nhiều publish song song — kiểm tra trùng destination.',
+        actionLabel: 'View Logs',
+        action: 'view_logs',
+        command: '/publish queue',
+        entityId: entity || null,
+      };
     case 'slot_full':
       return {
         incidentId: incident.id,
