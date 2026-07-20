@@ -18,20 +18,17 @@ export type PublishWorkflowPayload = {
   dryRun: boolean;
 };
 
-export async function loadPublishWorkflowPayload(
-  publishJobId: string,
-): Promise<PublishWorkflowPayload> {
-  const job = await prisma.socialPublishJob.findUnique({
-    where: { id: publishJobId },
-    include: {
-      draft: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
-      channel: true,
-    },
-  });
-  if (!job?.draft || !job.channel) {
-    throw new Error(`Publish job missing draft/channel: ${publishJobId}`);
-  }
-
+export function buildPublishWorkflowPayloadFromRecords(job: {
+  id: string;
+  draftId: string;
+  channelId: string;
+  draft: {
+    body: string;
+    linkUrl: string | null;
+    media?: Array<{ type: string; fileUrl: string; sortOrder: number }>;
+  };
+  channel: { type: string; executionMode: string; config: unknown };
+}): PublishWorkflowPayload {
   const destinationKey = resolveDestinationKeyFromChannel(job.channel);
   if (!destinationKey) {
     throw new Error(
@@ -59,6 +56,23 @@ export async function loadPublishWorkflowPayload(
     destinationConfig: config,
     dryRun: process.env.BROWSER_PUBLISH_LIVE !== '1',
   };
+}
+
+export async function loadPublishWorkflowPayload(
+  publishJobId: string,
+): Promise<PublishWorkflowPayload> {
+  const job = await prisma.socialPublishJob.findUnique({
+    where: { id: publishJobId },
+    include: {
+      draft: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+      channel: true,
+    },
+  });
+  if (!job?.draft || !job.channel) {
+    throw new Error(`Publish job missing draft/channel: ${publishJobId}`);
+  }
+
+  return buildPublishWorkflowPayloadFromRecords(job);
 }
 
 export function toBrowserDestinationContext(

@@ -15,6 +15,8 @@ import {
 import { emitRuntimeEventAsync } from './runtimeEventBus';
 import { buildAgentRegistryMetadata } from './agentRegistry';
 import { drainRemoteCommands, ingestAgentHeartbeat } from './telemetry';
+import { applyExecutionEvidence } from './execution/applyExecutionEvidence';
+import { hydrateJobForExecution } from './execution/jobHydrator';
 
 export async function runtimeAgentRegister(input: {
   agentId: string;
@@ -230,21 +232,26 @@ export async function runtimeAgentClaimJob(input: {
     capabilities: input.capabilities,
   });
   if (!job) return null;
+  const hydrated = await hydrateJobForExecution(job);
+  const payload =
+    hydrated.payload && typeof hydrated.payload === 'object'
+      ? (hydrated.payload as Record<string, unknown>)
+      : {};
   return {
-    id: job.id,
-    type: job.type,
-    status: job.status,
-    companyId: job.companyId,
-    missionId: job.missionId,
-    missionRunId: job.missionRunId,
-    sourceId: job.sourceId,
-    priority: job.priority,
-    payload: job.payload,
-    attempts: job.attempts,
-    maxAttempts: job.maxAttempts,
-    claimedBy: job.claimedBy,
-    claimedAt: job.claimedAt,
-    startedAt: job.startedAt,
+    id: hydrated.id,
+    type: hydrated.type,
+    status: hydrated.status,
+    companyId: hydrated.companyId,
+    missionId: hydrated.missionId,
+    missionRunId: hydrated.missionRunId,
+    sourceId: hydrated.sourceId,
+    priority: hydrated.priority,
+    payload,
+    attempts: hydrated.attempts,
+    maxAttempts: hydrated.maxAttempts,
+    claimedBy: hydrated.claimedBy,
+    claimedAt: hydrated.claimedAt,
+    startedAt: hydrated.startedAt,
   };
 }
 
@@ -252,6 +259,7 @@ export async function runtimeAgentCompleteJob(
   jobId: string,
   result: Record<string, unknown>,
 ) {
+  await applyExecutionEvidence(jobId, result);
   await completeJob(jobId, result);
   return { jobId, status: 'completed' };
 }

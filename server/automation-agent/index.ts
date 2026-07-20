@@ -11,6 +11,9 @@
  */
 
 import 'dotenv/config';
+// G1 — Stateless Execution Agent: no DATABASE_URL required.
+process.env.EXECUTION_AGENT_STATELESS = process.env.EXECUTION_AGENT_STATELESS || '1';
+
 import os from 'os';
 import { BrowserManager } from '../agent-worker/browserManager';
 import { loadWorkerConfig } from '../agent-worker/config';

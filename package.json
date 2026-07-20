@@ -91,6 +91,7 @@
     "test:control-plane": "tsx scripts/test-control-plane.ts",
     "test:control-plane-console": "tsx scripts/test-control-plane-console.ts",
     "test:execution-agent": "tsx scripts/test-execution-agent.ts",
+    "test:stateless-execution-agent": "tsx scripts/test-stateless-execution-agent.ts",
     "test:browser-actions": "tsx scripts/test-browser-actions.ts",
     "test:telegram-control-plane": "tsx scripts/test-telegram-control-plane.ts",
     "test:telegram-operations": "tsx scripts/test-telegram-operations.ts",

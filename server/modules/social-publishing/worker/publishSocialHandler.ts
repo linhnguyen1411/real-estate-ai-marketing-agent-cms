@@ -20,6 +20,10 @@ import type { PublishResult } from '../types';
 import { executePublishWorkflow } from '../../mission-engine/application/publishWorkflowExecutionService';
 import { configureFacebookGroupAdapterRuntime } from '../browser/adapters/facebookGroupAdapter';
 import { configureFacebookTimelineAdapterRuntime } from '../browser/adapters/facebookTimelineAdapter';
+import {
+  runStatelessPublishSocialJob,
+  shouldUseStatelessPublish,
+} from './publishStatelessHandler';
 
 function digPublishUrls(value: unknown): { url?: string; postId?: string } {
   if (!value || typeof value !== 'object') return {};
@@ -65,6 +69,10 @@ export async function runPublishSocialJob(
   agentJob: AgentJob,
   browser: BrowserManager,
 ): Promise<Record<string, unknown>> {
+  if (shouldUseStatelessPublish(agentJob)) {
+    return runStatelessPublishSocialJob(agentJob, browser);
+  }
+
   const pageFactory = {
     getPublishPage: (options?: { initialUrl?: string; mode?: 'cdp' | 'managed' }) =>
       browser.getPublishPage(options),
