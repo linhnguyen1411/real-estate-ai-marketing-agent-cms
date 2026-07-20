@@ -1,9 +1,8 @@
 /**
- * Runtime Monitor / Operations Center — Metrics Snapshot dashboard.
- * Refresh policy: manual + 5 minutes (no continuous polling).
+ * Operations Center — Mission Control UI (presentation only).
+ * Data: GET /api/agent/runtime snapshot. Refresh: manual + 5 minutes.
  */
-import React, { Component, useCallback, useEffect, useState } from 'react';
-import { Activity } from 'lucide-react';
+import React, { Component, useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchAutomationRuntime } from '../../../../services/agentPlatformApi';
 import type {
   AutomationRuntimeSnapshot,
@@ -12,77 +11,25 @@ import type {
 import {
   AgentPanelEmpty,
   AgentPanelError,
-  AgentPanelHeader,
   AgentPanelLoader,
-  AgentStatCard,
-  formatAgentDate,
 } from '../../shared/AgentPlatformUi';
+import { OpsCenterHeader } from '../components/OpsCenterHeader';
+import { FleetPanel } from '../components/FleetPanel';
+import {
+  BrowserPanel,
+  MissionPanel,
+  PublisherPanel,
+  ScannerPanel,
+} from '../components/OperationsPanels';
+import { ActivityTimeline, AlertsPanel, QuickActions } from '../components/ActivityAlerts';
+import { Accordion, SkeletonBlock } from '../components/OpsPrimitives';
+import {
+  deriveFallbackTimeline,
+  deriveOpsAlerts,
+  mapRuntimeEventsToTimeline,
+} from '../utils/deriveAlerts';
 
-/** Align with Metrics Collector default (5 minutes). */
 const REFRESH_MS = 5 * 60 * 1000;
-
-function pct(v: number | null | undefined) {
-  if (v == null || Number.isNaN(v)) return '—';
-  return `${Math.round(v)}%`;
-}
-
-function n(v: number | null | undefined) {
-  if (v == null || Number.isNaN(v)) return '—';
-  return Number.isInteger(v) ? String(v) : v.toFixed(2);
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-      <h3 className="text-sm font-bold text-slate-200">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function MiniTable({
-  headers,
-  rows,
-}: {
-  headers: string[];
-  rows: Array<Array<React.ReactNode>>;
-}) {
-  if (rows.length === 0) {
-    return <p className="text-xs text-slate-500">Không có dữ liệu realtime.</p>;
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-left text-xs">
-        <thead>
-          <tr className="border-b border-slate-800 text-slate-500">
-            {headers.map(h => (
-              <th key={h} className="px-2 py-2 font-semibold">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-slate-900/80 text-slate-300">
-              {row.map((cell, j) => (
-                <td key={j} className="px-2 py-2 align-top tabular-nums">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 class RuntimeErrorBoundary extends Component<
   { children: React.ReactNode; onRetry: () => void },
@@ -98,7 +45,7 @@ class RuntimeErrorBoundary extends Component<
     if (this.state.error) {
       return (
         <AgentPanelError
-          message={`Runtime Dashboard lỗi: ${this.state.error}`}
+          message={`Operations Center lỗi: ${this.state.error}`}
           onRetry={() => {
             this.setState({ error: null });
             this.props.onRetry();
@@ -110,85 +57,110 @@ class RuntimeErrorBoundary extends Component<
   }
 }
 
-function OperationsBlocks({ ops }: { ops: OperationsMetricsSnapshot }) {
-  const f = ops.fleet;
-  const s = ops.scanner;
-  const p = ops.publisher;
-  const m = ops.mission;
+function machinesFromWorkers(
+  data: AutomationRuntimeSnapshot,
+): OperationsMetricsSnapshot['machines'] {
+  return (data.workers || []).map(w => {
+    const proc =
+      w.runtime?.process && typeof w.runtime.process === 'object'
+        ? (w.runtime.process as Record<string, unknown>)
+        : {};
+    const jobs = (data.activeJobs || []).filter(
+      j => j.claimedBy && (j.claimedBy === w.workerId || j.claimedBy === w.id),
+    );
+    return {
+      agentId: w.workerId || w.id,
+      hostname: w.name || w.workerId || w.id,
+      machineId: w.workerId || w.id,
+      displayName: w.name || w.workerId || 'Agent',
+      status: w.online ? 'online' : 'offline',
+      activity: w.online ? (jobs.length ? 'busy' : 'idle') : 'offline',
+      assigned: jobs.length,
+      running: jobs.filter(j => j.status === 'running' || j.status === 'claimed').length,
+      completed: 0,
+      waiting: 0,
+      cpuLoad1m: null,
+      memFreeMb: null,
+      memTotalMb: null,
+      rssMb: typeof proc.rssMb === 'number' ? proc.rssMb : null,
+      heapUsedMb: typeof proc.heapUsedMb === 'number' ? proc.heapUsedMb : null,
+      chromeCount: Array.isArray(w.runtime?.browserPool)
+        ? (w.runtime.browserPool as unknown[]).length
+        : 0,
+      browserBusy: 0,
+      browserIdle: 0,
+      executionSlots: 1,
+      missionName: jobs[0]?.missionRunId || null,
+      currentStep: jobs[0]?.type || null,
+      heartbeatAgeMs: w.heartbeatAgeMs,
+    };
+  });
+}
+
+function emptyOps(data: AutomationRuntimeSnapshot): OperationsMetricsSnapshot {
+  const machines = machinesFromWorkers(data);
+  return {
+    schemaVersion: 1,
+    generatedAt: data.generatedAt,
+    refreshReason: 'dashboard',
+    companyId: null,
+    fleet: {
+      machinesOnline: machines.filter(m => m.status === 'online').length,
+      machinesOffline: machines.filter(m => m.status === 'offline').length,
+      machinesBusy: machines.filter(m => m.activity === 'busy').length,
+      machinesIdle: machines.filter(m => m.activity === 'idle').length,
+      cpuAvg: null,
+      ramUsedPctAvg: null,
+      browserBusy: 0,
+      browserIdle: 0,
+      healthScore: data.healthScore,
+    },
+    scanner: {
+      sources: 0,
+      assigned: 0,
+      running: data.metrics.scanPerHour > 0 ? 1 : 0,
+      completed: 0,
+      findingsToday: 0,
+      postsScanned: 0,
+    },
+    publisher: {
+      draft: 0,
+      queue: data.queue.waiting,
+      publishing: data.queue.running,
+      publishedToday: 0,
+      retry: data.queue.retry,
+    },
+    mission: {
+      running: data.missions.running,
+      waiting: data.missions.waiting,
+      completed: data.missions.completed,
+      failed: data.missions.failed,
+    },
+    workload: {
+      totalScanSources: 0,
+      assignedSources: 0,
+      completedSources: 0,
+      runningMissions: data.missions.running,
+      runningPublishJobs: 0,
+      runningCampaigns: data.campaigns?.length || 0,
+      waitingJobs: data.queue.waiting,
+      retryJobs: data.queue.retry,
+      failedJobs: data.queue.deadLetter,
+    },
+    machines,
+  };
+}
+
+function OpsCenterSkeleton() {
   return (
-    <>
-      <Section title="Fleet">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-          <AgentStatCard label="Online" value={f.machinesOnline} tone="success" />
-          <AgentStatCard label="Busy" value={f.machinesBusy} tone="warning" />
-          <AgentStatCard label="Idle" value={f.machinesIdle} />
-          <AgentStatCard label="Offline" value={f.machinesOffline} />
-          <AgentStatCard label="CPU Avg" value={n(f.cpuAvg)} />
-          <AgentStatCard label="RAM Used %" value={pct(f.ramUsedPctAvg)} />
-          <AgentStatCard label="Browser Busy" value={f.browserBusy} tone="warning" />
-          <AgentStatCard label="Browser Idle" value={f.browserIdle} tone="success" />
-        </div>
-      </Section>
-
-      <Section title="Scanner">
-        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <AgentStatCard label="Sources" value={s.sources} />
-          <AgentStatCard label="Assigned" value={s.assigned} />
-          <AgentStatCard label="Running" value={s.running} tone="warning" />
-          <AgentStatCard label="Completed" value={s.completed} tone="success" />
-          <AgentStatCard label="Findings Today" value={s.findingsToday} />
-          <AgentStatCard label="Posts Scanned" value={s.postsScanned} />
-        </div>
-      </Section>
-
-      <Section title="Publisher">
-        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <AgentStatCard label="Draft" value={p.draft} />
-          <AgentStatCard label="Queue" value={p.queue} />
-          <AgentStatCard label="Publishing" value={p.publishing} tone="warning" />
-          <AgentStatCard label="Published Today" value={p.publishedToday} tone="success" />
-          <AgentStatCard label="Retry" value={p.retry} tone="danger" />
-        </div>
-      </Section>
-
-      <Section title="Mission">
-        <div className="grid gap-2 sm:grid-cols-4">
-          <AgentStatCard label="Running" value={m.running} tone="warning" />
-          <AgentStatCard label="Waiting" value={m.waiting} />
-          <AgentStatCard label="Completed" value={m.completed} tone="success" />
-          <AgentStatCard label="Failed" value={m.failed} tone="danger" />
-        </div>
-      </Section>
-
-      <Section title="Machines / Work">
-        <MiniTable
-          headers={[
-            'Machine',
-            'Status',
-            'Activity',
-            'CPU',
-            'RAM',
-            'Jobs',
-            'Done',
-            'Browser',
-            'Mission',
-          ]}
-          rows={ops.machines.map(row => [
-            row.displayName || row.hostname,
-            row.status,
-            row.activity,
-            n(row.cpuLoad1m),
-            row.memFreeMb != null && row.memTotalMb != null
-              ? `${row.memFreeMb}/${row.memTotalMb}`
-              : n(row.rssMb),
-            `${row.running}/${row.waiting}`,
-            String(row.completed),
-            `${row.browserBusy}/${row.browserIdle}`,
-            row.missionName || '—',
-          ])}
-        />
-      </Section>
-    </>
+    <div className="space-y-4" aria-busy>
+      <SkeletonBlock className="h-28" />
+      <div className="grid gap-4 lg:grid-cols-12">
+        <SkeletonBlock className="h-64 lg:col-span-4" />
+        <SkeletonBlock className="h-64 lg:col-span-5" />
+        <SkeletonBlock className="h-64 lg:col-span-3" />
+      </div>
+    </div>
   );
 }
 
@@ -208,7 +180,7 @@ function RuntimeMonitorInner() {
       const res = await fetchAutomationRuntime({ refresh });
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được Runtime Monitor.');
+      setError(err instanceof Error ? err.message : 'Không tải được Operations Center.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -221,133 +193,130 @@ function RuntimeMonitorInner() {
     return () => clearInterval(t);
   }, [load]);
 
+  const ops = useMemo(() => {
+    if (!data) return null;
+    if (data.operations && data.operations.machines) {
+      if (data.operations.machines.length > 0) return data.operations;
+      return { ...data.operations, machines: machinesFromWorkers(data) };
+    }
+    return emptyOps(data);
+  }, [data]);
+
+  const alerts = useMemo(
+    () => (data && ops ? deriveOpsAlerts(data, ops) : []),
+    [data, ops],
+  );
+
+  const timeline = useMemo(() => {
+    if (!data) return [];
+    const fromEvents = mapRuntimeEventsToTimeline(data.events || []);
+    return fromEvents.length > 0 ? fromEvents : deriveFallbackTimeline(data);
+  }, [data]);
+
+  const browsers = useMemo(() => {
+    const raw = (data?.browsers || []) as Array<Record<string, unknown>>;
+    return raw;
+  }, [data]);
+
   if (loading && !data) {
-    return <AgentPanelLoader label="Đang tải Operations Center..." />;
+    return (
+      <div className="space-y-3">
+        <AgentPanelLoader label="Đang tải Automation Operations Center..." />
+        <OpsCenterSkeleton />
+      </div>
+    );
   }
 
   if (error && !data) {
     return <AgentPanelError message={error} onRetry={() => load({ refresh: true })} />;
   }
 
-  if (!data) {
+  if (!data || !ops) {
     return <AgentPanelEmpty title="Chưa có runtime snapshot" />;
   }
 
-  const m = data.metrics;
-  const q = data.queue;
-  const missions = data.missions;
-  const ops = data.operations;
+  const fleetOnline = ops.fleet.machinesOnline;
+  const fleetTotal = ops.machines.length || ops.fleet.machinesOnline + ops.fleet.machinesOffline;
+  const onRefresh = () => load({ silent: true, refresh: true });
+
+  const operationsColumn = (
+    <div className="space-y-4">
+      <ScannerPanel scanner={ops.scanner} machines={ops.machines} />
+      <PublisherPanel
+        publisher={ops.publisher}
+        machines={ops.machines}
+        campaigns={data.campaigns || []}
+      />
+      <MissionPanel
+        mission={ops.mission}
+        timeline={data.missionTimeline || []}
+        machines={ops.machines}
+      />
+      <BrowserPanel
+        browsers={browsers}
+        fleetBrowserBusy={ops.fleet.browserBusy}
+        fleetBrowserIdle={ops.fleet.browserIdle}
+      />
+    </div>
+  );
+
+  const sideColumn = (
+    <div className="space-y-4">
+      <QuickActions onRefresh={onRefresh} refreshing={refreshing} />
+      <AlertsPanel alerts={alerts} />
+      <ActivityTimeline items={timeline} />
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <AgentPanelHeader
-        title="Operations Center · Runtime"
-        subtitle="Metrics Snapshot — Fleet · Scanner · Publisher · Mission (không poll agent trực tiếp)"
-        onRefresh={() => load({ silent: true, refresh: true })}
+    <div className="space-y-4">
+      <OpsCenterHeader
+        healthScore={ops.fleet.healthScore || data.healthScore}
+        fleetOnline={fleetOnline}
+        fleetTotal={fleetTotal}
+        fleetBusy={ops.fleet.machinesBusy}
+        lastSnapshot={ops.generatedAt || data.generatedAt}
+        refreshReason={ops.refreshReason}
         refreshing={refreshing}
-        actions={
-          <div className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300">
-            <Activity className="h-3.5 w-3.5 text-rose-400" />
-            Health {ops?.fleet.healthScore ?? data.healthScore}
-          </div>
-        }
+        onRefresh={onRefresh}
       />
 
       {error && (
         <p className="text-xs text-amber-300">Làm mới gần nhất lỗi: {error}</p>
       )}
 
-      {ops ? (
-        <OperationsBlocks ops={ops} />
-      ) : (
-        <p className="text-xs text-slate-500">
-          Operations metrics chưa có — nhấn Refresh để thu thập snapshot.
-        </p>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <AgentStatCard label="Health Score" value={data.healthScore} tone="success" />
-        <AgentStatCard label="Publish/hour" value={m.publishPerHour} />
-        <AgentStatCard label="Scan/hour" value={m.scanPerHour} />
-        <AgentStatCard
-          label="Success rate %"
-          value={m.successRate == null ? 0 : Math.round(m.successRate)}
-          tone="success"
-        />
-        <AgentStatCard
-          label="Slot util %"
-          value={m.slotUtilization == null ? 0 : Math.round(m.slotUtilization)}
-          tone="warning"
-        />
+      {/* Mobile: stacked accordions — no horizontal scroll */}
+      <div className="space-y-3 lg:hidden">
+        <Accordion
+          title="Fleet"
+          defaultOpen
+          badge={
+            <span className="text-[10px] text-slate-500">
+              {fleetOnline}/{fleetTotal}
+            </span>
+          }
+        >
+          <FleetPanel machines={ops.machines} embedded />
+        </Accordion>
+        <Accordion title="Operations" defaultOpen>
+          {operationsColumn}
+        </Accordion>
+        <Accordion title="Timeline & Alerts" defaultOpen>
+          {sideColumn}
+        </Accordion>
       </div>
 
-      <Section title="Workers">
-        <MiniTable
-          headers={['Worker', 'Status', 'Online', 'URL', 'Heartbeat', 'RSS MB']}
-          rows={(data.workers || []).map(w => {
-            const proc =
-              w.runtime?.process && typeof w.runtime.process === 'object'
-                ? (w.runtime.process as Record<string, unknown>)
-                : {};
-            return [
-              w.workerId || w.name,
-              w.status,
-              w.online ? 'yes' : 'no',
-              w.currentUrl ? String(w.currentUrl).slice(0, 48) : '—',
-              formatAgentDate(w.lastHeartbeatAt),
-              proc.rssMb != null ? String(proc.rssMb) : '—',
-            ];
-          })}
-        />
-      </Section>
-
-      <Section title="Queue">
-        <div className="grid gap-2 sm:grid-cols-5">
-          <AgentStatCard label="Waiting" value={q.waiting} />
-          <AgentStatCard label="Claimed" value={q.claimed} />
-          <AgentStatCard label="Running" value={q.running} tone="warning" />
-          <AgentStatCard label="Retry" value={q.retry} />
-          <AgentStatCard label="Dead Letter" value={q.deadLetter} tone="danger" />
+      {/* Desktop: 3 columns — Fleet | Operations | Timeline+Alerts */}
+      <div className="hidden gap-4 lg:grid lg:grid-cols-12">
+        <div className="lg:col-span-4 xl:col-span-3">
+          <FleetPanel machines={ops.machines} />
         </div>
-        <div className="mt-3">
-          <MiniTable
-            headers={['Job', 'Type', 'Status', 'Worker', 'Mission', 'Started']}
-            rows={(data.activeJobs || []).map(j => [
-              j.id.slice(0, 10),
-              j.type,
-              j.status,
-              j.claimedBy || '—',
-              j.missionRunId ? j.missionRunId.slice(0, 10) : '—',
-              formatAgentDate(j.startedAt),
-            ])}
-          />
-        </div>
-      </Section>
+        <div className="lg:col-span-5 xl:col-span-5">{operationsColumn}</div>
+        <div className="lg:col-span-3 xl:col-span-4">{sideColumn}</div>
+      </div>
 
-      <Section title="Mission Timeline">
-        <div className="mb-3 grid gap-2 sm:grid-cols-6">
-          <AgentStatCard label="Waiting" value={missions.waiting} />
-          <AgentStatCard label="Running" value={missions.running} />
-          <AgentStatCard label="Retry" value={missions.retry} />
-          <AgentStatCard label="Completed" value={missions.completed} tone="success" />
-          <AgentStatCard label="Failed" value={missions.failed} tone="danger" />
-          <AgentStatCard label="Cancelled" value={missions.cancelled} tone="warning" />
-        </div>
-        <MiniTable
-          headers={['Run', 'Status', 'Started', 'Updated', 'Error']}
-          rows={(data.missionTimeline || []).map(r => [
-            r.id.slice(0, 10),
-            r.status,
-            formatAgentDate(r.startedAt),
-            formatAgentDate(r.updatedAt),
-            r.error ? String(r.error).slice(0, 40) : '—',
-          ])}
-        />
-      </Section>
-
-      <p className="text-[11px] text-slate-600">
-        Snapshot {formatAgentDate(ops?.generatedAt || data.generatedAt)} · refresh policy{' '}
-        {data.controlPlane?.metricsPolicy || '5m + manual'} · reason={ops?.refreshReason || '—'}
+      <p className="text-[10px] text-slate-600">
+        Policy · {data.controlPlane?.metricsPolicy || '5m + manual'} · snapshot read-only · UI only
       </p>
     </div>
   );

@@ -610,6 +610,17 @@ export interface AutomationRuntimeSnapshot {
     healthScore: number;
     agents?: unknown[];
   } | null;
+  /** Present on ControlPlane.getRuntime — used by Activity Timeline (read-only). */
+  events?: Array<{
+    id: string;
+    type: string;
+    agentId?: string | null;
+    entityType?: string | null;
+    entityId?: string | null;
+    payload?: Record<string, unknown>;
+    createdAt: string;
+  }>;
+  agents?: unknown[];
   controlPlane?: {
     version?: number;
     operationsCenter?: boolean;

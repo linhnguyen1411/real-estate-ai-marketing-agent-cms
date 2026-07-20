@@ -99,6 +99,7 @@
     "test:execution-telemetry": "tsx scripts/test-execution-telemetry.ts",
     "test:fleet-registry": "tsx scripts/test-fleet-registry.ts",
     "test:operations-center": "tsx scripts/test-operations-center.ts",
+    "test:operations-center-ui": "node scripts/test-operations-center-ui.mjs",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "test:automation-engine": "tsx scripts/test-automation-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",
