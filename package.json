@@ -100,6 +100,7 @@
     "test:telegram-copilot": "tsx scripts/test-telegram-copilot.ts",
     "test:execution-telemetry": "tsx scripts/test-execution-telemetry.ts",
     "test:fleet-registry": "tsx scripts/test-fleet-registry.ts",
+    "test:fleet-orchestrator": "tsx scripts/test-fleet-orchestrator.ts",
     "test:operations-center": "tsx scripts/test-operations-center.ts",
     "test:operations-center-ui": "node scripts/test-operations-center-ui.mjs",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",

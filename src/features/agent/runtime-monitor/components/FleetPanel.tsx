@@ -141,6 +141,9 @@ export const FleetPanel = memo(function FleetPanel({
       <EmptyHint>Chưa có agent đăng ký. Chờ heartbeat / Runtime Snapshot.</EmptyHint>
     ) : (
       <>
+        <p className="mb-2 text-[11px] text-slate-500">
+          Soft placement · Capability · Load · Affinity · Drain/Maintenance
+        </p>
         <div className="grid gap-3 sm:grid-cols-1 xl:grid-cols-1">
           {visible.map(m => (
             <FleetAgentCard key={m.agentId} machine={m} />
@@ -172,7 +175,7 @@ export const FleetPanel = memo(function FleetPanel({
   return (
     <GlassPanel
       title="Fleet"
-      subtitle={`${machines.length} workstation${machines.length === 1 ? '' : 's'} · 1 card / machine`}
+      subtitle={`${machines.length} workstation${machines.length === 1 ? '' : 's'} · Placement Engine`}
       actions={
         <StatusBadge
           label={`${machines.filter(m => m.status === 'online').length} online`}

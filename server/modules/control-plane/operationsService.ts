@@ -525,11 +525,61 @@ export async function opsGetAgentTelemetry(agentId: string) {
 
 export async function opsGetFleet(companyId?: string | null) {
   const { getFleetState, listFleetBrowsers } = await import('./fleet');
+  const { getOrchestratorSnapshot } = await import('./fleet-orchestrator');
   const state = await getFleetState({ companyId });
+  const orchestrator = getOrchestratorSnapshot();
   return {
     state,
     browsers: listFleetBrowsers(state.agents),
+    orchestrator,
   };
+}
+
+export async function opsFleetPolicy(input: {
+  action: 'drain' | 'maintenance' | 'policy' | 'pin' | 'status';
+  machineId?: string | null;
+  agentId?: string | null;
+  hostname?: string | null;
+  mode?: string | null;
+  enable?: boolean;
+  missionId?: string | null;
+  sourceId?: string | null;
+}) {
+  const orch = await import('./fleet-orchestrator');
+  if (input.action === 'status') {
+    return orch.getOrchestratorSnapshot();
+  }
+  if (input.action === 'policy' && input.mode) {
+    orch.setFleetPolicyMode(input.mode as import('./fleet-orchestrator').FleetPolicyMode);
+    return orch.getOrchestratorSnapshot();
+  }
+  const machineId = input.machineId || input.agentId || input.hostname || 'unknown';
+  if (input.action === 'drain') {
+    return orch.setAgentDrain({
+      machineId,
+      agentId: input.agentId,
+      hostname: input.hostname,
+      drain: input.enable !== false,
+    });
+  }
+  if (input.action === 'maintenance') {
+    return orch.setAgentMaintenance({
+      machineId,
+      agentId: input.agentId,
+      hostname: input.hostname,
+      maintenance: input.enable !== false,
+    });
+  }
+  if (input.action === 'pin') {
+    return orch.pinToMachine({
+      machineId,
+      agentId: input.agentId,
+      hostname: input.hostname,
+      missionId: input.missionId,
+      sourceId: input.sourceId,
+    });
+  }
+  return orch.getOrchestratorSnapshot();
 }
 
 export async function opsGetFleetAgent(idOrMachine: string) {

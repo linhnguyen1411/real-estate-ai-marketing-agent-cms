@@ -222,6 +222,13 @@ export async function runtimeAgentOffline(input: {
   });
 
   try {
+    const { onAgentOfflineFailover } = await import('./fleet-orchestrator');
+    onAgentOfflineFailover(agentId);
+  } catch {
+    /* ignore */
+  }
+
+  try {
     const { handleAgentOfflineBrowserOwnership } = await import(
       './browser-ownership'
     );

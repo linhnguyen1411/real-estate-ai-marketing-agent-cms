@@ -117,12 +117,16 @@ export async function buildControlPlaneReport(
     case 'fleet': {
       const { getFleetState, listFleetBrowsers } = await import('./fleet');
       const { refreshOperationsMetrics } = await import('./operations');
+      const { getOrchestratorSnapshot, formatOrchestratorReportLines } = await import(
+        './fleet-orchestrator'
+      );
       const companyId = user.role === 'owner' ? undefined : user.company_id ?? null;
       const fleet = await getFleetState({ companyId });
       const operations = await refreshOperationsMetrics({
         companyId: companyId ?? null,
         reason: 'report',
       });
+      const orchestrator = getOrchestratorSnapshot();
       return {
         ...base,
         fleet,
@@ -132,6 +136,8 @@ export async function buildControlPlaneReport(
         busy: fleet.busy,
         idle: fleet.idle,
         operations,
+        orchestrator,
+        plannerLines: formatOrchestratorReportLines(orchestrator),
       };
     }
 

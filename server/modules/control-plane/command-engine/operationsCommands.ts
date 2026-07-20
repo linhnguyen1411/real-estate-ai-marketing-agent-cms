@@ -138,15 +138,60 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'fleet',
-    description: 'Fleet dashboard — all Execution Agents',
-    usage: '/fleet',
-    handler: async (_args, ctx) => {
-      const { state } = await opsGetFleet(ctx.companyId);
-      return ok('fleet', formatFleetDashboardLines(state), {
-        total: state.total,
-        online: state.online,
-        healthScore: state.healthScore,
-      });
+    description: 'Fleet dashboard + orchestrator (placement / drain / policy)',
+    usage:
+      '/fleet | /fleet planner|drain|maintenance|policy <mode> | /fleet drain <agentId>',
+    handler: async (args, ctx) => {
+      const sub = (args[0] || '').toLowerCase();
+      if (sub === 'planner' || sub === 'orchestrator' || sub === 'placement') {
+        const { getOrchestratorSnapshot, formatOrchestratorReportLines } = await import(
+          '../fleet-orchestrator'
+        );
+        const snap = getOrchestratorSnapshot();
+        return ok('fleet', formatOrchestratorReportLines(snap), { orchestrator: snap });
+      }
+      if (sub === 'drain' || sub === 'maintenance') {
+        const id = args[1] || '';
+        if (!id) return fail('fleet', `Usage: /fleet ${sub} <agentId|hostname>`);
+        const enable = (args[2] || 'on').toLowerCase() !== 'off';
+        const { opsFleetPolicy } = await import('../operationsService');
+        const r = await opsFleetPolicy({
+          action: sub,
+          machineId: id,
+          agentId: id,
+          hostname: id,
+          enable,
+        });
+        return ok('fleet', [`${sub} ${enable ? 'ON' : 'OFF'} for ${id}`], r as Record<string, unknown>);
+      }
+      if (sub === 'policy') {
+        const mode = (args[1] || '').toLowerCase();
+        if (!mode) {
+          const { getOrchestratorSnapshot, formatOrchestratorOverviewLines } = await import(
+            '../fleet-orchestrator'
+          );
+          const snap = getOrchestratorSnapshot();
+          return ok('fleet', formatOrchestratorOverviewLines(snap), { policy: snap.policyDefault });
+        }
+        const { opsFleetPolicy } = await import('../operationsService');
+        const r = await opsFleetPolicy({ action: 'policy', mode });
+        return ok('fleet', [`Fleet policy → ${mode}`], r as Record<string, unknown>);
+      }
+      const { state, orchestrator } = await opsGetFleet(ctx.companyId);
+      const { formatOrchestratorOverviewLines } = await import('../fleet-orchestrator');
+      return ok(
+        'fleet',
+        [
+          ...formatFleetDashboardLines(state),
+          ...formatOrchestratorOverviewLines(orchestrator),
+        ],
+        {
+          total: state.total,
+          online: state.online,
+          healthScore: state.healthScore,
+          orchestrator,
+        },
+      );
     },
   });
 

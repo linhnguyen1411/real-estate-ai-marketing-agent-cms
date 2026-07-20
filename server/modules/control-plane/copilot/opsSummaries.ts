@@ -159,6 +159,20 @@ export function formatFleetAwarenessLines(
     lines.push('Chưa có máy online.');
     return lines;
   }
+  // Soft placement hint for Copilot ("máy nào phù hợp publish?")
+  const idleOnline = ops.machines.filter(
+    m => (m.status === 'online' || m.status === 'degraded') && m.activity === 'idle',
+  );
+  const publishReady = ops.machines
+    .filter(m => m.status === 'online' || m.status === 'degraded')
+    .sort((a, b) => a.running - b.running || (a.cpuLoad1m ?? 0) - (b.cpuLoad1m ?? 0));
+  if (publishReady[0]) {
+    lines.push('Planner tip');
+    lines.push(
+      `Publish → ${publishReady[0].displayName || publishReady[0].hostname} (load=${publishReady[0].running}, idlePeers=${idleOnline.length})`,
+    );
+    lines.push('--------');
+  }
   for (const m of ops.machines.slice(0, 8)) {
     const name = m.displayName || m.hostname;
     lines.push(name);
