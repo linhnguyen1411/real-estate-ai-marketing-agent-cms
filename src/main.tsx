@@ -171,6 +171,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/spam" element={<AdminRoute />} />
           <Route path="/admin/agents/notifications" element={<AdminRoute />} />
           <Route path="/admin/agents/sessions" element={<AdminRoute />} />
+          <Route path="/admin/agents/runtime" element={<AdminRoute />} />
           <Route path="/admin/agents/reports" element={<AdminRoute />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
