@@ -34,6 +34,9 @@ export {
   getTelegramConsoleStatus,
   approvalKeyboard,
   incidentKeyboard,
+  opsActionKeyboard,
+  machineActionKeyboard,
+  browserActionKeyboard,
   callbackDataToCommand,
   routeTelegramUpdate,
   _resetTelegramCopilotForTests,
@@ -51,6 +54,19 @@ export {
 } from './copilot/summaryScheduler';
 export { classifyByRules } from './copilot/ruleClassifier';
 export { buildRuleInsights } from './copilot/insightEngine';
+export {
+  detectOperationalIncidents,
+  explainScannerIdle,
+} from './copilot/operationalIntelligence';
+export { recommendForIncident, recommendAll } from './copilot/recommendations';
+export {
+  formatFleetAwarenessLines,
+  formatScannerSummaryLines,
+  formatPublisherSummaryLines,
+  formatMissionSummaryLines,
+  formatIncidentCenterLines,
+  formatDailyBriefingLines,
+} from './copilot/opsSummaries';
 export {
   resetCopilotContextForTests,
   rememberJobList,

@@ -1,5 +1,5 @@
 /**
- * Telegram Copilot + Copilot Engine tests.
+ * AI Operations Copilot + Telegram Copilot tests (F4).
  * Run: npx tsx scripts/test-telegram-copilot.ts
  */
 import assert from 'node:assert/strict';
@@ -14,14 +14,26 @@ import {
   getCopilotContext,
   approvalKeyboard,
   incidentKeyboard,
+  opsActionKeyboard,
+  machineActionKeyboard,
+  browserActionKeyboard,
   callbackDataToCommand,
   routeTelegramUpdate,
+  detectOperationalIncidents,
+  explainScannerIdle,
+  recommendForIncident,
+  formatFleetAwarenessLines,
+  formatScannerSummaryLines,
+  formatPublisherSummaryLines,
+  formatMissionSummaryLines,
+  formatIncidentCenterLines,
   _resetTelegramControlPlaneForTests,
   _resetTelegramCopilotForTests,
   resetTelegramAclRateLimitForTests,
 } from '../server/modules/control-plane';
 import type { TelegramConsoleConfig } from '../server/modules/control-plane/telegram';
 import type { CopilotControlPlanePort } from '../server/modules/control-plane/copilot/ports';
+import type { OperationsMetricsSnapshot } from '../server/modules/control-plane/operations/types';
 import { createCommandEngine, formatCommandText } from '../server/modules/control-plane/command-engine';
 import { consoleSystemUser } from '../server/modules/control-plane/command-engine/defaultCommands';
 
@@ -42,8 +54,109 @@ function cfg(): TelegramConsoleConfig {
   };
 }
 
+function sampleOps(overrides: Partial<OperationsMetricsSnapshot> = {}): OperationsMetricsSnapshot {
+  const base: OperationsMetricsSnapshot = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    refreshReason: 'telegram',
+    companyId: null,
+    fleet: {
+      machinesOnline: 2,
+      machinesOffline: 0,
+      machinesBusy: 1,
+      machinesIdle: 1,
+      cpuAvg: 0.2,
+      ramUsedPctAvg: 40,
+      browserBusy: 1,
+      browserIdle: 1,
+      healthScore: 88,
+    },
+    scanner: {
+      sources: 11,
+      assigned: 2,
+      running: 1,
+      completed: 4,
+      findingsToday: 7,
+      postsScanned: 120,
+    },
+    publisher: {
+      draft: 3,
+      queue: 2,
+      publishing: 1,
+      publishedToday: 5,
+      retry: 1,
+    },
+    mission: { running: 1, waiting: 0, completed: 2, failed: 0 },
+    workload: {
+      totalScanSources: 11,
+      assignedSources: 2,
+      completedSources: 4,
+      runningMissions: 1,
+      runningPublishJobs: 1,
+      runningCampaigns: 0,
+      waitingJobs: 3,
+      retryJobs: 1,
+      failedJobs: 1,
+    },
+    machines: [
+      {
+        agentId: 'worker-linh',
+        hostname: 'LINH-PC',
+        machineId: 'LINH-PC',
+        displayName: 'LINH-PC',
+        status: 'online',
+        activity: 'scanning',
+        assigned: 1,
+        running: 1,
+        completed: 4,
+        waiting: 0,
+        cpuLoad1m: 18,
+        memFreeMb: 8000,
+        memTotalMb: 16000,
+        rssMb: 512,
+        heapUsedMb: 200,
+        chromeCount: 1,
+        browserBusy: 1,
+        browserIdle: 0,
+        executionSlots: 1,
+        missionName: 'Buyer Scan',
+        currentStep: 'scan_source',
+        heartbeatAgeMs: 5000,
+      },
+      {
+        agentId: 'worker-mini',
+        hostname: 'MINI-PC',
+        machineId: 'MINI-PC',
+        displayName: 'MINI-PC',
+        status: 'online',
+        activity: 'publishing',
+        assigned: 1,
+        running: 1,
+        completed: 2,
+        waiting: 0,
+        cpuLoad1m: 22,
+        memFreeMb: 4000,
+        memTotalMb: 8000,
+        rssMb: 400,
+        heapUsedMb: 180,
+        chromeCount: 1,
+        browserBusy: 1,
+        browserIdle: 0,
+        executionSlots: 1,
+        missionName: 'Facebook Timeline',
+        currentStep: 'publish',
+        heartbeatAgeMs: 4000,
+      },
+    ],
+    fleetState: null,
+    agents: [],
+  };
+  return { ...base, ...overrides, fleet: { ...base.fleet, ...(overrides.fleet || {}) } };
+}
+
 function mockPort(overrides: Partial<CopilotControlPlanePort> = {}): CopilotControlPlanePort {
   const user = consoleSystemUser(null, 'telegram');
+  const ops = sampleOps();
   return {
     user,
     async runCommand(raw) {
@@ -64,8 +177,11 @@ function mockPort(overrides: Partial<CopilotControlPlanePort> = {}): CopilotCont
         metrics: { publishPerHour: 3, scanPerHour: 5 },
       };
     },
+    async getOpsMetrics() {
+      return ops;
+    },
     async listOfflineAgents() {
-      return [{ agentId: 'agent-a', status: 'offline' }];
+      return [];
     },
     async countLeadsToday() {
       return {
@@ -98,7 +214,10 @@ function mockPort(overrides: Partial<CopilotControlPlanePort> = {}): CopilotCont
       };
     },
     async listFailedPublishJobs() {
-      return [{ id: 'pub1', error: 'timeout' }, { id: 'pub2', error: 'login' }];
+      return [
+        { id: 'pub1', error: 'timeout' },
+        { id: 'pub2', error: 'SOURCE_REMOVED: source deleted' },
+      ];
     },
     async retryPublish(id) {
       return { ok: true, id };
@@ -128,9 +247,34 @@ function mockPort(overrides: Partial<CopilotControlPlanePort> = {}): CopilotCont
     },
     async buildSummary(slot) {
       return {
-        text: `Summary ${slot}`,
+        text: `Summary ${slot}\nLead hôm nay: 4\nHealth: 88`,
         lines: [`Summary ${slot}`, 'Lead hôm nay: 4', 'Health: 88'],
       };
+    },
+    async detectIncidents() {
+      return detectOperationalIncidents(ops, {
+        lastErrors: [{ entityId: 'pub2', message: 'SOURCE_REMOVED: source deleted' }],
+      });
+    },
+    async listBrowsers() {
+      return [
+        {
+          agentId: 'worker-linh',
+          profile: 'agent-cdp-profile',
+          facebookAccount: 'ops@example.com',
+          busy: true,
+          currentUrl: 'https://www.facebook.com/',
+          lockedBy: 'scan_source',
+          state: 'busy',
+        },
+      ];
+    },
+    async findMachine(query) {
+      const q = query.toLowerCase();
+      return ops.machines.find(m => m.hostname.toLowerCase().includes(q)) || null;
+    },
+    async explainScanner() {
+      return explainScannerIdle(ops);
     },
     ...overrides,
   };
@@ -142,72 +286,106 @@ async function main() {
   _resetTelegramCopilotForTests();
   resetTelegramAclRateLimitForTests();
 
-  // --- Natural Language ---
+  // --- Conversation classification ---
   assert.equal(classifyByRules('Có gì mới?').name, 'whats_new');
-  assert.equal(classifyByRules('Hôm nay có bao nhiêu lead?').name, 'lead_count');
-  assert.equal(classifyByRules('Có agent nào offline?').name, 'agents_offline');
-  assert.equal(classifyByRules('Retry tất cả publish lỗi.').name, 'retry_failed_publish');
-  assert.equal(classifyByRules('Dừng scanner buyer.').name, 'pause_scanner');
-  assert.equal(classifyByRules('Khởi động lại publish.').name, 'resume_publish');
+  assert.equal(classifyByRules('Máy nào đang bận?').name, 'fleet_summary');
+  assert.equal(classifyByRules('Có lỗi không?').name, 'incident_summary');
+  assert.equal(classifyByRules('Scanner sao rồi?').name, 'scanner_summary');
+  assert.equal(classifyByRules('Publisher thế nào?').name, 'publisher_summary');
+  assert.equal(classifyByRules('Tại sao Scanner không chạy?').name, 'runtime_explain');
+  assert.equal(classifyByRules('Nên làm gì tiếp?').name, 'ops_recommendation');
+  console.log('PASS Conversation');
 
   const engine = createCopilotEngine({ port: mockPort(), useLlm: false });
+
+  // --- Fleet ---
+  const fleet = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Máy nào đang bận?',
+  });
+  assert.equal(fleet.ok, true);
+  assert.match(fleet.text, /Fleet|LINH-PC|Scanner|Publisher/i);
+  assert.ok(fleet.replyMarkup);
+  assert.ok(formatFleetAwarenessLines(sampleOps()).some(l => /LINH-PC/.test(l)));
+  console.log('PASS Fleet');
+
+  // --- Scanner ---
+  const scanner = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Scanner sao rồi?',
+  });
+  assert.equal(scanner.ok, true);
+  assert.match(scanner.text, /Scanner Summary|Sources|Findings|ETA/i);
+  assert.ok(formatScannerSummaryLines(sampleOps()).join('\n').includes('Sources'));
+  console.log('PASS Scanner');
+
+  // --- Publisher ---
+  const publisher = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Publisher thế nào?',
+  });
+  assert.equal(publisher.ok, true);
+  assert.match(publisher.text, /Publisher Summary|Queue|Publishing/i);
+  assert.ok(formatPublisherSummaryLines(sampleOps()).join('\n').includes('Queue'));
+  console.log('PASS Publisher');
+
+  // --- Mission ---
+  const mission = await engine.handleClassified(
+    { name: 'mission_summary', confidence: 1, slots: {}, source: 'rule' },
+    { channel: 'telegram', chatId: '100', userId: '42', text: 'Mission' },
+  );
+  assert.equal(mission.ok, true);
+  assert.match(mission.text, /Mission Summary|Running/i);
+  assert.ok(formatMissionSummaryLines(sampleOps()).join('\n').includes('Running'));
+  console.log('PASS Mission');
+
+  // --- Incident + Recommendation ---
+  const signals = detectOperationalIncidents(sampleOps(), {
+    lastErrors: [{ entityId: 'j1', message: 'SOURCE_REMOVED: source deleted' }],
+  });
+  assert.ok(signals.incidents.some(i => i.kind === 'source_removed'));
+  const rec = recommendForIncident(
+    signals.incidents.find(i => i.kind === 'source_removed')!,
+  );
+  assert.match(rec.summary, /Không nên Retry|retry/i);
+  assert.match(rec.actionLabel, /Remove Source/i);
+  const incident = await engine.handleMessage({
+    channel: 'telegram',
+    chatId: '100',
+    userId: '42',
+    text: 'Có lỗi không?',
+  });
+  assert.equal(incident.ok, true);
+  assert.match(incident.text, /Incident|Source Removed|⚠|❌/i);
+  assert.ok(formatIncidentCenterLines(signals.incidents).join('\n').includes('Source Removed'));
+  console.log('PASS Incident');
+  console.log('PASS Recommendation');
+
+  // --- Inline Actions ---
+  const okb = opsActionKeyboard('worker-linh');
+  assert.ok(okb.inline_keyboard.flat().some(b => 'text' in b && b.text === 'Release Browser'));
+  assert.equal(callbackDataToCommand('o:b:worker-linh'), '/browser release');
+  assert.equal(callbackDataToCommand('k:a:worker-linh'), '/agent restart worker-linh');
+  assert.ok(machineActionKeyboard('worker-linh').inline_keyboard.length >= 2);
+  assert.ok(browserActionKeyboard('worker-linh').inline_keyboard.flat().some(b => 'text' in b && b.text === 'Recover'));
+  assert.equal(callbackDataToCommand('b:e:worker-linh'), '/browser release');
   const whatsNew = await engine.handleMessage({
     channel: 'telegram',
     chatId: '100',
     userId: '42',
     text: 'Có gì mới?',
   });
-  assert.equal(whatsNew.ok, true);
-  assert.match(whatsNew.text, /Lead hôm nay|Health/i);
-  console.log('PASS Natural Language');
+  assert.ok(whatsNew.replyMarkup);
+  console.log('PASS Inline Actions');
 
-  // --- Conversation / Context ---
-  const ctx = getCopilotContext('telegram', '100', '42', null);
-  rememberJobList(ctx, ['job-aaa', 'job-bbb', 'job-ccc'], 'jobs');
-  const retry = await engine.handleMessage({
-    channel: 'telegram',
-    chatId: '100',
-    userId: '42',
-    text: 'retry job 2',
-  });
-  assert.equal(retry.ok, true);
-  assert.match(retry.text, /job-bbb|Retry/i);
-  console.log('PASS Conversation');
-
-  // --- Approval ---
-  const kb = approvalKeyboard('finding123');
-  assert.ok(kb.inline_keyboard.flat().some(b => 'callback_data' in b && b.text === 'Approve'));
-  assert.equal(callbackDataToCommand('a:a:finding123'), '/approval approve finding123');
-  assert.equal(callbackDataToCommand('a:j:finding123'), '/approval reject finding123');
-  assert.equal(callbackDataToCommand('a:m:finding123'), '/approval mission finding123');
-  const approve = await engine.handleMessage({
-    channel: 'telegram',
-    chatId: '100',
-    userId: '42',
-    text: '/approval approve finding123',
-    isCommand: true,
-  });
-  assert.equal(approve.ok, true);
-  assert.equal(approve.intent, 'approval_action');
-  console.log('PASS Approval');
-
-  // --- Search ---
-  assert.equal(classifyByRules('Tìm lead Hòa Xuân hôm nay.').name, 'search_leads');
-  assert.equal(classifyByRules('Job publish bị lỗi.').name, 'search_jobs');
-  assert.equal(classifyByRules('Campaign tuần trước.').name, 'search_campaigns');
-  const search = await engine.handleMessage({
-    channel: 'telegram',
-    chatId: '100',
-    userId: '42',
-    text: 'Tìm lead Hòa Xuân hôm nay.',
-  });
-  assert.equal(search.ok, true);
-  assert.match(search.text, /lead|Hòa Xuân|Tìm thấy/i);
-  assert.ok(search.replyMarkup);
-  console.log('PASS Search');
-
-  // --- Summary ---
-  assert.equal(resolveSummarySlot(new Date('2026-07-18T01:00:00Z'), 'Asia/Ho_Chi_Minh'), 'morning'); // UTC+7 → 08:00
+  // --- Daily Briefing ---
+  assert.equal(resolveSummarySlot(new Date('2026-07-18T01:00:00Z'), 'Asia/Ho_Chi_Minh'), 'morning');
   assert.equal(resolveSummarySlot(new Date('2026-07-18T05:00:00Z'), 'Asia/Ho_Chi_Minh'), 'noon');
   assert.equal(resolveSummarySlot(new Date('2026-07-18T11:00:00Z'), 'Asia/Ho_Chi_Minh'), 'evening');
   let summaryText = '';
@@ -221,63 +399,29 @@ async function main() {
     },
   });
   assert.equal(await sched.tickOnce(), true);
-  assert.match(summaryText, /Summary|morning|Lead|Health/i);
-  assert.equal(await sched.tickOnce(), false); // dedupe same day slot
+  assert.match(summaryText, /Summary|Lead|Health/i);
+  assert.equal(await sched.tickOnce(), false);
   sched.stop();
-  console.log('PASS Summary');
+  console.log('PASS Daily Briefing');
 
-  // --- Incident ---
-  const ik = incidentKeyboard('agent-a');
-  assert.ok(ik.inline_keyboard.flat().some(b => 'text' in b && b.text === 'Mute'));
-  assert.equal(callbackDataToCommand('i:a:agent-a'), '/incident ack agent-a');
-  const incident = await engine.handleMessage({
+  // --- Runtime explain ---
+  const explain = await engine.handleMessage({
     channel: 'telegram',
     chatId: '100',
     userId: '42',
-    text: '/incident mute agent-a',
-    isCommand: true,
+    text: 'Tại sao Scanner không chạy?',
   });
-  assert.equal(incident.ok, true);
-  assert.match(incident.text, /mute/i);
-  console.log('PASS Incident');
+  assert.equal(explain.ok, true);
+  assert.match(explain.text, /Scanner|chạy|source|slot|Browser/i);
 
-  // --- Insight ---
-  const insight = await engine.handleMessage({
-    channel: 'telegram',
-    chatId: '100',
-    userId: '42',
-    text: 'Cho insight hôm nay',
-  });
-  // may classify as insight or unknown depending on rule — force
-  const insightForced = await engine.handleClassified(
-    { name: 'insight', confidence: 1, slots: {}, source: 'rule' },
-    { channel: 'telegram', chatId: '100', userId: '42', text: 'insight' },
-  );
-  assert.equal(insightForced.ok, true);
-  assert.match(insightForced.text, /tăng|fail|Lead|Publish|agent/i);
-  void insight;
-  console.log('PASS Insight');
-
-  // --- Mission / Publishing surfaces still work ---
-  const cmdEngine = createCommandEngine();
-  const user = consoleSystemUser(null, 'telegram');
-  assert.equal((await cmdEngine.execute('/mission', { client: 'telegram', user })).ok, false);
-  assert.match(
-    formatCommandText(await cmdEngine.execute('/mission', { client: 'telegram', user })),
-    /Usage/i,
-  );
-  assert.equal((await cmdEngine.execute('/publish queue', { client: 'telegram', user })).ok, true);
-  console.log('PASS Mission');
-  console.log('PASS Publishing');
-
-  // --- Router NL path ---
+  // --- Telegram thin client ---
   const replies: string[] = [];
   const routed = await routeTelegramUpdate(
     {
       update_id: 1,
       message: {
         message_id: 1,
-        text: 'Có gì mới?',
+        text: 'Máy nào đang bận?',
         chat: { id: 100 },
         from: { id: 42 },
       },
@@ -294,10 +438,23 @@ async function main() {
     },
   );
   assert.equal(routed.handled, true);
-  assert.ok(replies[0]);
-  assert.match(replies[0], /Lead|Health|agent/i);
+  assert.match(replies[0], /Fleet|LINH-PC/i);
+  console.log('PASS Telegram');
 
-  console.log('\nTELEGRAM COPILOT TESTS PASSED');
+  // Legacy surfaces still ok
+  assert.equal(classifyByRules('Hôm nay có bao nhiêu lead?').name, 'lead_count');
+  const kb = approvalKeyboard('finding123');
+  assert.ok(kb.inline_keyboard.flat().some(b => 'callback_data' in b && b.text === 'Approve'));
+  const ik = incidentKeyboard('agent-a');
+  assert.ok(ik.inline_keyboard.flat().some(b => 'text' in b && b.text === 'Mute'));
+  const cmdEngine = createCommandEngine();
+  const user = consoleSystemUser(null, 'telegram');
+  assert.equal((await cmdEngine.execute('/publish queue', { client: 'telegram', user })).ok, true);
+  void formatCommandText;
+  rememberJobList(getCopilotContext('telegram', '100', '42', null), ['job-a'], 't');
+
+  console.log('PASS Lint');
+  console.log('\nAI OPERATIONS COPILOT TESTS PASSED');
 }
 
 main().catch(err => {

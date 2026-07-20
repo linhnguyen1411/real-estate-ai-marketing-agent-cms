@@ -6,8 +6,11 @@ import { formatCommandText } from '../command-engine';
 import {
   agentJobKeyboard,
   approvalKeyboard,
+  browserActionKeyboard,
   incidentKeyboard,
+  machineActionKeyboard,
   missionActionKeyboard,
+  opsActionKeyboard,
   publishJobKeyboard,
 } from '../inlineKeyboard';
 import {
@@ -16,6 +19,17 @@ import {
   rememberMissionList,
   resolveIndexedId,
 } from './contextStore';
+import {
+  formatBrowserDetailLines,
+  formatDashboardBriefLines,
+  formatFleetAwarenessLines,
+  formatIncidentCenterLines,
+  formatMachineDetailLines,
+  formatMissionSummaryLines,
+  formatPublisherSummaryLines,
+  formatScannerSummaryLines,
+} from './opsSummaries';
+import { recommendAll } from './recommendations';
 import { formatLeadLines, replyFail, replyOk } from './replyFormatter';
 import type { IntentHandler, IntentRegistry } from './intentRegistry';
 import type { ClassifiedIntent } from './types';
@@ -44,23 +58,199 @@ const whatsNew: IntentHandler = {
   name: 'whats_new',
   supports: i => i.name === 'whats_new' || i.name === 'dashboard',
   async execute({ intent, port, ctx }) {
-    const dash = await port.getDashboard();
+    const ops = await port.getOpsMetrics(true);
     const leads = await port.countLeadsToday();
-    const offline = await port.listOfflineAgents();
+    const signals = await port.detectIncidents();
+    const recs = recommendAll(signals.incidents);
     rememberFindingList(
       ctx,
       leads.items.map(x => x.id),
     );
+    ctx.lastAgentIds = ops.machines.map(m => m.agentId);
+    const lines = formatDashboardBriefLines(ops, {
+      leadsToday: leads.total,
+      incidents: signals.incidents.slice(0, 4),
+      recommendations: recs.slice(0, 3).map(r => r.summary),
+    });
+    const entity = signals.incidents[0]?.entityId || ops.machines[0]?.agentId;
+    return replyOk(intent.name, lines, { ops, leads, signals }, opsActionKeyboard(entity));
+  },
+};
+
+const fleetSummary: IntentHandler = {
+  name: 'fleet_summary',
+  supports: i => i.name === 'fleet_summary',
+  async execute({ intent, port, ctx }) {
+    const ops = await port.getOpsMetrics(true);
+    ctx.lastAgentIds = ops.machines.map(m => m.agentId);
+    const lines = formatFleetAwarenessLines(ops);
+    const first = ops.machines[0]?.agentId;
+    return replyOk(
+      intent.name,
+      lines,
+      { ops },
+      first ? machineActionKeyboard(first) : opsActionKeyboard(),
+    );
+  },
+};
+
+const scannerSummary: IntentHandler = {
+  name: 'scanner_summary',
+  supports: i => i.name === 'scanner_summary',
+  async execute({ intent, port, ctx }) {
+    const ops = await port.getOpsMetrics(true);
+    const leads = await port.countLeadsToday();
+    rememberFindingList(
+      ctx,
+      leads.items.map(x => x.id),
+    );
+    const lines = formatScannerSummaryLines(ops, leads.items[0] || null);
+    return replyOk(intent.name, lines, { ops }, opsActionKeyboard(ops.machines[0]?.agentId));
+  },
+};
+
+const publisherSummary: IntentHandler = {
+  name: 'publisher_summary',
+  supports: i => i.name === 'publisher_summary',
+  async execute({ intent, port }) {
+    const ops = await port.getOpsMetrics(true);
+    const lines = formatPublisherSummaryLines(ops);
+    return replyOk(
+      intent.name,
+      lines,
+      { ops },
+      ops.publisher.retry > 0 ? publishJobKeyboard('queue') : opsActionKeyboard(),
+    );
+  },
+};
+
+const missionSummary: IntentHandler = {
+  name: 'mission_summary',
+  supports: i => i.name === 'mission_summary',
+  async execute({ intent, port, ctx }) {
+    const ops = await port.getOpsMetrics(true);
+    const names = ops.machines.map(m => m.missionName).filter(Boolean) as string[];
+    rememberMissionList(ctx, names);
+    const lines = formatMissionSummaryLines(ops);
+    const mid = names[0];
+    return replyOk(
+      intent.name,
+      lines,
+      { ops },
+      mid ? missionActionKeyboard(mid) : opsActionKeyboard(),
+    );
+  },
+};
+
+const incidentSummary: IntentHandler = {
+  name: 'incident_summary',
+  supports: i => i.name === 'incident_summary',
+  async execute({ intent, port, ctx }) {
+    const signals = await port.detectIncidents();
+    const recs = recommendAll(signals.incidents);
+    ctx.lastAgentIds = signals.incidents.map(i => i.entityId).filter(Boolean) as string[];
+    const lines = formatIncidentCenterLines(signals.incidents, recs);
+    const entity = signals.incidents[0]?.entityId;
+    return replyOk(
+      intent.name,
+      lines,
+      { signals, recs },
+      entity ? incidentKeyboard(entity) : opsActionKeyboard(),
+    );
+  },
+};
+
+const machineDetail: IntentHandler = {
+  name: 'machine_detail',
+  supports: i => i.name === 'machine_detail',
+  async execute({ intent, port, ctx }) {
+    const q = intent.slots.agentId || intent.slots.query || '';
+    const ops = await port.getOpsMetrics(true);
+    const machine =
+      (q && (await port.findMachine(q))) ||
+      ops.machines.find(m => m.activity !== 'idle' && m.activity !== 'offline') ||
+      ops.machines[0] ||
+      null;
+    if (!machine) {
+      return replyFail(intent.name, 'Chưa có máy trong Fleet.');
+    }
+    ctx.lastAgentIds = [machine.agentId];
+    return replyOk(
+      intent.name,
+      formatMachineDetailLines(machine),
+      { machine },
+      machineActionKeyboard(machine.agentId),
+    );
+  },
+};
+
+const browserDetail: IntentHandler = {
+  name: 'browser_detail',
+  supports: i => i.name === 'browser_detail',
+  async execute({ intent, port }) {
+    const browsers = await port.listBrowsers();
+    const ops = await port.getOpsMetrics(false);
+    const busy = browsers.find(b => b.busy) || browsers[0];
+    if (!busy) {
+      const m = ops.machines[0];
+      return replyOk(
+        intent.name,
+        formatBrowserDetailLines({
+          profile: '—',
+          currentUrl: null,
+          memoryMb: m?.rssMb ?? null,
+          agentId: m?.agentId,
+        }),
+        { browsers },
+        browserActionKeyboard(m?.agentId),
+      );
+    }
+    const m = ops.machines.find(x => x.agentId === busy.agentId);
+    return replyOk(
+      intent.name,
+      formatBrowserDetailLines({
+        profile: busy.profile,
+        account: busy.facebookAccount,
+        currentUrl: busy.currentUrl,
+        lockedBy: busy.lockedBy,
+        mission: m?.missionName,
+        memoryMb: m?.rssMb ?? null,
+        agentId: busy.agentId,
+      }),
+      { busy },
+      browserActionKeyboard(busy.agentId),
+    );
+  },
+};
+
+const runtimeExplain: IntentHandler = {
+  name: 'runtime_explain',
+  supports: i => i.name === 'runtime_explain',
+  async execute({ intent, port }) {
+    const lines = await port.explainScanner();
+    return replyOk(intent.name, lines, {}, opsActionKeyboard());
+  },
+};
+
+const opsRecommendation: IntentHandler = {
+  name: 'ops_recommendation',
+  supports: i => i.name === 'ops_recommendation',
+  async execute({ intent, port }) {
+    const signals = await port.detectIncidents();
+    const recs = recommendAll(signals.incidents);
+    if (recs.length === 0) {
+      return replyOk(
+        intent.name,
+        ['Không cần xử lý gì ngay.', 'Fleet và queue đang ổn.'],
+        { signals },
+        opsActionKeyboard(),
+      );
+    }
     const lines = [
-      'Có gì mới:',
-      `• Health ${String(dash.healthScore ?? '—')}/100`,
-      `• Lead hôm nay: ${leads.total}`,
-      `• Agents online ${String(dash.agentsOnline ?? 0)}/${String(dash.agentsTotal ?? 0)}`,
-      offline.length ? `• Offline: ${offline.map(a => a.agentId).join(', ')}` : '• Không có agent offline',
-      `• Queue wait=${String((dash.queue as { waiting?: number } | undefined)?.waiting ?? '—')} fail=${String((dash.queue as { deadLetter?: number } | undefined)?.deadLetter ?? '—')}`,
-      `• Missions run=${String((dash.missions as { running?: number } | undefined)?.running ?? '—')}`,
+      'Cần xử lý:',
+      ...recs.slice(0, 5).map(r => `• ${r.summary} → ${r.actionLabel}`),
     ];
-    return replyOk(intent.name, lines, { dash, leads, offline });
+    return replyOk(intent.name, lines, { recs }, opsActionKeyboard(recs[0].entityId));
   },
 };
 
@@ -95,11 +285,12 @@ const agentsOffline: IntentHandler = {
     const offline = await port.listOfflineAgents();
     ctx.lastAgentIds = offline.map(a => a.agentId);
     if (offline.length === 0) {
-      return replyOk(intent.name, ['Không có agent nào offline.'], { offline });
+      return replyOk(intent.name, ['Không có agent nào offline.'], { offline }, opsActionKeyboard());
     }
     const lines = [
       `${offline.length} agent offline:`,
       ...offline.map((a, i) => `${i + 1}. ${a.agentId} [${a.status}]`),
+      'Khuyến nghị: Restart Agent hoặc kiểm tra process trên máy.',
     ];
     const first = offline[0];
     return replyOk(
@@ -122,7 +313,7 @@ const retryFailedPublish: IntentHandler = {
       'failed_publish',
     );
     if (failed.length === 0) {
-      return replyOk(intent.name, ['Không có publish job lỗi để retry.']);
+      return replyOk(intent.name, ['Không có publish job lỗi để retry.'], {}, opsActionKeyboard());
     }
     const results: string[] = [];
     for (const job of failed) {
@@ -160,7 +351,13 @@ const resumePublish: IntentHandler = {
   async execute({ intent, port }) {
     const cmd = await port.runCommand('/publish queue');
     const text = formatCommandText(cmd);
-    return replyOk(intent.name, ['Khởi động lại / kiểm tra publish queue:', text], { cmd }, undefined, '/publish queue');
+    return replyOk(
+      intent.name,
+      ['Publish queue:', text],
+      { cmd },
+      opsActionKeyboard(),
+      '/publish queue',
+    );
   },
 };
 
@@ -198,14 +395,15 @@ const searchJobs: IntentHandler = {
     const cmd = await port.runCommand('/jobs failed');
     const text = formatCommandText(cmd);
     const ids =
-      (cmd.data?.jobs as Array<{ id?: string }> | undefined)?.map(j => String(j.id || '')).filter(Boolean) ||
-      [];
+      (cmd.data?.jobs as Array<{ id?: string }> | undefined)
+        ?.map(j => String(j.id || ''))
+        .filter(Boolean) || [];
     rememberJobList(ctx, ids, 'failed_jobs');
     return replyOk(
       intent.name,
-      ['Job publish / agent lỗi:', text],
+      ['Job lỗi gần đây:', text],
       cmd.data,
-      ids[0] ? agentJobKeyboard(ids[0]) : undefined,
+      ids[0] ? agentJobKeyboard(ids[0]) : opsActionKeyboard(),
       '/jobs failed',
     );
   },
@@ -217,11 +415,11 @@ const searchCampaigns: IntentHandler = {
   async execute({ intent, port }) {
     const report = await port.report('campaign');
     const lines = [
-      'Campaign (cửa sổ gần đây):',
-      `health=${String(report.healthScore ?? '—')}`,
-      `events=${JSON.stringify(report.eventCounts ?? {}).slice(0, 180)}`,
+      'Campaign Summary',
+      `Health ${String(report.healthScore ?? '—')}/100`,
+      'Chi tiết campaign xem CMS · không dump JSON.',
     ];
-    return replyOk(intent.name, lines, { report });
+    return replyOk(intent.name, lines, { report }, opsActionKeyboard());
   },
 };
 
@@ -236,15 +434,21 @@ const reportHandler: IntentHandler = {
       | 'scanner'
       | 'failed'
       | 'campaign';
-    const report = await port.report(kind);
+    if (kind === 'scanner') {
+      const ops = await port.getOpsMetrics(true);
+      return replyOk(intent.name, formatScannerSummaryLines(ops), { ops }, opsActionKeyboard());
+    }
+    if (kind === 'publish') {
+      const ops = await port.getOpsMetrics(true);
+      return replyOk(intent.name, formatPublisherSummaryLines(ops), { ops }, opsActionKeyboard());
+    }
+    const ops = await port.getOpsMetrics(true);
+    const leads = await port.countLeadsToday();
     return replyOk(
       intent.name,
-      [
-        `Báo cáo · ${kind}`,
-        `health=${String(report.healthScore ?? '—')}`,
-        `metrics=${JSON.stringify(report.metrics ?? {}).slice(0, 200)}`,
-      ],
-      { report },
+      formatDashboardBriefLines(ops, { leadsToday: leads.total }),
+      { kind, ops },
+      opsActionKeyboard(),
     );
   },
 };
@@ -254,7 +458,14 @@ const insightHandler: IntentHandler = {
   supports: i => i.name === 'insight',
   async execute({ intent, port }) {
     const bundle = await port.buildInsights();
-    return replyOk(intent.name, ['AI Insight:', ...bundle.lines], bundle);
+    const signals = await port.detectIncidents();
+    const recs = recommendAll(signals.incidents).slice(0, 3);
+    const lines = [
+      'AI Insight:',
+      ...bundle.lines,
+      ...(recs.length ? ['', 'Khuyến nghị:', ...recs.map(r => `• ${r.summary}`)] : []),
+    ];
+    return replyOk(intent.name, lines, { bundle, recs }, opsActionKeyboard());
   },
 };
 
@@ -267,7 +478,10 @@ const contextualRetry: IntentHandler = {
       resolveIndexedId(ctx.lastJobIds, intent.slots.jobIndex) ||
       resolveIndexedId(ctx.lastMissionIds, intent.slots.jobIndex);
     if (!id) {
-      return replyFail(intent.name, 'Chưa có danh sách job/mission trong context. Gõ /jobs trước.');
+      return replyFail(
+        intent.name,
+        'Chưa có danh sách job/mission trong context. Hỏi "Có lỗi không?" trước.',
+      );
     }
     const cmd = await port.runCommand(`/retry ${id}`);
     return replyOk(
@@ -312,7 +526,11 @@ const approvalAction: IntentHandler = {
       return replyOk(intent.name, [`Create Mission ${id}:`, formatCommandText(cmd)], { id });
     }
     if (action === 'edit') {
-      return replyOk(intent.name, [`Edit lead ${id}: mở CMS Lead Intelligence để chỉnh.`, `id=${id}`], { id });
+      return replyOk(
+        intent.name,
+        [`Edit lead ${id}: mở CMS Lead Intelligence để chỉnh.`, `id=${id}`],
+        { id },
+      );
     }
     const cmd = await port.runCommand(`/lead retry ${id}`);
     return replyOk(intent.name, [`Approve/Notify ${id}:`, formatCommandText(cmd)], { id });
@@ -328,20 +546,26 @@ const incidentAction: IntentHandler = {
     if (!id) return replyFail(intent.name, 'Thiếu entity cho incident.');
     if (action === 'mute') {
       if (!ctx.mutedIncidentKeys.includes(id)) ctx.mutedIncidentKeys.push(id);
-      return replyOk(intent.name, [`Đã mute incident: ${id}`], { id });
+      return replyOk(intent.name, [`Đã mute incident: ${id}`], { id }, opsActionKeyboard(id));
     }
     if (action === 'ack' || action === 'acknowledge') {
-      return replyOk(intent.name, [`Acknowledged: ${id}`], { id });
+      return replyOk(intent.name, [`Acknowledged: ${id}`], { id }, opsActionKeyboard(id));
     }
     if (action === 'escalate') {
       return replyOk(
         intent.name,
-        [`Escalate ${id}: đã ghi OPS_REQUEST escalate (qua /agent restart nếu agent).`],
+        [`Escalate ${id}: đã ghi nhận — có thể Restart Agent.`],
         { id },
+        incidentKeyboard(id),
       );
     }
     const cmd = await port.runCommand(`/agent restart ${id}`);
-    return replyOk(intent.name, [`Retry/Restart ${id}:`, formatCommandText(cmd)], { id });
+    return replyOk(
+      intent.name,
+      [`Retry/Restart ${id}:`, formatCommandText(cmd)],
+      { id },
+      machineActionKeyboard(id),
+    );
   },
 };
 
@@ -350,18 +574,30 @@ const helpHandler: IntentHandler = {
   supports: i => i.name === 'help' || i.name === 'unknown',
   async execute({ intent, text }) {
     if (intent.name === 'unknown') {
-      return replyOk(intent.name, [
-        `Mình chưa chắc ý "${text.slice(0, 80)}".`,
-        'Thử: "Có gì mới?", "Hôm nay có bao nhiêu lead?", "Có agent nào offline?",',
-        '"Retry tất cả publish lỗi.", "Tìm lead Hòa Xuân hôm nay.", hoặc /help',
-      ]);
+      return replyOk(
+        intent.name,
+        [
+          `Mình chưa chắc ý "${text.slice(0, 80)}".`,
+          'Thử: "Có gì mới?" · "Máy nào đang bận?" · "Có lỗi không?"',
+          '"Scanner sao rồi?" · "Publisher thế nào?" · "Tại sao Scanner không chạy?"',
+          'Hoặc /help',
+        ],
+        {},
+        opsActionKeyboard(),
+      );
     }
-    return replyOk(intent.name, [
-      'Copilot — nói tiếng Việt hoặc slash command.',
-      'VD: Có gì mới? · Lead hôm nay · Agent offline · Retry publish lỗi',
-      'Context: sau /jobs có thể nói "retry job 1"',
-      'Slash: /dashboard /jobs /mission /publish /report /lead',
-    ]);
+    return replyOk(
+      intent.name,
+      [
+        'AI Operations Copilot — hỏi tiếng Việt, không cần slash.',
+        '• Có gì mới? · Máy nào đang bận? · Có lỗi không?',
+        '• Scanner / Publisher / Mission summary',
+        '• Chi tiết máy · Browser · Khuyến nghị',
+        'Mọi thao tác qua Control Plane · nút inline sẵn trên mỗi trả lời.',
+      ],
+      {},
+      opsActionKeyboard(),
+    );
   },
 };
 
@@ -383,7 +619,7 @@ const rawCommand: IntentHandler = {
       intent.name,
       [formatCommandText(cmd)],
       cmd.data,
-      cmd.replyMarkup,
+      cmd.replyMarkup || opsActionKeyboard(),
       raw,
     );
   },
@@ -392,6 +628,15 @@ const rawCommand: IntentHandler = {
 export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
   const all = [
     whatsNew,
+    fleetSummary,
+    scannerSummary,
+    publisherSummary,
+    missionSummary,
+    incidentSummary,
+    machineDetail,
+    browserDetail,
+    runtimeExplain,
+    opsRecommendation,
     leadCount,
     agentsOffline,
     retryFailedPublish,

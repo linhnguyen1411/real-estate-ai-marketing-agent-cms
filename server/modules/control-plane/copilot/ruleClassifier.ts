@@ -73,13 +73,22 @@ const RULES: Rule[] = [
       ),
   },
   {
+    name: 'runtime_explain',
+    confidence: 0.97,
+    test: t =>
+      /tại sao scanner|tai sao scanner|why scanner|scanner không chạy|scanner khong chay|không scan|khong scan/.test(
+        t,
+      ),
+  },
+  {
     name: 'scanner_summary',
     confidence: 0.94,
     test: t =>
-      /scanner sao|scan sao|scanner thế|scanner the|scanner thế nào|scanner the nao|scanner\??$|tình hình scan|tinh hinh scan/.test(
+      !/tại sao|tai sao|why|không chạy|khong chay/.test(t) &&
+      (/scanner sao|scan sao|scanner thế|scanner the|scanner thế nào|scanner the nao|scanner\??$|tình hình scan|tinh hinh scan/.test(
         t,
       ) ||
-      (/scanner|scan/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t)),
+        (/scanner|scan/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t))),
   },
   {
     name: 'publisher_summary',
@@ -95,14 +104,6 @@ const RULES: Rule[] = [
     test: t =>
       /mission thế|mission the|mission sao|mission\??$|nhiệm vụ/.test(t) ||
       (/mission|nhiệm vụ|nhiem vu/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t)),
-  },
-  {
-    name: 'runtime_explain',
-    confidence: 0.96,
-    test: t =>
-      /tại sao scanner|tai sao scanner|why scanner|scanner không chạy|scanner khong chay|không scan|khong scan/.test(
-        t,
-      ),
   },
   {
     name: 'machine_detail',

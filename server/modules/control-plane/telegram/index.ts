@@ -26,6 +26,9 @@ export {
   leadAlertKeyboard,
   approvalKeyboard,
   incidentKeyboard,
+  opsActionKeyboard,
+  machineActionKeyboard,
+  browserActionKeyboard,
   callbackDataToCommand,
 } from '../inlineKeyboard';
 export {

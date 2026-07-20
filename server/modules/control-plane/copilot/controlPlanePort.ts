@@ -104,6 +104,8 @@ function emptyOps(): OperationsMetricsSnapshot {
       failedJobs: 0,
     },
     machines: [],
+    fleetState: null,
+    agents: [],
   };
 }
 
