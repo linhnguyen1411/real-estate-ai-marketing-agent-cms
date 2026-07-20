@@ -1361,7 +1361,17 @@ if (AGENT_ENABLED) {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
 registerAgentIngestRoutes(app, { getAuthUser, accessDefaults });
-if (!AGENT_ENABLED) {
+if (AGENT_ENABLED) {
+  // Unknown /api/agent/* must stay JSON (never SPA HTML → "Phản hồi không đúng JSON").
+  // Must run AFTER all /api/agent registrations (admin + ingest credentials).
+  app.use('/api/agent', (_req: Request, res: Response) => {
+    res.status(404).json({
+      status: 'error',
+      message:
+        'Agent API route không tồn tại. Restart server nếu vừa thêm endpoint mới (operations/fleet/runtime).',
+    });
+  });
+} else {
   // Never fall through to Vite HTML for /api/agent/* — frontend expects JSON.
   app.use('/api/agent', (_req: Request, res: Response) => {
     res.status(503).json({

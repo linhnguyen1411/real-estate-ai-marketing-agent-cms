@@ -38,9 +38,14 @@ async function parseJsonResponse(response: Response) {
   try {
     return JSON.parse(text);
   } catch {
+    const looksHtml = /^\s*</.test(text) || /<!doctype html/i.test(text);
     return {
       status: 'error' as const,
-      message: response.ok ? 'Phản hồi không đúng JSON.' : `Lỗi ${response.status}`,
+      message: looksHtml
+        ? `API trả HTML thay vì JSON (${response.status}). Restart server — endpoint mới có thể chưa được đăng ký.`
+        : response.ok
+          ? 'Phản hồi không đúng JSON.'
+          : `Lỗi ${response.status}`,
     };
   }
 }

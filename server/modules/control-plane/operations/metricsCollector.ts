@@ -311,8 +311,9 @@ export async function collectOperationsMetrics(input?: {
     mission: db.mission,
     workload: db.workload,
     machines,
-    fleetState: fleet,
-    agents: fleet.agents,
+    // Lean for JSON API — avoid nesting full agent snapshots twice.
+    fleetState: null,
+    agents: [],
   };
 
   lastByCompany.set(companyKey(companyId), snapshot);

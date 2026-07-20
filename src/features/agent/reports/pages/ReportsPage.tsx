@@ -49,7 +49,10 @@ export default function AgentReports() {
           : windowKind === 'hour' || windowKind === '24h'
             ? 'runtime_health'
             : 'daily';
-      const [daily, operations, controlPlane] = await Promise.all([
+
+      // Soft-fail ops/control-plane so daily report still renders if new endpoints
+      // are missing (server not restarted) or return HTML/errors.
+      const [dailyResult, opsResult, cpResult] = await Promise.allSettled([
         fetchAgentDailyReport({
           date,
           includeAiSummary: includeAi,
@@ -57,9 +60,54 @@ export default function AgentReports() {
         fetchOperationsMetrics({ refresh: true }),
         fetchControlPlaneReport({ kind, date }),
       ]);
-      setReport(daily);
-      setOps(operations);
-      setCpReport(controlPlane);
+
+      if (dailyResult.status === 'fulfilled') {
+        setReport(dailyResult.value);
+      } else {
+        setReport(null);
+      }
+
+      if (opsResult.status === 'fulfilled') {
+        setOps(opsResult.value);
+      } else {
+        setOps(null);
+      }
+
+      if (cpResult.status === 'fulfilled') {
+        setCpReport(cpResult.value);
+      } else {
+        setCpReport(null);
+      }
+
+      if (dailyResult.status === 'rejected') {
+        const msg =
+          dailyResult.reason instanceof Error
+            ? dailyResult.reason.message
+            : 'Không tải được báo cáo ngày.';
+        // Only hard-fail when daily report itself fails.
+        if (opsResult.status === 'rejected' && cpResult.status === 'rejected') {
+          setError(msg);
+        } else {
+          setError(msg);
+        }
+      } else {
+        const soft: string[] = [];
+        if (opsResult.status === 'rejected') {
+          soft.push(
+            opsResult.reason instanceof Error
+              ? opsResult.reason.message
+              : 'Operations metrics lỗi',
+          );
+        }
+        if (cpResult.status === 'rejected') {
+          soft.push(
+            cpResult.reason instanceof Error
+              ? cpResult.reason.message
+              : 'Control Plane report lỗi',
+          );
+        }
+        setError(soft.length ? `Một phần: ${soft.join(' · ')}` : '');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được báo cáo.');
     } finally {
@@ -127,6 +175,16 @@ export default function AgentReports() {
           </div>
         }
       />
+
+      {error && (
+        <p
+          className={`text-xs ${
+            error.startsWith('Một phần') ? 'text-amber-300' : 'text-rose-300'
+          }`}
+        >
+          {error}
+        </p>
+      )}
 
       {ops && (
         <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
