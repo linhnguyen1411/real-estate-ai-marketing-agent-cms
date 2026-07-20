@@ -328,25 +328,53 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'browser',
-    description: 'Fleet browser pool ops (soft commands via Event Bus)',
-    usage: '/browser | /browser profiles|release|recover|restart|screenshot',
+    description: 'Fleet browser ownership & lease ops (soft commands via Event Bus)',
+    usage:
+      '/browser | /browser profiles|release|force|takeover|recover|restart|screenshot [agentId]',
     handler: async (args, ctx) => {
       const sub = (args[0] || '').toLowerCase();
-      if (sub === 'release' || sub === 'recover' || sub === 'screenshot' || sub === 'restart') {
+      if (
+        sub === 'release' ||
+        sub === 'recover' ||
+        sub === 'screenshot' ||
+        sub === 'restart' ||
+        sub === 'force' ||
+        sub === 'takeover'
+      ) {
         const agentId = args[1] || null;
-        const r = await opsBrowserCommand(sub === 'restart' ? 'restart' : sub, ctx.companyId, agentId);
+        const r = await opsBrowserCommand(
+          sub === 'restart' ? 'restart' : (sub as 'release' | 'recover' | 'screenshot' | 'force' | 'takeover'),
+          ctx.companyId,
+          agentId,
+        );
         return ok('browser', [`Browser ${sub} requested (OPS via heartbeat — no SSH)`], r);
       }
       if (sub === 'refresh') {
         const r = await opsRefreshRuntime(args[1] || null, ctx.companyId);
         return ok('browser', [`Runtime refresh requested for ${r.agentId}`], r);
       }
-      const { browsers } = await opsGetFleet(ctx.companyId);
-      return ok(
-        'browser',
-        formatFleetBrowserLines(browsers),
-        { browsers: browsers.length },
+      if (sub === 'profiles') {
+        const r = await opsBrowserCommand('profiles', ctx.companyId);
+        return ok(
+          'browser',
+          Array.isArray((r as { lines?: string[] }).lines)
+            ? (r as { lines: string[] }).lines
+            : [`Profiles: ${(r as { profiles?: unknown[] }).profiles?.length ?? 0}`],
+          r,
+        );
+      }
+      const { listBrowserOwnership, formatBrowserOwnershipLines } = await import(
+        '../browser-ownership'
       );
+      const ownership = listBrowserOwnership();
+      if (ownership.length > 0) {
+        return ok('browser', formatBrowserOwnershipLines(ownership), {
+          browsers: ownership.length,
+          ownership,
+        });
+      }
+      const { browsers } = await opsGetFleet(ctx.companyId);
+      return ok('browser', formatFleetBrowserLines(browsers), { browsers: browsers.length });
     },
   });
 

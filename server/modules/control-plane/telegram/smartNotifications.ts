@@ -88,10 +88,16 @@ export function mapRuntimeEventToSmartKind(ev: {
       return 'QUEUE_BLOCKED';
     case 'BROWSER_CRASH':
       return 'BROWSER_CRASH';
+    case 'BROWSER_EXPIRED':
+    case 'BROWSER_RECOVERED':
+      return 'BROWSER_CRASH';
     case 'BROWSER_LEASED':
-    case 'BROWSER_RELEASED': {
+    case 'BROWSER_RELEASED':
+    case 'BROWSER_HEARTBEAT':
+    case 'BROWSER_TAKEOVER':
+    case 'BROWSER_RESTARTED': {
       const err = String(payload.error || payload.reason || '').toLowerCase();
-      if (payload.crashed === true || err.includes('crash')) {
+      if (payload.crashed === true || err.includes('crash') || err.includes('orphan')) {
         return 'BROWSER_CRASH';
       }
       return null;

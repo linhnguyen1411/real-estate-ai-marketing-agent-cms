@@ -49,7 +49,9 @@ function ramUsedPct(a: FleetAgent): number | null {
 }
 
 function browserFreeCount(a: FleetAgent): number {
-  return a.browserProfiles.filter(p => !p.busy && p.state !== 'leased').length;
+  return a.browserProfiles.filter(
+    p => !p.busy && p.state !== 'leased' && p.state !== 'active' && p.state !== 'leasing',
+  ).length;
 }
 
 /**

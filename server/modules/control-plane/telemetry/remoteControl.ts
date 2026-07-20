@@ -13,7 +13,10 @@ export type RemoteControlAction =
   | 'resume_job'
   | 'cancel_job'
   | 'release_browser'
+  | 'force_release_browser'
+  | 'takeover_browser'
   | 'restart_browser'
+  | 'recover_browser'
   | 'refresh_runtime'
   | 'restart_agent';
 
@@ -23,9 +26,15 @@ const ACTION_ALIASES: Record<string, RemoteControlAction> = {
   resume: 'resume_job',
   cancel: 'cancel_job',
   release: 'release_browser',
-  'browser_release': 'release_browser',
-  recover: 'restart_browser',
-  'browser_recover': 'restart_browser',
+  browser_release: 'release_browser',
+  release_browser: 'release_browser',
+  force_release: 'force_release_browser',
+  force_release_browser: 'force_release_browser',
+  takeover: 'takeover_browser',
+  takeover_browser: 'takeover_browser',
+  recover: 'recover_browser',
+  browser_recover: 'recover_browser',
+  recover_browser: 'recover_browser',
   restart_browser: 'restart_browser',
   refresh: 'refresh_runtime',
   restart: 'restart_agent',

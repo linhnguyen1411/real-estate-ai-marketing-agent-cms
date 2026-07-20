@@ -89,6 +89,14 @@ export type FleetBrowserRow = {
   currentUrl: string | null;
   lockedBy: string | null;
   state: string;
+  /** G1.5 ownership */
+  browserId?: string;
+  purpose?: string | null;
+  missionRunId?: string | null;
+  leaseRemainingSec?: number | null;
+  runningSec?: number | null;
+  lastHeartbeat?: string | null;
+  workerId?: string | null;
 };
 
 export type FleetJobOwnership = {

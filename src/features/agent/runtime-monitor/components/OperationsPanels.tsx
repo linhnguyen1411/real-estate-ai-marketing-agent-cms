@@ -225,8 +225,8 @@ export const BrowserPanel = memo(function BrowserPanel({
 }) {
   return (
     <GlassPanel
-      title="Browser"
-      subtitle="Profiles · Facebook · lock"
+      title="Browser Pool"
+      subtitle="Owner · Lease · TTL · Mission"
       actions={
         <div className="flex gap-1">
           <StatusBadge label={`${fleetBrowserBusy} busy`} tone="busy" />
@@ -239,7 +239,27 @@ export const BrowserPanel = memo(function BrowserPanel({
       ) : (
         <ul className="space-y-1.5">
           {browsers.slice(0, 16).map((b, i) => {
-            const busy = String(b.state || '') === 'leased' || Boolean(b.ownerJob);
+            const state = String(b.state || '');
+            const busy =
+              state === 'leased' ||
+              state === 'active' ||
+              state === 'leasing' ||
+              Boolean(b.ownerJob) ||
+              Boolean(b.jobId);
+            const owner =
+              b.machineId || b.agentId || b.workerId || b.hostname || '—';
+            const job = b.ownerJob || b.jobId || b.lockedBy || '—';
+            const mission = b.ownerMission || b.missionRunId || b.currentMission || '—';
+            const ttl =
+              b.leaseRemainingSec != null ? `${b.leaseRemainingSec}s` : '—';
+            const hb =
+              b.lastHeartbeat || b.heartbeatAt
+                ? String(b.lastHeartbeat || b.heartbeatAt).slice(11, 19)
+                : '—';
+            const age =
+              b.leaseAgeSec != null || b.runningSec != null
+                ? `${b.leaseAgeSec ?? b.runningSec}s`
+                : '—';
             return (
               <li
                 key={String(b.browserId || i)}
@@ -249,16 +269,19 @@ export const BrowserPanel = memo(function BrowserPanel({
                   <span className="font-semibold text-slate-100">
                     {String(b.browserId || b.purpose || 'browser')}
                   </span>
-                  <StatusBadge label={busy ? 'Busy' : 'Idle'} tone={busy ? 'busy' : 'ok'} />
+                  <StatusBadge
+                    label={busy ? String(state || 'Busy') : 'Idle'}
+                    tone={busy ? 'busy' : 'ok'}
+                  />
                 </div>
                 <div className="mt-1 space-y-0.5 text-slate-500">
-                  <div>Facebook · {String(b.facebookAccount || b.purpose || '—')}</div>
+                  <div>Owner · {String(owner).slice(0, 40)}</div>
+                  <div>Job · {String(job).slice(0, 28)} · Mission · {String(mission).slice(0, 24)}</div>
+                  <div>
+                    Lease · {age} · TTL · {ttl} · HB · {hb}
+                  </div>
                   <div className="truncate">
                     URL · {b.currentUrl ? String(b.currentUrl).slice(0, 64) : '—'}
-                  </div>
-                  <div>
-                    Locked by ·{' '}
-                    {String(b.ownerJob || b.ownerMission || b.lockedBy || '—').slice(0, 24)}
                   </div>
                 </div>
               </li>

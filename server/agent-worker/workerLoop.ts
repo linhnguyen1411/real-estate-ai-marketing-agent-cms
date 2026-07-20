@@ -105,7 +105,29 @@ export class WorkerLoop {
     while (this.running && !isShuttingDown()) {
       try {
         this.executionPool.tickHeartbeat();
-        this.browserPool.tickHeartbeat();
+        const leaseTick = this.browserPool.tickHeartbeat();
+        if (leaseTick.expired.length > 0) {
+          try {
+            const { emitRuntimeEventAsync } = await import(
+              '../modules/control-plane/runtimeEventBus'
+            );
+            for (const e of leaseTick.expired) {
+              emitRuntimeEventAsync({
+                type: 'BROWSER_EXPIRED',
+                agentId: this.config.workerId,
+                entityType: 'browser',
+                entityId: e.purpose,
+                payload: {
+                  purpose: e.purpose,
+                  jobId: e.jobId,
+                  reason: 'lease_ttl',
+                },
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
 
         if (!this.anyAcceptableSlot()) {
           await sleep(this.config.pollIntervalMs);
@@ -227,7 +249,13 @@ export class WorkerLoop {
               agentId: this.config.workerId,
               entityType: 'job',
               entityId: job.id,
-              payload: { purpose: kind, browserId: browserLease.browserId },
+              payload: {
+                purpose: kind,
+                browserId: browserLease.browserId,
+                leaseId: browserLease.leaseId,
+                missionRunId: job.missionRunId ?? null,
+                workerId: this.config.workerId,
+              },
             });
           } catch {
             /* ignore */
@@ -280,7 +308,11 @@ export class WorkerLoop {
               agentId: this.config.workerId,
               entityType: 'job',
               entityId: job.id,
-              payload: { purpose: kind },
+              payload: {
+                purpose: kind,
+                leaseId: browserLease.leaseId,
+                browserId: browserLease.browserId,
+              },
             });
             if (slotLease) {
               emitRuntimeEventAsync({

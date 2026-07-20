@@ -221,7 +221,24 @@ export async function runtimeAgentOffline(input: {
     payload: { requeued },
   });
 
-  return { agentId, status: 'offline', requeued };
+  try {
+    const { handleAgentOfflineBrowserOwnership } = await import(
+      './browser-ownership'
+    );
+    const ownership = handleAgentOfflineBrowserOwnership({
+      agentId,
+      autoRecover: true,
+    });
+    return {
+      agentId,
+      status: 'offline' as const,
+      requeued,
+      browserOrphans: ownership.orphaned.length,
+      browserRecoverRequested: ownership.recoverRequested,
+    };
+  } catch {
+    return { agentId, status: 'offline' as const, requeued };
+  }
 }
 
 export async function runtimeAgentClaimJob(input: {

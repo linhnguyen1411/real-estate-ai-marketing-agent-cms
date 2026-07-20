@@ -237,8 +237,15 @@ export function listFleetBrowsers(agents: FleetAgent[]): FleetBrowserRow[] {
         facebookAccount: p.facebookAccount || null,
         busy: p.busy,
         currentUrl: p.currentUrl || null,
-        lockedBy: p.lockedBy || null,
+        lockedBy: p.lockedBy || p.jobId || null,
         state: p.state,
+        browserId: p.browserId,
+        purpose: p.purpose || null,
+        missionRunId: p.missionRunId || p.currentMission || null,
+        leaseRemainingSec: p.leaseRemainingSec ?? null,
+        runningSec: p.runningSec ?? null,
+        lastHeartbeat: p.lastHeartbeat || null,
+        workerId: p.workerId || null,
       });
     }
   }

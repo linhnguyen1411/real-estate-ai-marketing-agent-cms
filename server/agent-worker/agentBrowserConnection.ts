@@ -13,6 +13,7 @@ import {
   type SanitizedCdpEndpoint,
   type WorkerConfig,
 } from './config';
+import { formatProfileLockDiagnostic } from './runtime/profileLeaseSidecar';
 
 export interface GetOrCreatePageOptions {
   preferredDomain?: string;
@@ -80,7 +81,8 @@ export class ManagedBrowserConnection implements AgentBrowserConnection {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/lock|Singleton|profile.*in use|already in use/i.test(message)) {
-        throw new Error(`BROWSER_PROFILE_LOCKED: ${message}`);
+        const ownership = ` | ${formatProfileLockDiagnostic(profileDir)}`;
+        throw new Error(`BROWSER_PROFILE_LOCKED: ${message}${ownership}`);
       }
       throw error;
     }

@@ -117,14 +117,42 @@ async function main(): Promise<void> {
         const action = String(cmd.action || '');
         try {
           if (action === 'release_browser' || action === 'browser_release') {
+            const n = browserPool.releaseAll();
+            console.log(`[automation-agent] OPS release_browser ${cmd.id} released=${n}`);
+          } else if (action === 'force_release_browser') {
+            const n = browserPool.releaseAll();
+            console.log(`[automation-agent] OPS force_release_browser ${cmd.id} released=${n}`);
+          } else if (action === 'takeover_browser') {
             browserPool.releaseAll();
-            console.log(`[automation-agent] OPS release_browser ${cmd.id}`);
-          } else if (action === 'restart_browser' || action === 'browser_recover') {
+            console.log(`[automation-agent] OPS takeover_browser ${cmd.id} — leases cleared for re-acquire`);
+          } else if (
+            action === 'restart_browser' ||
+            action === 'browser_recover' ||
+            action === 'recover_browser'
+          ) {
             browserPool.releaseAll();
+            for (const purpose of ['scan', 'publish', 'messaging', 'comment'] as const) {
+              browserPool.recoverCrashed(purpose);
+            }
             await browser.shutdown().catch(() => undefined);
             await browser.launch();
-            console.log(`[automation-agent] OPS restart_browser ${cmd.id}`);
+            try {
+              const { emitRuntimeEventAsync } = await import(
+                '../modules/control-plane/runtimeEventBus'
+              );
+              emitRuntimeEventAsync({
+                type: action.includes('recover') ? 'BROWSER_RECOVERED' : 'BROWSER_RESTARTED',
+                agentId: config.workerId,
+                entityType: 'browser',
+                entityId: config.workerId,
+                payload: { action, commandId: cmd.id },
+              });
+            } catch {
+              /* ignore */
+            }
+            console.log(`[automation-agent] OPS ${action} ${cmd.id}`);
           } else if (action === 'refresh_runtime') {
+            browserPool.tickHeartbeat();
             console.log(`[automation-agent] OPS refresh_runtime ${cmd.id}`);
           } else if (action === 'restart_agent') {
             console.log(`[automation-agent] OPS restart_agent ${cmd.id} — exiting for process manager`);

@@ -85,9 +85,24 @@ export function formatFleetBrowserLines(rows: FleetBrowserRow[]): string[] {
     return lines;
   }
   for (const r of rows.slice(0, 15)) {
-    lines.push(
-      `• ${r.hostname}/${r.profile} [${r.state}] busy=${r.busy ? 'yes' : 'no'} fb=${r.facebookAccount || '—'} url=${(r.currentUrl || '—').slice(0, 50)}`,
-    );
+    const name = r.profile.split(/[/\\]/).pop() || r.profile;
+    const locked =
+      r.runningSec != null
+        ? r.runningSec < 60
+          ? `${r.runningSec}s`
+          : `${Math.floor(r.runningSec / 60)}m${String(r.runningSec % 60).padStart(2, '0')}s`
+        : r.busy
+          ? 'yes'
+          : 'idle';
+    const hb = r.lastHeartbeat
+      ? `${Math.max(0, Math.round((Date.now() - Date.parse(r.lastHeartbeat)) / 1000))}s`
+      : '—';
+    lines.push(`── ${name}`);
+    lines.push(`Owner · ${r.hostname}`);
+    if (r.missionRunId) lines.push(`Mission · ${r.missionRunId}`);
+    if (r.lockedBy) lines.push(`Job · ${r.lockedBy}`);
+    lines.push(`State · ${r.state} · Locked ${locked} · Heartbeat ${hb}`);
+    if (r.leaseRemainingSec != null) lines.push(`Lease TTL · ${r.leaseRemainingSec}s`);
   }
   return lines;
 }

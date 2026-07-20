@@ -76,22 +76,48 @@ export function normalizeBrowserProfiles(
   return browsers.map((raw, i) => {
     const b = asRecord(raw);
     const state = str(b.state) || 'unknown';
-    const leasedAt = str(b.leasedAt);
+    const leasedAtRaw = b.leasedAt ?? b.createdAt ?? b.leaseCreatedAt;
+    const leasedAt =
+      typeof leasedAtRaw === 'number'
+        ? new Date(leasedAtRaw).toISOString()
+        : str(leasedAtRaw);
     const runningSec =
       leasedAt && Number.isFinite(Date.parse(leasedAt))
         ? Math.max(0, Math.round((Date.now() - Date.parse(leasedAt)) / 1000))
-        : num(b.leaseAgeSec);
+        : num(b.leaseAgeSec) ?? num(b.runningSec);
+    const busy =
+      state === 'leased' ||
+      state === 'active' ||
+      state === 'leasing' ||
+      state === 'releasing' ||
+      state === 'busy';
+    const hbRaw = b.heartbeatAt ?? b.lastHeartbeat;
+    const lastHeartbeat =
+      typeof hbRaw === 'number'
+        ? new Date(hbRaw).toISOString()
+        : str(hbRaw);
     return {
       browserId: str(b.browserId) || `browser-${i}`,
-      profile: str(b.profile) || str(meta.profilePath) || 'default',
+      profile: str(b.profile) || str(b.profileName) || str(meta.profilePath) || 'default',
       state,
       facebookAccount,
       currentUrl: str(b.currentUrl) || currentUrl || null,
       currentAction: str(b.currentAction) || str(resources.currentAction) || null,
-      currentMission: str(b.ownerMission) || str(b.currentMission) || null,
-      busy: state === 'leased' || state === 'busy',
-      lockedBy: str(b.ownerJob) || str(b.lockedBy) || null,
+      currentMission: str(b.ownerMission) || str(b.currentMission) || str(b.missionRunId) || null,
+      busy,
+      lockedBy: str(b.ownerJob) || str(b.jobId) || str(b.lockedBy) || null,
       runningSec,
+      machineId: str(b.machineId) || str(meta.machineId) || null,
+      agentId: str(b.agentId) || str(meta.agentId) || str(meta.workerId) || null,
+      workerId: str(b.workerId) || str(meta.workerId) || null,
+      jobId: str(b.ownerJob) || str(b.jobId) || null,
+      missionRunId: str(b.ownerMission) || str(b.missionRunId) || null,
+      purpose: str(b.purpose) || null,
+      leaseId: str(b.leaseId) || null,
+      leaseTimeoutMs: num(b.leaseTimeoutMs),
+      leaseRemainingSec: num(b.leaseRemainingSec),
+      lastHeartbeat,
+      leaseCreatedAt: leasedAt,
     };
   });
 }

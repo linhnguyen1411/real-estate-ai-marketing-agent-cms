@@ -268,7 +268,10 @@ export async function buildAutomationRuntimeSnapshot(user: AuthUser) {
   const slotUtilization =
     slotCap > 0 ? Math.round((slotUtil / slotCap) * 1000) / 10 : null;
 
-  const leasedBrowsers = browsers.filter(b => b.state === 'leased').length;
+  const leasedBrowsers = browsers.filter(b => {
+    const s = String(b.state || '');
+    return s === 'leased' || s === 'active' || s === 'leasing' || Boolean(b.ownerJob);
+  }).length;
   const browserUtilization =
     browsers.length > 0
       ? Math.round((leasedBrowsers / browsers.length) * 1000) / 10

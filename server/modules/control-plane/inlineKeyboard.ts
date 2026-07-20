@@ -182,13 +182,14 @@ export function browserActionKeyboard(agentId?: string | null): InlineKeyboard {
   return {
     inline_keyboard: [
       [
-        { text: 'Screenshot', callback_data: `b:s:${id}` },
         { text: 'Release', callback_data: `b:e:${id}` },
+        { text: 'Recover', callback_data: `b:r:${id}` },
       ],
       [
-        { text: 'Recover', callback_data: `b:r:${id}` },
-        { text: 'Refresh', callback_data: `b:f:${id}` },
+        { text: 'Screenshot', callback_data: `b:s:${id}` },
+        { text: 'Restart', callback_data: `b:t:${id}` },
       ],
+      [{ text: 'Refresh', callback_data: `b:f:${id}` }],
     ],
   };
 }
@@ -263,6 +264,7 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 's') return `/browser screenshot`;
     if (action === 'e') return `/browser release`;
     if (action === 'r') return `/browser recover`;
+    if (action === 't') return `/browser restart`;
     if (action === 'f') return `/browser`;
   }
   return null;

@@ -36,6 +36,18 @@ export type BrowserProfileTelemetry = {
   busy: boolean;
   lockedBy?: string | null;
   runningSec?: number | null;
+  /** G1.5 ownership / lease */
+  machineId?: string | null;
+  agentId?: string | null;
+  workerId?: string | null;
+  jobId?: string | null;
+  missionRunId?: string | null;
+  purpose?: string | null;
+  leaseId?: string | null;
+  leaseTimeoutMs?: number | null;
+  leaseRemainingSec?: number | null;
+  lastHeartbeat?: string | null;
+  leaseCreatedAt?: string | null;
 };
 
 export type JobTelemetrySummary = {

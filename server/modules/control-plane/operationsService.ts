@@ -401,26 +401,45 @@ export async function opsBrowserStatus(user: AuthUser) {
 }
 
 export async function opsBrowserCommand(
-  action: 'release' | 'recover' | 'screenshot' | 'profiles' | 'restart',
+  action:
+    | 'release'
+    | 'recover'
+    | 'screenshot'
+    | 'profiles'
+    | 'restart'
+    | 'force'
+    | 'takeover',
   companyId?: string | null,
   agentId?: string | null,
 ) {
   const { requestRemoteControl, listAgentSnapshots } = await import('./telemetry');
   if (action === 'profiles') {
+    const { listBrowserOwnership, formatBrowserOwnershipLines } = await import(
+      './browser-ownership'
+    );
+    const ownership = listBrowserOwnership();
     return {
       action,
       profiles: listAgentSnapshots().flatMap(s =>
         s.browserProfiles.map(p => ({ agentId: s.agentId, ...p })),
       ),
+      ownership,
+      lines: formatBrowserOwnershipLines(ownership),
     };
   }
 
   const mapped =
     action === 'release'
       ? 'release_browser'
-      : action === 'recover' || action === 'restart'
-        ? 'restart_browser'
-        : 'refresh_runtime';
+      : action === 'force'
+        ? 'force_release_browser'
+        : action === 'takeover'
+          ? 'takeover_browser'
+          : action === 'recover'
+            ? 'recover_browser'
+            : action === 'restart'
+              ? 'restart_browser'
+              : 'refresh_runtime';
 
   const target =
     agentId ||

@@ -39,8 +39,15 @@ export function formatBrowserTelemetryLines(snap: ExecutionAgentRuntimeSnapshot)
     return lines;
   }
   for (const p of snap.browserProfiles.slice(0, 10)) {
+    const locked =
+      p.runningSec != null
+        ? p.runningSec < 60
+          ? `${p.runningSec}s`
+          : `${Math.floor(p.runningSec / 60)}m${p.runningSec % 60}s`
+        : '—';
+    const ttl = p.leaseRemainingSec != null ? `${p.leaseRemainingSec}s` : '—';
     lines.push(
-      `• ${p.profile} [${p.state}] busy=${p.busy ? 'yes' : 'no'} lockedBy=${p.lockedBy || '—'} url=${(p.currentUrl || '—').slice(0, 60)}`,
+      `• ${p.profile} [${p.state}] owner=${p.agentId || snap.agentId} job=${p.lockedBy || '—'} mission=${p.currentMission || '—'} locked=${locked} ttl=${ttl}`,
     );
   }
   return lines;
