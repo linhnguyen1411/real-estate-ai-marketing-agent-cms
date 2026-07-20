@@ -604,8 +604,35 @@ export function fetchAgentSessions(params: {
   return agentListRequest<BrowserSession>(`/api/agent/sessions${qs(params)}`);
 }
 
-export function fetchAutomationRuntime() {
-  return agentRequest<AutomationRuntimeSnapshot>('/api/agent/runtime');
+export function fetchAutomationRuntime(params: { refresh?: boolean } = {}) {
+  const q = params.refresh ? '?refresh=1' : '';
+  return agentRequest<AutomationRuntimeSnapshot>(`/api/agent/runtime${q}`);
+}
+
+export function fetchOperationsMetrics(params: { refresh?: boolean } = {}) {
+  const q = params.refresh ? '?refresh=1' : '';
+  return agentRequest<import('../types/agentPlatform').OperationsMetricsSnapshot>(
+    `/api/agent/operations${q}`,
+  );
+}
+
+export function fetchFleetState() {
+  return agentRequest<{
+    state: unknown;
+    browsers: unknown[];
+  }>('/api/agent/fleet');
+}
+
+export function fetchControlPlaneReport(params: {
+  kind?: string;
+  date?: string;
+} = {}) {
+  return agentRequest<Record<string, unknown>>(
+    `/api/agent/reports/control-plane${qs({
+      kind: params.kind,
+      date: params.date,
+    })}`,
+  );
 }
 
 export function fetchAgentDailyReport(params: {

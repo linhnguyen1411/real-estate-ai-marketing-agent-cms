@@ -47,7 +47,12 @@ export async function buildControlPlaneReport(
   };
 
   switch (kind) {
-    case 'runtime_health':
+    case 'runtime_health': {
+      const { refreshOperationsMetrics } = await import('./operations');
+      const operations = await refreshOperationsMetrics({
+        companyId: user.role === 'owner' ? null : user.company_id ?? null,
+        reason: 'report',
+      });
       return {
         ...base,
         queue: runtime.queue,
@@ -55,9 +60,16 @@ export async function buildControlPlaneReport(
         browsers: runtime.browsers,
         workersOnline: agents.filter(a => a.status === 'online').length,
         recentEvents: events.slice(0, 20),
+        operations,
       };
+    }
 
-    case 'scanner':
+    case 'scanner': {
+      const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const operations =
+        getLastOperationsMetrics(companyId) ||
+        (await refreshOperationsMetrics({ companyId, reason: 'report' }));
       return {
         ...base,
         scanPerHour: runtime.metrics.scanPerHour,
@@ -65,16 +77,27 @@ export async function buildControlPlaneReport(
         activeScanJobs: runtime.activeJobs.filter(
           j => j.type === 'scan_source' || j.type === 'source_scan',
         ),
+        scanner: operations.scanner,
+        operations,
       };
+    }
 
-    case 'publish':
+    case 'publish': {
+      const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const operations =
+        getLastOperationsMetrics(companyId) ||
+        (await refreshOperationsMetrics({ companyId, reason: 'report' }));
       return {
         ...base,
         publishPerHour: runtime.metrics.publishPerHour,
         successRate: runtime.metrics.successRate,
         campaigns: runtime.campaigns,
         activePublishJobs: runtime.activeJobs.filter(j => j.type === 'publish_social'),
+        publisher: operations.publisher,
+        operations,
       };
+    }
 
     case 'campaign':
       return {
@@ -93,8 +116,12 @@ export async function buildControlPlaneReport(
 
     case 'fleet': {
       const { getFleetState, listFleetBrowsers } = await import('./fleet');
-      const fleet = await getFleetState({
-        companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+      const { refreshOperationsMetrics } = await import('./operations');
+      const companyId = user.role === 'owner' ? undefined : user.company_id ?? null;
+      const fleet = await getFleetState({ companyId });
+      const operations = await refreshOperationsMetrics({
+        companyId: companyId ?? null,
+        reason: 'report',
       });
       return {
         ...base,
@@ -104,6 +131,7 @@ export async function buildControlPlaneReport(
         offline: fleet.offline,
         busy: fleet.busy,
         idle: fleet.idle,
+        operations,
       };
     }
 

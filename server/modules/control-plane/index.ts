@@ -74,18 +74,37 @@ export {
   listFleetBrowsers,
   enrichFleetAgent,
   fleetAgentFromSession,
+  scheduleFleetAgent,
+  scoreFleetAgents,
+  suggestTargetAgentId,
   formatFleetDashboardLines,
   formatFleetAgentDetailLines,
   formatFleetBrowserLines,
   type FleetAgent,
   type FleetState,
+  type FleetScheduleRequest,
 } from './fleet';
+export {
+  collectOperationsMetrics,
+  getLastOperationsMetrics,
+  refreshOperationsMetrics,
+  notifyMetricsEvent,
+  startMetricsCollector,
+  stopMetricsCollector,
+  resetOperationsMetricsForTests,
+  formatOperationsDashboardLines,
+  formatRuntimeMetricsLines,
+  formatWorkMetricsLines,
+  METRICS_INTERVAL_MS_DEFAULT,
+  type OperationsMetricsSnapshot,
+} from './operations';
 
 export const ControlPlane = {
   name: 'ControlPlane',
 
   /** Runtime API — sole read surface for dashboards / bots / CLI. */
-  async getRuntime(user: AuthUser) {
+  async getRuntime(user: AuthUser, options?: { refreshMetrics?: boolean }) {
+    const companyId = user.role === 'owner' ? null : user.company_id ?? null;
     const snapshot = await buildAutomationRuntimeSnapshot(user);
     const agents = await listRegisteredAgents({
       companyId: user.role === 'owner' ? undefined : user.company_id ?? '__none__',
@@ -94,15 +113,28 @@ export const ControlPlane = {
       companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
       limit: 30,
     });
+    const {
+      getLastOperationsMetrics,
+      refreshOperationsMetrics,
+    } = await import('./operations');
+    const operations = options?.refreshMetrics
+      ? await refreshOperationsMetrics({ companyId, reason: 'manual' })
+      : getLastOperationsMetrics(companyId) ||
+        (await refreshOperationsMetrics({ companyId, reason: 'dashboard' }));
+    const fleet = await getFleetState({ companyId });
     return {
       ...snapshot,
       agents,
       events,
+      fleet,
+      operations,
       controlPlane: {
-        version: 2,
+        version: 3,
         eventTypes: RUNTIME_EVENT_TYPES,
         clients: ['web_dashboard', 'telegram_bot', 'cli', 'report_engine', 'execution_agent'],
         commands: getCommandRegistry().list().map(c => c.name),
+        operationsCenter: true,
+        metricsPolicy: 'snapshot_5m_event_manual',
       },
     };
   },
@@ -112,6 +144,14 @@ export const ControlPlane = {
   listFleetAgents,
   getFleet: getFleetState,
   selectAgent,
+  async scheduleFleetAgent(
+    req: import('./fleet').FleetScheduleRequest,
+    companyId?: string | null,
+  ) {
+    const { scheduleFleetAgent } = await import('./fleet');
+    const agents = await listFleetAgents({ companyId });
+    return scheduleFleetAgent(agents, req);
+  },
 
   emitEvent: emitRuntimeEvent,
   listEvents: listRuntimeEvents,
@@ -147,6 +187,8 @@ export const ControlPlane = {
         runtimeEvents: true,
         agentRegistry: true,
         fleetRegistry: true,
+        operationsCenter: true,
+        metricsCollector: true,
         reportEngine: true,
         commandEngine: true,
         clients: ['web', 'telegram', 'cli'],

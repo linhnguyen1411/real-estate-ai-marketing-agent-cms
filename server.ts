@@ -3537,6 +3537,12 @@ async function main() {
           console.log(`[telegram-console] not started (${r.reason || 'disabled'})`);
         }
       });
+      void import('./server/modules/control-plane/operations').then(ops => {
+        ops.startMetricsCollector();
+        console.log('[metrics-collector] Operations Center metrics started (5m + event/manual)');
+      }).catch(err => {
+        console.warn('[metrics-collector] failed to start', err instanceof Error ? err.message : err);
+      });
     } else {
       console.warn('[agent] Scheduler/outbox worker skipped (AGENT_ENABLED=false)');
     }
@@ -3549,6 +3555,9 @@ async function main() {
     stopAgentScheduler();
     stopAgentSyncOutboxWorker();
     void stopTelegramControlPlane();
+    void import('./server/modules/control-plane/operations')
+      .then(ops => ops.stopMetricsCollector())
+      .catch(() => undefined);
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

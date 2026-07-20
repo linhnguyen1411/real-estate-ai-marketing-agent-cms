@@ -75,21 +75,25 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
 export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'dashboard',
-    description: 'Operations dashboard',
+    description: 'Operations Center dashboard',
     usage: '/dashboard',
     handler: async (_args, ctx) => {
       const d = await opsGetDashboard(ctx.user);
+      const { formatOperationsDashboardLines } = await import('../operations');
+      if (d.operations) {
+        return ok('dashboard', formatOperationsDashboardLines(d.operations), {
+          dashboard: d,
+        });
+      }
       return ok(
         'dashboard',
         [
           '══ Dashboard ══',
           `Health ${d.healthScore}/100`,
           `Agents online ${d.agentsOnline}/${d.agentsTotal}`,
-          `Queue wait=${d.queue.waiting} run=${d.queue.running} fail=${d.queue.deadLetter} pending≈${d.queue.waiting + d.queue.claimed}`,
+          `Queue wait=${d.queue.waiting} run=${d.queue.running} fail=${d.queue.deadLetter}`,
           `Jobs active=${d.activeJobs}`,
           `Missions run=${d.missions.running} fail=${d.missions.failed} wait=${d.missions.waiting}`,
-          `Browser health=${d.health.browser} · Exec/slot util=${d.metrics.slotUtilization ?? '—'}%`,
-          `publish/h=${d.metrics.publishPerHour} scan/h=${d.metrics.scanPerHour}`,
         ],
         { dashboard: d },
       );
@@ -346,6 +350,25 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
     },
   });
 
+  registry.register({
+    name: 'runtime',
+    description: 'Runtime metrics from Operations Metrics Snapshot',
+    usage: '/runtime',
+    handler: async (_args, ctx) => {
+      const { opsGetOperationsMetrics } = await import('../operationsService');
+      const { formatRuntimeMetricsLines } = await import('../operations');
+      const metrics = await opsGetOperationsMetrics({
+        companyId: ctx.companyId,
+        refresh: true,
+        reason: 'telegram',
+      });
+      return ok('runtime', formatRuntimeMetricsLines(metrics), {
+        generatedAt: metrics.generatedAt,
+        machines: metrics.machines.length,
+      });
+    },
+  });
+
   // Override report to accept agents/browser aliases already in parseReportKind
   registry.register({
     name: 'report',
@@ -354,12 +377,32 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
     handler: async (args, ctx) => {
       const kind = parseReportKind(args[0]);
       const report = await opsReport(ctx.user, kind);
+      const { formatOperationsDashboardLines, formatRuntimeMetricsLines } = await import(
+        '../operations'
+      );
       if (kind === 'fleet' && report.fleet && typeof report.fleet === 'object') {
         const fleet = report.fleet as Parameters<typeof formatFleetDashboardLines>[0];
-        return ok('report', [`Report · fleet`, ...formatFleetDashboardLines(fleet)], {
-          kind,
-          report,
-        });
+        const lines = [`Report · fleet`, ...formatFleetDashboardLines(fleet)];
+        if (report.operations && typeof report.operations === 'object') {
+          lines.push(
+            ...formatOperationsDashboardLines(
+              report.operations as Parameters<typeof formatOperationsDashboardLines>[0],
+            ).slice(0, 8),
+          );
+        }
+        return ok('report', lines, { kind, report });
+      }
+      if (
+        (kind === 'runtime_health' || kind === 'scanner' || kind === 'publish') &&
+        report.operations &&
+        typeof report.operations === 'object'
+      ) {
+        const ops = report.operations as Parameters<typeof formatOperationsDashboardLines>[0];
+        const header =
+          kind === 'runtime_health'
+            ? formatRuntimeMetricsLines(ops)
+            : formatOperationsDashboardLines(ops);
+        return ok('report', [`Report · ${kind}`, ...header], { kind, report });
       }
       const lines = [
         `Report · ${kind}`,

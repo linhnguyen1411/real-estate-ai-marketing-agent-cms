@@ -21,6 +21,14 @@ export {
 export { aggregateFleetState, getFleetState } from './state';
 
 export {
+  scoreFleetAgents,
+  scheduleFleetAgent,
+  suggestTargetAgentId,
+  type FleetScheduleRequest,
+  type FleetScheduleScore,
+} from './scheduler';
+
+export {
   formatFleetDashboardLines,
   formatFleetAgentBrief,
   formatFleetAgentDetailLines,

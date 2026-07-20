@@ -599,4 +599,95 @@ export interface AutomationRuntimeSnapshot {
     completedLastHour: number;
     failedLastHour: number;
   };
+  /** Operations Center metrics (Fleet Orchestration) — optional on older servers. */
+  operations?: OperationsMetricsSnapshot | null;
+  fleet?: {
+    total: number;
+    online: number;
+    offline: number;
+    busy: number;
+    idle: number;
+    healthScore: number;
+    agents?: unknown[];
+  } | null;
+  controlPlane?: {
+    version?: number;
+    operationsCenter?: boolean;
+    metricsPolicy?: string;
+    commands?: string[];
+  };
+}
+
+export interface OperationsMetricsSnapshot {
+  schemaVersion: 1;
+  generatedAt: string;
+  refreshReason: string;
+  companyId: string | null;
+  fleet: {
+    machinesOnline: number;
+    machinesOffline: number;
+    machinesBusy: number;
+    machinesIdle: number;
+    cpuAvg: number | null;
+    ramUsedPctAvg: number | null;
+    browserBusy: number;
+    browserIdle: number;
+    healthScore: number;
+  };
+  scanner: {
+    sources: number;
+    assigned: number;
+    running: number;
+    completed: number;
+    findingsToday: number;
+    postsScanned: number;
+  };
+  publisher: {
+    draft: number;
+    queue: number;
+    publishing: number;
+    publishedToday: number;
+    retry: number;
+  };
+  mission: {
+    running: number;
+    waiting: number;
+    completed: number;
+    failed: number;
+  };
+  workload: {
+    totalScanSources: number;
+    assignedSources: number;
+    completedSources: number;
+    runningMissions: number;
+    runningPublishJobs: number;
+    runningCampaigns: number;
+    waitingJobs: number;
+    retryJobs: number;
+    failedJobs: number;
+  };
+  machines: Array<{
+    agentId: string;
+    hostname: string;
+    machineId: string;
+    displayName: string;
+    status: string;
+    activity: string;
+    assigned: number;
+    running: number;
+    completed: number;
+    waiting: number;
+    cpuLoad1m: number | null;
+    memFreeMb: number | null;
+    memTotalMb: number | null;
+    rssMb: number | null;
+    heapUsedMb: number | null;
+    chromeCount: number;
+    browserBusy: number;
+    browserIdle: number;
+    executionSlots: number;
+    missionName: string | null;
+    currentStep: string | null;
+    heartbeatAgeMs: number | null;
+  }>;
 }

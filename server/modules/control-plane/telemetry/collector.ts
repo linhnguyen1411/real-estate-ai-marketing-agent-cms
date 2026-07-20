@@ -20,6 +20,7 @@ export function ingestAgentHeartbeat(input: {
   currentUrl?: string | null;
   status?: string;
   heartbeatAt?: string;
+  companyId?: string | null;
 }): ExecutionAgentRuntimeSnapshot {
   const snapshot = normalizeRuntimeSnapshot({
     agentId: input.agentId,
@@ -29,6 +30,15 @@ export function ingestAgentHeartbeat(input: {
     status: input.status,
   });
   lastSnapshots.set(input.agentId, snapshot);
+  // Throttled Operations Metrics refresh (event-driven, not continuous poll).
+  void import('../operations')
+    .then(m =>
+      m.notifyMetricsEvent({
+        reason: 'heartbeat',
+        companyId: input.companyId ?? null,
+      }),
+    )
+    .catch(() => undefined);
   return snapshot;
 }
 

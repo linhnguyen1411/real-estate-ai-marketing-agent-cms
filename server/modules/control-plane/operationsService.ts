@@ -34,6 +34,12 @@ function durationMs(startedAt: Date | null, finishedAt: Date | null, updatedAt: 
 }
 
 export async function opsGetDashboard(user: AuthUser) {
+  const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+  const { refreshOperationsMetrics } = await import('./operations');
+  const operations = await refreshOperationsMetrics({
+    companyId,
+    reason: 'dashboard',
+  });
   const snap = await buildAutomationRuntimeSnapshot(user);
   const agents = await listRegisteredAgents({
     companyId: user.role === 'owner' ? undefined : user.company_id ?? undefined,
@@ -47,17 +53,82 @@ export async function opsGetDashboard(user: AuthUser) {
     .filter(Boolean);
 
   return {
-    healthScore: snap.healthScore,
+    healthScore: operations.fleet.healthScore || snap.healthScore,
     health: snap.health,
-    agentsOnline: online.length,
-    agentsTotal: agents.length,
+    agentsOnline: operations.fleet.machinesOnline || online.length,
+    agentsTotal: operations.machines.length || agents.length,
     queue: snap.queue,
     missions: snap.missions,
     metrics: snap.metrics,
     browserPools: browserMeta,
     executionPools: execMeta,
     activeJobs: snap.activeJobs.length,
-    generatedAt: snap.generatedAt,
+    generatedAt: operations.generatedAt || snap.generatedAt,
+    operations,
+  };
+}
+
+/** Operations Center metrics — prefer cache; force refresh when requested. */
+export async function opsGetOperationsMetrics(input?: {
+  companyId?: string | null;
+  refresh?: boolean;
+  reason?:
+    | 'manual'
+    | 'dashboard'
+    | 'report'
+    | 'telegram'
+    | 'interval_5m'
+    | 'job_complete'
+    | 'mission_complete'
+    | 'publish_complete';
+}) {
+  const {
+    getLastOperationsMetrics,
+    refreshOperationsMetrics,
+  } = await import('./operations');
+  if (input?.refresh || !getLastOperationsMetrics(input?.companyId)) {
+    return refreshOperationsMetrics({
+      companyId: input?.companyId,
+      reason: input?.reason || 'manual',
+    });
+  }
+  return getLastOperationsMetrics(input?.companyId)!;
+}
+
+export async function opsScheduleAgent(input: {
+  companyId?: string | null;
+  require?: Array<'scan' | 'publish' | 'messaging' | 'comment' | 'browser' | 'cdp'>;
+  requireTags?: string[];
+  preferTags?: string[];
+  preferredAgentId?: string | null;
+  preferredHostname?: string | null;
+  requireBrowserFree?: boolean;
+  priority?: number;
+}) {
+  const { listFleetAgents, scheduleFleetAgent } = await import('./fleet');
+  const agents = await listFleetAgents({ companyId: input.companyId });
+  const pick = scheduleFleetAgent(agents, {
+    require: input.require,
+    requireTags: input.requireTags,
+    preferTags: input.preferTags,
+    preferredAgentId: input.preferredAgentId,
+    preferredHostname: input.preferredHostname,
+    requireBrowserFree: input.requireBrowserFree,
+    priority: input.priority,
+  });
+  return {
+    agentId: pick?.agentId ?? null,
+    hostname: pick?.hostname ?? null,
+    machineId: pick?.machineId ?? null,
+    activity: pick?.activity ?? null,
+    scorePreview: pick
+      ? {
+          jobsRunning: pick.jobs.running,
+          cpuLoad1m: pick.cpuLoad1m,
+          tags: pick.tags,
+          capabilities: pick.capabilities,
+        }
+      : null,
   };
 }
 
@@ -376,17 +447,23 @@ export async function opsBrowserCommand(
 
 export async function opsRefreshRuntime(agentId?: string | null, companyId?: string | null) {
   const { requestRemoteControl } = await import('./telemetry');
+  const { refreshOperationsMetrics } = await import('./operations');
   const target =
     agentId ||
     (await listRegisteredAgents({ companyId: companyId ?? undefined, onlineOnly: true }))[0]
       ?.agentId;
-  if (!target) throw new Error('No online agent for refresh');
-  await requestRemoteControl({
-    agentId: target,
-    action: 'refresh_runtime',
+  if (target) {
+    await requestRemoteControl({
+      agentId: target,
+      action: 'refresh_runtime',
+      companyId,
+    });
+  }
+  const operations = await refreshOperationsMetrics({
     companyId,
+    reason: 'manual',
   });
-  return { agentId: target, requested: true };
+  return { agentId: target || null, requested: Boolean(target), operations };
 }
 
 export async function opsGetAgentTelemetry(agentId: string) {
@@ -474,6 +551,9 @@ export async function opsReport(
   kind: ControlPlaneReportKind,
   options?: { date?: string },
 ) {
+  const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+  const { refreshOperationsMetrics } = await import('./operations');
+  await refreshOperationsMetrics({ companyId, reason: 'report' }).catch(() => null);
   return buildControlPlaneReport(user, kind, options);
 }
 

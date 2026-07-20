@@ -1,11 +1,14 @@
 /**
- * Runtime Monitor — read-only Automation Observability dashboard.
- * Lazy-loaded under Agent Platform. No business mutations.
+ * Runtime Monitor / Operations Center — Metrics Snapshot dashboard.
+ * Refresh policy: manual + 5 minutes (no continuous polling).
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Component, useCallback, useEffect, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { fetchAutomationRuntime } from '../../../../services/agentPlatformApi';
-import type { AutomationRuntimeSnapshot } from '../../../../types/agentPlatform';
+import type {
+  AutomationRuntimeSnapshot,
+  OperationsMetricsSnapshot,
+} from '../../../../types/agentPlatform';
 import {
   AgentPanelEmpty,
   AgentPanelError,
@@ -15,11 +18,17 @@ import {
   formatAgentDate,
 } from '../../shared/AgentPlatformUi';
 
-const POLL_MS = 8_000;
+/** Align with Metrics Collector default (5 minutes). */
+const REFRESH_MS = 5 * 60 * 1000;
 
 function pct(v: number | null | undefined) {
   if (v == null || Number.isNaN(v)) return '—';
-  return `${v}%`;
+  return `${Math.round(v)}%`;
+}
+
+function n(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return '—';
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
 function Section({
@@ -75,18 +84,128 @@ function MiniTable({
   );
 }
 
-export default function RuntimeMonitorPage() {
+class RuntimeErrorBoundary extends Component<
+  { children: React.ReactNode; onRetry: () => void },
+  { error: string | null }
+> {
+  state = { error: null as string | null };
+
+  static getDerivedStateFromError(err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Runtime UI crashed' };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <AgentPanelError
+          message={`Runtime Dashboard lỗi: ${this.state.error}`}
+          onRetry={() => {
+            this.setState({ error: null });
+            this.props.onRetry();
+          }}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function OperationsBlocks({ ops }: { ops: OperationsMetricsSnapshot }) {
+  const f = ops.fleet;
+  const s = ops.scanner;
+  const p = ops.publisher;
+  const m = ops.mission;
+  return (
+    <>
+      <Section title="Fleet">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <AgentStatCard label="Online" value={f.machinesOnline} tone="success" />
+          <AgentStatCard label="Busy" value={f.machinesBusy} tone="warning" />
+          <AgentStatCard label="Idle" value={f.machinesIdle} />
+          <AgentStatCard label="Offline" value={f.machinesOffline} />
+          <AgentStatCard label="CPU Avg" value={n(f.cpuAvg)} />
+          <AgentStatCard label="RAM Used %" value={pct(f.ramUsedPctAvg)} />
+          <AgentStatCard label="Browser Busy" value={f.browserBusy} tone="warning" />
+          <AgentStatCard label="Browser Idle" value={f.browserIdle} tone="success" />
+        </div>
+      </Section>
+
+      <Section title="Scanner">
+        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <AgentStatCard label="Sources" value={s.sources} />
+          <AgentStatCard label="Assigned" value={s.assigned} />
+          <AgentStatCard label="Running" value={s.running} tone="warning" />
+          <AgentStatCard label="Completed" value={s.completed} tone="success" />
+          <AgentStatCard label="Findings Today" value={s.findingsToday} />
+          <AgentStatCard label="Posts Scanned" value={s.postsScanned} />
+        </div>
+      </Section>
+
+      <Section title="Publisher">
+        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <AgentStatCard label="Draft" value={p.draft} />
+          <AgentStatCard label="Queue" value={p.queue} />
+          <AgentStatCard label="Publishing" value={p.publishing} tone="warning" />
+          <AgentStatCard label="Published Today" value={p.publishedToday} tone="success" />
+          <AgentStatCard label="Retry" value={p.retry} tone="danger" />
+        </div>
+      </Section>
+
+      <Section title="Mission">
+        <div className="grid gap-2 sm:grid-cols-4">
+          <AgentStatCard label="Running" value={m.running} tone="warning" />
+          <AgentStatCard label="Waiting" value={m.waiting} />
+          <AgentStatCard label="Completed" value={m.completed} tone="success" />
+          <AgentStatCard label="Failed" value={m.failed} tone="danger" />
+        </div>
+      </Section>
+
+      <Section title="Machines / Work">
+        <MiniTable
+          headers={[
+            'Machine',
+            'Status',
+            'Activity',
+            'CPU',
+            'RAM',
+            'Jobs',
+            'Done',
+            'Browser',
+            'Mission',
+          ]}
+          rows={ops.machines.map(row => [
+            row.displayName || row.hostname,
+            row.status,
+            row.activity,
+            n(row.cpuLoad1m),
+            row.memFreeMb != null && row.memTotalMb != null
+              ? `${row.memFreeMb}/${row.memTotalMb}`
+              : n(row.rssMb),
+            `${row.running}/${row.waiting}`,
+            String(row.completed),
+            `${row.browserBusy}/${row.browserIdle}`,
+            row.missionName || '—',
+          ])}
+        />
+      </Section>
+    </>
+  );
+}
+
+function RuntimeMonitorInner() {
   const [data, setData] = useState<AutomationRuntimeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (opts?: { silent?: boolean; refresh?: boolean }) => {
+    const silent = opts?.silent === true;
+    const refresh = opts?.refresh === true;
     if (!silent) setLoading(true);
     else setRefreshing(true);
     setError('');
     try {
-      const res = await fetchAutomationRuntime();
+      const res = await fetchAutomationRuntime({ refresh });
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được Runtime Monitor.');
@@ -97,17 +216,17 @@ export default function RuntimeMonitorPage() {
   }, []);
 
   useEffect(() => {
-    load();
-    const t = setInterval(() => load(true), POLL_MS);
+    load({ refresh: false });
+    const t = setInterval(() => load({ silent: true, refresh: false }), REFRESH_MS);
     return () => clearInterval(t);
   }, [load]);
 
   if (loading && !data) {
-    return <AgentPanelLoader label="Đang tải Runtime Monitor..." />;
+    return <AgentPanelLoader label="Đang tải Operations Center..." />;
   }
 
   if (error && !data) {
-    return <AgentPanelError message={error} onRetry={() => load()} />;
+    return <AgentPanelError message={error} onRetry={() => load({ refresh: true })} />;
   }
 
   if (!data) {
@@ -117,24 +236,33 @@ export default function RuntimeMonitorPage() {
   const m = data.metrics;
   const q = data.queue;
   const missions = data.missions;
+  const ops = data.operations;
 
   return (
     <div className="space-y-6">
       <AgentPanelHeader
-        title="Runtime Monitor"
-        subtitle="Quan sát Worker · Execution Pool · Browser Pool · Mission · Queue · Campaign (read-only)"
-        onRefresh={() => load(true)}
+        title="Operations Center · Runtime"
+        subtitle="Metrics Snapshot — Fleet · Scanner · Publisher · Mission (không poll agent trực tiếp)"
+        onRefresh={() => load({ silent: true, refresh: true })}
         refreshing={refreshing}
         actions={
           <div className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300">
             <Activity className="h-3.5 w-3.5 text-rose-400" />
-            Health {data.healthScore}
+            Health {ops?.fleet.healthScore ?? data.healthScore}
           </div>
         }
       />
 
       {error && (
         <p className="text-xs text-amber-300">Làm mới gần nhất lỗi: {error}</p>
+      )}
+
+      {ops ? (
+        <OperationsBlocks ops={ops} />
+      ) : (
+        <p className="text-xs text-slate-500">
+          Operations metrics chưa có — nhấn Refresh để thu thập snapshot.
+        </p>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -153,29 +281,12 @@ export default function RuntimeMonitorPage() {
         />
       </div>
 
-      <div className="grid gap-2 text-xs text-slate-400 sm:grid-cols-5">
-        {(
-          [
-            ['Worker', data.health.worker],
-            ['Browser', data.health.browser],
-            ['Queue', data.health.queue],
-            ['Mission', data.health.mission],
-            ['Scheduler', data.health.scheduler],
-          ] as const
-        ).map(([label, score]) => (
-          <div key={label} className="rounded-lg border border-slate-800 px-3 py-2">
-            <div className="font-semibold text-slate-300">{label}</div>
-            <div className="tabular-nums text-slate-500">{score}/100</div>
-          </div>
-        ))}
-      </div>
-
       <Section title="Workers">
         <MiniTable
           headers={['Worker', 'Status', 'Online', 'URL', 'Heartbeat', 'RSS MB']}
-          rows={data.workers.map(w => {
+          rows={(data.workers || []).map(w => {
             const proc =
-              w.runtime.process && typeof w.runtime.process === 'object'
+              w.runtime?.process && typeof w.runtime.process === 'object'
                 ? (w.runtime.process as Record<string, unknown>)
                 : {};
             return [
@@ -190,111 +301,6 @@ export default function RuntimeMonitorPage() {
         />
       </Section>
 
-      <Section title="Execution Pool">
-        <MiniTable
-          headers={[
-            'Slot',
-            'Type',
-            'Running',
-            'Queue',
-            'Busy %',
-            'Avg runtime',
-            'Failures',
-          ]}
-          rows={(data.slots as Array<Record<string, unknown>>).map(s => [
-            String(s.kind ?? '—'),
-            String(s.status ?? '—'),
-            String(s.runningJobs ?? 0),
-            String(s.queuedWaiters ?? 0),
-            pct(typeof s.busyPercent === 'number' ? s.busyPercent : null),
-            s.avgRuntimeMsSinceBoot != null ? `${s.avgRuntimeMsSinceBoot} ms` : '—',
-            String(s.failedSinceBoot ?? 0),
-          ])}
-        />
-      </Section>
-
-      <Section title="Browser Pool">
-        <MiniTable
-          headers={[
-            'Browser ID',
-            'Purpose',
-            'State',
-            'Mission',
-            'Job',
-            'Lease',
-            'Memory',
-            'CPU',
-            'Heartbeat',
-          ]}
-          rows={(data.browsers as Array<Record<string, unknown>>).map(b => [
-            String(b.browserId ?? '—'),
-            String(b.purpose ?? '—'),
-            String(b.state ?? '—'),
-            b.ownerMission ? String(b.ownerMission).slice(0, 12) : '—',
-            b.ownerJob ? String(b.ownerJob).slice(0, 12) : '—',
-            b.leaseAgeSec != null ? `${b.leaseAgeSec}s` : '—',
-            b.memoryMb != null ? `${b.memoryMb} MB` : '—',
-            b.cpuPercent != null ? pct(Number(b.cpuPercent)) : 'n/a',
-            b.heartbeatAt
-              ? formatAgentDate(new Date(Number(b.heartbeatAt)).toISOString())
-              : '—',
-          ])}
-        />
-        <p className="mt-2 text-[11px] text-slate-500">
-          Memory = worker process RSS (proxy). Chrome OS CPU chưa instrument trong MVP.
-        </p>
-      </Section>
-
-      <Section title="Mission Runtime">
-        <div className="mb-3 grid gap-2 sm:grid-cols-6">
-          <AgentStatCard label="Waiting" value={missions.waiting} />
-          <AgentStatCard label="Running" value={missions.running} />
-          <AgentStatCard label="Retry" value={missions.retry} />
-          <AgentStatCard label="Completed" value={missions.completed} tone="success" />
-          <AgentStatCard label="Failed" value={missions.failed} tone="danger" />
-          <AgentStatCard label="Cancelled" value={missions.cancelled} tone="warning" />
-        </div>
-        <MiniTable
-          headers={['Run', 'Status', 'Started', 'Updated', 'Error']}
-          rows={data.missionTimeline.map(r => [
-            r.id.slice(0, 10),
-            r.status,
-            formatAgentDate(r.startedAt),
-            formatAgentDate(r.updatedAt),
-            r.error ? String(r.error).slice(0, 40) : '—',
-          ])}
-        />
-      </Section>
-
-      <Section title="Campaign Runtime">
-        <MiniTable
-          headers={[
-            'Run',
-            'Status',
-            'Progress',
-            'Targets',
-            'Success',
-            'Failed',
-            'Partial',
-            'ETA',
-          ]}
-          rows={data.campaigns.map(c => [
-            c.id.slice(0, 10),
-            c.status,
-            c.progress.total > 0
-              ? `${Math.round(
-                  ((c.progress.completed + c.progress.failed) / c.progress.total) * 100,
-                )}%`
-              : '—',
-            String(c.progress.total),
-            String(c.success),
-            String(c.failed),
-            c.partialSuccess ? 'yes' : 'no',
-            c.etaSec != null ? `${c.etaSec}s` : '—',
-          ])}
-        />
-      </Section>
-
       <Section title="Queue">
         <div className="grid gap-2 sm:grid-cols-5">
           <AgentStatCard label="Waiting" value={q.waiting} />
@@ -306,7 +312,7 @@ export default function RuntimeMonitorPage() {
         <div className="mt-3">
           <MiniTable
             headers={['Job', 'Type', 'Status', 'Worker', 'Mission', 'Started']}
-            rows={data.activeJobs.map(j => [
+            rows={(data.activeJobs || []).map(j => [
               j.id.slice(0, 10),
               j.type,
               j.status,
@@ -318,19 +324,40 @@ export default function RuntimeMonitorPage() {
         </div>
       </Section>
 
-      <Section title="Metrics">
-        <div className="grid gap-2 text-xs text-slate-400 sm:grid-cols-3 lg:grid-cols-6">
-          <div>Publish/hour: <span className="text-slate-200">{m.publishPerHour}</span></div>
-          <div>Scan/hour: <span className="text-slate-200">{m.scanPerHour}</span></div>
-          <div>Success: <span className="text-slate-200">{pct(m.successRate)}</span></div>
-          <div>Retry: <span className="text-slate-200">{pct(m.retryRate)}</span></div>
-          <div>Browser util: <span className="text-slate-200">{pct(m.browserUtilization)}</span></div>
-          <div>Slot util: <span className="text-slate-200">{pct(m.slotUtilization)}</span></div>
+      <Section title="Mission Timeline">
+        <div className="mb-3 grid gap-2 sm:grid-cols-6">
+          <AgentStatCard label="Waiting" value={missions.waiting} />
+          <AgentStatCard label="Running" value={missions.running} />
+          <AgentStatCard label="Retry" value={missions.retry} />
+          <AgentStatCard label="Completed" value={missions.completed} tone="success" />
+          <AgentStatCard label="Failed" value={missions.failed} tone="danger" />
+          <AgentStatCard label="Cancelled" value={missions.cancelled} tone="warning" />
         </div>
-        <p className="mt-2 text-[11px] text-slate-600">
-          Snapshot {formatAgentDate(data.generatedAt)} · poll {POLL_MS / 1000}s
-        </p>
+        <MiniTable
+          headers={['Run', 'Status', 'Started', 'Updated', 'Error']}
+          rows={(data.missionTimeline || []).map(r => [
+            r.id.slice(0, 10),
+            r.status,
+            formatAgentDate(r.startedAt),
+            formatAgentDate(r.updatedAt),
+            r.error ? String(r.error).slice(0, 40) : '—',
+          ])}
+        />
       </Section>
+
+      <p className="text-[11px] text-slate-600">
+        Snapshot {formatAgentDate(ops?.generatedAt || data.generatedAt)} · refresh policy{' '}
+        {data.controlPlane?.metricsPolicy || '5m + manual'} · reason={ops?.refreshReason || '—'}
+      </p>
     </div>
+  );
+}
+
+export default function RuntimeMonitorPage() {
+  const [nonce, setNonce] = useState(0);
+  return (
+    <RuntimeErrorBoundary onRetry={() => setNonce(n => n + 1)}>
+      <RuntimeMonitorInner key={nonce} />
+    </RuntimeErrorBoundary>
   );
 }

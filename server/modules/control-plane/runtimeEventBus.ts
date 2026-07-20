@@ -29,6 +29,27 @@ export async function emitRuntimeEvent(input: EmitRuntimeEventInput): Promise<vo
         payload: (input.payload ?? {}) as Prisma.InputJsonValue,
       },
     });
+    // Event-driven Operations Metrics refresh (throttled for heartbeats elsewhere).
+    if (
+      input.type === 'JOB_COMPLETED' ||
+      input.type === 'MISSION_COMPLETED' ||
+      input.type === 'PUBLISH_FINISHED'
+    ) {
+      const reason =
+        input.type === 'JOB_COMPLETED'
+          ? 'job_complete'
+          : input.type === 'MISSION_COMPLETED'
+            ? 'mission_complete'
+            : 'publish_complete';
+      void import('./operations')
+        .then(m =>
+          m.notifyMetricsEvent({
+            reason,
+            companyId: input.companyId ?? null,
+          }),
+        )
+        .catch(() => undefined);
+    }
   } catch (err) {
     console.warn(
       '[runtime-event-bus] emit failed:',

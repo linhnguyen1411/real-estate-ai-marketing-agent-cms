@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchAgentDailyReport } from '../../../../services/agentPlatformApi';
-import type { AgentDailyReport } from '../../../../types/agentPlatform';
+import {
+  fetchAgentDailyReport,
+  fetchControlPlaneReport,
+  fetchOperationsMetrics,
+} from '../../../../services/agentPlatformApi';
+import type {
+  AgentDailyReport,
+  OperationsMetricsSnapshot,
+} from '../../../../types/agentPlatform';
 import {
   AgentPanelEmpty,
   AgentPanelError,
@@ -19,11 +26,16 @@ function todayLocalYmd(): string {
   return `${y}-${m}-${day}`;
 }
 
+type ReportWindow = 'today' | 'hour' | '24h' | '7d';
+
 export default function AgentReports() {
   const navigate = useNavigate();
   const [date, setDate] = useState(todayLocalYmd);
   const [includeAi, setIncludeAi] = useState(true);
+  const [windowKind, setWindowKind] = useState<ReportWindow>('today');
   const [report, setReport] = useState<AgentDailyReport | null>(null);
+  const [ops, setOps] = useState<OperationsMetricsSnapshot | null>(null);
+  const [cpReport, setCpReport] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -31,17 +43,29 @@ export default function AgentReports() {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchAgentDailyReport({
-        date,
-        includeAiSummary: includeAi,
-      });
-      setReport(data);
+      const kind =
+        windowKind === '7d'
+          ? 'weekly'
+          : windowKind === 'hour' || windowKind === '24h'
+            ? 'runtime_health'
+            : 'daily';
+      const [daily, operations, controlPlane] = await Promise.all([
+        fetchAgentDailyReport({
+          date,
+          includeAiSummary: includeAi,
+        }),
+        fetchOperationsMetrics({ refresh: true }),
+        fetchControlPlaneReport({ kind, date }),
+      ]);
+      setReport(daily);
+      setOps(operations);
+      setCpReport(controlPlane);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được báo cáo.');
     } finally {
       setLoading(false);
     }
-  }, [date, includeAi]);
+  }, [date, includeAi, windowKind]);
 
   useEffect(() => {
     load();
@@ -53,18 +77,38 @@ export default function AgentReports() {
     [metrics],
   );
 
-  if (loading && !report) return <AgentPanelLoader label="Đang tổng hợp báo cáo ngày..." />;
-  if (error && !report) return <AgentPanelError message={error} onRetry={load} />;
+  if (loading && !report && !ops) return <AgentPanelLoader label="Đang tổng hợp báo cáo..." />;
+  if (error && !report && !ops) return <AgentPanelError message={error} onRetry={load} />;
 
   return (
     <div className="space-y-6">
       <AgentPanelHeader
-        title="Báo cáo cuối ngày"
-        subtitle="Số liệu từ database — AI chỉ viết tóm tắt từ metrics đã truy vấn"
+        title="Reports Dashboard"
+        subtitle="Today · Last Hour · 24h · 7 Days — đọc Metrics Collector / Control Plane (không query agent trực tiếp)"
         onRefresh={load}
         refreshing={loading}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {(['today', 'hour', '24h', '7d'] as ReportWindow[]).map(w => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setWindowKind(w)}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+                  windowKind === w
+                    ? 'border-rose-500/40 bg-rose-500/15 text-rose-200'
+                    : 'border-slate-800 bg-slate-950 text-slate-400'
+                }`}
+              >
+                {w === 'today'
+                  ? 'Today'
+                  : w === 'hour'
+                    ? 'Last Hour'
+                    : w === '24h'
+                      ? '24h'
+                      : '7 Days'}
+              </button>
+            ))}
             <input
               type="date"
               value={date}
@@ -83,6 +127,26 @@ export default function AgentReports() {
           </div>
         }
       />
+
+      {ops && (
+        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+          <h3 className="text-sm font-bold text-slate-200">Operations Metrics</h3>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+            <AgentStatCard label="Machines Online" value={ops.fleet.machinesOnline} tone="success" />
+            <AgentStatCard label="Busy" value={ops.fleet.machinesBusy} tone="warning" />
+            <AgentStatCard label="Scan Sources" value={ops.scanner.sources} />
+            <AgentStatCard label="Scan Running" value={ops.scanner.running} />
+            <AgentStatCard label="Publish Queue" value={ops.publisher.queue} />
+            <AgentStatCard label="Publishing" value={ops.publisher.publishing} tone="warning" />
+            <AgentStatCard label="Missions Run" value={ops.mission.running} />
+            <AgentStatCard label="Failed Jobs" value={ops.workload.failedJobs} tone="danger" />
+          </div>
+          <p className="text-[11px] text-slate-600">
+            Metrics {formatAgentDate(ops.generatedAt)} · reason={ops.refreshReason} · window={windowKind}
+            {cpReport?.healthScore != null ? ` · CP health=${String(cpReport.healthScore)}` : ''}
+          </p>
+        </section>
+      )}
 
       {metrics && (
         <>
