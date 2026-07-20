@@ -22,6 +22,7 @@ export type OpsJobRow = {
   attempts: number;
   errorMessage: string | null;
   durationMs: number | null;
+  startedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -115,6 +116,7 @@ export async function opsListAgentJobs(input: {
     attempts: j.attempts,
     errorMessage: j.errorMessage,
     durationMs: durationMs(j.startedAt, j.finishedAt, j.updatedAt),
+    startedAt: j.startedAt ? j.startedAt.toISOString() : null,
     createdAt: j.createdAt.toISOString(),
     updatedAt: j.updatedAt.toISOString(),
   }));
@@ -388,11 +390,83 @@ export async function opsRefreshRuntime(agentId?: string | null, companyId?: str
 }
 
 export async function opsGetAgentTelemetry(agentId: string) {
-  const { getLastAgentSnapshot } = await import('./telemetry');
-  const agent = await getAgentById(agentId);
-  if (!agent) return null;
-  const snap = getLastAgentSnapshot(agent.agentId);
-  return { agent, snapshot: snap };
+  const { getFleetAgent } = await import('./fleet');
+  const fleet = await getFleetAgent(agentId);
+  if (!fleet) {
+    const agent = await getAgentById(agentId);
+    if (!agent) return null;
+    return { agent, snapshot: null, fleet: null };
+  }
+  return {
+    agent: {
+      agentId: fleet.agentId,
+      hostname: fleet.hostname,
+      version: fleet.version,
+      capabilities: fleet.capabilities,
+      status: fleet.status,
+      heartbeatAt: fleet.lastHeartbeat,
+      heartbeatAgeMs: fleet.heartbeatAgeMs,
+      companyId: fleet.companyId,
+      sessionId: fleet.sessionId,
+      workerId: fleet.workerId,
+      executionSlots: [],
+      browserPool: fleet.browserProfiles,
+      metrics: {
+        pid: null,
+        rssMb: fleet.rssMb,
+        heapUsedMb: fleet.heapUsedMb,
+        uptimeSec: fleet.uptimeSec,
+        slotUtilization: null,
+        browserUtilization: null,
+      },
+      currentUrl: fleet.currentUrl,
+      lastError: fleet.lastError,
+    },
+    snapshot: fleet.snapshot,
+    fleet,
+  };
+}
+
+export async function opsGetFleet(companyId?: string | null) {
+  const { getFleetState, listFleetBrowsers } = await import('./fleet');
+  const state = await getFleetState({ companyId });
+  return {
+    state,
+    browsers: listFleetBrowsers(state.agents),
+  };
+}
+
+export async function opsGetFleetAgent(idOrMachine: string) {
+  const { getFleetAgent } = await import('./fleet');
+  return getFleetAgent(idOrMachine);
+}
+
+export async function opsListFleetJobs(input: {
+  companyId?: string | null;
+  status?: 'running' | 'pending' | 'failed' | 'completed' | 'all';
+  limit?: number;
+}) {
+  const { listFleetAgents } = await import('./fleet');
+  const jobs = await opsListAgentJobs(input);
+  const agents = await listFleetAgents({ companyId: input.companyId });
+  const byId = new Map(agents.map(a => [a.agentId, a]));
+  for (const a of agents) {
+    if (a.workerId) byId.set(a.workerId, a);
+  }
+  return jobs.map(j => {
+    const agent = j.claimedBy ? byId.get(j.claimedBy) : undefined;
+    return {
+      jobId: j.id,
+      type: j.type,
+      status: j.status,
+      claimedBy: j.claimedBy,
+      machineId: agent?.machineId || null,
+      hostname: agent?.hostname || null,
+      startedAt: j.startedAt,
+      durationMs: j.durationMs,
+      missionId: j.missionId,
+    };
+  });
 }
 
 export async function opsReport(

@@ -91,6 +91,22 @@ export async function buildControlPlaneReport(
         online: agents.filter(a => a.status === 'online').length,
       };
 
+    case 'fleet': {
+      const { getFleetState, listFleetBrowsers } = await import('./fleet');
+      const fleet = await getFleetState({
+        companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+      });
+      return {
+        ...base,
+        fleet,
+        browsers: listFleetBrowsers(fleet.agents),
+        online: fleet.online,
+        offline: fleet.offline,
+        busy: fleet.busy,
+        idle: fleet.idle,
+      };
+    }
+
     case 'browser':
       return {
         ...base,

@@ -103,6 +103,14 @@ export function buildExecutionTelemetryMetadata(
     arch: host.arch,
     hostname,
     version: input.version,
+    machineId:
+      process.env.AGENT_MACHINE_ID?.trim() || hostname,
+    displayName:
+      process.env.AGENT_DISPLAY_NAME?.trim() || `Execution Agent (${input.agentId})`,
+    tags: String(process.env.AGENT_TAGS || '')
+      .split(/[,\s]+/)
+      .map(s => s.trim())
+      .filter(Boolean),
     host,
     process: input.process,
     jobs: jobSummary(input.executionPool, input.jobs),

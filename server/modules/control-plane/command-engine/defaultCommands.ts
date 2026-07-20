@@ -41,13 +41,14 @@ async function resolveCampaign(idOrName: string) {
 function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
   const scope = (arg || 'today').toLowerCase();
   if (scope === 'week' || scope === 'weekly') return 'weekly';
-  if (scope === 'health' || scope === 'runtime_health') return 'runtime_health';
+  if (scope === 'health' || scope === 'runtime' || scope === 'runtime_health') return 'runtime_health';
   if (scope === 'publish') return 'publish';
   if (scope === 'scan' || scope === 'scanner') return 'scanner';
   if (scope === 'campaign' || scope === 'campaigns') return 'campaign';
   if (scope === 'agent' || scope === 'agents') return 'agent';
   if (scope === 'browser' || scope === 'browsers') return 'browser';
   if (scope === 'failed' || scope === 'fail' || scope === 'failures') return 'failed';
+  if (scope === 'fleet') return 'fleet';
   return 'daily';
 }
 

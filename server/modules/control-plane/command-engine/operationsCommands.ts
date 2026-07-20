@@ -25,17 +25,24 @@ import {
   opsLeadSkip,
   opsLeadCreateMission,
   opsLeadRetryNotify,
-  opsGetAgentTelemetry,
   opsRefreshRuntime,
+  opsGetFleet,
+  opsGetFleetAgent,
+  opsListFleetJobs,
 } from '../operationsService';
 import {
   agentJobKeyboard,
   missionActionKeyboard,
   publishJobKeyboard,
 } from '../inlineKeyboard';
-import { formatAgentTelemetryLines, formatBrowserTelemetryLines, listAgentSnapshots } from '../telemetry';
+import { listAgentSnapshots } from '../telemetry';
+import {
+  formatFleetDashboardLines,
+  formatFleetAgentDetailLines,
+  formatFleetBrowserLines,
+  formatFleetJobOwnershipLines,
+} from '../fleet';
 import type { ControlPlaneReportKind } from '../types';
-import { listRegisteredAgents } from '../agentRegistry';
 import { buildAutomationRuntimeSnapshot } from '../../../agent/runtimeObservability';
 
 function ok(
@@ -54,20 +61,15 @@ function fail(command: string, message: string): CommandResult {
 function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
   const scope = (arg || 'today').toLowerCase();
   if (scope === 'week' || scope === 'weekly') return 'weekly';
-  if (scope === 'health' || scope === 'runtime_health') return 'runtime_health';
+  if (scope === 'health' || scope === 'runtime' || scope === 'runtime_health') return 'runtime_health';
   if (scope === 'publish') return 'publish';
   if (scope === 'scan' || scope === 'scanner') return 'scanner';
   if (scope === 'campaign' || scope === 'campaigns') return 'campaign';
   if (scope === 'agent' || scope === 'agents') return 'agent';
   if (scope === 'browser' || scope === 'browsers') return 'browser';
   if (scope === 'failed' || scope === 'fail' || scope === 'failures') return 'failed';
+  if (scope === 'fleet') return 'fleet';
   return 'daily';
-}
-
-function fmtDuration(ms: number | null): string {
-  if (ms == null) return '—';
-  if (ms < 1000) return `${ms}ms`;
-  return `${Math.round(ms / 1000)}s`;
 }
 
 export function registerOperationsCommands(registry: CommandRegistry): void {
@@ -116,15 +118,31 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       if (jobs.length === 0) {
         return ok('jobs', [`No jobs (${raw}).`], { jobs: [] });
       }
+      const fleetJobs = await opsListFleetJobs({
+        companyId: ctx.companyId,
+        status,
+        limit: 12,
+      });
       const lines = [
         `Jobs · ${raw} (${jobs.length})`,
-        ...jobs.map(j => {
-          const err = j.errorMessage ? ` err=${j.errorMessage.slice(0, 40)}` : '';
-          return `• ${j.id.slice(0, 10)} ${j.type} [${j.status}] agent=${j.claimedBy || '—'} try=${j.attempts} t=${fmtDuration(j.durationMs)} m=${j.missionId?.slice(0, 8) || '—'}${err}`;
-        }),
+        ...formatFleetJobOwnershipLines(fleetJobs).slice(1),
       ];
       const first = jobs[0];
-      return ok('jobs', lines, { jobs }, first ? agentJobKeyboard(first.missionId || first.id) : undefined);
+      return ok('jobs', lines, { jobs: fleetJobs }, first ? agentJobKeyboard(first.missionId || first.id) : undefined);
+    },
+  });
+
+  registry.register({
+    name: 'fleet',
+    description: 'Fleet dashboard — all Execution Agents',
+    usage: '/fleet',
+    handler: async (_args, ctx) => {
+      const { state } = await opsGetFleet(ctx.companyId);
+      return ok('fleet', formatFleetDashboardLines(state), {
+        total: state.total,
+        online: state.online,
+        healthScore: state.healthScore,
+      });
     },
   });
 
@@ -268,8 +286,8 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'agent',
-    description: 'Agent detail / soft restart request',
-    usage: '/agent <id> | /agent restart <id>',
+    description: 'Machine detail / soft restart request',
+    usage: '/agent | /agent <id|hostname> | /agent restart <id>',
     handler: async (args, ctx) => {
       const a0 = (args[0] || '').toLowerCase();
       if (a0 === 'restart') {
@@ -280,56 +298,36 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       }
       const id = args[0];
       if (!id) {
-        const agents = await listRegisteredAgents({ companyId: ctx.companyId ?? undefined });
+        const { state } = await opsGetFleet(ctx.companyId);
         return ok(
           'agent',
           [
-            `Agents (${agents.length}) — use /agent <id>`,
-            ...agents.slice(0, 10).map(a => {
+            `Agents (${state.agents.length}) — use /agent <id|hostname>`,
+            ...state.agents.slice(0, 12).map(a => {
               const age =
                 a.heartbeatAgeMs != null ? `${Math.round(a.heartbeatAgeMs / 1000)}s` : '—';
-              return `• ${a.agentId} [${a.status}] host=${a.hostname} hb=${age}`;
+              return `• ${a.hostname} [${a.status}/${a.activity}] id=${a.agentId} hb=${age}`;
             }),
           ],
-          { agents: agents.map(a => a.agentId) },
+          { agents: state.agents.map(a => a.agentId) },
         );
       }
-      const tel = await opsGetAgentTelemetry(id);
-      if (!tel) return fail('agent', `Agent not found: ${id}`);
-      const lines = tel.snapshot
-        ? formatAgentTelemetryLines(tel.snapshot)
-        : [
-            `Agent ${tel.agent.agentId}`,
-            `status=${tel.agent.status} host=${tel.agent.hostname}`,
-            `caps=${tel.agent.capabilities.join(',')}`,
-            `heartbeatAgeMs=${tel.agent.heartbeatAgeMs ?? '—'}`,
-            `(no telemetry snapshot yet — waiting for heartbeat)`,
-          ];
-      return ok('agent', lines, { agentId: tel.agent.agentId, snapshot: tel.snapshot });
+      const fleet = await opsGetFleetAgent(id);
+      if (!fleet) return fail('agent', `Agent not found: ${id}`);
+      return ok('agent', formatFleetAgentDetailLines(fleet), {
+        agentId: fleet.agentId,
+        machineId: fleet.machineId,
+        activity: fleet.activity,
+      });
     },
   });
 
   registry.register({
     name: 'browser',
-    description: 'Browser pool ops (soft commands via Event Bus)',
+    description: 'Fleet browser pool ops (soft commands via Event Bus)',
     usage: '/browser | /browser profiles|release|recover|restart|screenshot',
     handler: async (args, ctx) => {
       const sub = (args[0] || '').toLowerCase();
-      if (sub === 'profiles') {
-        const r = await opsBrowserCommand('profiles', ctx.companyId);
-        const profiles = (r as { profiles?: Array<Record<string, unknown>> }).profiles || [];
-        return ok(
-          'browser',
-          [
-            `Browser profiles (${profiles.length})`,
-            ...profiles.slice(0, 12).map(p => {
-              return `• ${p.agentId}/${p.profile} [${p.state}] busy=${p.busy} url=${String(p.currentUrl || '—').slice(0, 40)}`;
-            }),
-            profiles.length === 0 ? '(none — no agent heartbeat yet)' : '',
-          ].filter(Boolean),
-          r,
-        );
-      }
       if (sub === 'release' || sub === 'recover' || sub === 'screenshot' || sub === 'restart') {
         const agentId = args[1] || null;
         const r = await opsBrowserCommand(sub === 'restart' ? 'restart' : sub, ctx.companyId, agentId);
@@ -339,22 +337,12 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
         const r = await opsRefreshRuntime(args[1] || null, ctx.companyId);
         return ok('browser', [`Runtime refresh requested for ${r.agentId}`], r);
       }
-      const st = await opsBrowserStatus(ctx.user);
-      const snaps = st.snapshots || [];
-      const lines =
-        snaps.length > 0
-          ? snaps.flatMap(s => formatBrowserTelemetryLines(s)).slice(0, 20)
-          : [
-              'Browser pool',
-              `health=${st.healthBrowser}`,
-              ...st.workers.slice(0, 8).map(w => {
-                const pool = w.browserPool ? JSON.stringify(w.browserPool).slice(0, 80) : '—';
-                return `• ${w.workerId || 'worker'} online=${w.online} url=${w.currentUrl || '—'} pool=${pool}`;
-              }),
-              st.workers.length === 0 ? '(no workers)' : '',
-              '/browser profiles|release|recover|restart',
-            ];
-      return ok('browser', lines.filter(Boolean), { workers: st.workers.length, snapshots: snaps.length });
+      const { browsers } = await opsGetFleet(ctx.companyId);
+      return ok(
+        'browser',
+        formatFleetBrowserLines(browsers),
+        { browsers: browsers.length },
+      );
     },
   });
 
@@ -362,10 +350,17 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'report',
     description: 'Control Plane reports',
-    usage: '/report today|week|publish|scan|failed|agent|browser',
+    usage: '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
     handler: async (args, ctx) => {
       const kind = parseReportKind(args[0]);
       const report = await opsReport(ctx.user, kind);
+      if (kind === 'fleet' && report.fleet && typeof report.fleet === 'object') {
+        const fleet = report.fleet as Parameters<typeof formatFleetDashboardLines>[0];
+        return ok('report', [`Report · fleet`, ...formatFleetDashboardLines(fleet)], {
+          kind,
+          report,
+        });
+      }
       const lines = [
         `Report · ${kind}`,
         `health=${String(report.healthScore ?? '—')}`,
@@ -452,14 +447,15 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 export function operationsHelpLines(): string[] {
   return [
     '/dashboard',
+    '/fleet',
     '/jobs [running|waiting|pending|failed|completed]',
     '/mission <id> | retry|cancel|pause|resume',
     '/publish queue|now|retry|cancel',
     '/scan | start|stop <mission>',
-    '/agents · /agent <id>|restart <id>',
+    '/agents · /agent <id|hostname>|restart <id>',
     '/browser [profiles|release|recover|restart|refresh]',
     '/runtime · /health',
-    '/report today|week|publish|scan|failed|agent|browser',
+    '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
     '/lead skip|mission|retry <id>',
     '/retry <mission>|publish|scan|campaign',
   ];

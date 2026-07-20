@@ -97,6 +97,7 @@
     "test:telegram-smart-operations": "tsx scripts/test-telegram-smart-operations.ts",
     "test:telegram-copilot": "tsx scripts/test-telegram-copilot.ts",
     "test:execution-telemetry": "tsx scripts/test-execution-telemetry.ts",
+    "test:fleet-registry": "tsx scripts/test-fleet-registry.ts",
     "test:mission-engine": "tsx scripts/test-mission-engine.ts",
     "test:automation-engine": "tsx scripts/test-automation-engine.ts",
     "smoke:mission-pipelines": "tsx scripts/smoke-mission-pipelines.ts",

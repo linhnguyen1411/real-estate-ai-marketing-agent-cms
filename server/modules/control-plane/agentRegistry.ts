@@ -87,6 +87,7 @@ export function sessionToAgentNode(session: BrowserSession, now = Date.now()): A
     session.id;
   const hostname =
     (typeof meta.hostname === 'string' && meta.hostname) ||
+    (typeof asRecord(meta.host).hostname === 'string' && String(asRecord(meta.host).hostname)) ||
     (typeof meta.host === 'string' && meta.host) ||
     'unknown';
   const version =
@@ -163,12 +164,33 @@ export function buildAgentRegistryMetadata(input: {
   browserMode: string;
   capabilities?: AgentCapability[];
   version?: string;
+  displayName?: string;
+  machineId?: string;
+  tags?: string[];
 }): Record<string, unknown> {
   const caps = input.capabilities ?? (['scan', 'publish', 'browser'] as AgentCapability[]);
   if (input.browserMode === 'cdp' && !caps.includes('cdp')) caps.push('cdp');
+  const hostname = os.hostname();
+  const machineId =
+    input.machineId?.trim() ||
+    process.env.AGENT_MACHINE_ID?.trim() ||
+    hostname;
+  const displayName =
+    input.displayName?.trim() ||
+    process.env.AGENT_DISPLAY_NAME?.trim() ||
+    `Execution Agent (${input.workerId})`;
+  const tags =
+    input.tags ||
+    String(process.env.AGENT_TAGS || '')
+      .split(/[,\s]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
   return {
     agentId: input.workerId,
-    hostname: os.hostname(),
+    hostname,
+    machineId,
+    displayName,
+    tags,
     version: input.version ?? CONTROL_PLANE_VERSION,
     capabilities: caps,
     controlPlane: true,

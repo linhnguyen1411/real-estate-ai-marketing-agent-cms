@@ -6,6 +6,7 @@
 import type { AuthUser } from '../../../src/types';
 import { buildAutomationRuntimeSnapshot } from '../../agent/runtimeObservability';
 import { listRegisteredAgents, getAgentById } from './agentRegistry';
+import { getFleetState, listFleetAgents } from './fleet';
 import { selectAgent } from './agentSelector';
 import { emitRuntimeEvent, listRuntimeEvents } from './runtimeEventBus';
 import { buildControlPlaneReport } from './reportEngine';
@@ -65,6 +66,20 @@ export {
   formatAgentTelemetryLines,
   TELEMETRY_SCHEMA_VERSION,
 } from './telemetry';
+export {
+  listFleetAgents,
+  getFleetAgent,
+  getFleetState,
+  aggregateFleetState,
+  listFleetBrowsers,
+  enrichFleetAgent,
+  fleetAgentFromSession,
+  formatFleetDashboardLines,
+  formatFleetAgentDetailLines,
+  formatFleetBrowserLines,
+  type FleetAgent,
+  type FleetState,
+} from './fleet';
 
 export const ControlPlane = {
   name: 'ControlPlane',
@@ -94,6 +109,8 @@ export const ControlPlane = {
 
   listAgents: listRegisteredAgents,
   getAgent: getAgentById,
+  listFleetAgents,
+  getFleet: getFleetState,
   selectAgent,
 
   emitEvent: emitRuntimeEvent,
@@ -129,6 +146,7 @@ export const ControlPlane = {
         runtimeApi: true,
         runtimeEvents: true,
         agentRegistry: true,
+        fleetRegistry: true,
         reportEngine: true,
         commandEngine: true,
         clients: ['web', 'telegram', 'cli'],

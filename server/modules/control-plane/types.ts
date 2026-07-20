@@ -84,4 +84,5 @@ export type ControlPlaneReportKind =
   | 'runtime_health'
   | 'agent'
   | 'browser'
-  | 'failed';
+  | 'failed'
+  | 'fleet';
