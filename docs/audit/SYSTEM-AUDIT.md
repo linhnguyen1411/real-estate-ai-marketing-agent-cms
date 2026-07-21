@@ -66,3 +66,12 @@ Draft → Approved → Scheduled → SocialPublishJob
 
 - Health: OK · scheduler running · Gemini configured
 - `AGENT_SCHEDULER_ENABLED=true` on VPS
+
+## H0.3 publish E2E notes
+
+Verified on VPS after deploy:
+
+- Scheduler enqueues `publish_social` AgentJobs for due `SocialPublishJob`
+- Placement writes `ownerAgent` / `ownerMachine` / `leaseUntil` / `plannerDecision`
+- **Bug fixed in H0:** stateless evidence now finalizes `SocialPublishJob` (`applyExecutionEvidence`)
+- Duplicate AgentJob enqueue while one is active is blocked
