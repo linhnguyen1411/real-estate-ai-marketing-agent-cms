@@ -228,15 +228,19 @@ async function main() {
 
   // --- Alerts still rate-limited ---
   let pushes = 0;
+  const { setNotificationDeliverHookForTests, resetNotificationRouterForTests } = await import(
+    '../server/notifications/notificationRouter'
+  );
+  process.env.TELEGRAM_OPS_CHAT_ID = '-5348392375';
+  process.env.TELEGRAM_CRITICAL_CHAT_ID = '-5132560624';
+  resetNotificationRouterForTests();
+  setNotificationDeliverHookForTests(async () => {
+    pushes += 1;
+    return { ok: true };
+  });
   const notifier = createTelegramEventNotifier({
     config: cfg(),
     alertCooldownMs: 60_000,
-    replyPort: {
-      async reply() {
-        pushes += 1;
-        return { ok: true };
-      },
-    },
     listEvents: async () => {
       const ts = new Date().toISOString();
       return [

@@ -98,6 +98,7 @@
     "test:telegram-operations": "tsx scripts/test-telegram-operations.ts",
     "test:telegram-smart-operations": "tsx scripts/test-telegram-smart-operations.ts",
     "test:telegram-copilot": "tsx scripts/test-telegram-copilot.ts",
+    "test:notification-router": "tsx scripts/test-notification-router.ts",
     "test:execution-telemetry": "tsx scripts/test-execution-telemetry.ts",
     "test:fleet-registry": "tsx scripts/test-fleet-registry.ts",
     "test:fleet-orchestrator": "tsx scripts/test-fleet-orchestrator.ts",

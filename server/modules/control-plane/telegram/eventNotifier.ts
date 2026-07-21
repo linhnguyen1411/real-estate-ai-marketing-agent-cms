@@ -1,73 +1,48 @@
 /**
- * Push Control Plane Runtime Events to Telegram (smart ops notifications).
- * Pulls Event Bus — does not subscribe to Worker or DB directly beyond Control Plane API.
+ * Push Control Plane Runtime Events → Notification Router (H0.3.6).
  */
 
 import { listRuntimeEvents } from '../runtimeEventBus';
+import { notification } from '../../../notifications/notificationRouter';
 import {
-  agentJobKeyboard,
-  incidentKeyboard,
-  missionActionKeyboard,
-  publishJobKeyboard,
-  type InlineKeyboard,
-} from '../inlineKeyboard';
-import {
-  formatSmartNotificationBullet,
-  mapRuntimeEventToSmartKind,
-  type SmartNotificationKind,
-} from './smartNotifications';
-import type { TelegramReplyPort } from './outbound';
+  runtimeEventToNotificationType,
+  type NotificationEventType,
+} from '../../../notifications/notificationTypes';
 import type { TelegramConsoleConfig } from './types';
-
-function keyboardForKind(
-  kind: SmartNotificationKind,
-  entityId: string | null,
-): InlineKeyboard | undefined {
-  if (!entityId) return undefined;
-  if (
-    kind === 'MISSION_STARTED' ||
-    kind === 'MISSION_COMPLETED' ||
-    kind === 'MISSION_FAILED'
-  ) {
-    return missionActionKeyboard(entityId);
-  }
-  if (kind === 'PUBLISH_SUCCESS' || kind === 'PUBLISH_FAILED') {
-    return publishJobKeyboard(entityId);
-  }
-  if (kind === 'AGENT_OFFLINE' || kind === 'BROWSER_CRASH' || kind === 'QUEUE_BLOCKED') {
-    return incidentKeyboard(entityId);
-  }
-  if (kind === 'CAMPAIGN_COMPLETED') {
-    return agentJobKeyboard(entityId);
-  }
-  return undefined;
-}
 
 export type EventNotifier = {
   start(): void;
   stop(): void;
-  /** Test hook */
   tickOnce(): Promise<number>;
 };
 
 const ALERT_COOLDOWN_MS = 60_000;
 
+function isCriticalType(type: NotificationEventType): boolean {
+  return [
+    'cpu_high',
+    'ram_high',
+    'scheduler_down',
+    'browser_crash',
+    'execution_agent_offline',
+    'heartbeat_lost',
+    'fleet_zero',
+  ].includes(type);
+}
+
 export function createTelegramEventNotifier(input: {
   config: TelegramConsoleConfig;
-  replyPort: TelegramReplyPort;
   listEvents?: typeof listRuntimeEvents;
-  /** Alert cooldown window (anti-spam) */
   alertCooldownMs?: number;
 }): EventNotifier {
   let timer: ReturnType<typeof setInterval> | null = null;
   let sinceMs = Date.now();
   const list = input.listEvents ?? listRuntimeEvents;
-  const chatId = input.config.primaryChatId;
   const cooldown = input.alertCooldownMs ?? ALERT_COOLDOWN_MS;
   const lastSent = new Map<string, number>();
 
   const tickOnce = async (): Promise<number> => {
-    if (!chatId || !input.config.botToken || !input.config.enabled) return 0;
+    if (!input.config.botToken || !input.config.enabled) return 0;
     const events = await list({
       companyId: input.config.companyId,
       types: [
@@ -80,8 +55,12 @@ export function createTelegramEventNotifier(input: {
         'AGENT_OFFLINE',
         'BROWSER_LEASED',
         'BROWSER_RELEASED',
+        'BROWSER_CRASH',
         'CAMPAIGN_COMPLETED',
         'OPS_REQUEST',
+        'PUBLISH_STARTED',
+        'PUBLISH_FINISHED',
+        'QUEUE_BLOCKED',
       ],
       since: new Date(sinceMs),
       limit: 40,
@@ -89,48 +68,47 @@ export function createTelegramEventNotifier(input: {
     if (events.length === 0) return 0;
 
     let newestMs = sinceMs;
-    const lines: string[] = [];
-    let lastMarkup: InlineKeyboard | undefined;
+    let sent = 0;
     const now = Date.now();
     for (const ev of events) {
       const t = Date.parse(ev.createdAt);
       if (Number.isFinite(t) && t > newestMs) newestMs = t;
-      const smartKind = mapRuntimeEventToSmartKind(ev);
-      if (!smartKind) continue;
-      const key = `${smartKind}:${ev.entityId || ev.agentId || smartKind}`;
+      const notifType = runtimeEventToNotificationType(ev);
+      if (!notifType) continue;
+      const key = `${notifType}:${ev.entityId || ev.agentId || notifType}`;
       const prev = lastSent.get(key) || 0;
       if (now - prev < cooldown) continue;
       lastSent.set(key, now);
-      lines.push(
-        formatSmartNotificationBullet(smartKind, {
+
+      const detail =
+        typeof ev.payload?.error === 'string'
+          ? ev.payload.error
+          : typeof ev.payload?.reason === 'string'
+            ? ev.payload.reason
+            : null;
+
+      await notification.send({
+        type: notifType,
+        payload: {
           entityId: ev.entityId,
           agentId: ev.agentId,
-          detail:
-            typeof ev.payload?.error === 'string'
-              ? ev.payload.error
-              : typeof ev.payload?.reason === 'string'
-                ? ev.payload.reason
-                : null,
-        }),
-      );
-      lastMarkup = keyboardForKind(smartKind, ev.entityId) || lastMarkup;
+          publishJobId: notifType.startsWith('publish') ? ev.entityId : undefined,
+          detail,
+        },
+        dedupeKey: key,
+        immediate: isCriticalType(notifType) || notifType === 'mission_started',
+        settings: undefined,
+      });
+      sent += 1;
     }
     sinceMs = newestMs;
-
-    if (lines.length === 0) return 0;
-    const text = ['[Ops Alert]', ...lines.slice(0, 15)].join('\n');
-    await input.replyPort.reply({
-      botToken: input.config.botToken,
-      chatId,
-      text,
-      replyMarkup: lastMarkup,
-    });
-    return lines.length;
+    await notification.flushBatches();
+    return sent;
   };
 
   return {
     start() {
-      if (timer || !input.config.enabled || !chatId) return;
+      if (timer || !input.config.enabled) return;
       timer = setInterval(() => {
         void tickOnce().catch(() => undefined);
       }, input.config.eventNotifyIntervalMs);

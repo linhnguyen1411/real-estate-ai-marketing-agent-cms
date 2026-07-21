@@ -1,5 +1,6 @@
 import { createAgentNotification } from '../../agent/agentNotificationService';
 import { appendAuditLog } from './auditService';
+import { notification } from '../../notifications/notificationRouter';
 
 /** Stable eventKey builders — tested for notification idempotency. */
 export function buildPublishSuccessEventKey(publishJobId: string): string {
@@ -46,6 +47,20 @@ export async function notifyPublishSuccess(input: {
     },
     link: { kind: 'job', jobId: input.publishJobId },
   });
+  void notification
+    .send({
+      type: 'publish_success',
+      payload: {
+        publishJobId: input.publishJobId,
+        entityId: input.publishJobId,
+        channelId: input.channelId,
+        summary: `Đăng thành công${input.externalPostId ? ` #${input.externalPostId}` : ''}`,
+        recommendation: 'Kiểm tra permalink trên Timeline.',
+      },
+      dedupeKey: buildPublishSuccessEventKey(input.publishJobId),
+      immediate: true,
+    })
+    .catch(() => undefined);
 }
 
 export async function notifyPublishFailure(input: {
@@ -80,6 +95,21 @@ export async function notifyPublishFailure(input: {
     },
     link: { kind: 'job', jobId: input.publishJobId },
   });
+  void notification
+    .send({
+      type: 'publish_failed',
+      payload: {
+        publishJobId: input.publishJobId,
+        entityId: input.publishJobId,
+        channelId: input.channelId,
+        summary: input.errorMessage || 'Đăng thất bại',
+        detail: input.errorCode || undefined,
+        recommendation: 'Retry hoặc kiểm tra evidence.',
+      },
+      dedupeKey: buildPublishFailureEventKey(input.publishJobId, input.errorCode),
+      immediate: true,
+    })
+    .catch(() => undefined);
 }
 
 export async function notifyChannelNeedsLogin(input: {

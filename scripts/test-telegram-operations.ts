@@ -114,15 +114,18 @@ async function main() {
 
   // Alerts rate limit
   let pushes = 0;
+  const { setNotificationDeliverHookForTests, resetNotificationRouterForTests } = await import(
+    '../server/notifications/notificationRouter'
+  );
+  process.env.TELEGRAM_OPS_CHAT_ID = '-5348392375';
+  resetNotificationRouterForTests();
+  setNotificationDeliverHookForTests(async () => {
+    pushes += 1;
+    return { ok: true };
+  });
   const notifier = createTelegramEventNotifier({
     config: cfg(),
     alertCooldownMs: 60_000,
-    replyPort: {
-      async reply() {
-        pushes += 1;
-        return { ok: true };
-      },
-    },
     listEvents: async () => {
       const ts = new Date().toISOString();
       return [

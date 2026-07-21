@@ -76,7 +76,7 @@ export async function startTelegramControlPlane(options?: {
   }
 
   await receiver.start();
-  eventNotifier = createTelegramEventNotifier({ config, replyPort });
+  eventNotifier = createTelegramEventNotifier({ config });
   eventNotifier.start();
 
   const cfg = config;
@@ -88,11 +88,16 @@ export async function startTelegramControlPlane(options?: {
       }),
     notifier: {
       async send(text) {
-        if (!cfg.primaryChatId || !cfg.botToken) return;
-        await replyPort.reply({
-          botToken: cfg.botToken,
-          chatId: cfg.primaryChatId,
-          text,
+        if (!cfg.botToken) return;
+        const hour = new Date().getHours();
+        const type =
+          hour === 8 ? 'daily_08' : hour === 12 ? 'daily_12' : hour === 18 ? 'daily_18' : 'weekly';
+        const { notification } = await import('../../../notifications/notificationRouter');
+        await notification.send({
+          type,
+          payload: { summary: text },
+          immediate: true,
+          skipDedup: true,
         });
       },
     },

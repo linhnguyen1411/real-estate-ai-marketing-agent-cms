@@ -1,8 +1,8 @@
 /**
- * Single reply adapter — all Telegram console responses go through sendMessage.
+ * Single reply adapter — all Telegram console responses go through Notification Router.
  */
 
-import { sendTelegramMessage } from '../../../notifications/telegramNotificationService';
+import { sendNotificationDirect } from '../../../notifications/notificationRouter';
 import type { InlineKeyboard } from '../inlineKeyboard';
 
 export type TelegramReplyPort = {
@@ -32,36 +32,13 @@ export function createTelegramReplyPort(): TelegramReplyPort {
       if (!token || !chatId) {
         return { ok: false, error: 'Missing bot token or chat id' };
       }
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: text.slice(0, 4000),
-            disable_web_page_preview: true,
-            ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
-          }),
-        });
-        const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        if (!res.ok || raw.ok === false) {
-          const desc =
-            typeof raw.description === 'string'
-              ? raw.description
-              : `Telegram HTTP ${res.status}`;
-          return { ok: false, error: desc };
-        }
-        const result = (raw.result || {}) as Record<string, unknown>;
-        return {
-          ok: true,
-          messageId: result.message_id != null ? String(result.message_id) : undefined,
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
+      return sendNotificationDirect({
+        chatId,
+        text,
+        botToken: token,
+        replyMarkup: input.replyMarkup,
+        skipDedup: true,
+      });
     },
     async answerCallback(input) {
       await fetch(`https://api.telegram.org/bot${input.botToken}/answerCallbackQuery`, {
@@ -77,5 +54,5 @@ export function createTelegramReplyPort(): TelegramReplyPort {
   };
 }
 
-/** Keep legacy helper available for finding notify path */
-export { sendTelegramMessage };
+/** Transport — use notificationRouter.send / sendDirect instead of calling directly */
+export { sendTelegramMessage } from '../../../notifications/telegramNotificationService';
