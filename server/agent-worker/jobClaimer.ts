@@ -62,6 +62,15 @@ export async function claimNextJob(
           OR payload->>'targetAgentId' = ''
           OR payload->>'targetAgentId' = ${workerId}
         )
+        AND (
+          payload->>'ownerAgent' IS NULL
+          OR payload->>'ownerAgent' = ''
+          OR payload->>'ownerAgent' = ${workerId}
+          OR (
+            payload->>'leaseUntil' IS NOT NULL
+            AND (payload->>'leaseUntil')::timestamptz <= NOW()
+          )
+        )
       ORDER BY priority ASC, created_at ASC
       LIMIT 40
       FOR UPDATE SKIP LOCKED
@@ -83,6 +92,7 @@ export async function claimNextJob(
 
     let matchId: string | null = null;
     let placementPayload: Record<string, unknown> | null = null;
+    let ownershipPatch: Record<string, unknown> | null = null;
 
     try {
       const { planClaimForAgent } = await import(
@@ -90,6 +100,9 @@ export async function claimNextJob(
       );
       const { isMachineDraining, isMachineInMaintenance } = await import(
         '../modules/control-plane/fleet-orchestrator/policies'
+      );
+      const { buildJobOwnership, mergeOwnershipIntoPayload, isOwnedByOther } = await import(
+        '../modules/control-plane/fleet-orchestrator/jobOwnership'
       );
 
       if (
@@ -99,10 +112,12 @@ export async function claimNextJob(
         return null;
       }
 
+      const candidates = capable.filter(r => !isOwnedByOther(r.payload, workerId));
+
       const plan = planClaimForAgent({
         agent: fleetAgent,
         agentId: workerId,
-        candidates: capable.map(r => ({
+        candidates: candidates.map(r => ({
           id: r.id,
           type: r.type,
           priority: r.priority,
@@ -124,6 +139,21 @@ export async function claimNextJob(
         breakdown: plan.decision.breakdown,
         policyMode: plan.decision.policyMode,
       };
+
+      if (matchId) {
+        const chosen = candidates.find(c => c.id === matchId);
+        const ownership = buildJobOwnership({
+          agentId: workerId,
+          machineId: fleetAgent?.machineId,
+          hostname: fleetAgent?.hostname,
+          decision: plan.decision,
+        });
+        ownershipPatch = mergeOwnershipIntoPayload(chosen?.payload, ownership);
+        placementPayload.ownerMachine = ownership.ownerMachine;
+        placementPayload.ownerAgent = ownership.ownerAgent;
+        placementPayload.leaseUntil = ownership.leaseUntil;
+        placementPayload.plannerDecision = ownership.plannerDecision;
+      }
     } catch {
       // Fallback: first capable row (legacy first-fit)
       matchId = capable[0]?.id ?? null;
@@ -139,6 +169,9 @@ export async function claimNextJob(
         claimedBy: workerId,
         claimedAt: new Date(),
         startedAt: new Date(),
+        ...(ownershipPatch
+          ? { payload: ownershipPatch as Prisma.InputJsonValue }
+          : {}),
       },
     });
 
@@ -250,6 +283,15 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         /* ignore */
       }
     }
+    let nextPayload: Prisma.InputJsonValue | undefined;
+    try {
+      const { clearOwnershipFromPayload } = await import(
+        '../modules/control-plane/fleet-orchestrator/jobOwnership'
+      );
+      nextPayload = clearOwnershipFromPayload(job.payload) as Prisma.InputJsonValue;
+    } catch {
+      nextPayload = undefined;
+    }
     await prisma.agentJob.update({
       where: { id: jobId },
       data: {
@@ -260,6 +302,7 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         claimedAt: null,
         startedAt: null,
         errorMessage,
+        ...(nextPayload ? { payload: nextPayload } : {}),
       },
     });
     return;

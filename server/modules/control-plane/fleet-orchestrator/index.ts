@@ -63,3 +63,12 @@ export {
   formatPlacementDecisionLines,
   formatOrchestratorReportLines,
 } from './formatTelegram';
+export {
+  buildJobOwnership,
+  mergeOwnershipIntoPayload,
+  clearOwnershipFromPayload,
+  isOwnedByOther,
+  JOB_OWNERSHIP_LEASE_MS,
+  type JobOwnershipPayload,
+  type PlannerDecisionSnapshot,
+} from './jobOwnership';
