@@ -42,6 +42,7 @@ tar -czf $ArchiveName `
   --exclude=db.json `
   --exclude=./runtime/agent-browser-profile `
   --exclude=./runtime/agent-cdp-profile `
+  --exclude=./runtime/agent-vps-heartbeat-profile `
   --exclude=./runtime/agent-cdp-profile/** `
   --exclude=./runtime/agent-browser-profile/** `
   --exclude=./runtime/publish-evidence/** `

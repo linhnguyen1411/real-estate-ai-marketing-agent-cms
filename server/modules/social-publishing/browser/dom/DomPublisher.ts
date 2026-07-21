@@ -60,8 +60,13 @@ export class DomPublisher {
     const buttons = [
       page.locator('[role="dialog"]').getByRole('button', { name: this.selectors.publishButtonRoleName }),
       page.locator(this.selectors.publishDialogAriaCss),
+      page.locator('[role="dialog"]').getByText(this.selectors.publishButtonRoleName),
       page.getByRole('button', { name: this.selectors.publishButtonRoleName }),
       page.locator(this.selectors.publishAriaCss),
+      // Last resort: visible text inside dialog (FB often nests label spans).
+      page.locator('[role="dialog"] [role="button"]').filter({
+        hasText: this.selectors.publishButtonRoleName,
+      }),
     ];
 
     const deadline = Date.now() + 12_000;

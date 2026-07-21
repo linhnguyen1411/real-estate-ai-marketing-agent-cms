@@ -27,7 +27,13 @@ export function buildPublishWorkflowPayloadFromRecords(job: {
     linkUrl: string | null;
     media?: Array<{ type: string; fileUrl: string; sortOrder: number }>;
   };
-  channel: { type: string; executionMode: string; config: unknown };
+  channel: {
+    type: string;
+    executionMode: string;
+    config: unknown;
+    /** Column on SocialChannel — often set in Admin while config JSON stays empty */
+    profileUrl?: string | null;
+  };
 }): PublishWorkflowPayload {
   const destinationKey = resolveDestinationKeyFromChannel(job.channel);
   if (!destinationKey) {
@@ -38,8 +44,18 @@ export function buildPublishWorkflowPayloadFromRecords(job: {
 
   const config =
     job.channel.config && typeof job.channel.config === 'object'
-      ? (job.channel.config as Record<string, unknown>)
+      ? { ...(job.channel.config as Record<string, unknown>) }
       : {};
+
+  // H0 bugfix: Admin stores group/timeline URL on channel.profileUrl; adapters read destinationConfig.
+  const profileUrl =
+    typeof job.channel.profileUrl === 'string' ? job.channel.profileUrl.trim() : '';
+  if (profileUrl) {
+    if (!config.profileUrl) config.profileUrl = profileUrl;
+    if (destinationKey === 'facebook_group' && !config.groupUrl && !config.url) {
+      config.groupUrl = profileUrl;
+    }
+  }
 
   return {
     publishJobId: job.id,

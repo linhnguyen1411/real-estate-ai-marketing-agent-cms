@@ -75,3 +75,7 @@ Verified on VPS after deploy:
 - Placement writes `ownerAgent` / `ownerMachine` / `leaseUntil` / `plannerDecision`
 - **Bug fixed in H0:** stateless evidence now finalizes `SocialPublishJob` (`applyExecutionEvidence`)
 - Duplicate AgentJob enqueue while one is active is blocked
+- **Live publish requires** VPS `BROWSER_PUBLISH_LIVE=1` (hydrate sets `dryRun`)
+- **Channel `profileUrl`** is merged into `destinationConfig` when `config` JSON is empty
+- **Do not run** `agent-worker` and `automation-agent` concurrently
+- **Live proof:** Timeline job `cmrtzh1et0001x8tchl2v4jqp` → draft+job **published** (permalink in result)

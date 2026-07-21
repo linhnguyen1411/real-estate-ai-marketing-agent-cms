@@ -40,7 +40,7 @@ export const FACEBOOK_TIMELINE_SELECTORS: DomSelectorConfig = {
   fileInput: 'input[type="file"]',
   photoButtonRoleName: /photo|video|ảnh|hình|image|media/i,
   // VN UI often uses "Đăng bài viết" / "Đăng" — avoid ^$ anchors.
-  publishButtonRoleName: /^(post|publish|đăng|share)\b|đăng bài|post now/i,
+  publishButtonRoleName: /post|publish|đăng|share|chia sẻ|đăng bài|post now/i,
   publishAriaCss:
     '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"], [aria-label*="Đăng" i], [aria-label*="Post" i]',
   publishDialogAriaCss:

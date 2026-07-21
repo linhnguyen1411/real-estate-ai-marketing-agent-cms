@@ -30,3 +30,13 @@
 - Video publish = **Experimental** (disabled)
 - In-memory orchestrator policies/reservations reset on CMS restart (payload ownership persists on jobs)
 - Claude provider not implemented (Gemini/OpenAI/Ollama only)
+
+## H0 burn-in findings (tracked)
+
+| Item | Severity | Notes |
+|------|----------|-------|
+| Live hydrate gate | Medium | `dryRun` set on **VPS** via `BROWSER_PUBLISH_LIVE` — agent-local alone is insufficient |
+| Dual execution processes | High | `agent-worker` + `automation-agent` → claim/CDP storm; ops must run one |
+| Channel URL split | Medium | Admin `profileUrl` vs empty `config` — hydrated in H0 bugfix |
+| Group verify heuristics | Medium | Soft-success improved; Timeline remains primary burn-in path |
+| `pg_dump` + `?schema=` | Low | Strip Prisma query param for durable DB backups |

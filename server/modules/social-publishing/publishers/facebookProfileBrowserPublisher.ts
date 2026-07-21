@@ -43,8 +43,11 @@ export function parsePublishSuccess(input: {
   if (/something went wrong|try again|không thể đăng|couldn't post|could not post/.test(hay)) {
     return { success: false, reason: 'failure_heuristic_match' };
   }
-  // Soft success: composer closed / URL looks like feed
-  if (input.currentUrl && /facebook\.com\/?(home|profile|me|\?|$)/i.test(input.currentUrl)) {
+  // Soft success: composer closed / URL looks like feed or group wall
+  if (
+    input.currentUrl &&
+    /facebook\.com\/?(home\.php|home|profile|me|groups\/[^/?#]+\/?(\?|$)|$|\?)/i.test(input.currentUrl)
+  ) {
     return { success: true, reason: 'soft_feed_url' };
   }
   return { success: false, reason: 'no_success_signal' };
