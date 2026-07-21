@@ -83,6 +83,23 @@ export async function startPublishMissionRun(input: {
     }
   }
 
+  // H0: prevent duplicate AgentJobs while SocialPublishJob still queued
+  const activeByPayload = await prisma.agentJob.findFirst({
+    where: {
+      type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
+      status: { in: ['queued', 'claimed', 'running'] },
+      payload: { path: ['publishJobId'], equals: job.id },
+    },
+    select: { id: true, missionRunId: true },
+  });
+  if (activeByPayload) {
+    return {
+      missionRunId: activeByPayload.missionRunId || existingRunId || activeByPayload.id,
+      agentJobId: activeByPayload.id,
+      created: false,
+    };
+  }
+
   const companyId = input.companyId ?? job.companyId ?? job.draft.companyId ?? null;
   const missionId = await findOrCreatePublishMission(companyId);
   const pipeline = PUBLISH_BROWSER_CONTENT_PIPELINE;
