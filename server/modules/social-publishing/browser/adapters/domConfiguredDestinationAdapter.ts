@@ -199,22 +199,33 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
       meta.postId = permalinkInfo.postId;
     }
 
-    if (!parsed.success && !permalinkInfo.permalink) {
-      throw new Error(`browser_publish_failed:${parsed.reason}`);
+    // Strong success: toast / activity heuristic, OR a real (non-junk) permalink.
+    // Soft feed URL alone must not mark SocialPublishJob published.
+    const strong =
+      parsed.success &&
+      parsed.reason !== 'soft_feed_url' &&
+      parsed.reason !== 'soft_feed_url_unverified' &&
+      !parsed.reason.startsWith('group_soft_');
+    const hasPermalink = Boolean(permalinkInfo.permalink);
+    if (!strong && !hasPermalink) {
+      throw new Error(`browser_publish_failed:${parsed.reason || 'unverified'}`);
     }
 
     if (!state.publishedUrl) {
-      state.publishedUrl = permalinkInfo.permalink || signals.currentUrl;
+      state.publishedUrl = permalinkInfo.permalink || undefined;
+    }
+    if (!state.publishedUrl && !strong) {
+      throw new Error('browser_publish_failed:missing_permalink');
     }
 
     await this.dom.evidence.screenshotAfter(page, this.evidencePaths(ctx), meta);
 
     return this.ok('publish', {
       clicked,
-      publishedUrl: state.publishedUrl,
+      publishedUrl: state.publishedUrl ?? null,
       postId: meta.postId ?? null,
-      reason: parsed.reason,
-      permalinkResolved: Boolean(permalinkInfo.permalink),
+      reason: hasPermalink ? parsed.reason || 'permalink' : parsed.reason,
+      permalinkResolved: hasPermalink,
     });
   }
 

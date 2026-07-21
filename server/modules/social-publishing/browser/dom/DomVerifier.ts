@@ -10,6 +10,18 @@ import type {
   PublishSuccessSignal,
 } from './types';
 
+/** FB notification / reaction links look like permalinks but are not new posts. */
+export function isJunkFacebookPermalink(url: string): boolean {
+  const u = url.toLowerCase();
+  return (
+    /[?&]notif_(id|t)=/.test(u) ||
+    /[?&]ref=notif\b/.test(u) ||
+    /feedback_reaction/.test(u) ||
+    /\/notifications\b/.test(u) ||
+    /story\.php\?.*\bnotif_/.test(u)
+  );
+}
+
 export class DomVerifier {
   constructor(
     private readonly selectors: DomSelectorConfig,
@@ -63,6 +75,8 @@ export class DomVerifier {
     for (const raw of pool) {
       const url = raw.replace(/&amp;/g, '&').replace(/[>"'].*$/, '').trim();
       if (!url || !this.rules.hostPattern.test(url)) continue;
+      // Notification / reaction deep-links are not new-post permalinks (H0 false positive).
+      if (isJunkFacebookPermalink(url)) continue;
       if (!this.rules.permalinkMarkers.test(url)) continue;
       const postId = this.extractPostIdFromUrl(url);
       return { permalink: url, postId };

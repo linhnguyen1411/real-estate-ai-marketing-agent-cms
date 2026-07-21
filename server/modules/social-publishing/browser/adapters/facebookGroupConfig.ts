@@ -76,20 +76,13 @@ export const FACEBOOK_GROUP_RULES: DomPlatformRules = {
     if (base.success || base.reason === 'failure_heuristic_match') return base;
     const hay = `${input.currentUrl || ''} ${input.bodyText || ''} ${input.toastText || ''}`.toLowerCase();
     if (!/facebook\.com\/groups\//i.test(input.currentUrl || '')) return base;
-    // Group UI often stays on the group URL with no "post live" toast.
+    // Soft success alone is insufficient without permalink (see DomPublisher verify path).
     if (
       /just now|vừa xong|a few seconds ago|posted in the group|shared to the group|đã chia sẻ|đăng lên nhóm/.test(
         hay,
       )
     ) {
       return { success: true, reason: 'group_activity_signal' };
-    }
-    // Soft success: still on group feed and create-post dialog cues are gone.
-    if (
-      !/create a public post|tạo bài viết công khai|write something…|viết gì đó…/.test(hay) &&
-      !/something went wrong|try again|không thể đăng|couldn't post/.test(hay)
-    ) {
-      return { success: true, reason: 'group_soft_feed_url' };
     }
     return base;
   },
