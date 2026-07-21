@@ -251,9 +251,13 @@ export async function runtimeAgentOffline(input: {
 export async function runtimeAgentClaimJob(input: {
   agentId: string;
   capabilities?: string[];
+  preferTypes?: string[];
+  excludeTypes?: string[];
 }) {
   const job = await claimNextJob(input.agentId, {
     capabilities: input.capabilities,
+    preferTypes: input.preferTypes,
+    excludeTypes: input.excludeTypes,
   });
   if (!job) return null;
   const hydrated = await hydrateJobForExecution(job);

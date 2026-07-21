@@ -106,6 +106,12 @@ export function registerRuntimeAgentRoutes(app: Express): void {
         capabilities: Array.isArray(req.body?.capabilities)
           ? req.body.capabilities.map(String)
           : undefined,
+        preferTypes: Array.isArray(req.body?.preferTypes)
+          ? req.body.preferTypes.map(String)
+          : undefined,
+        excludeTypes: Array.isArray(req.body?.excludeTypes)
+          ? req.body.excludeTypes.map(String)
+          : undefined,
       });
       res.json({ status: 'success', data });
     } catch (error: unknown) {

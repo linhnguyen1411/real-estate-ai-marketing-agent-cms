@@ -81,12 +81,48 @@ export class WorkerLoop {
 
   private canAccept(kind: string | null): boolean {
     if (!kind) return true;
+    // Single Chrome profile: while publish owns CDP / is inflight, defer scan/visit.
+    if (kind === 'scan' && this.publishOwnsChrome()) {
+      return false;
+    }
     if (!this.executionPool.hasFreeCapacity(kind as Parameters<ExecutionPool['hasFreeCapacity']>[0])) {
       return false;
     }
     const snap = this.executionPool.snapshot().find(s => s.kind === kind);
     if (!snap || snap.maxConcurrency <= 0 || snap.status === 'stopped') return false;
     return snap.runningJobs + this.reservedCount(kind) < snap.maxConcurrency;
+  }
+
+  private publishOwnsChrome(): boolean {
+    return this.browser.isCdpBusy('publish') || this.reservedCount('publish') > 0;
+  }
+
+  private claimOptions(): {
+    capabilities?: string[];
+    preferTypes?: string[];
+    excludeTypes?: string[];
+  } {
+    const capabilities = this.capabilities.length ? this.capabilities : undefined;
+    const publishFree = this.canAccept('publish');
+    const publishBusy = this.publishOwnsChrome();
+
+    if (publishBusy) {
+      return {
+        capabilities,
+        preferTypes: ['publish_social'],
+        excludeTypes: ['scan_source', 'source_scan', 'visit_url'],
+      };
+    }
+
+    if (publishFree) {
+      // Prefer publish when capacity free; if none queued, claimer falls back to other types.
+      return {
+        capabilities,
+        preferTypes: ['publish_social'],
+      };
+    }
+
+    return { capabilities };
   }
 
   private anyAcceptableSlot(): boolean {
@@ -134,9 +170,7 @@ export class WorkerLoop {
           continue;
         }
 
-        const job = await this.queue.claimNext(this.config.workerId, {
-          capabilities: this.capabilities.length ? this.capabilities : undefined,
-        });
+        const job = await this.queue.claimNext(this.config.workerId, this.claimOptions());
         if (!job) {
           await sleep(this.config.pollIntervalMs);
           continue;
@@ -144,14 +178,20 @@ export class WorkerLoop {
 
         const kind = slotKindForJobType(job.type);
         if (kind && !this.canAccept(kind)) {
-          await this.queue.release(
-            job.id,
-            `SLOT_BUSY: ${kind} — running=${this.executionPool.snapshot().find(s => s.kind === kind)?.runningJobs ?? '?'}/${this.executionPool.snapshot().find(s => s.kind === kind)?.maxConcurrency ?? '?'}`,
-          );
+          const reason =
+            kind === 'scan' && this.publishOwnsChrome()
+              ? 'SLOT_BUSY: scan deferred — publish owns chrome profile'
+              : `SLOT_BUSY: ${kind} — running=${this.executionPool.snapshot().find(s => s.kind === kind)?.runningJobs ?? '?'}/${this.executionPool.snapshot().find(s => s.kind === kind)?.maxConcurrency ?? '?'}`;
+          await this.queue.release(job.id, reason);
           await sleep(this.config.pollIntervalMs);
           continue;
         }
 
+        if (job.type === 'publish_social') {
+          console.log(
+            `[agent-worker] Publish priority — claiming ${job.id} (scan deferred until publish releases chrome)`,
+          );
+        }
         console.log(`[agent-worker] Claimed job ${job.id} type=${job.type}`);
         if (kind) this.reserve(kind);
         const run = this.dispatch(job).finally(() => {

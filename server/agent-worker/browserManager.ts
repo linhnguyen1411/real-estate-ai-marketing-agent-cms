@@ -25,8 +25,8 @@ export interface GetPageOptions extends GetOrCreatePageOptions {
 
 /**
  * Facade: lazy managed + CDP connections.
- * CDP concurrency is purpose-scoped (scan ∥ publish) via beginCdpJob(purpose) / releaseCdpLock(purpose).
- * Execution Pool owns slot limits; this mutex prevents same-purpose overlap only.
+ * CDP: publish is exclusive over the shared Chrome profile (scan defers while publish holds lock).
+ * Same-purpose overlap still blocked; scan ∥ publish no longer allowed on one profile.
  */
 
 export type CdpLockPurpose = BrowserPurpose | 'shared';
@@ -126,48 +126,34 @@ export class BrowserManager {
   }
 
   /**
-   * Get the worker-owned Facebook publish tab (separate from scan).
-   * Created once and reused; closed on worker shutdown without touching user tabs.
+   * Get a fresh worker-owned Facebook publish tab (never scan/findings tabs).
+   * Always recreate so composer is clean even when Chrome has many scan tabs.
    */
   async getPublishPage(options: GetPageOptions = {}): Promise<Page> {
     const mode = this.resolveMode(options);
     const conn = await this.ensureConnection(mode);
+    const home =
+      (options.initialUrl && options.initialUrl.trim()) || 'https://www.facebook.com/';
 
-    if (this.publishPage && !this.publishPage.isClosed()) {
-      this.lastPublishPageMode = 'reused';
-      if (options.initialUrl) {
-        const current = this.publishPage.url();
-        if (shouldReloadScanPage(current, options.initialUrl)) {
-          await this.publishPage
-            .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-            .catch(() => undefined);
-        }
-      }
-      return this.publishPage;
-    }
-
-    if (this.publishPage && this.publishPage.isClosed()) {
-      this.lastPublishPageMode = 'recreated';
-    } else {
-      this.lastPublishPageMode = 'created';
-    }
-    this.publishPage = null;
+    // Always start clean — do not reuse a tab that may have drifted into posts/findings UI.
+    await this.closePublishPage();
+    this.lastPublishPageMode = 'created';
 
     const pageCount = conn.context.pages().length;
     if (pageCount >= this.maxContextPages) {
       console.warn(
         `[browser-manager] context has ${pageCount} tabs (>= ${this.maxContextPages}); ` +
-          'not closing user tabs — only worker-owned publish tab is managed.',
+          'opening dedicated publish tab (scan/findings tabs left untouched).',
       );
     }
 
     const page = await conn.context.newPage();
     this.publishPage = page;
-    if (options.initialUrl) {
-      await page
-        .goto(options.initialUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-        .catch(() => undefined);
-    }
+    await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => undefined);
+    await page
+      .goto(home, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      .catch(() => undefined);
+    await page.bringToFront().catch(() => undefined);
     return page;
   }
 
@@ -257,13 +243,34 @@ export class BrowserManager {
   }
 
   /**
-   * Purpose-scoped CDP lock. Scan and publish do not block each other.
-   * Same job (ALS / owner) is reentrant; another job on same purpose → CDP_BUSY.
+   * CDP lock — publish owns the shared Chrome profile exclusively.
+   * Scan/shared cannot start while publish is held; publish waits if scan is mid-lock.
    */
   async beginCdpJob(purpose?: CdpLockPurpose): Promise<void> {
     const ctx = getRuntimeJobContext();
     const p: CdpLockPurpose = purpose ?? ctx?.purpose ?? 'shared';
     const owner = ctx?.jobId ?? 'anonymous';
+
+    if (p === 'publish') {
+      for (const [key, entry] of this.cdpLocks) {
+        if (key === 'publish') continue;
+        if (entry.refs > 0 && entry.owner !== owner) {
+          this.scanMetrics.facebookConcurrentJobRejected += 1;
+          throw new Error(
+            `CDP_BUSY: chrome exclusive for publish — purpose=${key} held by job=${entry.owner} (requested by ${owner}).`,
+          );
+        }
+      }
+    } else {
+      const pub = this.cdpLocks.get('publish');
+      if (pub && pub.refs > 0 && pub.owner !== owner) {
+        this.scanMetrics.facebookConcurrentJobRejected += 1;
+        throw new Error(
+          `CDP_BUSY: publish owns chrome — held by job=${pub.owner} (requested by ${owner} for ${p}).`,
+        );
+      }
+    }
+
     const cur = this.cdpLocks.get(p);
     if (!cur) {
       this.cdpLocks.set(p, { owner, refs: 1 });

@@ -135,7 +135,8 @@ export async function startPublishMissionRun(input: {
       missionRunId: run.id,
       type: AGENT_JOB_TYPE_PUBLISH_SOCIAL,
       status: 'queued',
-      priority: 5,
+      // Lower number = higher queue priority (publish beats default scan priority 5).
+      priority: 1,
       availableAt: new Date(),
       payload: {
         publishJobId: job.id,

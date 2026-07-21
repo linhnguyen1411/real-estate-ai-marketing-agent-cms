@@ -65,6 +65,7 @@ export async function runStatelessPublishSocialJob(
     return { ...result, evidence: evidence.toJSON() };
   } finally {
     browser.releaseCdpLock('publish');
+    await browser.closePublishPage().catch(() => undefined);
   }
 }
 

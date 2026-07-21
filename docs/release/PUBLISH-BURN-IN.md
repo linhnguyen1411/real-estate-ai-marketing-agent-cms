@@ -10,6 +10,7 @@ Companion to `PUBLISH-VALIDATION.md`. Operator checklist for ongoing burn-in aft
 - [ ] Chrome CDP `http://127.0.0.1:9222` logged into target Facebook account
 - [ ] Do **not** run `agent-worker` in parallel
 - [ ] Channel `profileUrl` / `config.groupUrl` populated
+- [ ] Publish priority: scan/visit deferred while `publish_social` runs (single Chrome profile)
 
 ## Happy path (no manual enqueue)
 

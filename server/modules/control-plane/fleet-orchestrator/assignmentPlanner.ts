@@ -57,9 +57,13 @@ export function planClaimForAgent(input: PlanClaimInput): PlanClaimResult {
   const scores: PlacementCandidateScore[] = [];
   const rejected: PlacementDecision['rejected'] = [];
 
+  // Single Chrome profile: if any publish_social is claimable, prefer it over scan/visit.
+  const publishFirst = input.candidates.filter(c => c.type === 'publish_social');
+  const candidates = publishFirst.length > 0 ? publishFirst : input.candidates;
+
   if (!input.agent) {
     // No fleet snapshot — fall back to first candidate (legacy behavior)
-    const first = input.candidates[0] ?? null;
+    const first = candidates[0] ?? null;
     const decision: PlacementDecision = {
       id: `pd_${Date.now()}`,
       at: new Date().toISOString(),
@@ -85,7 +89,7 @@ export function planClaimForAgent(input: PlanClaimInput): PlanClaimResult {
 
   const fleetLoadMax = Math.max(0, ...(input.fleet || []).map(a => a.jobs.running));
 
-  for (const job of input.candidates) {
+  for (const job of candidates) {
     const s = scoreJobForAgent(job, input.agent, { fleetLoadMax });
     scores.push(s);
     if (!s.eligible) {

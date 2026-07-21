@@ -40,6 +40,8 @@ export function createHttpJobQueuePort(
       const job = await client.claimJob({
         agentId,
         capabilities: options?.capabilities,
+        preferTypes: options?.preferTypes,
+        excludeTypes: options?.excludeTypes,
       });
       if (!job) return null;
       return toAgentJob(job);

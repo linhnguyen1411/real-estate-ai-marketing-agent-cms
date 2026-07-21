@@ -71,13 +71,16 @@ export async function claimNextJob(
             AND (payload->>'leaseUntil')::timestamptz <= NOW()
           )
         )
-      ORDER BY priority ASC, created_at ASC
+      ORDER BY
+        CASE WHEN type = 'publish_social' THEN 0 ELSE 1 END ASC,
+        priority ASC,
+        created_at ASC
       LIMIT 40
       FOR UPDATE SKIP LOCKED
     `;
 
     // Capability pre-filter (agent-declared)
-    const capable = rows.filter(r => {
+    let capable = rows.filter(r => {
       if (capabilities.length === 0) return true;
       const need = capabilityForJobType(r.type);
       if (!need) return true;
@@ -89,6 +92,17 @@ export async function claimNextJob(
             capabilities.includes('publish_group')))
       );
     });
+
+    const excludeTypes = options?.excludeTypes?.filter(Boolean) ?? [];
+    if (excludeTypes.length > 0) {
+      capable = capable.filter(r => !excludeTypes.includes(r.type));
+    }
+
+    const preferTypes = options?.preferTypes?.filter(Boolean) ?? [];
+    if (preferTypes.length > 0) {
+      const preferred = capable.filter(r => preferTypes.includes(r.type));
+      if (preferred.length > 0) capable = preferred;
+    }
 
     let matchId: string | null = null;
     let placementPayload: Record<string, unknown> | null = null;

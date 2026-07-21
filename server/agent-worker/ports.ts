@@ -8,6 +8,10 @@ import type { BrowserManager } from './browserManager';
 
 export type ClaimOptions = {
   capabilities?: string[];
+  /** Prefer these job types when present in the claim window (e.g. publish_social). */
+  preferTypes?: string[];
+  /** Exclude these types from this claim attempt (e.g. defer scan while publish owns Chrome). */
+  excludeTypes?: string[];
 };
 
 export interface JobQueuePort {
