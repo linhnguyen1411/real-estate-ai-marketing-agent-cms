@@ -15,6 +15,7 @@ import 'dotenv/config';
 process.env.EXECUTION_AGENT_STATELESS = process.env.EXECUTION_AGENT_STATELESS || '1';
 
 import os from 'os';
+import { ensureDatabaseReady } from '../dbHelper';
 import { BrowserManager } from '../agent-worker/browserManager';
 import { loadWorkerConfig } from '../agent-worker/config';
 import { registerGracefulShutdown } from '../agent-worker/gracefulShutdown';
@@ -52,6 +53,10 @@ function parseCapabilities(): string[] {
 }
 
 async function main(): Promise<void> {
+  // Scan/finding persistence + AI settings still need local DB even when
+  // Control Plane jobs are hydrated (EXECUTION_AGENT_STATELESS=1).
+  await ensureDatabaseReady();
+
   const config = loadWorkerConfig();
   const capabilities = parseCapabilities();
   const client = new RuntimeAgentClient({
@@ -98,7 +103,10 @@ async function main(): Promise<void> {
       ...registry,
       ...telemetry,
       mode: config.browserMode,
-      profilePath: config.profileDir,
+      // Report the profile actually used (CDP → agent-cdp-profile, not managed dir).
+      profilePath: config.activeProfileDir,
+      managedProfilePath: config.profileDir,
+      cdpProfilePath: config.cdpProfileDir,
       executionPool: executionPool.snapshot(),
       browserPool: browserPool.snapshot(),
       publishedAt: new Date().toISOString(),

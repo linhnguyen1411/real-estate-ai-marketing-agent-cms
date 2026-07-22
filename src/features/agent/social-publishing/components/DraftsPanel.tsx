@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, Check, Copy, Eye, Plus, Send, Sparkles, X } from 'lucide-react';
+import { Archive, Check, Copy, Eye, ImagePlus, Plus, Send, Sparkles, X } from 'lucide-react';
 import {
   approveSocialDraft,
   archiveSocialDraft,
@@ -13,6 +13,7 @@ import {
   scheduleSocialDraft,
   submitSocialDraftReview,
   updateSocialDraft,
+  uploadSocialMediaFile,
 } from '../../../../services/socialPublishingApi';
 import type { SocialChannel, SocialPostDraft } from '../../../../types/socialPublishing';
 import {
@@ -29,6 +30,36 @@ const EMPTY_FORM = {
   linkUrl: '',
   mediaUrls: '',
 };
+
+const EMOJI_QUICK = [
+  '🔥',
+  '📍',
+  '🏠',
+  '🏢',
+  '🌳',
+  '✨',
+  '📞',
+  '💰',
+  '✅',
+  '📌',
+  '🔑',
+  '📐',
+  '🚗',
+  '🌅',
+  '⭐',
+  '👉',
+];
+
+/** Lightweight draft preview: keep newlines, strip common markdown markers for display. */
+function previewBody(raw: string): string {
+  return String(raw || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '• ');
+}
 
 type Props = {
   canManage: boolean;
@@ -63,6 +94,66 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
   const [scheduleChannelId, setScheduleChannelId] = useState('');
   const [scheduleAt, setScheduleAt] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const bodyRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  const insertAtCursor = (snippet: string) => {
+    const el = bodyRef.current;
+    if (!el) {
+      setForm(f => ({ ...f, body: `${f.body}${snippet}` }));
+      return;
+    }
+    const start = el.selectionStart ?? form.body.length;
+    const end = el.selectionEnd ?? start;
+    const next = form.body.slice(0, start) + snippet + form.body.slice(end);
+    setForm(f => ({ ...f, body: next }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + snippet.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const wrapSelection = (before: string, after = before) => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const selected = form.body.slice(start, end) || 'text';
+    const next = form.body.slice(0, start) + before + selected + after + form.body.slice(end);
+    setForm(f => ({ ...f, body: next }));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  };
+
+  const handleMediaFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploadingMedia(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          onMessage(`Bỏ qua ${file.name}: chỉ nhận ảnh.`);
+          continue;
+        }
+        const result = await uploadSocialMediaFile(file);
+        uploaded.push(result.fileUrl);
+      }
+      if (uploaded.length) {
+        setForm(f => ({
+          ...f,
+          mediaUrls: [f.mediaUrls.trim(), ...uploaded].filter(Boolean).join('\n'),
+        }));
+        onMessage(`Đã upload ${uploaded.length} ảnh.`);
+      }
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : 'Upload ảnh thất bại.');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,7 +256,7 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
     setBusyId(scheduleDraftId);
     try {
       const scheduledAt = new Date(scheduleAt).toISOString();
-      if (draft.status === 'approved' || draft.status === 'scheduled') {
+      if (['approved', 'scheduled', 'published'].includes(draft.status)) {
         await scheduleSocialDraft(scheduleDraftId, {
           channelId: scheduleChannelId,
           scheduledAt,
@@ -272,24 +363,116 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
           </div>
           <label className="block text-xs text-slate-400">
             Nội dung bài đăng
+            <span className="ml-2 font-normal text-slate-500">
+              (xuống dòng / emoji / markdown nhẹ — FB nhận plain text)
+            </span>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {EMOJI_QUICK.map(emoji => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => insertAtCursor(emoji)}
+                  className="rounded border border-slate-800 bg-slate-950 px-1.5 py-0.5 text-sm hover:bg-slate-800"
+                  title="Chèn icon"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => wrapSelection('**', '**')}
+                className="rounded border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300 hover:bg-slate-800"
+              >
+                B
+              </button>
+              <button
+                type="button"
+                onClick={() => wrapSelection('*', '*')}
+                className="rounded border border-slate-700 px-2 py-0.5 text-[10px] italic text-slate-300 hover:bg-slate-800"
+              >
+                I
+              </button>
+              <button
+                type="button"
+                onClick={() => insertAtCursor('\n• ')}
+                className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-800"
+              >
+                • List
+              </button>
+            </div>
             <textarea
+              ref={bodyRef}
               required
-              rows={6}
+              rows={10}
               value={form.body}
               onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-sans text-sm leading-relaxed text-white"
+              placeholder={
+                '🔥 Tiêu đề hấp dẫn\n\nMô tả xuống dòng rõ ràng...\n\n• Điểm 1\n• Điểm 2\n\n📞 Liên hệ: ...'
+              }
             />
           </label>
-          <label className="block text-xs text-slate-400">
-            Media URLs (mỗi dòng một URL)
-            <textarea
-              rows={3}
-              value={form.mediaUrls}
-              onChange={e => setForm(f => ({ ...f, mediaUrls: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
-              placeholder="https://cdn.example.com/image.jpg"
-            />
-          </label>
+          {form.body.trim() && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Preview (gần giống khi đăng FB)
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                {previewBody(form.body)}
+              </p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
+                <ImagePlus className="h-3.5 w-3.5" />
+                {uploadingMedia ? 'Đang upload...' : 'Upload ảnh'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingMedia}
+                  onChange={e => {
+                    void handleMediaFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <span className="text-[11px] text-slate-500">
+                Ảnh sẽ đính kèm khi agent đăng (Timeline/Group)
+              </span>
+            </div>
+            <label className="block text-xs text-slate-400">
+              Media (URL hoặc path sau upload — mỗi dòng một ảnh)
+              <textarea
+                rows={3}
+                value={form.mediaUrls}
+                onChange={e => setForm(f => ({ ...f, mediaUrls: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white"
+                placeholder="/api/social/media/files/... hoặc https://..."
+              />
+            </label>
+            {form.mediaUrls.trim() && (
+              <div className="flex flex-wrap gap-2">
+                {form.mediaUrls
+                  .split('\n')
+                  .map(u => u.trim())
+                  .filter(Boolean)
+                  .map(url => (
+                    <a
+                      key={url}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block h-16 w-16 overflow-hidden rounded-lg border border-slate-700 bg-slate-950"
+                    >
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </a>
+                  ))}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               type="submit"
@@ -369,7 +552,9 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="whitespace-pre-wrap text-sm text-slate-200">{previewDraft.body}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+            {previewBody(previewDraft.body)}
+          </p>
           {previewDraft.linkUrl && (
             <a
               href={previewDraft.linkUrl}
@@ -381,15 +566,19 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
             </a>
           )}
           {(previewDraft.media || []).length > 0 && (
-            <ul className="mt-3 space-y-1 text-xs text-slate-400">
+            <div className="mt-3 flex flex-wrap gap-2">
               {(previewDraft.media || []).map(m => (
-                <li key={m.id}>
-                  <a href={m.fileUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                    {m.fileUrl}
-                  </a>
-                </li>
+                <a
+                  key={m.id}
+                  href={m.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block h-20 w-20 overflow-hidden rounded-lg border border-slate-700"
+                >
+                  <img src={m.fileUrl} alt={m.altText || ''} className="h-full w-full object-cover" />
+                </a>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       )}
@@ -444,7 +633,7 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </button>
-                        {['draft', 'pending_review', 'rejected', 'approved'].includes(
+                        {['draft', 'pending_review', 'rejected', 'approved', 'published'].includes(
                           draft.status,
                         ) && (
                           <button
@@ -500,7 +689,7 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
                             <Check className="h-3 w-3" /> Approve+Lịch
                           </button>
                         )}
-                        {['approved', 'scheduled'].includes(draft.status) && (
+                        {['approved', 'scheduled', 'published'].includes(draft.status) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -512,9 +701,14 @@ export default function DraftsPanel({ canManage, onMessage }: Props) {
                             Lên lịch
                           </button>
                         )}
-                        {['draft', 'pending_review', 'approved', 'scheduled', 'rejected'].includes(
-                          draft.status,
-                        ) && (
+                        {[
+                          'draft',
+                          'pending_review',
+                          'approved',
+                          'scheduled',
+                          'rejected',
+                          'published',
+                        ].includes(draft.status) && (
                           <button
                             type="button"
                             disabled={busyId === draft.id}

@@ -161,6 +161,36 @@ export function createSocialDraft(payload: CreateSocialDraftPayload) {
   });
 }
 
+export async function uploadSocialMediaFile(file: File): Promise<{ fileUrl: string; bytes: number }> {
+  const token = getAuthToken();
+  const dataBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Không đọc được file ảnh.'));
+    reader.readAsDataURL(file);
+  });
+  const response = await fetch('/api/social/media/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      filename: file.name,
+      mimeType: file.type || 'image/jpeg',
+      dataBase64,
+    }),
+  });
+  const json = (await parseJsonResponse(response)) as ApiResponse<{
+    fileUrl: string;
+    bytes: number;
+  }>;
+  if (!response.ok || json.status !== 'success') {
+    throw new Error(json.message || `Upload lỗi ${response.status}`);
+  }
+  return json.data;
+}
+
 export function updateSocialDraft(id: string, payload: UpdateSocialDraftPayload) {
   return socialRequest<SocialPostDraft>(`/api/social/drafts/${id}`, {
     method: 'PATCH',

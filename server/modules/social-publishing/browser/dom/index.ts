@@ -7,3 +7,4 @@ export { DomVerifier } from './DomVerifier';
 export { DomEvidence } from './DomEvidence';
 export type { DomEvidencePaths, DomEvidenceFlags } from './DomEvidence';
 export { DomToolkit, createDomToolkit } from './toolkit';
+export { markdownToFacebookText, significantTextLength } from './facebookText';

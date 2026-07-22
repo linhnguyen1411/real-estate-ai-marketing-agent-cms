@@ -170,24 +170,8 @@ export class FacebookGroupAdapter implements SourceAdapter {
       uniqueNewRef.count += 1;
       stats.uniquePostsObserved += 1;
 
-      if (ctx.stateless) {
-        stats.uniquePostsObserved += 1;
-        stats.newPostsInserted += 1;
-        if (post.externalId) newExternalIds.push(post.externalId);
-        if (post.canonicalUrl) newCanonicalUrls.push(post.canonicalUrl);
-        newContentHashes.push(contentHash);
-        newestPublishedAt = pickNewestPublishedAt(
-          newestPublishedAt,
-          post.publishedAt ?? null,
-        );
-        streak = updateKnownStreak(streak, {
-          isNew: true,
-          isPinned: false,
-          knownPostStopStreak: config.knownPostStopStreak,
-        });
-        return;
-      }
-
+      // Always persist + score when the agent has a DB. Stateless mode only means
+      // source/mission come from hydrated payload — it must not skip findings.
       const existingHit = await findExistingFacebookPostDetailed(ctx.source.id, {
         externalId: post.externalId,
         canonicalUrl: post.canonicalUrl,

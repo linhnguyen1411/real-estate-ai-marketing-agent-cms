@@ -20,7 +20,7 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
   composerCss:
     '[role="dialog"] [contenteditable="true"][role="textbox"], [contenteditable="true"][role="textbox"], div[contenteditable="true"]',
   composerRoleNames: [
-    /write something|viết gì đó|create a public post|tạo bài viết|what.?s on your mind|bạn đang nghĩ gì/i,
+    /write something|viết gì đó|viết gì đi|bạn viết gì đi|create a public post|tạo bài viết|what.?s on your mind|bạn đang nghĩ gì/i,
   ],
   composerCssCandidates: [
     '[aria-label*="Write something" i][contenteditable="true"]',
@@ -35,6 +35,8 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
   ],
   composerOpenTriggers: [
     /write something/i,
+    /bạn viết gì đi/i,
+    /viết gì đi/i,
     /viết gì đó/i,
     /create a public post/i,
     /tạo bài viết/i,
@@ -42,7 +44,7 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
     /bạn đang nghĩ gì/i,
   ],
   composerFeedPromptCss:
-    '[role="button"]:has-text("Write something"), [role="button"]:has-text("Viết gì đó"), [role="button"]:has-text("Create a public post"), [role="button"]:has-text("Tạo bài viết"), [role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì")',
+    '[role="button"]:has-text("Bạn viết gì đi"), [role="button"]:has-text("Write something"), [role="button"]:has-text("Viết gì đó"), [role="button"]:has-text("Viết gì đi"), [role="button"]:has-text("Create a public post"), [role="button"]:has-text("Tạo bài viết"), [role="button"]:has-text("Bài viết công khai"), [role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì"), [role="button"]:has-text("Viết bài viết")',
   fileInput: 'input[type="file"]',
   photoButtonRoleName: /photo|video|ảnh|hình|image|media/i,
   // VN/EN Group composer: Đăng / Post / Share / Chia sẻ (avoid strict ^ anchors — FB labels vary).
@@ -62,6 +64,8 @@ export const FACEBOOK_GROUP_FLOW: DomFlowConfig = {
   afterOpenWaitMs: 800,
   afterUploadWaitMs: 1_500,
   afterPublishWaitMs: 3_000,
+  publishRetries: 0,
+  composeRetries: 0,
 };
 
 export const FACEBOOK_GROUP_RULES: DomPlatformRules = {

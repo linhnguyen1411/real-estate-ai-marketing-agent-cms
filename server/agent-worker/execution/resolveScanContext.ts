@@ -63,10 +63,100 @@ export async function resolveScanExecutionContext(job: AgentJob): Promise<{
 }> {
   const hydrated = readHydratedExecution(job.payload);
   if (hydrated?.scan?.source) {
-    return {
-      source: snapshotToSource(hydrated.scan.source),
-      mission: hydrated.scan.mission ? snapshotToMission(hydrated.scan.mission) : null,
-    };
+    const source = snapshotToSource(hydrated.scan.source);
+    const mission = hydrated.scan.mission ? snapshotToMission(hydrated.scan.mission) : null;
+
+    let resolvedSource = source;
+    try {
+      await prisma.agentSource.upsert({
+        where: { id: source.id },
+        create: {
+          id: source.id,
+          companyId: source.companyId,
+          name: source.name,
+          type: source.type,
+          url: source.url,
+          status: source.status,
+          priority: source.priority,
+          scanIntervalMinutes: source.scanIntervalMinutes,
+          config: source.config as never,
+          checkpoint: source.checkpoint as never,
+          syncStatus: 'synced',
+        },
+        update: {
+          name: source.name,
+          type: source.type,
+          url: source.url,
+          status: source.status,
+          priority: source.priority,
+          scanIntervalMinutes: source.scanIntervalMinutes,
+          config: source.config as never,
+          checkpoint: source.checkpoint as never,
+          lastError: null,
+        },
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!/Unique constraint|unique/i.test(msg)) throw error;
+      const conflict = await prisma.agentSource.findFirst({
+        where: {
+          companyId: source.companyId,
+          url: source.url,
+          NOT: { id: source.id },
+        },
+        select: { id: true, _count: { select: { scannedContents: true } } },
+      });
+      if (!conflict) throw error;
+      if (conflict._count.scannedContents > 0) {
+        console.warn(
+          `[scan] hydrated source ${source.id} conflicts with local ${conflict.id} ` +
+            `(same url, ${conflict._count.scannedContents} contents) — using local id`,
+        );
+        resolvedSource = await prisma.agentSource.findUniqueOrThrow({ where: { id: conflict.id } });
+      } else {
+        await prisma.agentSource.delete({ where: { id: conflict.id } });
+        await prisma.agentSource.create({
+          data: {
+            id: source.id,
+            companyId: source.companyId,
+            name: source.name,
+            type: source.type,
+            url: source.url,
+            status: source.status,
+            priority: source.priority,
+            scanIntervalMinutes: source.scanIntervalMinutes,
+            config: source.config as never,
+            checkpoint: source.checkpoint as never,
+            syncStatus: 'synced',
+          },
+        });
+      }
+    }
+
+    if (mission) {
+      await prisma.agentMission.upsert({
+        where: { id: mission.id },
+        create: {
+          id: mission.id,
+          companyId: mission.companyId,
+          name: mission.name,
+          objective: mission.objective || '',
+          status: mission.status,
+          rules: mission.rules as never,
+          pipeline: mission.pipeline as never,
+          pipelineVersion: mission.pipelineVersion ?? 1,
+        },
+        update: {
+          name: mission.name,
+          status: mission.status,
+          rules: mission.rules as never,
+          pipeline: mission.pipeline as never,
+          pipelineVersion: mission.pipelineVersion ?? 1,
+        },
+      });
+    }
+
+    return { source: resolvedSource, mission };
   }
 
   if (isStatelessExecutionAgent()) {

@@ -39,6 +39,8 @@ function fakeConfig(): WorkerConfig {
     workerId: 'worker-lease-test',
     browserMode: 'managed',
     profileDir: path.join(os.tmpdir(), 'cms-lease-profile-test'),
+    cdpProfileDir: path.join(os.tmpdir(), 'cms-lease-cdp-profile-test'),
+    activeProfileDir: path.join(os.tmpdir(), 'cms-lease-profile-test'),
     browserChannel: 'chrome',
     headless: true,
     cdpEndpoint: null,

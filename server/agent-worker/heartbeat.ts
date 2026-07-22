@@ -39,7 +39,7 @@ export class HeartbeatService {
     const data = {
       name: this.config.sessionName,
       workerId: this.config.workerId,
-      profilePath: this.config.profileDir,
+      profilePath: this.config.activeProfileDir,
       companyId: this.config.companyId,
       status: 'starting' as const,
       lastHeartbeatAt: new Date(),

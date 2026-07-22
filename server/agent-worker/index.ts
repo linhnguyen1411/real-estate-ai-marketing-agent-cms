@@ -36,7 +36,10 @@ async function main(): Promise<void> {
   console.log('[agent-worker] Starting Browser Worker');
   console.log(`  workerId:    ${config.workerId}`);
   console.log(`  browserMode: ${config.browserMode}`);
-  console.log(`  profileDir:  ${config.profileDir}`);
+  console.log(`  activeProfile: ${config.activeProfileDir}`);
+  if (config.browserMode === 'cdp') {
+    console.log(`  managedProfile (unused): ${config.profileDir}`);
+  }
   console.log(`  channel:     ${config.browserChannel}`);
   console.log(`  headless:    ${config.headless}`);
   if (config.cdpEndpoint) {

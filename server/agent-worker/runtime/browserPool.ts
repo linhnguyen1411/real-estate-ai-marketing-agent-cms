@@ -35,9 +35,9 @@ export class BrowserPool {
 
   constructor(manager: BrowserManager, config: WorkerConfig) {
     this.manager = manager;
-    this.profile = config.profileDir;
+    this.profile = config.activeProfileDir;
     this.leases = new BrowserLeaseManager({
-      profileName: config.profileDir,
+      profileName: config.activeProfileDir,
       workerId: config.workerId,
       agentId: config.workerId,
       machineId: process.env.AGENT_MACHINE_ID?.trim() || null,
@@ -60,6 +60,7 @@ export class BrowserPool {
     for (const r of reclaimed) {
       this.manager.releaseCdpLock(r.purpose);
     }
+    this.syncCdpLocksWithLeases();
 
     let acquired;
     try {
@@ -86,8 +87,18 @@ export class BrowserPool {
     try {
       await this.manager.beginCdpJob(req.purpose);
     } catch (err) {
-      this.leases.release(req.purpose, acquired.leaseId);
-      throw err;
+      if (err instanceof Error && /CDP_BUSY/.test(err.message)) {
+        this.syncCdpLocksWithLeases();
+        try {
+          await this.manager.beginCdpJob(req.purpose);
+        } catch (retryErr) {
+          this.leases.release(req.purpose, acquired.leaseId);
+          throw retryErr;
+        }
+      } else {
+        this.leases.release(req.purpose, acquired.leaseId);
+        throw err;
+      }
     }
 
     writeProfileLeaseSidecar(this.profile, acquired.info);
@@ -144,9 +155,7 @@ export class BrowserPool {
   /** Force-release all purpose leases (OPS release_browser). */
   releaseAll(): number {
     const results = this.leases.releaseAll();
-    for (const purpose of PURPOSES) {
-      this.manager.releaseCdpLock(purpose);
-    }
+    this.manager.clearAllCdpLocks();
     clearProfileLeaseSidecar(this.profile);
     return results.length;
   }
@@ -155,7 +164,7 @@ export class BrowserPool {
   forceRelease(purpose: BrowserPurpose): boolean {
     const r = this.leases.forceRelease(purpose);
     if (!r) return false;
-    this.manager.releaseCdpLock(purpose);
+    this.manager.clearCdpLock(purpose);
     this.syncSidecar();
     return true;
   }
@@ -189,6 +198,7 @@ export class BrowserPool {
     for (const r of reclaimed) {
       this.manager.releaseCdpLock(r.purpose);
     }
+    this.syncCdpLocksWithLeases();
     if (heartbeated.length || expired.length || reclaimed.length) {
       this.syncSidecar();
     }
@@ -238,6 +248,20 @@ export class BrowserPool {
       writeProfileLeaseSidecar(this.profile, active);
     } else {
       clearProfileLeaseSidecar(this.profile);
+    }
+  }
+
+  /**
+   * Orphan CDP locks can survive failed jobs / deploy when lease manager is idle.
+   * Drop locks that have no active lease record for that purpose.
+   */
+  private syncCdpLocksWithLeases(): void {
+    for (const purpose of PURPOSES) {
+      const rec = this.leases.getRecord(purpose);
+      const leaseBusy = rec != null && isBrowserLeaseBusy(rec.state);
+      if (!leaseBusy && this.manager.getCdpLockOwner(purpose)) {
+        this.manager.clearCdpLock(purpose);
+      }
     }
   }
 }

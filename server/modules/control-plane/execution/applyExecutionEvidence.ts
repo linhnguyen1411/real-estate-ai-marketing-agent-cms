@@ -79,12 +79,16 @@ async function applyPublishEvidence(
   }
 
   if (merged.ok === true || publishFromEvidence) {
-    const externalPostId =
+    const { isSyntheticExternalPostId } = await import('../../social-publishing/publishIdempotency');
+    const rawPostId =
       typeof merged.externalPostId === 'string'
         ? merged.externalPostId
         : typeof merged.postId === 'string'
           ? merged.postId
           : undefined;
+    // Never invent agent:{jobId} — UI turns that into facebook.com/agent:… junk links.
+    const externalPostId =
+      rawPostId && !isSyntheticExternalPostId(rawPostId) ? rawPostId : undefined;
     const externalUrl =
       typeof merged.externalUrl === 'string'
         ? merged.externalUrl
@@ -96,9 +100,9 @@ async function applyPublishEvidence(
 
     await completePublishJob(publishJobId, {
       ok: true,
-      externalPostId: externalPostId || `agent:${agentJobId}`,
-      externalUrl,
-      raw: merged,
+      externalPostId,
+      externalUrl: externalUrl || undefined,
+      raw: { ...merged, agentJobId },
     });
   }
 }

@@ -48,7 +48,8 @@ export function isSpacingAllowed(
  * Combined approve+schedule goes through /approve with channelId+scheduledAt.
  */
 export function canScheduleDraftStatus(status: string): boolean {
-  return status === 'approved' || status === 'scheduled';
+  // published stays schedulable — same draft can still go to other groups/channels.
+  return status === 'approved' || status === 'scheduled' || status === 'published';
 }
 
 /** Channel lock: statuses that mean another publish is in flight on the channel. */

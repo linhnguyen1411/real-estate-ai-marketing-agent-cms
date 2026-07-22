@@ -65,12 +65,15 @@ export class ManagedBrowserConnection implements AgentBrowserConnection {
   static async connect(config: WorkerConfig): Promise<ManagedBrowserConnection> {
     const profileDir = path.resolve(config.profileDir);
     fs.mkdirSync(profileDir, { recursive: true });
-    const headless = config.headless;
+    // CDP workstation mode keeps the visible Facebook Chrome (agent-cdp-profile).
+    // Website/forum scans still use managed Playwright — force headless so we do
+    // not pop a second empty "new profile" window over the operator's CDP Chrome.
+    const headless = config.headless || config.browserMode === 'cdp';
 
     console.log('[browser:managed] launchPersistentContext');
     console.log(`  profilePath: ${profileDir}`);
     console.log(`  channel:     ${AGENT_BROWSER_CHANNEL}`);
-    console.log(`  headless:    ${headless}`);
+    console.log(`  headless:    ${headless}${!config.headless && headless ? ' (forced: AGENT_BROWSER_MODE=cdp)' : ''}`);
 
     try {
       const context = await chromium.launchPersistentContext(

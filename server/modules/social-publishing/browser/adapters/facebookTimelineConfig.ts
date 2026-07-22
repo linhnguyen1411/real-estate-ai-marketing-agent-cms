@@ -39,12 +39,12 @@ export const FACEBOOK_TIMELINE_SELECTORS: DomSelectorConfig = {
     '[role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì"), [role="button"]:has-text("bạn đang nghĩ gì"), [role="button"]:has-text("đang nghĩ gì")',
   fileInput: 'input[type="file"]',
   photoButtonRoleName: /photo|video|ảnh|hình|image|media/i,
-  // VN UI often uses "Đăng bài viết" / "Đăng" — avoid ^$ anchors.
-  publishButtonRoleName: /post|publish|đăng|share|chia sẻ|đăng bài|post now/i,
+  // Prefer exact Post/Đăng inside dialog (see DomPublisher).
+  publishButtonRoleName: /^(post|publish|đăng)$|đăng bài|post now/i,
   publishAriaCss:
-    '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"], [aria-label*="Đăng" i], [aria-label*="Post" i]',
+    '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"]',
   publishDialogAriaCss:
-    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label*="Đăng" i], [role="dialog"] [aria-label*="Post" i]',
+    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Publish"]',
   closeDialogAriaCss: '[aria-label="Close"], [aria-label="Đóng"], [aria-label="Cancel"]',
   permalinkHrefCss:
     'a[href*="story_fbid"], a[href*="/posts/"], a[href*="permalink"], a[href*="story.php"]',
@@ -52,6 +52,9 @@ export const FACEBOOK_TIMELINE_SELECTORS: DomSelectorConfig = {
 
 export const FACEBOOK_TIMELINE_FLOW: DomFlowConfig = {
   ...DEFAULT_DOM_FLOW,
+  afterPublishWaitMs: 4_000,
+  publishRetries: 0,
+  composeRetries: 0,
 };
 
 export const FACEBOOK_TIMELINE_RULES: DomPlatformRules = {

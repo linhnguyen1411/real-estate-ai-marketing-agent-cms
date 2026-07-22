@@ -172,7 +172,7 @@ export class BrowserManager {
   }
 
   get profilePath(): string {
-    return this.config.profileDir;
+    return this.config.activeProfileDir;
   }
 
   get browserChannel(): string {
@@ -181,6 +181,19 @@ export class BrowserManager {
 
   get defaultMode(): AgentBrowserMode {
     return this.config.browserMode;
+  }
+
+  getCdpLockOwner(purpose: CdpLockPurpose): string | null {
+    return this.cdpLocks.get(purpose)?.owner ?? null;
+  }
+
+  /** Force-clear CDP lock (OPS release / orphan reclaim). */
+  clearCdpLock(purpose: CdpLockPurpose): void {
+    this.cdpLocks.delete(purpose);
+  }
+
+  clearAllCdpLocks(): void {
+    this.cdpLocks.clear();
   }
 
   isCdpBusy(purpose?: CdpLockPurpose): boolean {

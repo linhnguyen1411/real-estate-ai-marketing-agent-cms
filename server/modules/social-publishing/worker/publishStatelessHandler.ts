@@ -55,11 +55,27 @@ export async function runStatelessPublishSocialJob(
 
   await browser.beginCdpJob('publish');
   try {
+    // Full browser publish: navigate → upload (media first) → compose → publish → verify
+    const navResult = await adapter.navigate(ctx);
+    if (!navResult.ok) throw new Error(`[${payload.destinationKey}:navigate] ${navResult.message}`);
+
+    const uploadResult = await adapter.uploadMedia(ctx);
+    if (!uploadResult.ok) throw new Error(`[${payload.destinationKey}:upload] ${uploadResult.message}`);
+
+    const fillResult = await adapter.fillContent(ctx);
+    if (!fillResult.ok) throw new Error(`[${payload.destinationKey}:compose] ${fillResult.message}`);
+
     const publishResult = await adapter.publish(ctx);
+    if (!publishResult.ok) throw new Error(`[${payload.destinationKey}:publish] ${publishResult.message}`);
+
+    const verifyResult = await adapter.verify(ctx);
+    if (!verifyResult.ok) throw new Error(`[${payload.destinationKey}:verify] ${verifyResult.message}`);
+
     const result = {
       ok: true,
       publishJobId: payload.publishJobId,
       ...publishResult,
+      verify: verifyResult,
     };
     evidence.setPublishResult(result);
     return { ...result, evidence: evidence.toJSON() };

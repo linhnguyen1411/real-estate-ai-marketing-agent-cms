@@ -40,7 +40,9 @@ export class HttpAgentHeartbeat {
 
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
-      void this.pulse();
+      void this.pulse().catch(error => {
+        console.error('[automation-agent] Heartbeat pulse failed:', error);
+      });
     }, this.intervalMs);
 
     return { sessionId: res.sessionId };
@@ -54,19 +56,24 @@ export class HttpAgentHeartbeat {
     } catch {
       currentUrl = null;
     }
-    const metadata = await this.getMetadata();
-    const res = await this.client.heartbeat({
-      agentId: this.agentId,
-      sessionId: this.sessionId,
-      status: 'ready',
-      currentUrl,
-      metadata,
-    });
-    const cmds = Array.isArray((res as { opsCommands?: unknown }).opsCommands)
-      ? ((res as { opsCommands: HeartbeatOpsCommand[] }).opsCommands)
-      : [];
-    if (cmds.length && this.onOpsCommands) {
-      await this.onOpsCommands(cmds);
+    try {
+      const metadata = await this.getMetadata();
+      const res = await this.client.heartbeat({
+        agentId: this.agentId,
+        sessionId: this.sessionId,
+        status: 'ready',
+        currentUrl,
+        metadata,
+      });
+      const cmds = Array.isArray((res as { opsCommands?: unknown }).opsCommands)
+        ? ((res as { opsCommands: HeartbeatOpsCommand[] }).opsCommands)
+        : [];
+      if (cmds.length && this.onOpsCommands) {
+        await this.onOpsCommands(cmds);
+      }
+    } catch (error) {
+      // Network blips must not crash the agent process (unhandledRejection).
+      console.error('[automation-agent] Heartbeat pulse failed:', error);
     }
   }
 

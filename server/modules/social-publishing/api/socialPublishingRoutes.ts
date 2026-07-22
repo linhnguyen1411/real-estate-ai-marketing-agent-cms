@@ -748,4 +748,78 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
       sendError(res, 404, error instanceof Error ? error.message : 'Campaign run not found.');
     }
   });
+
+  // ── Media upload (images for browser publish) ─────────────
+  app.post('/api/social/media/upload', async (req: Request, res: Response) => {
+    try {
+      if (!requireManage(req, res)) return;
+      const user = getAuthUser(req);
+      const body = req.body as {
+        filename?: string;
+        mimeType?: string;
+        dataBase64?: string;
+      };
+      const filename = String(body.filename || 'image.jpg').replace(/[^\w.\-]+/g, '_');
+      const mimeType = String(body.mimeType || 'image/jpeg');
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(mimeType)) {
+        return sendError(res, 400, 'Chỉ hỗ trợ ảnh JPEG/PNG/WebP/GIF.');
+      }
+      const raw = String(body.dataBase64 || '');
+      const b64 = raw.includes(',') ? raw.split(',')[1] : raw;
+      if (!b64 || b64.length < 32) {
+        return sendError(res, 400, 'dataBase64 thiếu hoặc không hợp lệ.');
+      }
+      const buf = Buffer.from(b64, 'base64');
+      const maxBytes = 12 * 1024 * 1024;
+      if (buf.length > maxBytes) {
+        return sendError(res, 400, 'Ảnh tối đa 12MB.');
+      }
+      const { ensureMediaDir, socialMediaPublicPath } = await import(
+        '../runtime/resolveMediaLocalPaths'
+      );
+      const dir = await ensureMediaDir();
+      const ext =
+        path.extname(filename) ||
+        (mimeType.includes('png')
+          ? '.png'
+          : mimeType.includes('webp')
+            ? '.webp'
+            : mimeType.includes('gif')
+              ? '.gif'
+              : '.jpg');
+      const storedName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+      const abs = path.join(dir, storedName);
+      await fs.writeFile(abs, buf);
+      const fileUrl = socialMediaPublicPath(storedName);
+      res.json({
+        status: 'success',
+        data: {
+          fileUrl,
+          storedName,
+          bytes: buf.length,
+          mimeType,
+          uploadedBy: user?.id ?? null,
+        },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Upload ảnh thất bại.');
+    }
+  });
+
+  app.get('/api/social/media/files/:name', async (req: Request, res: Response) => {
+    try {
+      const name = path.basename(String(req.params.name || ''));
+      if (!name || name.includes('..') || !/^[a-zA-Z0-9._-]+$/.test(name)) {
+        return sendError(res, 400, 'Tên file không hợp lệ.');
+      }
+      const { ensureMediaDir } = await import('../runtime/resolveMediaLocalPaths');
+      const dir = await ensureMediaDir();
+      const abs = path.join(dir, name);
+      await fs.access(abs);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.sendFile(abs);
+    } catch {
+      sendError(res, 404, 'File không tồn tại.');
+    }
+  });
 }

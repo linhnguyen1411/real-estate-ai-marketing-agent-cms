@@ -193,22 +193,32 @@ export async function runPublishSocialJob(
     const externalUrl = typeof jobResult.externalUrl === 'string' ? jobResult.externalUrl : undefined;
 
     if (workflowResult.stopped || workflowResult.stepsFailed > 0) {
-      const message = `Publish workflow failed (stepsFailed=${workflowResult.stepsFailed}, stopped=${workflowResult.stopped})`;
+      const jobAfterFail = await getJobById(publishJobId);
+      const failResult = (jobAfterFail?.result || {}) as Record<string, unknown>;
+      const verifyUnknown =
+        failResult.publishOutcome === 'unknown' ||
+        failResult.needsManualVerify === true ||
+        failResult.publishClicked === true;
+      const errorCode = verifyUnknown ? 'publish_verify_unknown' : 'browser_publish_failed';
+      const message = verifyUnknown
+        ? 'Publish click may have succeeded — verify unknown (will not republish)'
+        : `Publish workflow failed (stepsFailed=${workflowResult.stepsFailed}, stopped=${workflowResult.stopped})`;
       await finishAttemptFailure(attempt.id, {
         status: 'failed',
-        errorCode: 'browser_publish_failed',
+        errorCode,
         errorMessage: message,
-        responseJson: { workflow: workflowResult },
+        responseJson: { workflow: workflowResult, result: failResult },
         durationMs: Math.max(0, Date.now() - startedAt),
       });
-      await failPublishJob(publishJobId, 'browser_publish_failed', message);
+      await failPublishJob(publishJobId, errorCode, message);
       return {
         ok: false,
         publishJobId,
         missionRunId: ensuredMissionRunId,
-        errorCode: 'browser_publish_failed',
+        errorCode,
         errorMessage: message,
         workflow: workflowResult,
+        needsManualVerify: verifyUnknown,
       };
     }
 
@@ -248,11 +258,18 @@ export async function runPublishSocialJob(
     await completePublishJob(publishJobId, result);
     return { ok: true, publishJobId, missionRunId: ensuredMissionRunId, result };
   } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : 'Publisher threw';
     const code =
       error && typeof error === 'object' && 'code' in error
         ? String((error as { code: string }).code)
-        : 'unknown';
-    const message = error instanceof Error ? error.message : 'Publisher threw';
+        : /browser_verify_unknown|publish_verify_unknown/i.test(rawMessage)
+          ? 'publish_verify_unknown'
+          : /browser_composer_mismatch/i.test(rawMessage)
+            ? 'browser_composer_mismatch'
+            : /browser_already_on_feed/i.test(rawMessage)
+              ? 'already_published'
+              : 'unknown';
+    const message = rawMessage;
     await finishAttemptFailure(attempt.id, {
       status: code === 'publish_timeout' ? 'timeout' : 'failed',
       errorCode: code,

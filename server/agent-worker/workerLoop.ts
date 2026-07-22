@@ -194,10 +194,14 @@ export class WorkerLoop {
         }
         console.log(`[agent-worker] Claimed job ${job.id} type=${job.type}`);
         if (kind) this.reserve(kind);
-        const run = this.dispatch(job).finally(() => {
-          if (kind) this.unreserve(kind);
-          this.inflight.delete(job.id);
-        });
+        const run = this.dispatch(job)
+          .catch(error => {
+            console.error(`[agent-worker] Job ${job.id} failed:`, error);
+          })
+          .finally(() => {
+            if (kind) this.unreserve(kind);
+            this.inflight.delete(job.id);
+          });
         this.inflight.set(job.id, run);
 
         if (!this.anyAcceptableSlot()) {

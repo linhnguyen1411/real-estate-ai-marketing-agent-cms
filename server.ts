@@ -1234,14 +1234,38 @@ registerShortLinkPublicRoutes(app, getProperties);
 registerShortLinkRedirect(app, getProperties);
 app.use('/api/public', createInvestorLeadPublicRouter());
 
+// Public social-draft images (unguessable names). Must be BEFORE /api auth gate
+// so <img> preview and agent download work without Bearer token.
+{
+  const socialMediaDir = path.join(process.cwd(), 'runtime', 'social-media');
+  fs.mkdirSync(socialMediaDir, { recursive: true });
+  app.use(
+    '/api/social/media/files',
+    express.static(socialMediaDir, {
+      fallthrough: false,
+      index: false,
+      setHeaders: (res: Response) => {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    }),
+  );
+}
+
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const pathName = String(req.path || '');
+  const original = String(req.originalUrl || '');
   if (
-    req.path === '/health' ||
-    req.path === '/auth/login' ||
-    req.path.startsWith('/public/') ||
-    req.path.startsWith('/agent-ingest/') ||
+    pathName === '/health' ||
+    pathName === '/auth/login' ||
+    pathName.startsWith('/public/') ||
+    pathName.startsWith('/agent-ingest/') ||
     // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
-    req.path.startsWith('/agent/runtime/')
+    pathName.startsWith('/agent/runtime/') ||
+    // Fallback allowlist if static middleware did not handle the file.
+    (req.method === 'GET' &&
+      (pathName.startsWith('/social/media/files/') ||
+        pathName.startsWith('/api/social/media/files/') ||
+        original.startsWith('/api/social/media/files/')))
   ) {
     return next();
   }
