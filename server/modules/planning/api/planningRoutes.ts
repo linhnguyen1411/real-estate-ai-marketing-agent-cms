@@ -50,6 +50,35 @@ export function registerPlanningRoutes(app: Express): void {
     }
   });
 
+  app.get('/api/planning/campaigns/:id/tasks', async (req: Request, res: Response) => {
+    try {
+      const row = await getCampaign(req.params.id);
+      if (!row) return sendError(res, 404, 'Campaign not found');
+      const tasks = row.state.orchestratorTasks || [];
+      const { orchestratorProgress, taskDurationMs, listReadyTasks } = await import(
+        '../taskOrchestrator'
+      );
+      const progress = orchestratorProgress(tasks);
+      res.json({
+        status: 'success',
+        data: {
+          campaignId: row.id,
+          name: row.name,
+          status: row.status,
+          tasks: tasks.map(t => ({
+            ...t,
+            durationMs: taskDurationMs(t),
+          })),
+          progress,
+          ready: listReadyTasks(tasks).map(t => t.key),
+          timeline: row.state.operationalMemory,
+        },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Tasks failed');
+    }
+  });
+
   app.get('/api/planning/campaigns/:id', async (req: Request, res: Response) => {
     try {
       const row = await getCampaign(req.params.id);

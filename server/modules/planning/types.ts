@@ -48,6 +48,41 @@ export type CampaignTask = {
   result?: string;
 };
 
+/** H2.0.5 AI Task Orchestrator */
+export type OrchestratorTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting_approval'
+  | 'completed'
+  | 'cancelled'
+  | 'failed';
+
+export type OrchestratorAgent =
+  | 'research'
+  | 'mission'
+  | 'content'
+  | 'lead'
+  | 'publisher'
+  | 'monitor'
+  | 'recommendation';
+
+export type OrchestratorTask = {
+  id: string;
+  campaignId: string;
+  key: string;
+  label: string;
+  agent: OrchestratorAgent;
+  priority: CampaignPriority;
+  status: OrchestratorTaskStatus;
+  owner: string;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  retryCount: number;
+  dependencies: string[];
+  resultSummary?: string | null;
+};
+
 export type CampaignProgress = {
   percent: number;
   currentPhase: CampaignLifecycleStatus;
@@ -93,6 +128,8 @@ export type CampaignState = {
   health: number;
   timeline: CampaignTimelineEvent[];
   tasks: CampaignTask[];
+  /** H2.0.5 orchestrator graph (source of truth for work coordination) */
+  orchestratorTasks: OrchestratorTask[];
   progress: CampaignProgress;
   metrics: CampaignMetrics;
   research: MarketIntelligenceReport | null;
@@ -232,6 +269,7 @@ export type SalesEmployeeResult = {
     | 'lead_cards'
     | 'content_plan'
     | 'timeline'
+    | 'work_status'
     | 'recommendations'
     | 'campaign_approve'
     | 'campaign_reject'
@@ -244,6 +282,7 @@ export type SalesEmployeeResult = {
   timeline?: TimelineEntry[];
   recommendations?: RecommendationItem[];
   livingCampaign?: LivingCampaign;
+  orchestratorTasks?: OrchestratorTask[];
   lines: string[];
   text: string;
 };

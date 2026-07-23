@@ -213,7 +213,7 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'publish') return 'Publisher thế nào';
     if (action === 'recs') return 'Thiếu bài Threads SEO recommendation';
     if (action === 'campaign') return 'Lập campaign bán mạnh';
-    if (action === 'timeline') return 'Hôm nay AI đã làm gì';
+    if (action === 'timeline') return 'Hôm nay AI đang làm gì';
     return 'AI sales employee';
   }
   if (parts.length < 3) return null;

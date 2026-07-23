@@ -12,26 +12,29 @@ import { proposeMissions } from './missionPlanner';
 import { rememberPlanningEvent } from './operationalMemory';
 import { buildCampaignRecommendations } from './recommendationEngine';
 import { buildMarketIntelligenceReport } from './researchAgent';
+import {
+  assertCanStart,
+  completeTask,
+  createCampaignTaskGraph,
+  findTaskByKey,
+  formatOrchestratorWorkLines,
+  patchTask,
+  startTask,
+  toLegacyCampaignTasks,
+  waitApprovalTask,
+  cancelTask,
+} from './taskOrchestrator';
 import type {
   CampaignBoard,
   CampaignLifecycleStatus,
   CampaignLeadRecord,
   CampaignState,
-  CampaignTask,
   CampaignTimelineEvent,
   LivingCampaign,
   CampaignPriority,
+  OrchestratorTask,
 } from './types';
 import { CAMPAIGN_KANBAN_COLUMNS } from './types';
-
-const RESEARCH_TASK_LABELS = [
-  'Research giá',
-  'Đối thủ',
-  'Nguồn đăng',
-  'Xu hướng',
-  'Buyer Signals',
-  'Market Report',
-];
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -50,20 +53,53 @@ function emptyMetrics(): CampaignState['metrics'] {
   };
 }
 
-function buildInitialTasks(): CampaignTask[] {
-  const research = RESEARCH_TASK_LABELS.map((label, i) => ({
-    id: `t_res_${i + 1}`,
-    phase: 'researching' as const,
-    label,
-    status: 'pending' as const,
-  }));
-  return [
-    ...research,
-    { id: 't_msn', phase: 'mission_planning', label: 'Sinh Mission gắn Campaign', status: 'pending' },
-    { id: 't_lead', phase: 'finding_leads', label: 'Lead Intelligence theo Campaign', status: 'pending' },
-    { id: 't_cnt', phase: 'content_drafting', label: 'Content Plan đa kênh', status: 'pending' },
-    { id: 't_wait', phase: 'waiting_approval', label: 'Chờ Approve content / lịch đăng', status: 'pending' },
-  ];
+function ensureOrchestrator(state: CampaignState, campaignId: string, priority: CampaignPriority, owner?: string | null): void {
+  if (!state.orchestratorTasks?.length) {
+    state.orchestratorTasks = createCampaignTaskGraph({
+      campaignId,
+      priority,
+      owner,
+    });
+  }
+  state.tasks = toLegacyCampaignTasks(state.orchestratorTasks);
+}
+
+function syncLegacyTasks(state: CampaignState): void {
+  state.tasks = toLegacyCampaignTasks(state.orchestratorTasks || []);
+}
+
+function beginOrchestratorTask(
+  state: CampaignState,
+  key: string,
+  phase: CampaignTimelineEvent['phase'],
+): void {
+  const task = findTaskByKey(state.orchestratorTasks || [], key);
+  if (!task) return;
+  assertCanStart(task, state.orchestratorTasks);
+  state.orchestratorTasks = patchTask(state.orchestratorTasks, key, startTask);
+  pushMemory(state, phase, `${task.label} queued`, 'running');
+  pushMemory(state, phase, `${task.label} started`, key);
+  syncLegacyTasks(state);
+}
+
+function finishOrchestratorTask(
+  state: CampaignState,
+  key: string,
+  phase: CampaignTimelineEvent['phase'],
+  resultSummary: string,
+  mode: 'completed' | 'waiting_approval' = 'completed',
+): void {
+  state.orchestratorTasks = patchTask(state.orchestratorTasks || [], key, t =>
+    mode === 'waiting_approval' ? waitApprovalTask(t, resultSummary) : completeTask(t, resultSummary),
+  );
+  const label = findTaskByKey(state.orchestratorTasks, key)?.label || key;
+  pushMemory(
+    state,
+    phase,
+    mode === 'waiting_approval' ? `${label} waiting approval` : `${label} completed`,
+    resultSummary,
+  );
+  syncLegacyTasks(state);
 }
 
 function pushMemory(
@@ -133,6 +169,7 @@ function rowToLiving(row: {
           health: 0,
           timeline: [],
           tasks: [],
+          orchestratorTasks: [],
           progress: { percent: 0, currentPhase: 'planning', phasesDone: [] },
           metrics: emptyMetrics(),
           research: null,
@@ -144,6 +181,16 @@ function rowToLiving(row: {
           operationalMemory: [],
           planChecklist: [],
         } satisfies CampaignState);
+
+  if (!Array.isArray(state.orchestratorTasks)) state.orchestratorTasks = [];
+  if (!state.orchestratorTasks.length && row.id) {
+    state.orchestratorTasks = createCampaignTaskGraph({
+      campaignId: row.id,
+      priority: row.priority as CampaignPriority,
+      owner: row.owner,
+    });
+    state.tasks = toLegacyCampaignTasks(state.orchestratorTasks);
+  }
 
   return {
     id: row.id,
@@ -238,21 +285,31 @@ function shortId(id: string): string {
 }
 
 async function runResearchPhase(campaign: LivingCampaign): Promise<void> {
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
   campaign.status = 'researching';
   recomputeProgress(campaign.state, campaign.status);
-  pushMemory(campaign.state, 'researching', 'Research started', campaign.propertyHint);
 
-  for (const task of campaign.state.tasks.filter(t => t.phase === 'researching')) {
-    task.status = 'done';
-    task.result = 'ok';
-    pushMemory(campaign.state, 'researching', `Task: ${task.label}`, 'done');
-  }
-
+  beginOrchestratorTask(campaign.state, 'research_market', 'researching');
   const research = await buildMarketIntelligenceReport({
     propertyHint: campaign.propertyHint,
     companyId: campaign.companyId,
   });
   campaign.state.research = research;
+  finishOrchestratorTask(
+    campaign.state,
+    'research_market',
+    'researching',
+    `Giá TB ${research.avgPricePerSqm} ${research.priceUnit}`,
+  );
+
+  beginOrchestratorTask(campaign.state, 'analyze_competitors', 'researching');
+  finishOrchestratorTask(
+    campaign.state,
+    'analyze_competitors',
+    'researching',
+    `${research.competitors?.length || 0} competitors`,
+  );
+
   campaign.state.planChecklist = campaign.state.planChecklist.map(c =>
     ['research', 'competitor', 'market_price'].includes(c.key) ? { ...c, done: true } : c,
   );
@@ -283,8 +340,10 @@ async function runResearchPhase(campaign: LivingCampaign): Promise<void> {
 }
 
 async function runMissionPhase(campaign: LivingCampaign): Promise<void> {
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
   campaign.status = 'mission_planning';
   recomputeProgress(campaign.state, campaign.status);
+  beginOrchestratorTask(campaign.state, 'generate_missions', 'mission_planning');
   const missions = proposeMissions({
     propertyHint: campaign.propertyHint,
     campaignName: campaign.name,
@@ -293,19 +352,14 @@ async function runMissionPhase(campaign: LivingCampaign): Promise<void> {
     ...m,
     id: `${m.id}_${campaign.id.slice(0, 6)}`,
   }));
-  const task = campaign.state.tasks.find(t => t.id === 't_msn');
-  if (task) {
-    task.status = 'done';
-    task.result = `${missions.length} missions`;
-  }
+  finishOrchestratorTask(
+    campaign.state,
+    'generate_missions',
+    'mission_planning',
+    `${campaign.state.missions.length} missions`,
+  );
   campaign.state.planChecklist = campaign.state.planChecklist.map(c =>
     c.key === 'buyer_mission' ? { ...c, done: true } : c,
-  );
-  pushMemory(
-    campaign.state,
-    'mission_planning',
-    'Mission generated',
-    `${campaign.state.missions.length} missions`,
   );
   refreshMetrics(campaign.state);
   await persist(campaign);
@@ -326,8 +380,10 @@ async function runMissionPhase(campaign: LivingCampaign): Promise<void> {
 }
 
 async function runLeadPhase(campaign: LivingCampaign): Promise<void> {
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
   campaign.status = 'finding_leads';
   recomputeProgress(campaign.state, campaign.status);
+  beginOrchestratorTask(campaign.state, 'review_leads', 'finding_leads');
   const cards = await rankLeadCards({
     companyId: campaign.companyId,
     limit: 12,
@@ -341,12 +397,12 @@ async function runLeadPhase(campaign: LivingCampaign): Promise<void> {
     followUpAt: null,
   }));
   campaign.state.leads = leads;
-  const task = campaign.state.tasks.find(t => t.id === 't_lead');
-  if (task) {
-    task.status = 'done';
-    task.result = `${leads.length} leads`;
-  }
-  pushMemory(campaign.state, 'finding_leads', 'Lead found', `${leads.length} leads gắn campaign`);
+  finishOrchestratorTask(
+    campaign.state,
+    'review_leads',
+    'finding_leads',
+    `${leads.length} leads`,
+  );
   refreshMetrics(campaign.state);
   await persist(campaign);
 
@@ -375,8 +431,10 @@ async function runLeadPhase(campaign: LivingCampaign): Promise<void> {
 }
 
 async function runContentPhase(campaign: LivingCampaign): Promise<void> {
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
   campaign.status = 'content_drafting';
   recomputeProgress(campaign.state, campaign.status);
+  beginOrchestratorTask(campaign.state, 'generate_contents', 'content_drafting');
   const content = planContentSchedule({
     campaignName: campaign.name,
     propertyHint: campaign.propertyHint,
@@ -389,15 +447,15 @@ async function runContentPhase(campaign: LivingCampaign): Promise<void> {
     note: `Publisher rảnh — đề xuất đăng lúc ${slot18?.time || '18:00'}.`,
     approved: false,
   };
-  const task = campaign.state.tasks.find(t => t.id === 't_cnt');
-  if (task) {
-    task.status = 'done';
-    task.result = `${content.schedule.length} slots`;
-  }
+  finishOrchestratorTask(
+    campaign.state,
+    'generate_contents',
+    'content_drafting',
+    `${content.schedule.length} slots`,
+  );
   campaign.state.planChecklist = campaign.state.planChecklist.map(c =>
     ['facebook', 'threads', 'seo'].includes(c.key) ? { ...c, done: true } : c,
   );
-  pushMemory(campaign.state, 'content_drafting', 'Content drafted', `${content.schedule.length} slots`);
   refreshMetrics(campaign.state);
   await persist(campaign);
 
@@ -422,16 +480,23 @@ async function runContentPhase(campaign: LivingCampaign): Promise<void> {
 }
 
 async function runWaitingApproval(campaign: LivingCampaign): Promise<void> {
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
   campaign.status = 'waiting_approval';
   recomputeProgress(campaign.state, campaign.status);
+  beginOrchestratorTask(campaign.state, 'schedule_publishing', 'waiting_approval');
+  finishOrchestratorTask(
+    campaign.state,
+    'schedule_publishing',
+    'waiting_approval',
+    `đề xuất ${campaign.state.publishProposal?.suggestedAt || '18:00'}`,
+    'waiting_approval',
+  );
   const board = livingToBoard(campaign);
   campaign.state.recommendations = buildCampaignRecommendations({
     board,
     research: campaign.state.research,
     content: campaign.state.content,
   });
-  const waitTask = campaign.state.tasks.find(t => t.id === 't_wait');
-  if (waitTask) waitTask.status = 'running';
   pushMemory(campaign.state, 'waiting_approval', 'Waiting approval', 'User Approve / Reject');
   refreshMetrics(campaign.state);
   await persist(campaign);
@@ -447,6 +512,10 @@ async function runWaitingApproval(campaign: LivingCampaign): Promise<void> {
       `Missions: ${campaign.state.metrics.missionsProposed}`,
       `Content slots: ${campaign.state.metrics.contentSlots}`,
       campaign.state.recommendations[0]?.message || 'Chờ Approve để tiếp tục.',
+      ...formatOrchestratorWorkLines({
+        campaignName: campaign.name,
+        tasks: campaign.state.orchestratorTasks,
+      }).slice(0, 10),
     ],
     replyMarkup: {
       inline_keyboard: [
@@ -472,7 +541,8 @@ export async function createAndRunCampaign(input: {
     budget: board.budget,
     health: board.health,
     timeline: [],
-    tasks: buildInitialTasks(),
+    tasks: [],
+    orchestratorTasks: [],
     progress: {
       percent: 0,
       currentPhase: 'planning',
@@ -508,6 +578,15 @@ export async function createAndRunCampaign(input: {
   });
 
   let campaign = rowToLiving(row);
+  // Bind real campaign id into orchestrator graph
+  campaign.state.orchestratorTasks = createCampaignTaskGraph({
+    campaignId: campaign.id,
+    priority: campaign.priority,
+    owner: campaign.owner,
+  });
+  syncLegacyTasks(campaign.state);
+  pushMemory(campaign.state, 'planning', 'Research queued', 'Task Orchestrator graph ready');
+  campaign = await persist(campaign);
   await rememberPlanningEvent({
     companyId: input.companyId,
     kind: 'campaign',
@@ -533,9 +612,9 @@ export async function createAndRunCampaign(input: {
   campaign = (await getCampaign(campaign.id))!;
   await runMissionPhase(campaign);
   campaign = (await getCampaign(campaign.id))!;
-  await runLeadPhase(campaign);
-  campaign = (await getCampaign(campaign.id))!;
   await runContentPhase(campaign);
+  campaign = (await getCampaign(campaign.id))!;
+  await runLeadPhase(campaign);
   campaign = (await getCampaign(campaign.id))!;
   await runWaitingApproval(campaign);
   campaign = (await getCampaign(campaign.id))!;
@@ -606,8 +685,14 @@ export async function approveCampaign(input: {
   if (campaign.state.publishProposal) {
     campaign.state.publishProposal.approved = true;
   }
-  const waitTask = campaign.state.tasks.find(t => t.id === 't_wait');
-  if (waitTask) waitTask.status = 'done';
+  ensureOrchestrator(campaign.state, campaign.id, campaign.priority, campaign.owner);
+  // Complete waiting schedule task
+  campaign.state.orchestratorTasks = patchTask(
+    campaign.state.orchestratorTasks,
+    'schedule_publishing',
+    t => completeTask(t, `approved by ${input.actor || 'user'}`),
+  );
+  syncLegacyTasks(campaign.state);
 
   campaign.status = 'publishing';
   recomputeProgress(campaign.state, campaign.status);
@@ -633,6 +718,8 @@ export async function approveCampaign(input: {
 
   campaign.status = 'monitoring';
   recomputeProgress(campaign.state, campaign.status);
+  beginOrchestratorTask(campaign.state, 'monitor_campaign', 'monitoring');
+  finishOrchestratorTask(campaign.state, 'monitor_campaign', 'monitoring', 'monitoring started');
   pushMemory(campaign.state, 'monitoring', 'Monitoring', 'Theo dõi lead + engagement (advisory)');
   campaign = await persist(campaign);
 
@@ -683,6 +770,13 @@ export async function rejectCampaign(input: {
   if (!found) throw new Error(`Campaign not found: ${input.campaignId}`);
   found.status = 'rejected';
   recomputeProgress(found.state, 'rejected');
+  ensureOrchestrator(found.state, found.id, found.priority, found.owner);
+  found.state.orchestratorTasks = (found.state.orchestratorTasks || []).map(t =>
+    t.status === 'pending' || t.status === 'running' || t.status === 'waiting_approval'
+      ? cancelTask(t, input.reason || 'rejected')
+      : t,
+  );
+  syncLegacyTasks(found.state);
   pushMemory(found.state, 'system', 'Rejected', input.reason || `by ${input.actor || 'user'}`);
   found.state.progress.blockedReason = 'Rejected by user';
   const saved = await persist(found);
@@ -707,6 +801,10 @@ export async function completeCampaign(campaignId: string): Promise<LivingCampai
 export function campaignRuntimeSummaryLines(c: LivingCampaign): string[] {
   const m = c.state.metrics;
   const prop = c.state.publishProposal;
+  const work = formatOrchestratorWorkLines({
+    campaignName: c.name,
+    tasks: c.state.orchestratorTasks || [],
+  });
   return [
     'Campaign Runtime',
     '────────────────────────────────',
@@ -722,6 +820,8 @@ export function campaignRuntimeSummaryLines(c: LivingCampaign): string[] {
       ? `Publish proposal: ${prop.suggestedAt} · ${prop.channel}${prop.approved ? ' · APPROVED' : ' · chờ Approve'}`
       : 'Publish proposal: —',
     '',
+    ...work,
+    '',
     'Timeline',
     ...c.state.operationalMemory.slice(-8).map(e => {
       const hhmm = new Date(e.at).toLocaleTimeString('vi-VN', {
@@ -734,4 +834,8 @@ export function campaignRuntimeSummaryLines(c: LivingCampaign): string[] {
     }),
     '────────────────────────────────',
   ];
+}
+
+export function getCampaignOrchestratorTasks(c: LivingCampaign): OrchestratorTask[] {
+  return c.state.orchestratorTasks || [];
 }

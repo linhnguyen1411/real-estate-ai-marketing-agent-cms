@@ -10,6 +10,7 @@ import {
   completeCampaign,
   createAndRunCampaign,
   findCampaignByPrefix,
+  listCampaigns,
   livingToBoard,
   rejectCampaign,
 } from './campaignRuntime';
@@ -19,6 +20,7 @@ import { proposeMissions } from './missionPlanner';
 import { formatTimelineLines, loadTodayTimeline, rememberPlanningEvent } from './operationalMemory';
 import { buildCampaignRecommendations } from './recommendationEngine';
 import { buildMarketIntelligenceReport } from './researchAgent';
+import { formatOrchestratorWorkLines } from './taskOrchestrator';
 import {
   campaignCard,
   contentPlanCard,
@@ -28,6 +30,7 @@ import {
   recommendationCards,
   researchCard,
   timelineCard,
+  workStatusCard,
 } from './cards/telegramCards';
 import type { SalesEmployeeResult } from './types';
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
@@ -60,6 +63,9 @@ export function detectSalesMode(
   if (/^reject\s+campaign\b|từ chối campaign|tu choi campaign/.test(t)) return 'campaign_reject';
   if (/complete\s+campaign\b|đóng campaign|dong campaign/.test(t)) return 'campaign_approve';
   if (/view\s+campaign\b|mở campaign|mo campaign|open campaign/.test(t)) return 'campaign_board';
+  if (/hôm nay ai đang làm|hom nay ai dang lam|ai đang làm gì|ai dang lam gi|đang làm gì|dang lam gi/.test(t)) {
+    return 'work_status';
+  }
   if (/hôm nay ai đã làm|hom nay ai da lam|timeline|ai đã làm gì|ai da lam gi/.test(t)) return 'timeline';
   if (/lead nổi bật|lead noi bat|top lead|lead vip|lead hôm nay|lead hom nay/.test(t)) return 'lead_cards';
   if (/research|market report|giá thị trường|gia thi truong|khảo sát|khao sat/.test(t)) return 'research_report';
@@ -123,7 +129,7 @@ export async function runSalesEmployee(input: {
     }
     const living = await approveCampaign({ campaignId: id, actor: 'copilot' });
     const lines = campaignRuntimeSummaryLines(living);
-    const card = campaignCard(livingToBoard(living), living.id);
+    const card = campaignCard(livingToBoard(living), living.id, living.state.orchestratorTasks);
     return {
       mode,
       livingCampaign: living,
@@ -149,11 +155,31 @@ export async function runSalesEmployee(input: {
     return { mode, livingCampaign: living, lines, text: lines.join('\n'), board: livingToBoard(living) };
   }
 
-  if (mode === 'timeline') {
+  if (mode === 'timeline' || mode === 'work_status') {
+    const campaigns = await listCampaigns({ companyId: input.companyId, limit: 5 });
+    const active =
+      campaigns.find(c => !['completed', 'rejected'].includes(c.status)) || campaigns[0];
+    if (active?.state.orchestratorTasks?.length) {
+      const lines = formatOrchestratorWorkLines({
+        campaignName: active.name,
+        tasks: active.state.orchestratorTasks,
+      });
+      const card = workStatusCard(lines, active.state.orchestratorTasks);
+      const timeline = await loadTodayTimeline({ companyId: input.companyId });
+      return {
+        mode: mode === 'work_status' ? 'work_status' : 'timeline',
+        timeline,
+        livingCampaign: active,
+        orchestratorTasks: active.state.orchestratorTasks,
+        lines: card.lines,
+        text: card.lines.join('\n'),
+        replyMarkup: card.replyMarkup,
+      };
+    }
     const timeline = await loadTodayTimeline({ companyId: input.companyId });
     const card = timelineCard(timeline);
     return {
-      mode,
+      mode: 'timeline',
       timeline,
       lines: card.lines,
       text: card.lines.join('\n'),
@@ -272,7 +298,7 @@ export async function runSalesEmployee(input: {
       const living = await findCampaignByPrefix(id);
       if (living) {
         const board = livingToBoard(living);
-        const card = campaignCard(board, living.id);
+        const card = campaignCard(board, living.id, living.state.orchestratorTasks);
         const lines = [...card.lines, '', ...campaignRuntimeSummaryLines(living).slice(4, 20)];
         return {
           mode: 'campaign_board',
@@ -301,7 +327,7 @@ export async function runSalesEmployee(input: {
   const missions = living.state.missions;
   const content = living.state.content!;
   const recommendations = living.state.recommendations;
-  const card = campaignCard(board, living.id);
+  const card = campaignCard(board, living.id, living.state.orchestratorTasks);
   const summary = campaignRuntimeSummaryLines(living);
 
   return {

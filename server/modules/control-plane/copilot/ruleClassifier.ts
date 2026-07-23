@@ -137,7 +137,7 @@ const RULES: Rule[] = [
     name: 'ai_sales_timeline',
     confidence: 0.97,
     test: t =>
-      /hôm nay ai đã làm|hom nay ai da lam|ai đã làm gì|ai da lam gi|timeline hôm nay|timeline hom nay/.test(
+      /hôm nay ai đang làm|hom nay ai dang lam|ai đang làm gì|ai dang lam gi|đang làm gì|dang lam gi|hôm nay ai đã làm|hom nay ai da lam|ai đã làm gì|ai da lam gi|timeline hôm nay|timeline hom nay/.test(
         t,
       ),
   },

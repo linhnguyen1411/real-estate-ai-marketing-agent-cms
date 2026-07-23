@@ -25,7 +25,16 @@ export {
   completeCampaign,
   livingToBoard,
   campaignRuntimeSummaryLines,
+  getCampaignOrchestratorTasks,
 } from './campaignRuntime';
+export {
+  createCampaignTaskGraph,
+  formatOrchestratorWorkLines,
+  formatOrchestratorTaskCardLines,
+  orchestratorProgress,
+  listReadyTasks,
+  taskDurationMs,
+} from './taskOrchestrator';
 export {
   runSalesEmployee,
   detectSalesMode,
@@ -40,5 +49,6 @@ export {
   recommendationCards,
   fleetEmployeeCard,
   timelineCard,
+  workStatusCard,
 } from './cards/telegramCards';
 export { registerPlanningRoutes } from './api/planningRoutes';

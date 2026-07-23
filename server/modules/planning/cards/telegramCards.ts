@@ -3,12 +3,14 @@
  */
 
 import { formatTimelineLines } from '../operationalMemory';
+import { formatOrchestratorTaskCardLines } from '../taskOrchestrator';
 import type {
   CampaignBoard,
   ContentPlan,
   LeadCardV2,
   MarketIntelligenceReport,
   MissionProposal,
+  OrchestratorTask,
   RecommendationItem,
   TimelineEntry,
 } from '../types';
@@ -17,9 +19,14 @@ import type { InlineKeyboard } from '../../control-plane/inlineKeyboard';
 export function campaignCard(
   board: CampaignBoard,
   campaignId?: string,
+  orchestratorTasks?: OrchestratorTask[],
 ): { lines: string[]; replyMarkup: InlineKeyboard } {
   const cid = (campaignId || board.livingCampaignId || board.id).slice(0, 28);
   const check = board.planChecklist.map(c => `${c.done ? '✓' : '○'} ${c.label}`).join('\n');
+  const taskBlock =
+    orchestratorTasks && orchestratorTasks.length
+      ? formatOrchestratorTaskCardLines(orchestratorTasks)
+      : ['Tasks', ...board.tasks.map(t => `• ${t}`), '────────────────────────────────'];
   const lines = [
     'Campaign Card',
     '────────────────────────────────',
@@ -35,9 +42,7 @@ export function campaignCard(
     'Plan',
     check,
     '',
-    'Tasks',
-    ...board.tasks.map(t => `• ${t}`),
-    '────────────────────────────────',
+    ...taskBlock,
   ].filter((x): x is string => Boolean(x));
   return {
     lines,
@@ -56,6 +61,25 @@ export function campaignCard(
         [
           { text: 'Leads', callback_data: 'ai:leads' },
           { text: 'Publish', callback_data: 'ai:publish' },
+          { text: 'Recs', callback_data: 'ai:recs' },
+        ],
+      ],
+    },
+  };
+}
+
+export function workStatusCard(
+  lines: string[],
+  tasks?: OrchestratorTask[],
+): { lines: string[]; replyMarkup: InlineKeyboard } {
+  const extra = tasks?.length ? ['', ...formatOrchestratorTaskCardLines(tasks)] : [];
+  return {
+    lines: [...lines, ...extra],
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          { text: 'Campaign', callback_data: 'ai:campaign' },
+          { text: 'Timeline', callback_data: 'ai:timeline' },
           { text: 'Recs', callback_data: 'ai:recs' },
         ],
       ],

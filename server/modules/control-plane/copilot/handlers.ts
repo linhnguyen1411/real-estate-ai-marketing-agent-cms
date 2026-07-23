@@ -47,7 +47,7 @@ async function runAiEmployeeHandler(
     ai_sales_missions: 'mission_proposals',
     ai_sales_leads: 'lead_cards',
     ai_sales_content: 'content_plan',
-    ai_sales_timeline: 'timeline',
+    ai_sales_timeline: 'work_status',
     ai_sales_recommendations: 'recommendations',
     ai_sales_help: 'help',
   };
@@ -65,6 +65,8 @@ async function runAiEmployeeHandler(
     content: result.content,
     recommendations: result.recommendations,
     timeline: result.timeline,
+    orchestratorTasks: result.orchestratorTasks,
+    livingCampaign: result.livingCampaign,
   }, result.replyMarkup);
 }
 
