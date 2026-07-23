@@ -19,6 +19,7 @@ import {
   bigIntOrNull,
   computeIntelligenceFinalScore,
   computeLeadFitScore,
+  computeRuleScore,
   INTELLIGENCE_VERSION,
   normalizeActorRole,
   normalizeClassification,
@@ -27,6 +28,7 @@ import {
   type ActorRole,
   type LeadClassification,
 } from '../../agent/leadIntelligence';
+import { enqueueFindingEnrichment } from '../../agent/findingEnrichmentService';
 import type { LeadAnalysisResult } from '../../agent/leadAnalysisSchema';
 import {
   buildContentDedupeMeta,
@@ -454,82 +456,37 @@ export async function processFindingForContent(input: {
     ? preAiSpam.decision.scorePenalty
     : 0;
 
+  // Findings MUST NOT wait on Gemini — RAW create from rules, AI enrich async later.
+  const analysisRan = false;
+  const aiScore: number | null = null;
+  const analysis: LeadAnalysisResult | null = null;
+  const leadExtracted: Record<string, unknown> | null = null;
+  const aiSource: 'ai' | 'fallback' | 'skipped' | 'budget' = 'skipped';
+  // Keep budget object for API compat (unused for sync AI).
   const budget = input.analysisBudget ?? {
     used: 0,
     max: getLeadAnalysisLimits().maxPerJob,
   };
+  void budget;
+  void decideShouldRunAi;
+  void analyzeLeadContent;
 
-  const shouldRunAi = decideShouldRunAi({
-    mode: config.analysisMode,
-    keywordScore,
-    softKeywordScore: config.softKeywordScore,
-    prefilterPassed: prefilter.passed,
-    deepAnalyze: config.deepAnalyze,
-    budgetRemaining: budget.used < budget.max,
-    skipAi: config.skipAi,
-  });
-
-  let aiScore: number | null = null;
-  let analysisRan = false;
-  let analysis: LeadAnalysisResult | null = null;
-  let leadExtracted: Record<string, unknown> | null = null;
-  let aiSource: 'ai' | 'fallback' | 'skipped' | 'budget' = 'skipped';
-
-  if (!shouldRunAi.run && shouldRunAi.reason === 'budget') {
-    aiSource = 'budget';
-  } else if (shouldRunAi.run) {
-    const analysisOutput = await analyzeLeadContent(
-      {
-        title: input.title,
-        bodyText: input.content.contentText,
-        canonicalUrl: input.content.canonicalUrl,
-        sourceType: input.source.type,
-        positiveKeywords: config.positiveKeywords,
-        negativeKeywords: config.negativeKeywords,
-        deepAnalyze:
-          config.deepAnalyze ||
-          config.analysisMode === 'ai_first' ||
-          config.analysisMode === 'hybrid',
-        prefilterMinScore: config.prefilterMinScore,
-      },
-      { skipAi: config.skipAi },
-    );
-
-    if (analysisOutput.ran && analysisOutput.analysis) {
-      budget.used += 1;
-      analysisRan = true;
-      analysis = analysisOutput.analysis;
-      aiScore = analysisOutput.analysis.score;
-      leadExtracted = analysisOutput.extractedData;
-      aiSource = analysisOutput.meta?.source === 'ai' ? 'ai' : 'fallback';
-    } else {
-      aiSource = 'skipped';
-    }
-  }
-
-  // Resolve classification: subject-direction + AI + deterministic extractors
+  // Resolve classification: subject-direction + deterministic extractors (no AI)
   const direction = detectSubjectDirection(`${input.title}\n${input.content.contentText}`);
-  let classification = resolveClassification(analysis, deterministic);
+  let classification = resolveClassification(null, deterministic);
   if (direction.classification !== 'unknown') {
     classification = direction.classification;
-  } else if (classification === 'unknown' && analysis?.classification) {
-    classification = normalizeClassification(analysis.classification);
   }
 
-  const intent = analysis
-    ? normalizeIntent(analysis.intent)
-    : normalizeIntent(direction.intent || deterministic.property.intent);
+  const intent = normalizeIntent(direction.intent || deterministic.property.intent);
   let actorRole: ActorRole =
     direction.actorRole !== 'unknown'
       ? direction.actorRole
-      : analysis
-        ? normalizeActorRole(analysis.actorRole)
-        : actorRoleFromClassification(classification);
+      : actorRoleFromClassification(classification);
   if (actorRole === 'unknown') actorRole = actorRoleFromClassification(classification);
 
-  const representedDemand =
-    analysis?.representedDemand || direction.representedDemand;
-  const brokerActivity = analysis?.brokerActivity || direction.brokerActivity;
+  const representedDemand = direction.representedDemand;
+  const brokerActivity = direction.brokerActivity;
 
   // Tier-2 spam policy (post-classification): classification / actor_role rules
   const postClassSpam = await evaluateContentSpam({
@@ -581,28 +538,31 @@ export async function processFindingForContent(input: {
     (classification === 'landlord' && actorRole === 'supply_side') ||
     (classification === 'broker' &&
       (brokerActivity === 'supply_listing' || brokerActivity === 'recruitment'));
+
+  const hasBuyerIntent =
+    actorRole === 'demand_side' ||
+    targetMatched ||
+    isBrokerDemand ||
+    (direction.demandSignals.length > 0 &&
+      direction.demandSignals.length >= direction.supplySignals.length &&
+      !isClearSupplyDismiss) ||
+    (keywordScore >= config.softKeywordScore &&
+      !isClearSupplyDismiss &&
+      classification !== 'seller' &&
+      classification !== 'landlord');
+
   const needsReview =
     classification === 'unknown' ||
     actorRole === 'unknown' ||
     isBrokerDemand ||
-    (!targetMatched && !isClearSupplyDismiss);
+    (!targetMatched && !isClearSupplyDismiss && hasBuyerIntent);
 
-  const hasPhone = Boolean(
-    analysis?.contact?.phone || deterministic.phone.primaryPhone,
-  );
+  const hasPhone = Boolean(deterministic.phone.primaryPhone);
   const hasBudget = Boolean(
-    analysis?.budgetMin != null ||
-      analysis?.budgetMax != null ||
-      deterministic.money.budgetMin != null ||
-      deterministic.money.budgetMax != null,
+    deterministic.money.budgetMin != null || deterministic.money.budgetMax != null,
   );
-  const hasLocation = Boolean(
-    analysis?.region || deterministic.location.primaryLocation,
-  );
-  const propertyTypes =
-    analysis?.propertyTypes?.length
-      ? analysis.propertyTypes
-      : deterministic.property.propertyTypes || [];
+  const hasLocation = Boolean(deterministic.location.primaryLocation);
+  const propertyTypes = deterministic.property.propertyTypes || [];
   const hasPropertyType = propertyTypes.length > 0;
 
   const leadFitScore = computeLeadFitScore({
@@ -613,23 +573,34 @@ export async function processFindingForContent(input: {
     hasBudget,
     hasLocation,
     hasPropertyType,
-    urgency: analysis?.urgency,
+    urgency: null,
+  });
+
+  const ruleScore = computeRuleScore({
+    keywordScore,
+    leadFitScore,
+    demandSignalCount: direction.demandSignals.length,
+    hasPhone,
   });
 
   const finalScore = Math.max(
     0,
     computeIntelligenceFinalScore({
-      leadFitScore,
-      aiScore,
+      leadFitScore: Math.max(leadFitScore, hasBuyerIntent ? 40 : 0),
+      aiScore: null,
       keywordScore,
-      targetMatched: targetMatched && actorRole === 'demand_side',
+      targetMatched: hasBuyerIntent || (targetMatched && actorRole === 'demand_side'),
+      ruleScore: hasBuyerIntent ? Math.max(ruleScore, 35) : ruleScore,
     }) - totalSpamPenalty,
   );
 
-  const analysisReasons = analysis?.reasons || [];
+  const analysisReasons = [
+    'pipeline:rules_first_async_enrich',
+    ...direction.demandSignals.slice(0, 3).map(s => `demand:${s}`),
+  ];
 
   // Persist analysis; only auto-dismiss clear supply — never unknown / broker demand
-  if (isClearSupplyDismiss) {
+  if (isClearSupplyDismiss && !hasBuyerIntent) {
     await persistContentAnalysis(input.content.id, {
       filterStage: 'out_of_scope',
       analysisMode: config.analysisMode,
@@ -680,8 +651,8 @@ export async function processFindingForContent(input: {
     };
   }
 
-  // Non-target without review signal → out of scope (no finding)
-  if (!targetMatched && !needsReview && !isBrokerDemand) {
+  // Non-target without review/buyer signal → out of scope (no finding)
+  if (!targetMatched && !needsReview && !isBrokerDemand && !hasBuyerIntent) {
     await persistContentAnalysis(input.content.id, {
       filterStage: 'out_of_scope',
       analysisMode: config.analysisMode,
@@ -725,14 +696,14 @@ export async function processFindingForContent(input: {
     };
   }
 
-  // needsReview (unknown / broker demand / …) continues → create finding for human triage.
-  // Soften score gate so uncertain demand posts are not silently dropped.
-  const scoreGate =
-    needsReview || isBrokerDemand
+  // Buyer intent → ALWAYS create RAW finding (AI enrich async). Soft gate otherwise.
+  const scoreGate = hasBuyerIntent
+    ? 1
+    : needsReview || isBrokerDemand
       ? Math.min(config.minScore, 25)
       : config.minScore;
 
-  if (finalScore < scoreGate) {
+  if (!hasBuyerIntent && finalScore < scoreGate) {
     await persistContentAnalysis(input.content.id, {
       filterStage: 'low_final_score',
       analysisMode: config.analysisMode,
@@ -913,12 +884,15 @@ export async function processFindingForContent(input: {
           sourceId: input.source.id,
           scannedContentId: contentRow.id,
           type: findingType,
-          status: 'new',
+          status: 'raw',
+          scoreStatus: 'raw',
           ...columnData,
         },
       });
       findingId = finding.id;
       findingCreated = true;
+      // Async AI enrichment — never blocks scanner
+      enqueueFindingEnrichment(finding.id);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       if (code === 'P2003') {
@@ -947,8 +921,26 @@ export async function processFindingForContent(input: {
         ...columnData,
         score: Math.max(existingFinding.score, finalScore),
         finalScore: Math.max(existingFinding.finalScore ?? 0, finalScore),
+        status:
+          existingFinding.status === 'dismissed' ||
+          existingFinding.status === 'enriched' ||
+          existingFinding.status === 'enriching'
+            ? existingFinding.status
+            : 'raw',
+        scoreStatus:
+          existingFinding.scoreStatus === 'enriched' || existingFinding.scoreStatus === 'enriching'
+            ? existingFinding.scoreStatus
+            : 'raw',
       },
     });
+    if (
+      existingFinding.status === 'raw' ||
+      existingFinding.status === 'new' ||
+      existingFinding.status === 'failed_enrichment' ||
+      !existingFinding.aiScore
+    ) {
+      enqueueFindingEnrichment(existingFinding.id);
+    }
   }
 
   let notificationCreated = false;

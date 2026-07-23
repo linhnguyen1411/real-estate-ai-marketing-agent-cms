@@ -18,6 +18,8 @@ export interface GenerationOptions {
   timeoutMs?: number;
   /** editorial = blog/SEO content without CRM assistant wrapper */
   promptContext?: 'default' | 'editorial';
+  /** Override provider cascade (e.g. gemini → openai → ollama for lead enrich) */
+  preferredProviders?: ProviderName[];
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -290,8 +292,12 @@ async function callProvider(provider: ProviderName, systemInstruction: string, p
 export async function generateText(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const settings = await getAppSettings();
   const errors: string[] = [];
+  const order =
+    options.preferredProviders?.length
+      ? options.preferredProviders
+      : providerOrder(settings.ai_mode);
 
-  for (const provider of providerOrder(settings.ai_mode)) {
+  for (const provider of order) {
     try {
       const result = await callProvider(provider, systemInstruction, prompt, options);
       if (result.trim()) return result;

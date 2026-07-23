@@ -52,16 +52,41 @@ export function computeLeadFitScore(input: {
   return Math.min(100, score);
 }
 
+export function computeRuleScore(input: {
+  keywordScore: number;
+  leadFitScore: number;
+  demandSignalCount?: number;
+  hasPhone?: boolean;
+}): number {
+  const kw = clamp(input.keywordScore);
+  const fit = clamp(input.leadFitScore);
+  const demandBoost = Math.min(40, (input.demandSignalCount || 0) * 12);
+  let score = Math.round(0.55 * Math.max(fit, demandBoost || 0) + 0.45 * Math.max(kw, demandBoost));
+  if (input.hasPhone) score += 8;
+  if (demandBoost > 0 && score < 35) score = 35;
+  if (kw >= 40 && score < 30) score = 30;
+  return clamp(score);
+}
+
 /**
- * finalScore = 55% leadFit + 35% ai + 10% keyword (normalized).
- * Hard gate: classification must be in target (caller checks); otherwise return 0.
+ * finalScore = Rule Score + AI Score blend (never AI-only).
+ * - If ruleScore provided: use it (with optional AI blend).
+ * - Else legacy: hard-zero when !targetMatched || leadFit<=0.
  */
 export function computeIntelligenceFinalScore(input: {
   leadFitScore: number;
   aiScore: number | null;
   keywordScore: number;
   targetMatched: boolean;
+  /** Prefer explicit rule score from Rule Engine */
+  ruleScore?: number | null;
 }): number {
+  if (input.ruleScore != null) {
+    const rule = clamp(input.ruleScore);
+    if (input.aiScore == null) return rule;
+    return clamp(Math.round(0.55 * rule + 0.45 * clamp(input.aiScore)));
+  }
+
   if (!input.targetMatched || input.leadFitScore <= 0) return 0;
   const ai = input.aiScore == null ? input.leadFitScore : clamp(input.aiScore);
   const kw = clamp(input.keywordScore);

@@ -27,7 +27,7 @@ export default function AgentDashboard() {
     try {
       const [dashboard, findingsRes, jobsRes] = await Promise.all([
         fetchAgentDashboard(),
-        fetchAgentFindings({ page: 1, limit: 10, status: 'new' }),
+        fetchAgentFindings({ page: 1, limit: 10 }),
         fetchAgentJobs({ page: 1, limit: 10 }),
       ]);
       setCounts(dashboard);
