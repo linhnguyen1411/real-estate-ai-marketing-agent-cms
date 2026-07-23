@@ -1257,6 +1257,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   const original = String(req.originalUrl || '');
   if (
     pathName === '/health' ||
+    pathName === '/planning/health' ||
     pathName === '/auth/login' ||
     pathName.startsWith('/public/') ||
     pathName.startsWith('/agent-ingest/') ||

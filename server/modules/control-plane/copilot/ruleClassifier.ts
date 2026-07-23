@@ -150,18 +150,19 @@ const RULES: Rule[] = [
       ),
   },
   {
-    name: 'ai_sales_campaign',
-    confidence: 0.96,
+    name: 'ai_sales_research',
+    confidence: 0.97,
     test: t =>
-      /bán mạnh|ban manh|lập campaign|lap campaign|chiến dịch|chien dich|cần bán|can ban|mai đăng chơn|mai dang chon|campaign board/.test(
+      /market report|research|giá thị trường|gia thi truong|khảo sát thị trường|khao sat thi truong|market intelligence/.test(
         t,
       ),
   },
   {
-    name: 'ai_sales_research',
-    confidence: 0.95,
+    name: 'ai_sales_campaign',
+    confidence: 0.96,
     test: t =>
-      /market report|research|giá thị trường|gia thi truong|khảo sát thị trường|khao sat thi truong|market intelligence/.test(
+      !/research|market report|giá thị trường|gia thi truong|khảo sát|khao sat/.test(t) &&
+      /bán mạnh|ban manh|lập campaign|lap campaign|chiến dịch|chien dich|cần bán|can ban|mai đăng chơn|mai dang chon|campaign board/.test(
         t,
       ),
   },
