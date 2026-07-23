@@ -210,8 +210,14 @@ export async function routeTelegramUpdate(
       return { handled: true, ok: false, reason: 'unknown_callback' };
     }
     commandText = mapped;
-    // Approval / incident go through Copilot for context + handlers
-    if (mapped.startsWith('/approval') || mapped.startsWith('/incident')) {
+    // Approval / incident / AI employee go through Copilot
+    if (
+      mapped.startsWith('/approval') ||
+      mapped.startsWith('/incident') ||
+      /^(research|content plan|đề xuất mission|de xuat mission|lead nổi bật|lead noi bat|lập campaign|lap campaign|hôm nay ai|hom nay ai|thiếu bài|thieu bai|ai sales)/i.test(
+        mapped,
+      )
+    ) {
       viaCopilot = true;
     }
   } else {

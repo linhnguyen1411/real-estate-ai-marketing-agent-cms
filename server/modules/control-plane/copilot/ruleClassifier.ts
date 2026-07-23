@@ -134,19 +134,81 @@ const RULES: Rule[] = [
     },
   },
   {
+    name: 'ai_sales_timeline',
+    confidence: 0.97,
+    test: t =>
+      /hôm nay ai đã làm|hom nay ai da lam|ai đã làm gì|ai da lam gi|timeline hôm nay|timeline hom nay/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_leads',
+    confidence: 0.96,
+    test: t =>
+      /lead nổi bật|lead noi bat|top lead|lead vip|lead card|xác suất giao dịch|xac suat giao dich/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_campaign',
+    confidence: 0.96,
+    test: t =>
+      /bán mạnh|ban manh|lập campaign|lap campaign|chiến dịch|chien dich|cần bán|can ban|mai đăng chơn|mai dang chon|campaign board/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_research',
+    confidence: 0.95,
+    test: t =>
+      /market report|research|giá thị trường|gia thi truong|khảo sát thị trường|khao sat thi truong|market intelligence/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_missions',
+    confidence: 0.94,
+    test: t =>
+      /đề xuất mission|de xuat mission|mission planner|nhiệm vụ buyer|nhiem vu buyer|mission đề xuất/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_content',
+    confidence: 0.94,
+    test: t =>
+      /content plan|lịch đăng|lich dang|content planner|lịch content|lich content/.test(t),
+  },
+  {
+    name: 'ai_sales_recommendations',
+    confidence: 0.93,
+    test: t =>
+      /thiếu bài threads|thieu bai threads|thiếu bài seo|thieu bai seo|nên giảm giá|nen giam gia|recommendation engine/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_help',
+    confidence: 0.9,
+    test: t =>
+      /^\/?ai\b/.test(t) ||
+      /sales employee|ai employee|nhân viên ai|nhan vien ai|ai sales/.test(t),
+  },
+  {
     name: 'ops_recommendation',
     confidence: 0.9,
     test: t =>
       /nên làm gì|nen lam gi|khuyến nghị|khuyen nghi|recommend|cần mình xử lý|can minh xu ly|làm gì tiếp|lam gi tiep/.test(
         t,
-      ),
+      ) && !/threads|seo|giảm giá|giam gia|campaign/.test(t),
   },
   {
     name: 'lead_count',
     confidence: 0.93,
     test: t =>
-      /(bao nhiêu|bao nhieu|how many).*(lead|finding)/.test(t) ||
-      /hôm nay có.*lead|hom nay co.*lead|lead hôm nay|lead hom nay|lead today|top lead/.test(t),
+      !/nổi bật|noi bat|vip|xác suất|xac suat/.test(t) &&
+      (/(bao nhiêu|bao nhieu|how many).*(lead|finding)/.test(t) ||
+        /hôm nay có.*lead|hom nay co.*lead|lead hôm nay|lead hom nay|lead today|top lead/.test(t)),
     slots: t => ({
       dateHint: 'today',
       location: extractLocation(t),

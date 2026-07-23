@@ -76,6 +76,7 @@ import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './se
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
+import { registerPlanningRoutes } from './server/modules/planning';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1381,6 +1382,7 @@ if (AGENT_ENABLED) {
   registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
   registerRuntimeAgentRoutes(app);
   registerTelegramControlPlaneRoutes(app);
+  registerPlanningRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }

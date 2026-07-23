@@ -33,7 +33,89 @@ import {
 import { recommendAll } from './recommendations';
 import { formatLeadLines, replyFail, replyOk } from './replyFormatter';
 import type { IntentHandler, IntentRegistry } from './intentRegistry';
-import type { ClassifiedIntent } from './types';
+import type { ClassifiedIntent, CopilotIntentName } from './types';
+import { runSalesEmployee } from '../../planning/salesEmployee';
+
+async function runAiEmployeeHandler(
+  intentName: CopilotIntentName,
+  text: string,
+  companyId?: string | null,
+) {
+  const modeMap: Partial<Record<CopilotIntentName, Parameters<typeof runSalesEmployee>[0]['mode']>> = {
+    ai_sales_campaign: 'campaign_board',
+    ai_sales_research: 'research_report',
+    ai_sales_missions: 'mission_proposals',
+    ai_sales_leads: 'lead_cards',
+    ai_sales_content: 'content_plan',
+    ai_sales_timeline: 'timeline',
+    ai_sales_recommendations: 'recommendations',
+    ai_sales_help: 'help',
+  };
+  const result = await runSalesEmployee({
+    utterance: text,
+    companyId,
+    mode: modeMap[intentName],
+  });
+  return replyOk(intentName, result.lines, {
+    mode: result.mode,
+    board: result.board,
+    research: result.research,
+    missions: result.missions,
+    leads: result.leads,
+    content: result.content,
+    recommendations: result.recommendations,
+    timeline: result.timeline,
+  }, result.replyMarkup);
+}
+
+const aiSalesCampaign: IntentHandler = {
+  name: 'ai_sales_campaign',
+  supports: i => i.name === 'ai_sales_campaign',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesResearch: IntentHandler = {
+  name: 'ai_sales_research',
+  supports: i => i.name === 'ai_sales_research',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesMissions: IntentHandler = {
+  name: 'ai_sales_missions',
+  supports: i => i.name === 'ai_sales_missions',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesLeads: IntentHandler = {
+  name: 'ai_sales_leads',
+  supports: i => i.name === 'ai_sales_leads',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesContent: IntentHandler = {
+  name: 'ai_sales_content',
+  supports: i => i.name === 'ai_sales_content',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesTimeline: IntentHandler = {
+  name: 'ai_sales_timeline',
+  supports: i => i.name === 'ai_sales_timeline',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesRecommendations: IntentHandler = {
+  name: 'ai_sales_recommendations',
+  supports: i => i.name === 'ai_sales_recommendations',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
+const aiSalesHelp: IntentHandler = {
+  name: 'ai_sales_help',
+  supports: i => i.name === 'ai_sales_help',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+};
 
 function dayBounds(hint?: string): { from: string; to: string } {
   const now = new Date();
@@ -644,6 +726,14 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     browserDetail,
     runtimeExplain,
     opsRecommendation,
+    aiSalesCampaign,
+    aiSalesResearch,
+    aiSalesMissions,
+    aiSalesLeads,
+    aiSalesContent,
+    aiSalesTimeline,
+    aiSalesRecommendations,
+    aiSalesHelp,
     leadCount,
     agentsOffline,
     retryFailedPublish,

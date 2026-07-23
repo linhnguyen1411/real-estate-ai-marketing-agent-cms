@@ -44,7 +44,16 @@ export type CopilotIntentName =
   | 'machine_detail'
   | 'browser_detail'
   | 'runtime_explain'
-  | 'ops_recommendation';
+  | 'ops_recommendation'
+  /** H2 — AI Sales Employee (Planning Layer) */
+  | 'ai_sales_campaign'
+  | 'ai_sales_research'
+  | 'ai_sales_missions'
+  | 'ai_sales_leads'
+  | 'ai_sales_content'
+  | 'ai_sales_timeline'
+  | 'ai_sales_recommendations'
+  | 'ai_sales_help';
 
 export type CopilotSlots = {
   location?: string;

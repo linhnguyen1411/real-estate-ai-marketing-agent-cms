@@ -198,6 +198,19 @@ export function browserActionKeyboard(agentId?: string | null): InlineKeyboard {
 export function callbackDataToCommand(data: string): string | null {
   const raw = String(data || '').trim();
   const parts = raw.split(':');
+  // AI Sales Employee dashboard buttons: ai:research | ai:leads | ...
+  if (parts[0] === 'ai' && parts[1]) {
+    const action = parts[1];
+    if (action === 'research') return 'Research thị trường';
+    if (action === 'content') return 'Content plan lịch đăng';
+    if (action === 'mission') return 'Đề xuất mission buyer';
+    if (action === 'leads') return 'Lead nổi bật nhất hôm nay';
+    if (action === 'publish') return 'Publisher thế nào';
+    if (action === 'recs') return 'Thiếu bài Threads SEO recommendation';
+    if (action === 'campaign') return 'Lập campaign bán mạnh';
+    if (action === 'timeline') return 'Hôm nay AI đã làm gì';
+    return 'AI sales employee';
+  }
   if (parts.length < 3) return null;
   const [scope, action, ...rest] = parts;
   const id = rest.join(':');
