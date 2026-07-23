@@ -45,7 +45,7 @@ export function readPublishPermalink(job: SocialPublishJob): string | null {
       return e.publishedUrl.trim();
     }
   }
-  const postId = result.facebookPostId || result.externalPostId || job.facebookPostId;
+  const postId = result.facebookPostId || result.externalPostId;
   if (typeof postId === 'string' && !isSyntheticPostId(postId)) {
     return `https://www.facebook.com/${postId.trim()}`;
   }
