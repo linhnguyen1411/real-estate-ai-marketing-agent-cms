@@ -22,5 +22,15 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist.prev",
+    "runtime",
+    "scripts/tmp-*",
+    "scripts/_tmp-*",
+    "scripts/_smoke-*",
+    "scripts/tmp_*.ts"
+  ]
 }
