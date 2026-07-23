@@ -11,7 +11,11 @@
  */
 
 import 'dotenv/config';
+// G1 — Stateless Execution Agent: no DATABASE_URL required.
+process.env.EXECUTION_AGENT_STATELESS = process.env.EXECUTION_AGENT_STATELESS || '1';
+
 import os from 'os';
+import { ensureDatabaseReady } from '../dbHelper';
 import { BrowserManager } from '../agent-worker/browserManager';
 import { loadWorkerConfig } from '../agent-worker/config';
 import { registerGracefulShutdown } from '../agent-worker/gracefulShutdown';
@@ -22,6 +26,7 @@ import { buildAgentRegistryMetadata } from '../modules/control-plane/agentRegist
 import { createHttpJobQueuePort } from './httpJobQueue';
 import { HttpAgentHeartbeat } from './httpHeartbeat';
 import { RuntimeAgentClient } from './runtimeClient';
+import { buildExecutionTelemetryMetadata } from './telemetryCollector';
 
 function runtimeBaseUrl(): string {
   return (
@@ -48,6 +53,10 @@ function parseCapabilities(): string[] {
 }
 
 async function main(): Promise<void> {
+  // Scan/finding persistence + AI settings still need local DB even when
+  // Control Plane jobs are hydrated (EXECUTION_AGENT_STATELESS=1).
+  await ensureDatabaseReady();
+
   const config = loadWorkerConfig();
   const capabilities = parseCapabilities();
   const client = new RuntimeAgentClient({
@@ -69,25 +78,37 @@ async function main(): Promise<void> {
 
   const buildMetadata = () => {
     const mem = process.memoryUsage();
-    return {
-      ...buildAgentRegistryMetadata({
-        workerId: config.workerId,
-        browserMode: config.browserMode,
-        capabilities: capabilities as never,
-      }),
+    const processMeta = {
+      pid: process.pid,
+      rssMb: Math.round(mem.rss / 1024 / 1024),
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+      uptimeSec: Math.round(process.uptime()),
+    };
+    const registry = buildAgentRegistryMetadata({
+      workerId: config.workerId,
+      browserMode: config.browserMode,
+      capabilities: capabilities as never,
+    });
+    const telemetry = buildExecutionTelemetryMetadata({
+      agentId: config.workerId,
+      version: String(registry.version || ''),
       hostname: os.hostname(),
+      browserPool: browserPool.snapshot(),
+      executionPool: executionPool.snapshot(),
+      resources: browser.getResourceDiagnostics(),
+      process: processMeta,
+    });
+    return {
+      ...registry,
+      ...telemetry,
       mode: config.browserMode,
-      profilePath: config.profileDir,
+      // Report the profile actually used (CDP → agent-cdp-profile, not managed dir).
+      profilePath: config.activeProfileDir,
+      managedProfilePath: config.profileDir,
+      cdpProfilePath: config.cdpProfileDir,
       executionPool: executionPool.snapshot(),
       browserPool: browserPool.snapshot(),
-      resources: browser.getResourceDiagnostics(),
-      process: {
-        pid: process.pid,
-        rssMb: Math.round(mem.rss / 1024 / 1024),
-        heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
-        heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
-        uptimeSec: Math.round(process.uptime()),
-      },
       publishedAt: new Date().toISOString(),
       executionAgent: true,
     };
@@ -99,6 +120,62 @@ async function main(): Promise<void> {
     config.heartbeatIntervalMs,
     buildMetadata,
     () => browser.currentUrl(),
+    async cmds => {
+      for (const cmd of cmds) {
+        const action = String(cmd.action || '');
+        try {
+          if (action === 'release_browser' || action === 'browser_release') {
+            const n = browserPool.releaseAll();
+            console.log(`[automation-agent] OPS release_browser ${cmd.id} released=${n}`);
+          } else if (action === 'force_release_browser') {
+            const n = browserPool.releaseAll();
+            console.log(`[automation-agent] OPS force_release_browser ${cmd.id} released=${n}`);
+          } else if (action === 'takeover_browser') {
+            browserPool.releaseAll();
+            console.log(`[automation-agent] OPS takeover_browser ${cmd.id} — leases cleared for re-acquire`);
+          } else if (
+            action === 'restart_browser' ||
+            action === 'browser_recover' ||
+            action === 'recover_browser'
+          ) {
+            browserPool.releaseAll();
+            for (const purpose of ['scan', 'publish', 'messaging', 'comment'] as const) {
+              browserPool.recoverCrashed(purpose);
+            }
+            await browser.shutdown().catch(() => undefined);
+            await browser.launch();
+            try {
+              const { emitRuntimeEventAsync } = await import(
+                '../modules/control-plane/runtimeEventBus'
+              );
+              emitRuntimeEventAsync({
+                type: action.includes('recover') ? 'BROWSER_RECOVERED' : 'BROWSER_RESTARTED',
+                agentId: config.workerId,
+                entityType: 'browser',
+                entityId: config.workerId,
+                payload: { action, commandId: cmd.id },
+              });
+            } catch {
+              /* ignore */
+            }
+            console.log(`[automation-agent] OPS ${action} ${cmd.id}`);
+          } else if (action === 'refresh_runtime') {
+            browserPool.tickHeartbeat();
+            console.log(`[automation-agent] OPS refresh_runtime ${cmd.id}`);
+          } else if (action === 'restart_agent') {
+            console.log(`[automation-agent] OPS restart_agent ${cmd.id} — exiting for process manager`);
+            process.exit(0);
+          } else {
+            console.log(`[automation-agent] OPS ignored action=${action} id=${cmd.id}`);
+          }
+        } catch (err) {
+          console.warn(
+            `[automation-agent] OPS failed action=${action}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    },
   );
 
   // Recovery before register

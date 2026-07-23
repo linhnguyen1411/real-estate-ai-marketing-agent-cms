@@ -1,5 +1,20 @@
+/**
+ * Telegram formatters — all outbound notification text + keyboards (H0.3.6).
+ * No JSON dumps. AI summary → recommendation → actions.
+ */
+
 import type { ResolvedLeadIntelligence } from '../../shared/agent-domain';
 import { formatResolvedBudget } from '../../shared/agent-domain';
+import { normalizeSocialLinks } from '../modules/link-normalization';
+import type { InlineKeyboard } from '../modules/control-plane/inlineKeyboard';
+import {
+  incidentKeyboard,
+  leadAlertKeyboard,
+  opsActionKeyboard,
+  publishJobKeyboard,
+} from '../modules/control-plane/inlineKeyboard';
+import type { NotificationChannel, NotificationEventType, NotificationPayload } from './notificationTypes';
+import { CHANNEL_LABELS } from './notificationTypes';
 
 export type TelegramFormatOptions = {
   includePhone?: boolean;
@@ -19,6 +34,7 @@ type FindingLike = {
   primaryPhone?: string | null;
   primaryLocation?: string | null;
   needSummary?: string | null;
+  propertyType?: string | null;
 };
 
 function classificationLabel(value: string | null | undefined): string {
@@ -27,17 +43,54 @@ function classificationLabel(value: string | null | undefined): string {
   if (v === 'renter') return 'Người thuê';
   if (v === 'investor') return 'Nhà đầu tư';
   if (v === 'broker_demand' || v === 'broker') return 'Môi giới cầu';
+  if (v === 'seller') return 'Người bán';
+  if (v === 'landlord') return 'Cho thuê';
   return value || 'Lead';
 }
 
-/**
- * Build a Telegram-friendly plain-text message for a new finding.
- */
+function propertyTypeDisplay(
+  resolved: ResolvedLeadIntelligence | null | undefined,
+  finding: FindingLike,
+): string | null {
+  const types = resolved?.property?.propertyTypes?.length
+    ? resolved.property.propertyTypes
+    : finding.propertyType
+      ? [finding.propertyType]
+      : [];
+  if (!types.length) return null;
+  const first = types.find(t => t !== 'land') || types[0];
+  const key = String(first || '').toLowerCase();
+  if (key === 'land' || /đất|dat|lô/.test(key)) return 'Đất';
+  if (/nhà\s*phố|nha\s*pho|townhouse|house|nhà/.test(key) || key === 'house') return 'Nhà phố';
+  if (/căn\s*hộ|can\s*ho|apartment|condo/.test(key) || key === 'apartment') return 'Căn hộ';
+  if (/biệt\s*thự|biet\s*thu|villa/.test(key)) return 'Biệt thự';
+  if (/shophouse|shop/.test(key)) return 'Shophouse';
+  return first;
+}
+
+export type LeadTelegramFormatResult = {
+  text: string;
+  postUrl: string | null;
+  groupUrl: string | null;
+  canonicalUrl: string | null;
+  postId: string | null;
+  groupId: string | null;
+  score: number;
+};
+
 export function formatFindingTelegramMessage(
   finding: FindingLike,
   resolved: ResolvedLeadIntelligence | null | undefined,
   options: TelegramFormatOptions = {},
 ): string {
+  return formatLeadTelegramAlert(finding, resolved, options).text;
+}
+
+export function formatLeadTelegramAlert(
+  finding: FindingLike,
+  resolved: ResolvedLeadIntelligence | null | undefined,
+  options: TelegramFormatOptions = {},
+): LeadTelegramFormatResult {
   const includePhone = options.includePhone !== false;
   const includeBudget = options.includeBudget !== false;
   const includeLocation = options.includeLocation !== false;
@@ -45,18 +98,32 @@ export function formatFindingTelegramMessage(
 
   const score = resolved?.finalScore ?? finding.finalScore ?? finding.score ?? 0;
   const classification = resolved?.classification ?? finding.classification;
+  const location =
+    resolved?.location.primary ||
+    finding.primaryLocation ||
+    [resolved?.location.district, resolved?.location.city].filter(Boolean).join(', ');
+  const propertyLabel = propertyTypeDisplay(resolved, finding);
+  const groupName = resolved?.source.groupName || resolved?.source.sourceName;
+
+  const lines: string[] = [`${CHANNEL_LABELS.LEAD}`, `Lead mới (${score}/100)`, ''];
+
+  if (classification) lines.push(`👤 ${classificationLabel(classification)}`);
+  if (includeLocation && location) lines.push(`📍 ${location}`);
+  if (propertyLabel) lines.push(`🏷 ${propertyLabel}`);
+  if (groupName) {
+    lines.push(`📂 Group:`);
+    lines.push(String(groupName).slice(0, 200));
+  }
+
   const need =
     resolved?.demand.needSummary ||
     finding.needSummary ||
     resolved?.summary ||
     finding.summary ||
-    finding.title ||
-    'Lead mới';
-
-  const lines: string[] = [`Lead mới ${score}/100`, need.slice(0, 300)];
-
-  if (classification) {
-    lines.push(`Loại: ${classificationLabel(classification)}`);
+    finding.title;
+  if (need) {
+    lines.push('');
+    lines.push(String(need).slice(0, 300));
   }
 
   if (includeBudget) {
@@ -64,9 +131,7 @@ export function formatFindingTelegramMessage(
       resolved?.demand.buyerBudgetMin ?? null,
       resolved?.demand.buyerBudgetMax ?? null,
     );
-    if (budget && budget !== 'Chưa xác định') {
-      lines.push(`Ngân sách: ${budget}`);
-    }
+    if (budget && budget !== 'Chưa xác định') lines.push(`Ngân sách: ${budget}`);
   }
 
   if (includePhone) {
@@ -74,26 +139,222 @@ export function formatFindingTelegramMessage(
     if (phone) lines.push(`SĐT: ${phone}`);
   }
 
-  if (includeLocation) {
-    const location =
-      resolved?.location.primary ||
-      finding.primaryLocation ||
-      [resolved?.location.district, resolved?.location.city].filter(Boolean).join(', ');
-    if (location) lines.push(`Khu vực: ${location}`);
-  }
-
-  const sourceName = resolved?.source.groupName || resolved?.source.sourceName;
-  if (sourceName) lines.push(`Nguồn: ${sourceName}`);
+  const sourceEd =
+    resolved && typeof resolved === 'object'
+      ? (resolved as unknown as { source?: Record<string, unknown> }).source
+      : undefined;
+  const links = normalizeSocialLinks({
+    canonicalUrl: resolved?.source.canonicalUrl,
+    postUrl: resolved?.source.canonicalUrl,
+    groupUrl: typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null,
+    groupId: typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null,
+    postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
+  });
 
   if (includeLink) {
     const findingId = finding.id || resolved?.findingId;
     const base = (options.siteBaseUrl || process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '');
     if (base && findingId) {
-      lines.push(`Mở Lead Intelligence: ${base}/admin/agents/findings`);
+      lines.push('');
+      lines.push(`CRM: ${base}/admin/agents/findings`);
     }
-    const postUrl = resolved?.source.canonicalUrl;
-    if (postUrl) lines.push(`Bài gốc: ${postUrl}`);
   }
 
-  return lines.filter(Boolean).join('\n');
+  return {
+    text: lines.filter((l, i, arr) => !(l === '' && arr[i - 1] === '')).join('\n').trim(),
+    postUrl: links.postUrl,
+    groupUrl: links.groupUrl,
+    canonicalUrl: links.canonicalUrl,
+    postId: links.postId,
+    groupId: links.groupId,
+    score: Number(score) || 0,
+  };
+}
+
+/** Batch many leads into one concise message */
+export function formatBatchedLeadSummary(
+  items: Array<{ id: string; score?: number; summary?: string }>,
+): string {
+  const n = items.length;
+  const lines = [CHANNEL_LABELS.LEAD, `🎯 ${n} Lead mới`, ''];
+  const top = items.slice(0, 5);
+  for (const item of top) {
+    const score = item.score != null ? ` (${item.score}/100)` : '';
+    const snip = item.summary ? ` — ${String(item.summary).slice(0, 60)}` : '';
+    lines.push(`• ${item.id.slice(0, 12)}${score}${snip}`);
+  }
+  if (n > 5) lines.push(`… và ${n - 5} lead khác`);
+  lines.push('');
+  lines.push('Mở CRM để xem chi tiết.');
+  return lines.join('\n');
+}
+
+const OPS_LABELS: Partial<Record<NotificationEventType, string>> = {
+  fleet: 'Fleet',
+  runtime: 'Runtime',
+  health: 'Health',
+  agent_online: 'Agent Online',
+  browser_lease: 'Browser Lease',
+  planner: 'Planner',
+  mission_started: 'Mission Started',
+  mission_finished: 'Mission Finished',
+};
+
+const PUBLISH_LABELS: Partial<Record<NotificationEventType, string>> = {
+  publish_scheduled: 'Publish Scheduled',
+  publishing: 'Publishing',
+  publish_success: 'Publish Success',
+  publish_failed: 'Publish Failed',
+  retry_publish: 'Retry Publish',
+};
+
+const CRITICAL_LABELS: Partial<Record<NotificationEventType, string>> = {
+  cpu_high: 'CPU > 90%',
+  ram_high: 'RAM > 90%',
+  scheduler_down: 'Scheduler Down',
+  browser_crash: 'Browser Crash',
+  execution_agent_offline: 'Execution Agent Offline',
+  heartbeat_lost: 'Heartbeat Lost',
+  fleet_zero: 'Fleet = 0',
+};
+
+function channelHeader(channel: NotificationChannel): string {
+  return CHANNEL_LABELS[channel];
+}
+
+export function formatRoutedNotification(
+  channel: NotificationChannel,
+  type: NotificationEventType,
+  payload: NotificationPayload,
+): string {
+  const lines: string[] = [channelHeader(channel)];
+
+  if (channel === 'OPS') {
+    const label = OPS_LABELS[type] || type;
+    const id = payload.entityId || payload.agentId || '—';
+    lines.push(`${label}: ${id}`);
+    if (payload.summary) lines.push(String(payload.summary).slice(0, 400));
+    if (payload.recommendation) {
+      lines.push('');
+      lines.push(`💡 ${String(payload.recommendation).slice(0, 300)}`);
+    }
+    if (payload.detail) lines.push(String(payload.detail).slice(0, 200));
+  } else if (channel === 'PUBLISH') {
+    const label = PUBLISH_LABELS[type] || type;
+    const id = payload.publishJobId || payload.entityId || '—';
+    lines.push(`${label}`);
+    lines.push(`Job: ${id}`);
+    if (payload.summary) lines.push(String(payload.summary).slice(0, 400));
+    if (payload.recommendation) {
+      lines.push('');
+      lines.push(`💡 ${String(payload.recommendation).slice(0, 300)}`);
+    }
+    if (payload.detail) lines.push(String(payload.detail).slice(0, 200));
+  } else if (channel === 'REPORT') {
+    const slot =
+      type === 'daily_08'
+        ? '08:00'
+        : type === 'daily_12'
+          ? '12:00'
+          : type === 'daily_18'
+            ? '18:00'
+            : type === 'weekly'
+              ? 'Weekly'
+              : 'Report';
+    lines.push(`Báo cáo ${slot}`);
+    if (payload.summary) lines.push(String(payload.summary).slice(0, 3500));
+    else if (payload.title) lines.push(String(payload.title).slice(0, 500));
+    if (payload.recommendation) {
+      lines.push('');
+      lines.push(`💡 ${String(payload.recommendation).slice(0, 400)}`);
+    }
+  } else if (channel === 'CRITICAL') {
+    const label = CRITICAL_LABELS[type] || type;
+    lines.push(`⚠️ ${label}`);
+    if (payload.summary) lines.push(String(payload.summary).slice(0, 400));
+    if (payload.detail) lines.push(String(payload.detail).slice(0, 200));
+    if (payload.recommendation) {
+      lines.push('');
+      lines.push(`→ ${String(payload.recommendation).slice(0, 300)}`);
+    }
+  } else if (channel === 'LEAD') {
+    if (payload.batchCount && payload.batchCount > 1) {
+      return formatBatchedLeadSummary(payload.batchItems || []);
+    }
+    if (payload.summary) lines.push(String(payload.summary).slice(0, 500));
+    if (payload.score != null) lines.push(`Score: ${payload.score}/100`);
+  }
+
+  if (payload.extraLines?.length) {
+    lines.push('');
+    lines.push(...payload.extraLines.map(l => String(l).slice(0, 300)));
+  }
+
+  return lines.filter(Boolean).join('\n').trim();
+}
+
+/** One-line bullet for batched OPS alerts */
+export function formatOpsBullet(
+  type: NotificationEventType,
+  payload: NotificationPayload,
+): string {
+  const label = OPS_LABELS[type] || type;
+  const id = payload.entityId || payload.agentId || '—';
+  if (payload.detail) return `• ${label}: ${id} — ${String(payload.detail).slice(0, 80)}`;
+  return `• ${label}: ${id}`;
+}
+
+export function keyboardForChannel(
+  channel: NotificationChannel,
+  type: NotificationEventType,
+  payload: NotificationPayload,
+): InlineKeyboard | undefined {
+  const entityId = payload.entityId || payload.publishJobId || payload.agentId || payload.findingId;
+
+  if (channel === 'OPS') {
+    return opsActionKeyboard(entityId);
+  }
+  if (channel === 'LEAD' && payload.findingId) {
+    return leadAlertKeyboard({
+      findingId: payload.findingId,
+      postUrl: payload.postUrl,
+      groupUrl: payload.groupUrl,
+    });
+  }
+  if (channel === 'PUBLISH' && payload.publishJobId) {
+    const kb = publishJobKeyboard(payload.publishJobId);
+    if (payload.evidenceUrl && /^https:\/\//i.test(payload.evidenceUrl)) {
+      kb.inline_keyboard.unshift([{ text: 'Open Evidence', url: payload.evidenceUrl }]);
+    }
+    return kb;
+  }
+  if (channel === 'REPORT') {
+    return {
+      inline_keyboard: [
+        [
+          { text: 'Dashboard', callback_data: 'o:f:report' },
+          { text: 'Runtime', callback_data: 'o:r:report' },
+        ],
+      ],
+    };
+  }
+  if (channel === 'CRITICAL') {
+    const id = payload.agentId || entityId || 'critical';
+    return {
+      inline_keyboard: [
+        [
+          { text: 'Recover', callback_data: `b:r:${id}` },
+          { text: 'Restart Browser', callback_data: `b:t:${id}` },
+        ],
+        [
+          { text: 'Restart Agent', callback_data: `k:a:${id}` },
+          { text: 'Dashboard', callback_data: 'o:f:ops' },
+        ],
+      ],
+    };
+  }
+  if (type === 'browser_crash' || type === 'execution_agent_offline') {
+    return incidentKeyboard(String(entityId || 'incident'));
+  }
+  return undefined;
 }

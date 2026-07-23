@@ -21,6 +21,13 @@ interface PublishEvidenceBundle {
   destinationKey?: string | null;
   durationMs: number;
   publishedUrl?: string | null;
+  postId?: string | null;
+  postUrl?: string | null;
+  groupId?: string | null;
+  groupUrl?: string | null;
+  canonicalUrl?: string | null;
+  verified?: boolean;
+  mobileVerified?: boolean;
   domHash?: string | null;
   screenshotBeforePath?: string | null;
   screenshotAfterPath?: string | null;
@@ -28,6 +35,8 @@ interface PublishEvidenceBundle {
   capturedAt: string;
 }
 ```
+
+Link fields are enriched via `enrichPublishEvidenceLinks` (`server/modules/link-normalization`) on write — see `docs/architecture/LINK-NORMALIZATION.md`.
 
 ---
 

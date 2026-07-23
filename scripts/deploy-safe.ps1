@@ -31,7 +31,29 @@ if (-not $SkipLint) {
 
 Write-Host "==> Create archive" -ForegroundColor Cyan
 if (Test-Path $localArchive) { Remove-Item $localArchive -Force }
-tar -czf $ArchiveName --exclude=.git --exclude=node_modules --exclude=data --exclude=.env --exclude=.env.* --exclude=*.log --exclude=db.json --exclude=runtime --exclude=$ArchiveName .
+# Exclude only root runtime *data* dirs — never exclude server/**/runtime source modules.
+tar -czf $ArchiveName `
+  --exclude=.git `
+  --exclude=node_modules `
+  --exclude=data `
+  --exclude=.env `
+  --exclude=.env.* `
+  --exclude=*.log `
+  --exclude=db.json `
+  --exclude=./runtime/agent-browser-profile `
+  --exclude=./runtime/agent-cdp-profile `
+  --exclude=./runtime/agent-vps-heartbeat-profile `
+  --exclude=./runtime/agent-cdp-profile/** `
+  --exclude=./runtime/agent-browser-profile/** `
+  --exclude=./runtime/publish-evidence/** `
+  --exclude=./runtime/screenshots `
+  --exclude=./runtime/debug `
+  --exclude=./runtime/tmp `
+  --exclude=./runtime/outbox-dumps `
+  --exclude=./runtime/logs `
+  --exclude=./runtime/dual-host-report* `
+  --exclude=$ArchiveName `
+  .
 if ($LASTEXITCODE -ne 0) { throw "tar failed" }
 
 Write-Host "==> Upload" -ForegroundColor Cyan

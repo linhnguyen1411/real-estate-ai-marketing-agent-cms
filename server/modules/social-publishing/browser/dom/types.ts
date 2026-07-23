@@ -107,8 +107,9 @@ export const DEFAULT_DOM_FLOW: DomFlowConfig = {
   disabledPublishWaitMs: 1_500,
   openRetries: 2,
   uploadRetries: 2,
-  publishRetries: 2,
-  composeRetries: 2,
+  // P0 exactly-once: never re-click Đăng / never re-paste caption.
+  publishRetries: 0,
+  composeRetries: 0,
   retryWaitMs: 500,
   openRetryWaitMs: 700,
   uploadRetryWaitMs: 800,

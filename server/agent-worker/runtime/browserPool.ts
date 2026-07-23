@@ -1,5 +1,5 @@
 /**
- * Browser Pool — leases browser handles by purpose.
+ * Browser Pool — leases browser handles by purpose via Lease Manager (G1.5).
  * Wraps BrowserManager (connection + pages). No business logic.
  */
 
@@ -8,57 +8,40 @@ import type { WorkerConfig } from '../config';
 import {
   BrowserBusyError,
   type BrowserHandleSnapshot,
-  type BrowserHandleState,
   type BrowserLease,
   type BrowserLeaseRequest,
   type BrowserPurpose,
 } from './types';
-
-interface HandleRecord {
-  browserId: string;
-  purpose: BrowserPurpose;
-  profile: string;
-  state: BrowserHandleState;
-  ownerJob: string | null;
-  ownerMission: string | null;
-  leaseId: string | null;
-  heartbeatAt: number | null;
-  leasedAt: number | null;
-}
+import {
+  BrowserLeaseBusyError,
+  BrowserLeaseManager,
+} from './browserLeaseManager';
+import { isBrowserLeaseBusy } from './leaseTypes';
+import {
+  clearProfileLeaseSidecar,
+  writeProfileLeaseSidecar,
+} from './profileLeaseSidecar';
 
 const PURPOSES: BrowserPurpose[] = ['scan', 'publish', 'messaging', 'comment'];
-
-let leaseSeq = 0;
-function nextLeaseId(purpose: BrowserPurpose): string {
-  leaseSeq += 1;
-  return `browser_${purpose}_${Date.now()}_${leaseSeq}`;
-}
 
 /**
  * One BrowserManager underneath; logical handles per purpose so scan/publish
  * can be leased independently (separate tabs, purpose-scoped CDP locks).
  */
 export class BrowserPool {
-  private readonly handles = new Map<BrowserPurpose, HandleRecord>();
   private readonly manager: BrowserManager;
   private readonly profile: string;
+  private readonly leases: BrowserLeaseManager;
 
   constructor(manager: BrowserManager, config: WorkerConfig) {
     this.manager = manager;
-    this.profile = config.profileDir;
-    for (const purpose of PURPOSES) {
-      this.handles.set(purpose, {
-        browserId: `browser_${purpose}_1`,
-        purpose,
-        profile: config.profileDir,
-        state: 'idle',
-        ownerJob: null,
-        ownerMission: null,
-        leaseId: null,
-        heartbeatAt: Date.now(),
-        leasedAt: null,
-      });
-    }
+    this.profile = config.activeProfileDir;
+    this.leases = new BrowserLeaseManager({
+      profileName: config.activeProfileDir,
+      workerId: config.workerId,
+      agentId: config.workerId,
+      machineId: process.env.AGENT_MACHINE_ID?.trim() || null,
+    });
   }
 
   /** Underlying manager for handlers that still expect BrowserManager. */
@@ -66,157 +49,219 @@ export class BrowserPool {
     return this.manager;
   }
 
+  /** Direct access for OPS / recover / takeover. */
+  getLeaseManager(): BrowserLeaseManager {
+    return this.leases;
+  }
+
   async lease(req: BrowserLeaseRequest): Promise<BrowserLease> {
-    const handle = this.handles.get(req.purpose);
-    if (!handle) throw new BrowserBusyError(req.purpose);
-
-    if (handle.state === 'crashed' || handle.state === 'stopping') {
-      throw new BrowserBusyError(req.purpose);
+    // Reclaim stale leases before acquire (TTL / orphan).
+    const reclaimed = this.leases.reclaimStale();
+    for (const r of reclaimed) {
+      this.manager.releaseCdpLock(r.purpose);
     }
-    if (handle.state === 'leased' && handle.ownerJob !== req.jobId) {
-      throw new BrowserBusyError(req.purpose);
+    this.syncCdpLocksWithLeases();
+
+    let acquired;
+    try {
+      acquired = this.leases.acquire({
+        purpose: req.purpose,
+        jobId: req.jobId,
+        missionRunId: req.missionRunId,
+        workerId: req.workerId,
+        agentId: req.agentId,
+        machineId: req.machineId,
+        takeover: req.takeover,
+      });
+    } catch (err) {
+      if (err instanceof BrowserLeaseBusyError) {
+        throw new BrowserBusyError(
+          req.purpose,
+          err.owner ? err.message.replace(/^BROWSER_BUSY:\s*/, '') : null,
+          err.owner?.jobId ?? null,
+        );
+      }
+      throw err;
     }
 
-    // Acquire purpose-scoped CDP lock on the manager (scan ∥ publish).
-    await this.manager.beginCdpJob(req.purpose);
+    try {
+      await this.manager.beginCdpJob(req.purpose);
+    } catch (err) {
+      if (err instanceof Error && /CDP_BUSY/.test(err.message)) {
+        this.syncCdpLocksWithLeases();
+        try {
+          await this.manager.beginCdpJob(req.purpose);
+        } catch (retryErr) {
+          this.leases.release(req.purpose, acquired.leaseId);
+          throw retryErr;
+        }
+      } else {
+        this.leases.release(req.purpose, acquired.leaseId);
+        throw err;
+      }
+    }
 
-    const leaseId = nextLeaseId(req.purpose);
-    handle.state = 'leased';
-    handle.ownerJob = req.jobId;
-    handle.ownerMission = req.missionRunId ?? null;
-    handle.leaseId = leaseId;
-    handle.heartbeatAt = Date.now();
-    handle.leasedAt = Date.now();
+    writeProfileLeaseSidecar(this.profile, acquired.info);
 
     let released = false;
     return {
-      leaseId,
-      browserId: handle.browserId,
+      leaseId: acquired.leaseId,
+      browserId: acquired.browserId,
       purpose: req.purpose,
       jobId: req.jobId,
-      missionRunId: handle.ownerMission,
-      acquiredAt: Date.now(),
+      missionRunId: acquired.missionRunId,
+      acquiredAt: acquired.acquiredAt,
       release: () => {
         if (released) return;
         released = true;
-        this.releaseLease(req.purpose, leaseId);
+        this.releaseLease(req.purpose, acquired.leaseId);
       },
     };
   }
 
   releaseLease(purpose: BrowserPurpose, leaseId: string): void {
-    const handle = this.handles.get(purpose);
-    if (!handle) return;
-    if (handle.leaseId && handle.leaseId !== leaseId) return;
-
+    const result = this.leases.release(purpose, leaseId);
+    if (!result) return;
     this.manager.releaseCdpLock(purpose);
-    handle.state = 'idle';
-    handle.ownerJob = null;
-    handle.ownerMission = null;
-    handle.leaseId = null;
-    handle.leasedAt = null;
-    handle.heartbeatAt = Date.now();
+    this.syncSidecar();
   }
 
   releaseJob(jobId: string): number {
-    let n = 0;
-    for (const purpose of PURPOSES) {
-      const handle = this.handles.get(purpose);
-      if (handle?.ownerJob === jobId && handle.leaseId) {
-        this.releaseLease(purpose, handle.leaseId);
-        n += 1;
-      }
-    }
-    return n;
+    const results = this.leases.releaseJob(jobId);
+    for (const r of results) this.manager.releaseCdpLock(r.purpose);
+    this.syncSidecar();
+    return results.length;
   }
 
   releaseMission(missionRunId: string): number {
-    let n = 0;
-    for (const purpose of PURPOSES) {
-      const handle = this.handles.get(purpose);
-      if (handle?.ownerMission === missionRunId && handle.leaseId) {
-        this.releaseLease(purpose, handle.leaseId);
-        n += 1;
-      }
-    }
-    return n;
+    const results = this.leases.releaseMission(missionRunId);
+    for (const r of results) this.manager.releaseCdpLock(r.purpose);
+    this.syncSidecar();
+    return results.length;
   }
 
-  /** Mark handle crashed and release (browser crash recovery). */
+  /** Mark handle recovering after browser crash. */
   markCrashed(purpose: BrowserPurpose): void {
-    const handle = this.handles.get(purpose);
-    if (!handle) return;
-    if (handle.leaseId) {
-      this.manager.releaseCdpLock(purpose);
-    }
-    handle.state = 'crashed';
-    handle.ownerJob = null;
-    handle.ownerMission = null;
-    handle.leaseId = null;
-    handle.leasedAt = null;
-    handle.heartbeatAt = Date.now();
+    this.leases.markRecovering(purpose);
+    this.manager.releaseCdpLock(purpose);
+    this.syncSidecar();
   }
 
   recoverCrashed(purpose: BrowserPurpose): void {
-    const handle = this.handles.get(purpose);
-    if (!handle) return;
-    if (handle.state === 'crashed') {
-      handle.state = 'idle';
-      handle.leasedAt = null;
-      handle.heartbeatAt = Date.now();
-    }
+    this.leases.markRecovered(purpose);
+    this.syncSidecar();
   }
 
+  /** Force-release all purpose leases (OPS release_browser). */
   releaseAll(): number {
-    let n = 0;
-    for (const purpose of PURPOSES) {
-      const handle = this.handles.get(purpose);
-      if (handle?.leaseId) {
-        this.releaseLease(purpose, handle.leaseId);
-        n += 1;
-      } else if (handle) {
-        handle.state = 'idle';
-        handle.ownerJob = null;
-        handle.ownerMission = null;
-      }
-    }
-    return n;
+    const results = this.leases.releaseAll();
+    this.manager.clearAllCdpLocks();
+    clearProfileLeaseSidecar(this.profile);
+    return results.length;
   }
 
-  tickHeartbeat(): void {
-    const now = Date.now();
-    for (const h of this.handles.values()) {
-      h.heartbeatAt = now;
+  /** Force release one purpose (OPS force_release). */
+  forceRelease(purpose: BrowserPurpose): boolean {
+    const r = this.leases.forceRelease(purpose);
+    if (!r) return false;
+    this.manager.clearCdpLock(purpose);
+    this.syncSidecar();
+    return true;
+  }
+
+  /**
+   * Takeover: reclaim any holder then acquire for the new job.
+   * Used when prior lease expired/orphan or OPS takeover.
+   */
+  async takeover(req: BrowserLeaseRequest): Promise<BrowserLease> {
+    const prev = this.leases.getRecord(req.purpose);
+    if (prev?.leaseId) {
+      this.manager.releaseCdpLock(req.purpose);
     }
+    this.leases.forceRelease(req.purpose);
+    return this.lease({ ...req, takeover: true });
+  }
+
+  /**
+   * Heartbeat active leases + reclaim TTL expiry.
+   * Call from agent heartbeat / worker loop (~10s).
+   */
+  tickHeartbeat(): {
+    heartbeated: number;
+    expired: Array<{ purpose: BrowserPurpose; jobId: string | null }>;
+  } {
+    const { heartbeated, expired } = this.leases.tickHeartbeat();
+    for (const e of expired) {
+      this.manager.releaseCdpLock(e.purpose);
+    }
+    const reclaimed = this.leases.reclaimStale();
+    for (const r of reclaimed) {
+      this.manager.releaseCdpLock(r.purpose);
+    }
+    this.syncCdpLocksWithLeases();
+    if (heartbeated.length || expired.length || reclaimed.length) {
+      this.syncSidecar();
+    }
+    return {
+      heartbeated: heartbeated.length,
+      expired: [...expired, ...reclaimed].map(e => ({
+        purpose: e.purpose,
+        jobId: e.previousJobId,
+      })),
+    };
   }
 
   snapshot(): BrowserHandleSnapshot[] {
-    const now = Date.now();
-    return PURPOSES.map(purpose => {
-      const h = this.handles.get(purpose)!;
-      const leaseAgeSec =
-        h.leasedAt && h.state === 'leased'
-          ? Math.max(0, Math.round((now - h.leasedAt) / 1000))
-          : null;
+    return this.leases.snapshot().map(info => {
+      // Map G1.5 states; keep `leased` alias for older consumers of "busy".
+      const state =
+        info.state === 'active'
+          ? ('leased' as const)
+          : (info.state as BrowserHandleSnapshot['state']);
       return {
-        browserId: h.browserId,
-        purpose: h.purpose,
-        profile: h.profile || this.profile,
-        state: h.state,
-        ownerJob: h.ownerJob,
-        ownerMission: h.ownerMission,
-        heartbeatAt: h.heartbeatAt,
-        leasedAt: h.leasedAt,
-        leaseAgeSec,
+        browserId: info.browserId,
+        purpose: info.purpose,
+        profile: info.profileName || this.profile,
+        state,
+        ownerJob: info.jobId,
+        ownerMission: info.missionRunId,
+        machineId: info.machineId,
+        agentId: info.agentId,
+        workerId: info.workerId,
+        leaseId: info.leaseId,
+        leaseTimeoutMs: info.leaseTimeoutMs,
+        leaseRemainingSec: info.leaseRemainingSec,
+        heartbeatAt: info.lastHeartbeat,
+        leasedAt: info.createdAt,
+        leaseAgeSec: info.runningSec,
       };
     });
   }
 
   assertNoLeaks(): { browserLeak: number } {
-    let browserLeak = 0;
-    for (const h of this.handles.values()) {
-      if (h.state === 'leased' || h.ownerJob || h.leaseId) browserLeak += 1;
+    return this.leases.assertNoLeaks();
+  }
+
+  private syncSidecar(): void {
+    const active = this.leases.snapshot().find(i => isBrowserLeaseBusy(i.state));
+    if (active) {
+      writeProfileLeaseSidecar(this.profile, active);
+    } else {
+      clearProfileLeaseSidecar(this.profile);
     }
-    return { browserLeak };
+  }
+
+  /**
+   * Orphan CDP locks can survive failed jobs / deploy when lease manager is idle.
+   * Drop locks that have no active lease record for that purpose.
+   */
+  private syncCdpLocksWithLeases(): void {
+    for (const purpose of PURPOSES) {
+      const rec = this.leases.getRecord(purpose);
+      const leaseBusy = rec != null && isBrowserLeaseBusy(rec.state);
+      if (!leaseBusy && this.manager.getCdpLockOwner(purpose)) {
+        this.manager.clearCdpLock(purpose);
+      }
+    }
   }
 }

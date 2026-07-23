@@ -47,7 +47,12 @@ export async function buildControlPlaneReport(
   };
 
   switch (kind) {
-    case 'runtime_health':
+    case 'runtime_health': {
+      const { refreshOperationsMetrics } = await import('./operations');
+      const operations = await refreshOperationsMetrics({
+        companyId: user.role === 'owner' ? null : user.company_id ?? null,
+        reason: 'report',
+      });
       return {
         ...base,
         queue: runtime.queue,
@@ -55,9 +60,16 @@ export async function buildControlPlaneReport(
         browsers: runtime.browsers,
         workersOnline: agents.filter(a => a.status === 'online').length,
         recentEvents: events.slice(0, 20),
+        operations,
       };
+    }
 
-    case 'scanner':
+    case 'scanner': {
+      const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const operations =
+        getLastOperationsMetrics(companyId) ||
+        (await refreshOperationsMetrics({ companyId, reason: 'report' }));
       return {
         ...base,
         scanPerHour: runtime.metrics.scanPerHour,
@@ -65,22 +77,93 @@ export async function buildControlPlaneReport(
         activeScanJobs: runtime.activeJobs.filter(
           j => j.type === 'scan_source' || j.type === 'source_scan',
         ),
+        scanner: operations.scanner,
+        operations,
       };
+    }
 
-    case 'publish':
+    case 'publish': {
+      const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const operations =
+        getLastOperationsMetrics(companyId) ||
+        (await refreshOperationsMetrics({ companyId, reason: 'report' }));
       return {
         ...base,
         publishPerHour: runtime.metrics.publishPerHour,
         successRate: runtime.metrics.successRate,
         campaigns: runtime.campaigns,
         activePublishJobs: runtime.activeJobs.filter(j => j.type === 'publish_social'),
+        publisher: operations.publisher,
+        operations,
       };
+    }
 
     case 'campaign':
       return {
         ...base,
         campaigns: runtime.campaigns,
         campaignEvents: events.filter(e => e.type.startsWith('CAMPAIGN_')),
+      };
+
+    case 'agent':
+      return {
+        ...base,
+        agentsDetail: agents,
+        agentEvents: events.filter(e => e.type.startsWith('AGENT_')),
+        online: agents.filter(a => a.status === 'online').length,
+      };
+
+    case 'fleet': {
+      const { getFleetState, listFleetBrowsers } = await import('./fleet');
+      const { refreshOperationsMetrics } = await import('./operations');
+      const { getOrchestratorSnapshot, formatOrchestratorReportLines } = await import(
+        './fleet-orchestrator'
+      );
+      const companyId = user.role === 'owner' ? undefined : user.company_id ?? null;
+      const fleet = await getFleetState({ companyId });
+      const operations = await refreshOperationsMetrics({
+        companyId: companyId ?? null,
+        reason: 'report',
+      });
+      const orchestrator = getOrchestratorSnapshot();
+      return {
+        ...base,
+        fleet,
+        browsers: listFleetBrowsers(fleet.agents),
+        online: fleet.online,
+        offline: fleet.offline,
+        busy: fleet.busy,
+        idle: fleet.idle,
+        operations,
+        orchestrator,
+        plannerLines: formatOrchestratorReportLines(orchestrator),
+      };
+    }
+
+    case 'browser':
+      return {
+        ...base,
+        browsers: runtime.browsers,
+        slots: runtime.slots,
+        browserEvents: events.filter(
+          e => e.type.startsWith('BROWSER_') || e.type.startsWith('SLOT_'),
+        ),
+        browserUtilization: runtime.metrics.browserUtilization,
+      };
+
+    case 'failed':
+      return {
+        ...base,
+        failedMissions: runtime.missions.failed,
+        deadLetter: runtime.queue.deadLetter,
+        failedEvents: events.filter(
+          e =>
+            e.type === 'MISSION_FAILED' ||
+            e.type === 'JOB_FAILED' ||
+            String(e.payload?.error || ''),
+        ),
+        activeFailedJobs: runtime.activeJobs.filter(j => j.status === 'failed'),
       };
 
     case 'weekly':

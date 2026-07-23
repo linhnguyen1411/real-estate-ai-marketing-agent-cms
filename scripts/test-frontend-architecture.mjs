@@ -76,6 +76,8 @@ function main() {
     '/admin/seo/posts',
     '/admin/agents',
     '/admin/agents/findings',
+    '/admin/agents/runtime',
+    '/admin/agents/reports',
   ]) {
     assert.ok(mainTsx.includes(`path="${p}"`), `main.tsx missing route ${p}`);
   }

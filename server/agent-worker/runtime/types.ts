@@ -10,7 +10,18 @@ export type SlotStatus = 'ready' | 'busy' | 'stopped' | 'draining';
 
 export type BrowserPurpose = ExecutionSlotKind;
 
-export type BrowserHandleState = 'idle' | 'leased' | 'stopping' | 'crashed';
+/** @deprecated Prefer BrowserLeaseState from leaseTypes — kept for snapshot compat. */
+export type BrowserHandleState =
+  | 'idle'
+  | 'leased'
+  | 'active'
+  | 'leasing'
+  | 'releasing'
+  | 'expired'
+  | 'orphan'
+  | 'recovering'
+  | 'stopping'
+  | 'crashed';
 
 export interface SlotAcquireRequest {
   jobId: string;
@@ -34,6 +45,9 @@ export interface BrowserLeaseRequest {
   jobId: string;
   missionRunId?: string | null;
   workerId?: string | null;
+  agentId?: string | null;
+  machineId?: string | null;
+  takeover?: boolean;
 }
 
 export interface BrowserLease {
@@ -50,9 +64,17 @@ export interface BrowserHandleSnapshot {
   browserId: string;
   purpose: BrowserPurpose;
   profile: string;
+  /** Lease lifecycle state (G1.5). Legacy `leased` maps to `active`. */
   state: BrowserHandleState;
   ownerJob: string | null;
   ownerMission: string | null;
+  /** Ownership fields (G1.5). */
+  machineId?: string | null;
+  agentId?: string | null;
+  workerId?: string | null;
+  leaseId?: string | null;
+  leaseTimeoutMs?: number | null;
+  leaseRemainingSec?: number | null;
   heartbeatAt: number | null;
   /** Epoch ms when current lease started (null if idle). */
   leasedAt: number | null;
@@ -94,8 +116,17 @@ export class SlotStoppedError extends Error {
 
 export class BrowserBusyError extends Error {
   readonly code = 'BROWSER_BUSY';
-  constructor(purpose: BrowserPurpose) {
-    super(`BROWSER_BUSY: no free browser for purpose=${purpose}`);
+  readonly purpose: BrowserPurpose;
+  readonly ownerJob: string | null;
+  readonly ownerDetail: string | null;
+
+  constructor(purpose: BrowserPurpose, detail?: string | null, ownerJob?: string | null) {
+    super(
+      `BROWSER_BUSY: no free browser for purpose=${purpose}${detail ? ` — ${detail}` : ''}`,
+    );
     this.name = 'BrowserBusyError';
+    this.purpose = purpose;
+    this.ownerJob = ownerJob ?? null;
+    this.ownerDetail = detail ?? null;
   }
 }

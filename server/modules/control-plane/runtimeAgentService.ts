@@ -14,6 +14,9 @@ import {
 } from '../../agent-worker/jobClaimer';
 import { emitRuntimeEventAsync } from './runtimeEventBus';
 import { buildAgentRegistryMetadata } from './agentRegistry';
+import { drainRemoteCommands, ingestAgentHeartbeat } from './telemetry';
+import { applyExecutionEvidence } from './execution/applyExecutionEvidence';
+import { hydrateJobForExecution } from './execution/jobHydrator';
 
 export async function runtimeAgentRegister(input: {
   agentId: string;
@@ -63,6 +66,19 @@ export async function runtimeAgentRegister(input: {
     ? await prisma.browserSession.update({ where: { id: existing.id }, data })
     : await prisma.browserSession.create({ data });
 
+  try {
+    const { retireSiblingSessions } = await import('./agentRegistry');
+    const metaRec = metadata as Record<string, unknown>;
+    await retireSiblingSessions({
+      keepSessionId: session.id,
+      machineId: String(metaRec.machineId || input.hostname || ''),
+      hostname: input.hostname || String(metaRec.hostname || ''),
+      workerIdPrefix: agentId.replace(/-\d+$/, ''),
+    });
+  } catch {
+    /* best-effort */
+  }
+
   emitRuntimeEventAsync({
     type: 'AGENT_ONLINE',
     agentId,
@@ -72,11 +88,26 @@ export async function runtimeAgentRegister(input: {
     payload: { sessionId: session.id, hostname: input.hostname },
   });
 
+  const snapshot = ingestAgentHeartbeat({
+    agentId,
+    metadata: metadata as Record<string, unknown>,
+    status: session.status,
+    heartbeatAt: session.lastHeartbeatAt
+      ? new Date(session.lastHeartbeatAt).toISOString()
+      : undefined,
+  });
+
   return {
     sessionId: session.id,
     agentId,
     status: session.status,
     lastHeartbeatAt: session.lastHeartbeatAt,
+    telemetry: {
+      schemaVersion: snapshot.schemaVersion,
+      chromeCount: snapshot.chromeCount,
+      jobsRunning: snapshot.jobs.running,
+      jobsWaiting: snapshot.jobs.waiting,
+    },
   };
 }
 
@@ -118,11 +149,33 @@ export async function runtimeAgentHeartbeat(input: {
     },
   });
 
+  const mergedMeta =
+    updated.metadata && typeof updated.metadata === 'object' && !Array.isArray(updated.metadata)
+      ? (updated.metadata as Record<string, unknown>)
+      : {};
+  const snapshot = ingestAgentHeartbeat({
+    agentId,
+    metadata: mergedMeta,
+    currentUrl: updated.currentUrl,
+    status: updated.status,
+    heartbeatAt: updated.lastHeartbeatAt
+      ? new Date(updated.lastHeartbeatAt).toISOString()
+      : undefined,
+  });
+  const opsCommands = drainRemoteCommands(agentId);
+
   return {
     sessionId: updated.id,
     agentId,
     status: updated.status,
     lastHeartbeatAt: updated.lastHeartbeatAt,
+    telemetry: {
+      schemaVersion: snapshot.schemaVersion,
+      chromeCount: snapshot.chromeCount,
+      jobsRunning: snapshot.jobs.running,
+      jobsWaiting: snapshot.jobs.waiting,
+    },
+    opsCommands,
   };
 }
 
@@ -168,32 +221,65 @@ export async function runtimeAgentOffline(input: {
     payload: { requeued },
   });
 
-  return { agentId, status: 'offline', requeued };
+  try {
+    const { onAgentOfflineFailover } = await import('./fleet-orchestrator');
+    onAgentOfflineFailover(agentId);
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const { handleAgentOfflineBrowserOwnership } = await import(
+      './browser-ownership'
+    );
+    const ownership = handleAgentOfflineBrowserOwnership({
+      agentId,
+      autoRecover: true,
+    });
+    return {
+      agentId,
+      status: 'offline' as const,
+      requeued,
+      browserOrphans: ownership.orphaned.length,
+      browserRecoverRequested: ownership.recoverRequested,
+    };
+  } catch {
+    return { agentId, status: 'offline' as const, requeued };
+  }
 }
 
 export async function runtimeAgentClaimJob(input: {
   agentId: string;
   capabilities?: string[];
+  preferTypes?: string[];
+  excludeTypes?: string[];
 }) {
   const job = await claimNextJob(input.agentId, {
     capabilities: input.capabilities,
+    preferTypes: input.preferTypes,
+    excludeTypes: input.excludeTypes,
   });
   if (!job) return null;
+  const hydrated = await hydrateJobForExecution(job);
+  const payload =
+    hydrated.payload && typeof hydrated.payload === 'object'
+      ? (hydrated.payload as Record<string, unknown>)
+      : {};
   return {
-    id: job.id,
-    type: job.type,
-    status: job.status,
-    companyId: job.companyId,
-    missionId: job.missionId,
-    missionRunId: job.missionRunId,
-    sourceId: job.sourceId,
-    priority: job.priority,
-    payload: job.payload,
-    attempts: job.attempts,
-    maxAttempts: job.maxAttempts,
-    claimedBy: job.claimedBy,
-    claimedAt: job.claimedAt,
-    startedAt: job.startedAt,
+    id: hydrated.id,
+    type: hydrated.type,
+    status: hydrated.status,
+    companyId: hydrated.companyId,
+    missionId: hydrated.missionId,
+    missionRunId: hydrated.missionRunId,
+    sourceId: hydrated.sourceId,
+    priority: hydrated.priority,
+    payload,
+    attempts: hydrated.attempts,
+    maxAttempts: hydrated.maxAttempts,
+    claimedBy: hydrated.claimedBy,
+    claimedAt: hydrated.claimedAt,
+    startedAt: hydrated.startedAt,
   };
 }
 
@@ -201,6 +287,7 @@ export async function runtimeAgentCompleteJob(
   jobId: string,
   result: Record<string, unknown>,
 ) {
+  await applyExecutionEvidence(jobId, result);
   await completeJob(jobId, result);
   return { jobId, status: 'completed' };
 }

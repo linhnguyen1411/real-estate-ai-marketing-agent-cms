@@ -76,12 +76,13 @@ cookies.json
 **/*.trace.zip
 data/browser-debug/
 
-# Agent runtime cleanup allowlist (generated / temp)
-runtime/screenshots/
-runtime/debug/
-runtime/tmp/
-runtime/outbox-dumps/
-runtime/logs/
+# Agent runtime cleanup allowlist (generated / temp) — root /runtime only
+/runtime/screenshots/
+/runtime/debug/
+/runtime/tmp/
+/runtime/outbox-dumps/
+/runtime/logs/
 *.bak
 desktop.ini
 docs/
+/runtime/

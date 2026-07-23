@@ -32,11 +32,12 @@ export const facebookPageBrowserPublisher: SocialPublisher = {
   },
   async verifyChannel() {
     return {
-      ok: false,
-      status: 'error',
+      ok: true,
+      status: 'active',
       checkedAt: new Date().toISOString(),
-      details: 'Page browser publisher not configured (inject page factory in worker)',
-      errorCode: 'unknown',
+      details:
+        'Browser page channel: CMS Test skipped (no page factory). Worker verifies login when publishing.',
+      errorCode: 'browser_verify_skipped_cms',
     };
   },
   async publish() {

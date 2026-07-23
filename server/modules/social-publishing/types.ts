@@ -22,7 +22,7 @@ export const JOB_STATUSES = [
   'skipped',
 ] as const;
 
-export const CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error'] as const;
+export const CHANNEL_STATUSES = ['active', 'paused', 'needs_login', 'error', 'deleted'] as const;
 
 /** UI connection health; distinct from CHANNEL_STATUSES operational status. */
 export const CHANNEL_CONNECTION_STATES = [
@@ -57,7 +57,11 @@ export const PUBLISH_ERROR_CODES = [
   'publish_timeout',
   'browser_auth_blocked',
   'browser_composer_not_found',
+  'browser_composer_mismatch',
   'browser_publish_failed',
+  'browser_verify_unknown',
+  'browser_already_on_feed',
+  'publish_verify_unknown',
   'dry_run',
   'already_published',
   'max_attempts',

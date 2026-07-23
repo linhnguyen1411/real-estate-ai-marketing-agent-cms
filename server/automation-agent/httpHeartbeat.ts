@@ -1,8 +1,16 @@
 /**
  * Heartbeat over Runtime API for Execution Agent.
+ * Delivers soft remote OPS commands from Control Plane (no SSH).
  */
 
 import type { RuntimeAgentClient } from './runtimeClient';
+
+export type HeartbeatOpsCommand = {
+  id: string;
+  action: string;
+  requestedAt?: string;
+  payload?: Record<string, unknown>;
+};
 
 export class HttpAgentHeartbeat {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -14,6 +22,7 @@ export class HttpAgentHeartbeat {
     private readonly intervalMs: number,
     private readonly getMetadata: () => Record<string, unknown> | Promise<Record<string, unknown>>,
     private readonly getCurrentUrl?: () => Promise<string | null>,
+    private readonly onOpsCommands?: (cmds: HeartbeatOpsCommand[]) => Promise<void> | void,
   ) {}
 
   async register(extra?: Record<string, unknown>): Promise<{ sessionId: string }> {
@@ -31,7 +40,9 @@ export class HttpAgentHeartbeat {
 
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
-      void this.pulse();
+      void this.pulse().catch(error => {
+        console.error('[automation-agent] Heartbeat pulse failed:', error);
+      });
     }, this.intervalMs);
 
     return { sessionId: res.sessionId };
@@ -45,14 +56,25 @@ export class HttpAgentHeartbeat {
     } catch {
       currentUrl = null;
     }
-    const metadata = await this.getMetadata();
-    await this.client.heartbeat({
-      agentId: this.agentId,
-      sessionId: this.sessionId,
-      status: 'ready',
-      currentUrl,
-      metadata,
-    });
+    try {
+      const metadata = await this.getMetadata();
+      const res = await this.client.heartbeat({
+        agentId: this.agentId,
+        sessionId: this.sessionId,
+        status: 'ready',
+        currentUrl,
+        metadata,
+      });
+      const cmds = Array.isArray((res as { opsCommands?: unknown }).opsCommands)
+        ? ((res as { opsCommands: HeartbeatOpsCommand[] }).opsCommands)
+        : [];
+      if (cmds.length && this.onOpsCommands) {
+        await this.onOpsCommands(cmds);
+      }
+    } catch (error) {
+      // Network blips must not crash the agent process (unhandledRejection).
+      console.error('[automation-agent] Heartbeat pulse failed:', error);
+    }
   }
 
   async markOffline(lastError?: string): Promise<void> {

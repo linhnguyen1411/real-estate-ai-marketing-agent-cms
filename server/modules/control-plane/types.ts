@@ -13,12 +13,24 @@ export const RUNTIME_EVENT_TYPES = [
   'JOB_FAILED',
   'AGENT_ONLINE',
   'AGENT_OFFLINE',
+  'AGENT_RESTART',
   'SLOT_BUSY',
   'SLOT_RELEASED',
   'BROWSER_LEASED',
   'BROWSER_RELEASED',
+  'BROWSER_HEARTBEAT',
+  'BROWSER_EXPIRED',
+  'BROWSER_RECOVERED',
+  'BROWSER_TAKEOVER',
+  'BROWSER_RESTARTED',
+  'BROWSER_CRASH',
+  'QUEUE_BLOCKED',
+  'PUBLISH_STARTED',
+  'PUBLISH_FINISHED',
   'CAMPAIGN_STARTED',
   'CAMPAIGN_COMPLETED',
+  /** Ops Center soft commands (restart / browser release) — Event Bus only */
+  'OPS_REQUEST',
 ] as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[number];
@@ -74,4 +86,8 @@ export type ControlPlaneReportKind =
   | 'campaign'
   | 'publish'
   | 'scanner'
-  | 'runtime_health';
+  | 'runtime_health'
+  | 'agent'
+  | 'browser'
+  | 'failed'
+  | 'fleet';

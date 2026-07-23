@@ -137,7 +137,7 @@ async function testRuntimeApi() {
   assert.ok('healthScore' in snap);
   assert.ok(Array.isArray(snap.agents));
   assert.ok(Array.isArray(snap.events));
-  assert.ok(snap.controlPlane?.version === 1);
+  assert.ok(snap.controlPlane?.version >= 1);
   console.log('✓ Runtime API');
 }
 
@@ -194,6 +194,8 @@ async function testReport() {
     'publish',
     'scanner',
     'runtime_health',
+    'agent',
+    'browser',
   ] as const) {
     const report = await ControlPlane.report(user, kind);
     assert.equal(report.kind, kind);

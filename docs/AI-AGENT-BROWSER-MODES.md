@@ -35,6 +35,24 @@ AGENT_HEADLESS=false
 
 ## CDP mode (Facebook)
 
+### Fleet bootstrap (recommended)
+
+One workstation = one Chrome CDP profile + one scan worker:
+
+```powershell
+# Windows
+.\scripts\fleet\start-cdp-chrome.ps1
+.\scripts\fleet\start-scan-worker.ps1
+```
+
+```bash
+# Linux / macOS
+bash scripts/fleet/start-cdp-chrome.sh
+bash scripts/fleet/start-scan-worker.sh
+```
+
+See `scripts/fleet/README.md` for env overrides (`AGENT_MACHINE_ID`, ports, profiles).
+
 ### 1. Mở Chrome (Windows PowerShell)
 
 Đóng mọi Chrome đang dùng cùng profile agent trước:
@@ -42,7 +60,7 @@ AGENT_HEADLESS=false
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
   --remote-debugging-port=9222 `
-  --user-data-dir="C:\ai-agent\chrome-profile"
+  --user-data-dir="$PWD\runtime\agent-cdp-profile"
 ```
 
 - `--user-data-dir` **riêng** — không trỏ vào `%LOCALAPPDATA%\Google\Chrome\User Data`.
@@ -100,6 +118,8 @@ Khi không `logged_in`: `BrowserSession.status = needs_login`, job dừng, error
 
 | Script | Vai trò |
 |--------|---------|
+| `scripts/fleet/start-cdp-chrome.(sh\|ps1)` | Chrome CDP Facebook profile |
+| `scripts/fleet/start-scan-worker.(sh\|ps1)` | Local worker + CDP attach |
 | `npm run agent:login` | Managed login only |
 | `npm run agent:check-facebook-session` | Probe session (managed hoặc CDP) |
 | `npm run agent:worker` | Claim jobs; mode theo source |

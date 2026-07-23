@@ -15,6 +15,7 @@ import { spamFilterStep } from './spamFilterStep';
 import { summarizeStep } from './summarizeStep';
 import { topicMatchStep } from './topicMatchStep';
 import { BROWSER_PUBLISH_STEP_HANDLERS } from './browserPublishSteps';
+import { BROWSER_ACTION_STEP_HANDLERS } from './browserActionSteps';
 
 const ALL_HANDLERS: WorkflowStepHandler[] = [
   spamFilterStep,
@@ -35,6 +36,7 @@ const ALL_HANDLERS: WorkflowStepHandler[] = [
   stopStep,
   markIgnoredStep,
   ...BROWSER_PUBLISH_STEP_HANDLERS,
+  ...BROWSER_ACTION_STEP_HANDLERS,
 ];
 
 export const workflowStepHandlers = new Map<string, WorkflowStepHandler>(

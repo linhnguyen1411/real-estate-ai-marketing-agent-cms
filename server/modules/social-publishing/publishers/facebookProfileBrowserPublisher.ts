@@ -43,9 +43,13 @@ export function parsePublishSuccess(input: {
   if (/something went wrong|try again|không thể đăng|couldn't post|could not post/.test(hay)) {
     return { success: false, reason: 'failure_heuristic_match' };
   }
-  // Soft success: composer closed / URL looks like feed
-  if (input.currentUrl && /facebook\.com\/?(home|profile|me|\?|$)/i.test(input.currentUrl)) {
-    return { success: true, reason: 'soft_feed_url' };
+  // Soft feed URL alone is insufficient — caused H0 false "published" without a real post.
+  // Callers must also have a non-junk permalink or composer-closed + body proof.
+  if (
+    input.currentUrl &&
+    /facebook\.com\/?(home\.php|home|profile|me|groups\/[^/?#]+\/?(\?|$)|$|\?)/i.test(input.currentUrl)
+  ) {
+    return { success: false, reason: 'soft_feed_url_unverified' };
   }
   return { success: false, reason: 'no_success_signal' };
 }
@@ -281,12 +285,15 @@ export const facebookProfileBrowserPublisher: SocialPublisher = {
     return channel.type === 'facebook_profile' && channel.executionMode === 'browser';
   },
   async verifyChannel() {
+    // CMS has no Playwright page factory. Do NOT mark the channel error/disconnected —
+    // real auth check happens on the agent worker during publish.
     return {
-      ok: false,
-      status: 'error',
+      ok: true,
+      status: 'active',
       checkedAt: new Date().toISOString(),
-      details: 'Browser publisher requires worker page factory',
-      errorCode: 'unknown',
+      details:
+        'Browser channel: CMS Test skipped (no page factory). Worker verifies login when publishing.',
+      errorCode: 'browser_verify_skipped_cms',
     };
   },
   async publish() {

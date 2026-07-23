@@ -11,8 +11,16 @@ export interface MediaInput {
 
 export function validateMime(mime?: string | null): { ok: boolean; error?: string } {
   if (!mime) return { ok: true };
+  const lower = mime.toLowerCase();
+  if (lower.startsWith('video/')) {
+    return {
+      ok: false,
+      error:
+        'Video publish is Experimental (H0.5) and not enabled for Facebook Timeline/Group in v0.9 stable.',
+    };
+  }
   const allowed = DEFAULT_SAFETY_SETTINGS.allowedMime as readonly string[];
-  if (!allowed.includes(mime.toLowerCase())) {
+  if (!allowed.includes(lower)) {
     return {
       ok: false,
       error: `MIME not allowed: ${mime}. Allowed: ${allowed.join(', ')}`,

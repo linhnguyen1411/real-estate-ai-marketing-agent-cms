@@ -9,8 +9,19 @@ import { capabilityForJobType } from './ports';
 
 export type ClaimedJob = AgentJob;
 
+type ClaimCandidateRow = {
+  id: string;
+  type: string;
+  priority: number;
+  sourceId: string | null;
+  missionId: string | null;
+  attempts: number;
+  payload: unknown;
+};
+
 /**
  * Atomically claim the next queued job using PostgreSQL row locking (SKIP LOCKED).
+ * G2: Placement Engine picks the best job for this agent among candidates (soft assignment).
  * Priority: lower number = higher priority; then oldest createdAt.
  * Multi-agent: payload.targetAgentId only match that worker.
  * Capabilities: only claim job types the agent can run.
@@ -21,11 +32,28 @@ export async function claimNextJob(
 ): Promise<ClaimedJob | null> {
   const capabilities = options?.capabilities?.filter(Boolean) ?? [];
 
+  // Fleet snapshot OUTSIDE transaction (avoid nested DB work under row locks).
+  let fleetAgent = null as Awaited<
+    ReturnType<typeof import('../modules/control-plane/fleet').getFleetAgent>
+  > | null;
+  let fleet: Awaited<
+    ReturnType<typeof import('../modules/control-plane/fleet').listFleetAgents>
+  > = [];
+  try {
+    const fleetMod = await import('../modules/control-plane/fleet');
+    fleet = await fleetMod.listFleetAgents({});
+    fleetAgent =
+      fleet.find(a => a.agentId === workerId || a.workerId === workerId) ||
+      (await fleetMod.getFleetAgent(workerId));
+  } catch {
+    fleetAgent = null;
+    fleet = [];
+  }
+
   return prisma.$transaction(async tx => {
-    // Fetch a small candidate window then pick first matching capability
-    // (keeps SQL simple; SKIP LOCKED still prevents double-claim).
-    const rows = await tx.$queryRaw<{ id: string; type: string }[]>`
-      SELECT id, type
+    const rows = await tx.$queryRaw<ClaimCandidateRow[]>`
+      SELECT id, type, priority, source_id AS "sourceId", mission_id AS "missionId",
+             attempts, payload
       FROM agent_jobs
       WHERE status = 'queued'
         AND available_at <= NOW()
@@ -34,28 +62,141 @@ export async function claimNextJob(
           OR payload->>'targetAgentId' = ''
           OR payload->>'targetAgentId' = ${workerId}
         )
-      ORDER BY priority ASC, created_at ASC
-      LIMIT 20
+        AND (
+          payload->>'ownerAgent' IS NULL
+          OR payload->>'ownerAgent' = ''
+          OR payload->>'ownerAgent' = ${workerId}
+          OR (
+            payload->>'leaseUntil' IS NOT NULL
+            AND (payload->>'leaseUntil')::timestamptz <= NOW()
+          )
+        )
+      ORDER BY
+        CASE WHEN type = 'publish_social' THEN 0 ELSE 1 END ASC,
+        priority ASC,
+        created_at ASC
+      LIMIT 40
       FOR UPDATE SKIP LOCKED
     `;
 
-    const match = rows.find(r => {
+    // Capability pre-filter (agent-declared)
+    let capable = rows.filter(r => {
       if (capabilities.length === 0) return true;
       const need = capabilityForJobType(r.type);
       if (!need) return true;
-      return capabilities.includes(need);
+      return (
+        capabilities.includes(need) ||
+        capabilities.includes('browser') ||
+        (need === 'publish' &&
+          (capabilities.includes('publish_timeline') ||
+            capabilities.includes('publish_group')))
+      );
     });
-    if (!match) return null;
+
+    const excludeTypes = options?.excludeTypes?.filter(Boolean) ?? [];
+    if (excludeTypes.length > 0) {
+      capable = capable.filter(r => !excludeTypes.includes(r.type));
+    }
+
+    const preferTypes = options?.preferTypes?.filter(Boolean) ?? [];
+    if (preferTypes.length > 0) {
+      const preferred = capable.filter(r => preferTypes.includes(r.type));
+      if (preferred.length > 0) capable = preferred;
+    }
+
+    let matchId: string | null = null;
+    let placementPayload: Record<string, unknown> | null = null;
+    let ownershipPatch: Record<string, unknown> | null = null;
+
+    try {
+      const { planClaimForAgent } = await import(
+        '../modules/control-plane/fleet-orchestrator/assignmentPlanner'
+      );
+      const { isMachineDraining, isMachineInMaintenance } = await import(
+        '../modules/control-plane/fleet-orchestrator/policies'
+      );
+      const { buildJobOwnership, mergeOwnershipIntoPayload, isOwnedByOther } = await import(
+        '../modules/control-plane/fleet-orchestrator/jobOwnership'
+      );
+
+      if (
+        isMachineDraining({ agentId: workerId }) ||
+        isMachineInMaintenance({ agentId: workerId })
+      ) {
+        return null;
+      }
+
+      const candidates = capable.filter(r => !isOwnedByOther(r.payload, workerId));
+
+      const plan = planClaimForAgent({
+        agent: fleetAgent,
+        agentId: workerId,
+        candidates: candidates.map(r => ({
+          id: r.id,
+          type: r.type,
+          priority: r.priority,
+          sourceId: r.sourceId,
+          missionId: r.missionId,
+          attempts: r.attempts,
+          payload: r.payload,
+        })),
+        fleet,
+        reserve: true,
+      });
+
+      matchId = plan.jobId;
+      placementPayload = {
+        placement: true,
+        score: plan.decision.score,
+        reasons: plan.decision.reasons.slice(0, 12),
+        rejectedCount: plan.decision.rejected.length,
+        breakdown: plan.decision.breakdown,
+        policyMode: plan.decision.policyMode,
+      };
+
+      if (matchId) {
+        const chosen = candidates.find(c => c.id === matchId);
+        const ownership = buildJobOwnership({
+          agentId: workerId,
+          machineId: fleetAgent?.machineId,
+          hostname: fleetAgent?.hostname,
+          decision: plan.decision,
+        });
+        ownershipPatch = mergeOwnershipIntoPayload(chosen?.payload, ownership);
+        placementPayload.ownerMachine = ownership.ownerMachine;
+        placementPayload.ownerAgent = ownership.ownerAgent;
+        placementPayload.leaseUntil = ownership.leaseUntil;
+        placementPayload.plannerDecision = ownership.plannerDecision;
+      }
+    } catch {
+      // Fallback: first capable row (legacy first-fit)
+      matchId = capable[0]?.id ?? null;
+      placementPayload = { placement: false, fallback: 'planner_error' };
+    }
+
+    if (!matchId) return null;
 
     const job = await tx.agentJob.update({
-      where: { id: match.id },
+      where: { id: matchId },
       data: {
         status: 'running',
         claimedBy: workerId,
         claimedAt: new Date(),
         startedAt: new Date(),
+        ...(ownershipPatch
+          ? { payload: ownershipPatch as Prisma.InputJsonValue }
+          : {}),
       },
     });
+
+    try {
+      const { onClaimSuccess } = await import(
+        '../modules/control-plane/fleet-orchestrator/orchestrator'
+      );
+      onClaimSuccess(job.id);
+    } catch {
+      /* ignore */
+    }
 
     emitRuntimeEventAsync({
       type: 'JOB_CLAIMED',
@@ -63,7 +204,11 @@ export async function claimNextJob(
       agentId: workerId,
       entityType: 'job',
       entityId: job.id,
-      payload: { type: job.type, missionRunId: job.missionRunId },
+      payload: {
+        type: job.type,
+        missionRunId: job.missionRunId,
+        ...(placementPayload || {}),
+      },
     });
 
     return job;
@@ -126,8 +271,41 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
   const nextAttempts = job.attempts + 1;
   const nonRetryable = isNonRetryableBrowserErrorMessage(errorMessage);
 
+  // G2: capability / browser rejection → planner learns via cooldown
+  if (/capability|BROWSER_|missing_caps|required_browser/i.test(errorMessage)) {
+    try {
+      const { onClaimRejection, onJobFailedForCooldown } = await import(
+        '../modules/control-plane/fleet-orchestrator/orchestrator'
+      );
+      onClaimRejection({ jobId, agentId: job.claimedBy || 'unknown', reason: errorMessage });
+      onJobFailedForCooldown(jobId, errorMessage);
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (!nonRetryable && nextAttempts < job.maxAttempts) {
     const backoffMs = Math.min(60_000 * 2 ** Math.max(0, nextAttempts - 1), 30 * 60_000);
+    // Apply planner cooldown on repeated failures
+    if (nextAttempts >= 2) {
+      try {
+        const { onJobFailedForCooldown } = await import(
+          '../modules/control-plane/fleet-orchestrator/orchestrator'
+        );
+        onJobFailedForCooldown(jobId, errorMessage);
+      } catch {
+        /* ignore */
+      }
+    }
+    let nextPayload: Prisma.InputJsonValue | undefined;
+    try {
+      const { clearOwnershipFromPayload } = await import(
+        '../modules/control-plane/fleet-orchestrator/jobOwnership'
+      );
+      nextPayload = clearOwnershipFromPayload(job.payload) as Prisma.InputJsonValue;
+    } catch {
+      nextPayload = undefined;
+    }
     await prisma.agentJob.update({
       where: { id: jobId },
       data: {
@@ -138,6 +316,7 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
         claimedAt: null,
         startedAt: null,
         errorMessage,
+        ...(nextPayload ? { payload: nextPayload } : {}),
       },
     });
     return;
@@ -154,6 +333,15 @@ export async function releaseJobToQueue(jobId: string, errorMessage: string): Pr
       claimedAt: null,
     },
   });
+
+  try {
+    const { onJobFailedForCooldown } = await import(
+      '../modules/control-plane/fleet-orchestrator/orchestrator'
+    );
+    onJobFailedForCooldown(jobId, errorMessage);
+  } catch {
+    /* ignore */
+  }
 
   emitRuntimeEventAsync({
     type: 'JOB_FAILED',

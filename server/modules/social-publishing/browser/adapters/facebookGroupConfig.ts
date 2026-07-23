@@ -20,7 +20,7 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
   composerCss:
     '[role="dialog"] [contenteditable="true"][role="textbox"], [contenteditable="true"][role="textbox"], div[contenteditable="true"]',
   composerRoleNames: [
-    /write something|viết gì đó|create a public post|tạo bài viết|what.?s on your mind|bạn đang nghĩ gì/i,
+    /write something|viết gì đó|viết gì đi|bạn viết gì đi|create a public post|tạo bài viết|what.?s on your mind|bạn đang nghĩ gì/i,
   ],
   composerCssCandidates: [
     '[aria-label*="Write something" i][contenteditable="true"]',
@@ -35,6 +35,8 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
   ],
   composerOpenTriggers: [
     /write something/i,
+    /bạn viết gì đi/i,
+    /viết gì đi/i,
     /viết gì đó/i,
     /create a public post/i,
     /tạo bài viết/i,
@@ -42,15 +44,15 @@ export const FACEBOOK_GROUP_SELECTORS: DomSelectorConfig = {
     /bạn đang nghĩ gì/i,
   ],
   composerFeedPromptCss:
-    '[role="button"]:has-text("Write something"), [role="button"]:has-text("Viết gì đó"), [role="button"]:has-text("Create a public post"), [role="button"]:has-text("Tạo bài viết"), [role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì")',
+    '[role="button"]:has-text("Bạn viết gì đi"), [role="button"]:has-text("Write something"), [role="button"]:has-text("Viết gì đó"), [role="button"]:has-text("Viết gì đi"), [role="button"]:has-text("Create a public post"), [role="button"]:has-text("Tạo bài viết"), [role="button"]:has-text("Bài viết công khai"), [role="button"]:has-text("What\'s on your mind"), [role="button"]:has-text("Bạn đang nghĩ gì"), [role="button"]:has-text("Viết bài viết")',
   fileInput: 'input[type="file"]',
   photoButtonRoleName: /photo|video|ảnh|hình|image|media/i,
-  // VN UI often uses "Đăng bài viết" / "Đăng" — avoid ^$ anchors.
-  publishButtonRoleName: /^(post|publish|đăng|share)\b|đăng bài|post now/i,
+  // VN/EN Group composer: Đăng / Post / Share / Chia sẻ (avoid strict ^ anchors — FB labels vary).
+  publishButtonRoleName: /post|publish|đăng|share|chia sẻ|đăng bài|post now/i,
   publishAriaCss:
-    '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"], [aria-label*="Đăng" i], [aria-label*="Post" i]',
+    '[aria-label="Post"], [aria-label="Đăng"], [aria-label="Publish"], [aria-label="Share"], [aria-label*="Đăng" i], [aria-label*="Post" i], [aria-label*="Share" i], [aria-label*="Chia sẻ" i]',
   publishDialogAriaCss:
-    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label*="Đăng" i], [role="dialog"] [aria-label*="Post" i]',
+    '[role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Share"], [role="dialog"] [aria-label*="Đăng" i], [role="dialog"] [aria-label*="Post" i], [role="dialog"] [aria-label*="Share" i], [role="dialog"] [aria-label*="Chia sẻ" i]',
   closeDialogAriaCss: '[aria-label="Close"], [aria-label="Đóng"], [aria-label="Cancel"]',
   permalinkHrefCss:
     'a[href*="/groups/"][href*="/posts/"], a[href*="story_fbid"], a[href*="/posts/"], a[href*="permalink"], a[href*="story.php"]',
@@ -62,6 +64,8 @@ export const FACEBOOK_GROUP_FLOW: DomFlowConfig = {
   afterOpenWaitMs: 800,
   afterUploadWaitMs: 1_500,
   afterPublishWaitMs: 3_000,
+  publishRetries: 0,
+  composeRetries: 0,
 };
 
 export const FACEBOOK_GROUP_RULES: DomPlatformRules = {
@@ -71,7 +75,21 @@ export const FACEBOOK_GROUP_RULES: DomPlatformRules = {
   postIdPattern:
     /(?:\/groups\/[^/]+\/posts\/|story_fbid=|\/posts\/|\/activity\/|fbid=)(\d{3,})/i,
   urlPattern: /https?:\/\/(?:www\.)?facebook\.com\/[^\s"'<>]+/gi,
-  parsePublishSuccess,
+  parsePublishSuccess: input => {
+    const base = parsePublishSuccess(input);
+    if (base.success || base.reason === 'failure_heuristic_match') return base;
+    const hay = `${input.currentUrl || ''} ${input.bodyText || ''} ${input.toastText || ''}`.toLowerCase();
+    if (!/facebook\.com\/groups\//i.test(input.currentUrl || '')) return base;
+    // Soft success alone is insufficient without permalink (see DomPublisher verify path).
+    if (
+      /just now|vừa xong|a few seconds ago|posted in the group|shared to the group|đã chia sẻ|đăng lên nhóm/.test(
+        hay,
+      )
+    ) {
+      return { success: true, reason: 'group_activity_signal' };
+    }
+    return base;
+  },
   recoverAfterPublishClickTimeout,
 };
 

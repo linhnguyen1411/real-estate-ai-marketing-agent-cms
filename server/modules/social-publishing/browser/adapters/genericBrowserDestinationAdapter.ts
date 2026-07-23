@@ -20,7 +20,13 @@ import {
   type SelectorMap,
 } from '../actions/destinationActionHost';
 import { PublishAction } from '../actions/publishAction';
+import { createInteractionActions } from '../actions/interactionActions';
+import {
+  DEFAULT_INTERACTION_SELECTORS,
+  type InteractionSelectorMap,
+} from '../actions/interactionSelectors';
 import { registerAutomationAction } from '../actions/actionRegistry';
+import type { AutomationAction, AutomationActionKey } from '../actions/types';
 
 export type { SelectorMap } from '../actions/destinationActionHost';
 
@@ -60,9 +66,17 @@ export abstract class GenericBrowserDestinationAdapter
   private readonly stateByJob = new Map<string, DestinationActionState>();
   private runtimeFactory?: DestinationPageFactory;
   private readonly publishAction = new PublishAction(this);
+  private readonly interactionActions: AutomationAction[];
+  private readonly actionsByKey = new Map<AutomationActionKey, AutomationAction>();
 
   constructor() {
     registerAutomationAction(this.publishAction, true);
+    this.actionsByKey.set('publish', this.publishAction);
+    this.interactionActions = createInteractionActions(this);
+    for (const action of this.interactionActions) {
+      registerAutomationAction(action, true);
+      this.actionsByKey.set(action.key, action);
+    }
   }
 
   configureRuntime(factory?: DestinationPageFactory): void {
@@ -72,6 +86,20 @@ export abstract class GenericBrowserDestinationAdapter
   /** Bound PublishAction for this destination (Action Framework entry). */
   getPublishAction(): PublishAction {
     return this.publishAction;
+  }
+
+  /** Bound interaction / publish actions for Mission step adapters. */
+  getAction(key: AutomationActionKey): AutomationAction | undefined {
+    return this.actionsByKey.get(key);
+  }
+
+  listActions(): AutomationAction[] {
+    return [this.publishAction, ...this.interactionActions];
+  }
+
+  /** Destination DOM strategy: interaction selector candidates only. */
+  getInteractionSelectors(): InteractionSelectorMap {
+    return DEFAULT_INTERACTION_SELECTORS;
   }
 
   mapError(error: unknown, phase: string): Error {
@@ -141,6 +169,32 @@ export abstract class GenericBrowserDestinationAdapter
     return this.ok('cleanup', { released: true });
   }
 
+  async captureScreenshotPhase(
+    ctx: BrowserDestinationContext,
+    phase: 'before' | 'after',
+  ): Promise<void> {
+    const page = await this.ensurePage(ctx);
+    const state = this.stateFor(ctx);
+    if (!state.evidenceDir) {
+      const attemptId = `wf_${ctx.missionRunId}_browser_capture_evidence`;
+      const paths = buildEvidencePaths(ctx.publishJobId, attemptId);
+      state.evidenceDir = paths.baseDir;
+      state.screenshotBeforePath = paths.screenshotBeforePath;
+      state.screenshotAfterPath = paths.screenshotAfterPath;
+      state.htmlSnapshotPath = paths.htmlSnapshotPath;
+    }
+    await fs.mkdir(state.evidenceDir, { recursive: true });
+    const target =
+      phase === 'before' ? state.screenshotBeforePath : state.screenshotAfterPath;
+    if (!target) return;
+    if (page) {
+      await page.screenshot({ path: target, fullPage: true }).catch(() => undefined);
+      return;
+    }
+    // Dry-run / no browser: placeholder marker so evidence paths exist
+    await fs.writeFile(target, `dry-run-screenshot-${phase}`, 'utf8').catch(() => undefined);
+  }
+
   async navigate(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
     if (!page) return this.ok('navigate', { mode: 'dry_run_no_browser' });
@@ -188,6 +242,22 @@ export abstract class GenericBrowserDestinationAdapter
         if (html) await fs.writeFile(state.htmlSnapshotPath, html, 'utf8').catch(() => undefined);
       }
       state.publishedUrl = state.publishedUrl ?? page.url();
+    } else {
+      const stubHtml = `<html><body data-dry-run="1" data-job="${ctx.publishJobId}"></body></html>`;
+      state.domHash = hashDomContent(stubHtml);
+      if (state.htmlSnapshotPath) {
+        await fs.writeFile(state.htmlSnapshotPath, stubHtml, 'utf8').catch(() => undefined);
+      }
+      if (state.screenshotBeforePath) {
+        await fs
+          .writeFile(state.screenshotBeforePath, 'dry-run-screenshot-before', 'utf8')
+          .catch(() => undefined);
+      }
+      if (state.screenshotAfterPath) {
+        await fs
+          .writeFile(state.screenshotAfterPath, 'dry-run-screenshot-after', 'utf8')
+          .catch(() => undefined);
+      }
     }
 
     return {

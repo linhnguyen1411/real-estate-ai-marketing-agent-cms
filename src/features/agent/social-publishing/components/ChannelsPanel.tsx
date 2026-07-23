@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyRound, Pause, Play, Plus, ShieldCheck } from 'lucide-react';
+import { KeyRound, Pause, Play, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   activateSocialChannel,
+  bulkDeleteSocialChannels,
   connectSocialChannel,
   createSocialChannel,
   fetchSocialChannels,
@@ -115,11 +116,15 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
   const [connectOpenId, setConnectOpenId] = useState<string | null>(null);
   const [connectToken, setConnectToken] = useState('');
   const [connectPageId, setConnectPageId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const destinationByKey = useMemo(
     () => new Map(destinations.map(d => [d.key, d])),
     [destinations],
   );
+
+  const allSelected = channels.length > 0 && selectedIds.size === channels.length;
+  const someSelected = selectedIds.size > 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +142,10 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
         ),
       ]);
       setChannels(channelData);
+      setSelectedIds(prev => {
+        const next = new Set([...prev].filter(id => channelData.some(c => c.id === id)));
+        return next;
+      });
       if (destResult.ok) {
         setDestinations(destResult.data);
       } else {
@@ -275,6 +284,46 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(channels.map(c => c.id)));
+  };
+
+  const handleBulkDelete = async () => {
+    if (!canManage || selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (
+      !window.confirm(
+        `Xóa ${count} kênh đã chọn?\n\nKênh sẽ bị ẩn (soft-delete). Lịch sử job đăng vẫn giữ lại.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId('bulk-delete');
+    try {
+      const result = await bulkDeleteSocialChannels([...selectedIds]);
+      onMessage(`Đã xóa ${result.deletedCount} kênh.`);
+      setSelectedIds(new Set());
+      await load();
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : 'Xóa kênh thất bại.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (loading && channels.length === 0) {
     return <AgentPanelLoader label="Đang tải kênh..." />;
   }
@@ -291,13 +340,25 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
         refreshing={loading}
         actions={
           canManage ? (
-            <button
-              type="button"
-              onClick={() => setShowForm(v => !v)}
-              className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
-            >
-              <Plus className="h-3.5 w-3.5" /> Thêm kênh
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {someSelected && (
+                <button
+                  type="button"
+                  disabled={busyId === 'bulk-delete'}
+                  onClick={handleBulkDelete}
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-800 bg-rose-950/40 px-3 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-900/50 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Xóa đã chọn ({selectedIds.size})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowForm(v => !v)}
+                className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
+              >
+                <Plus className="h-3.5 w-3.5" /> Thêm kênh
+              </button>
+            </div>
           ) : undefined
         }
       />
@@ -402,6 +463,20 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
             <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="bg-slate-900 text-xs uppercase text-slate-500">
                 <tr>
+                  {canManage && (
+                    <th className="w-10 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={el => {
+                          if (el) el.indeterminate = someSelected && !allSelected;
+                        }}
+                        onChange={toggleSelectAll}
+                        aria-label="Chọn tất cả kênh"
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950"
+                      />
+                    </th>
+                  )}
                   <th className="px-3 py-3">Tên</th>
                   <th className="px-3 py-3">Loại / Mode</th>
                   <th className="px-3 py-3">Status</th>
@@ -421,10 +496,25 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                   const destKey = resolveDestinationKey(channel);
                   const destInfo = destKey ? destinationByKey.get(destKey) : undefined;
                   const lastPublish = lastPublishByChannel[channel.id];
+                  const selected = selectedIds.has(channel.id);
+                  const colSpan = canManage ? 10 : 8;
 
                   return (
                     <React.Fragment key={channel.id}>
-                      <tr className="border-t border-slate-800 hover:bg-slate-900/40">
+                      <tr
+                        className={`border-t border-slate-800 hover:bg-slate-900/40 ${selected ? 'bg-rose-950/20' : ''}`}
+                      >
+                        {canManage && (
+                          <td className="px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleSelect(channel.id)}
+                              aria-label={`Chọn ${channel.name}`}
+                              className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950"
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-3">
                           <div className="font-medium text-slate-200">{channel.name}</div>
                           <div className="mt-1 text-xs text-slate-500">
@@ -532,7 +622,7 @@ export default function ChannelsPanel({ canManage, onMessage }: Props) {
                       </tr>
                       {canManage && connectOpenId === channel.id && graphPage && (
                         <tr className="border-t border-slate-800/60 bg-slate-950/60">
-                          <td colSpan={canManage ? 9 : 8} className="px-3 py-3">
+                          <td colSpan={colSpan} className="px-3 py-3">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                               <label className="block min-w-0 flex-1 text-xs text-slate-400">
                                 Page Access Token

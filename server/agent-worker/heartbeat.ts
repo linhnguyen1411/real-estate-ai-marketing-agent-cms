@@ -1,5 +1,6 @@
 import type { BrowserSession } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import os from 'os';
 import { prisma } from '../prisma';
 import type { WorkerConfig } from './config';
 
@@ -38,7 +39,7 @@ export class HeartbeatService {
     const data = {
       name: this.config.sessionName,
       workerId: this.config.workerId,
-      profilePath: this.config.profileDir,
+      profilePath: this.config.activeProfileDir,
       companyId: this.config.companyId,
       status: 'starting' as const,
       lastHeartbeatAt: new Date(),
@@ -52,6 +53,23 @@ export class HeartbeatService {
 
     this.sessionId = session.id;
     this.status = 'starting';
+
+    // Retire zombie sessions from prior PID-based workerIds on this host.
+    try {
+      const { retireSiblingSessions } = await import('../modules/control-plane/agentRegistry');
+      const hostname = os.hostname();
+      await retireSiblingSessions({
+        keepSessionId: session.id,
+        machineId: process.env.AGENT_MACHINE_ID?.trim() || hostname,
+        hostname,
+        workerIdPrefix: `worker-${hostname.replace(/[^a-zA-Z0-9-]/g, '-')}`,
+      });
+    } catch (err) {
+      console.warn(
+        '[agent-worker] retireSiblingSessions failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
 
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {

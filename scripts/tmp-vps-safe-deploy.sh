@@ -37,7 +37,15 @@ grep -q '^AGENT_TELEGRAM_ENABLED=' .env || echo 'AGENT_TELEGRAM_ENABLED=false' >
 grep -q '^AGENT_LOCAL_SYNC_ENABLED=' .env || echo 'AGENT_LOCAL_SYNC_ENABLED=false' >> .env
 grep -q '^AGENT_SCHEDULER_ENABLED=' .env || echo 'AGENT_SCHEDULER_ENABLED=false' >> .env
 grep -q '^FACEBOOK_GRAPH_LEGACY_ENABLED=' .env || echo 'FACEBOOK_GRAPH_LEGACY_ENABLED=true' >> .env
+grep -q '^TELEGRAM_CONSOLE_ENABLED=' .env || echo 'TELEGRAM_CONSOLE_ENABLED=1' >> .env
+grep -q '^TELEGRAM_CONSOLE_MODE=' .env || echo 'TELEGRAM_CONSOLE_MODE=polling' >> .env
+grep -q '^TELEGRAM_POLL_INTERVAL_MS=' .env || echo 'TELEGRAM_POLL_INTERVAL_MS=2500' >> .env
+grep -q '^TELEGRAM_EVENT_NOTIFY_MS=' .env || echo 'TELEGRAM_EVENT_NOTIFY_MS=15000' >> .env
+grep -q '^TELEGRAM_RATE_LIMIT_PER_MIN=' .env || echo 'TELEGRAM_RATE_LIMIT_PER_MIN=20' >> .env
+grep -q '^TELEGRAM_SUMMARY_TICK_MS=' .env || echo 'TELEGRAM_SUMMARY_TICK_MS=60000' >> .env
 sed -i 's/^AGENT_INGEST_ENABLED=.*/AGENT_INGEST_ENABLED=true/' .env
+sed -i 's/^TELEGRAM_CONSOLE_ENABLED=.*/TELEGRAM_CONSOLE_ENABLED=1/' .env
+sed -i 's/^AGENT_TELEGRAM_ENABLED=.*/AGENT_TELEGRAM_ENABLED=true/' .env
 
 set -a
 # shellcheck disable=SC1091
@@ -68,11 +76,19 @@ fi
 
 echo "==> pm2 restart"
 pm2 restart "$PM2_NAME" --update-env
-sleep 3
+sleep 15
 pm2 status "$PM2_NAME"
 
 echo "==> Health (local)"
-if curl -fsS "http://127.0.0.1:3025/api/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+HEALTH_OK=0
+for i in 1 2 3 4 5 6; do
+  if curl -fsS "http://127.0.0.1:3025/api/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 5
+done
+if [ "$HEALTH_OK" -eq 1 ]; then
   echo "HEALTH_OK"
 else
   echo "HEALTH_FAIL — attempting app rollback to dist.prev"

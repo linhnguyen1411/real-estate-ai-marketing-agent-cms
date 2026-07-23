@@ -1,11 +1,15 @@
 import type { AgentJob, AgentMission, AgentSource } from '@prisma/client';
 import type { BrowserManager } from '../browserManager';
+import type { ExecutionEvidenceSink } from '../execution/evidenceSink';
 
 export interface ScanContext {
   job: AgentJob;
   source: AgentSource;
   mission: AgentMission | null;
   browser: BrowserManager;
+  /** G1: stateless execution — no DB writes on worker */
+  stateless?: boolean;
+  evidence?: ExecutionEvidenceSink;
 }
 
 export interface ScanMetrics {

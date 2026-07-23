@@ -170,6 +170,8 @@ export class FacebookGroupAdapter implements SourceAdapter {
       uniqueNewRef.count += 1;
       stats.uniquePostsObserved += 1;
 
+      // Always persist + score when the agent has a DB. Stateless mode only means
+      // source/mission come from hydrated payload — it must not skip findings.
       const existingHit = await findExistingFacebookPostDetailed(ctx.source.id, {
         externalId: post.externalId,
         canonicalUrl: post.canonicalUrl,
@@ -310,7 +312,9 @@ export class FacebookGroupAdapter implements SourceAdapter {
       });
 
       while (true) {
-        await assertAgentSourceActiveForScan(ctx.source.id);
+        if (!ctx.stateless) {
+          await assertAgentSourceActiveForScan(ctx.source.id);
+        }
 
         const stop = shouldStopScrolling({
           scrollsPerformed: stats.scrollsPerformed,
@@ -494,18 +498,28 @@ export class FacebookGroupAdapter implements SourceAdapter {
       });
 
       const nextScanAt = new Date(Date.now() + ctx.source.scanIntervalMinutes * 60_000);
-      await prisma.agentSource.update({
-        where: { id: ctx.source.id },
-        data: {
-          lastScannedAt: new Date(),
-          nextScanAt,
+      if (ctx.stateless && ctx.evidence) {
+        ctx.evidence.patchSource({
+          sourceId: ctx.source.id,
+          checkpoint: nextCheckpoint,
           lastError: scanErrorCode,
-          checkpoint: nextCheckpoint as unknown as Prisma.InputJsonValue,
-        },
-      });
+          nextScanAt,
+          lastScannedAt: new Date(),
+        });
+      } else {
+        await prisma.agentSource.update({
+          where: { id: ctx.source.id },
+          data: {
+            lastScannedAt: new Date(),
+            nextScanAt,
+            lastError: scanErrorCode,
+            checkpoint: nextCheckpoint as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
       checkpointUpdated = true;
 
-      if (config.notifyOnScanComplete) {
+      if (!ctx.stateless && config.notifyOnScanComplete) {
         if (stats.findingsCreated > 0) {
           const hot = await notifyScanHotLeads({
             companyId: ctx.source.companyId,
@@ -549,14 +563,20 @@ export class FacebookGroupAdapter implements SourceAdapter {
         ...buildScanReport(stats),
       };
     } catch (error) {
-      // Mid-scan failure: do NOT write a new checkpoint.
       const message = error instanceof Error ? error.message : 'Facebook scan thất bại.';
-      await prisma.agentSource
-        .update({
-          where: { id: ctx.source.id },
-          data: { lastError: message.slice(0, 500) },
-        })
-        .catch(() => undefined);
+      if (ctx.stateless && ctx.evidence) {
+        ctx.evidence.patchSource({
+          sourceId: ctx.source.id,
+          lastError: message.slice(0, 500),
+        });
+      } else {
+        await prisma.agentSource
+          .update({
+            where: { id: ctx.source.id },
+            data: { lastError: message.slice(0, 500) },
+          })
+          .catch(() => undefined);
+      }
       throw error;
     } finally {
       graphqlCapture.detach();

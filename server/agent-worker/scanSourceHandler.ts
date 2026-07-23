@@ -1,12 +1,13 @@
 import type { AgentJob } from '@prisma/client';
-import { assertAgentSourceActiveForScan } from '../agent/agentDb';
-import { prisma } from '../prisma';
 import { websiteAdapter } from './adapters/websiteAdapter';
 import { facebookGroupAdapter } from './adapters/facebookGroupAdapter';
 import { getAdapterForSource, registerSourceAdapter, type ScanMetrics } from './adapters/sourceAdapter';
 import type { BrowserManager } from './browserManager';
 import { resolveBrowserModeForSource } from './browserModeResolver';
 import { loadWorkerConfig } from './config';
+import { ExecutionEvidenceSink } from './execution/evidenceSink';
+import { resolveScanExecutionContext } from './execution/resolveScanContext';
+import { isStatelessExecutionAgent, requireHydratedExecution } from './execution/stateless';
 
 registerSourceAdapter(websiteAdapter);
 registerSourceAdapter(facebookGroupAdapter);
@@ -15,18 +16,10 @@ export async function runScanSourceJob(
   job: AgentJob,
   browser: BrowserManager,
 ): Promise<ScanMetrics & Record<string, unknown>> {
-  const payload = (job.payload || {}) as Record<string, unknown>;
-  const sourceId = String(job.sourceId || payload.sourceId || '').trim();
-  if (!sourceId) {
-    throw new Error('scan_source thiếu sourceId.');
-  }
+  requireHydratedExecution(job.payload, job.type);
 
-  const source = await assertAgentSourceActiveForScan(sourceId);
-
-  const missionId = job.missionId || (payload.missionId ? String(payload.missionId) : null);
-  const mission = missionId
-    ? await prisma.agentMission.findUnique({ where: { id: missionId } })
-    : null;
+  const { source, mission } = await resolveScanExecutionContext(job);
+  const evidence = isStatelessExecutionAgent() ? new ExecutionEvidenceSink() : null;
 
   const adapter = getAdapterForSource(source);
   if (!adapter) {
@@ -35,8 +28,6 @@ export async function runScanSourceJob(
 
   const workerConfig = loadWorkerConfig();
   const mode = resolveBrowserModeForSource(source, workerConfig);
-  // CDP lock is purpose-scoped; ALS + BrowserPool lease already hold scan purpose.
-  // Re-acquire is reentrant for the same job.
   if (mode === 'cdp') {
     await browser.beginCdpJob('scan');
   }
@@ -47,9 +38,11 @@ export async function runScanSourceJob(
       source,
       mission,
       browser,
+      stateless: isStatelessExecutionAgent(),
+      evidence: evidence ?? undefined,
     });
 
-    return {
+    const result = {
       ...metrics,
       sourceId: source.id,
       sourceType: source.type,
@@ -59,12 +52,32 @@ export async function runScanSourceJob(
       scanMetrics: { ...browser.scanMetrics },
       resourceDiagnostics: browser.getResourceDiagnostics(),
       completedAt: new Date().toISOString(),
+      ...(evidence ? { evidence: evidence.toJSON() } : {}),
     };
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Scan thất bại.';
+    const backoffMs = Math.min(
+      2 * 60_000,
+      Math.max(60_000, Math.floor((source.scanIntervalMinutes || 10) * 60_000) / 5),
+    );
+    if (evidence) {
+      evidence.patchSource({
+        sourceId: source.id,
+        lastError: message.slice(0, 500),
+        nextScanAt: new Date(Date.now() + backoffMs),
+      });
+      const err = error instanceof Error ? error : new Error(message);
+      (err as Error & { evidence?: unknown }).evidence = evidence.toJSON();
+      throw err;
+    }
+    const { prisma } = await import('../prisma');
     await prisma.agentSource.update({
       where: { id: source.id },
-      data: { lastError: message.slice(0, 500) },
+      data: {
+        lastError: message.slice(0, 500),
+        nextScanAt: new Date(Date.now() + backoffMs),
+      },
     });
     throw error;
   } finally {

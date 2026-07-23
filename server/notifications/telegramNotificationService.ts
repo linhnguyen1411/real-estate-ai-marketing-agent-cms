@@ -3,7 +3,10 @@ import { getSettings } from '../dbHelper';
 import { prisma } from '../prisma';
 import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import type { AppSettings } from '../../src/types';
-import { formatFindingTelegramMessage } from './telegramFormatter';
+import { formatLeadTelegramAlert } from './telegramFormatter';
+import { normalizeSocialLinks, verifySocialLinks } from '../modules/link-normalization';
+import { leadAlertKeyboard } from '../modules/control-plane/inlineKeyboard';
+import { notification } from './notificationRouter';
 
 const EVENT_KEY_PREFIX = 'finding:';
 const EVENT_KEY_SUFFIX = ':telegram:new';
@@ -80,6 +83,7 @@ export async function sendTelegramMessage(input: {
   chatId: string;
   text: string;
   parseMode?: 'HTML' | 'Markdown' | 'MarkdownV2';
+  replyMarkup?: unknown;
 }): Promise<{ ok: boolean; messageId?: string; error?: string; raw?: unknown }> {
   const token = String(input.botToken || '').trim();
   const chatId = String(input.chatId || '').trim();
@@ -97,6 +101,7 @@ export async function sendTelegramMessage(input: {
         text: input.text.slice(0, 4000),
         disable_web_page_preview: true,
         ...(input.parseMode ? { parse_mode: input.parseMode } : {}),
+        ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
       }),
     });
     const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -204,8 +209,8 @@ export async function notifyFindingIfEligible(input: {
     // Hard-on: ignore AGENT_TELEGRAM_ENABLED / settings.telegram_enabled / quiet hours.
     // Still requires bot token + chat id; score/classification eligibility still apply unless force.
     const botToken = String(settings.telegram_bot_token || '').trim();
-    const chatId = String(settings.telegram_chat_id || '').trim();
-    if (!botToken || !chatId) {
+    const leadChatId = String(process.env.TELEGRAM_LEAD_CHAT_ID || '').trim();
+    if (!botToken || !leadChatId) {
       console.info('[telegram] skip missing_credentials finding=%s', input.findingId);
       return { ok: false, skipped: true, reason: 'missing_credentials' };
     }
@@ -273,31 +278,98 @@ export async function notifyFindingIfEligible(input: {
       }
     }
 
-    const text = formatFindingTelegramMessage(finding, resolved, {
+    const alert = formatLeadTelegramAlert(finding, resolved, {
       includePhone: settings.telegram_include_phone !== false,
       includeBudget: settings.telegram_include_budget !== false,
       includeLocation: settings.telegram_include_location !== false,
       includeLink: settings.telegram_include_link !== false,
       siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
     });
+    const text = alert.text;
+
+    const sourceEd =
+      finding.extractedData &&
+      typeof finding.extractedData === 'object' &&
+      !Array.isArray(finding.extractedData)
+        ? ((finding.extractedData as Record<string, unknown>).source as
+            | Record<string, unknown>
+            | undefined)
+        : undefined;
+    const links = normalizeSocialLinks({
+      postUrl: alert.postUrl || resolved.source.canonicalUrl,
+      groupUrl:
+        alert.groupUrl ||
+        (typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null),
+      postId: alert.postId || (typeof sourceEd?.postId === 'string' ? sourceEd.postId : null),
+      groupId: alert.groupId || (typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null),
+      canonicalUrl: resolved.source.canonicalUrl,
+    });
+
+    const hasLinkCandidates = Boolean(links.postUrl || links.groupUrl || links.rawPostUrl);
+    const skipVerify =
+      process.env.TELEGRAM_SKIP_LINK_VERIFY === '1' || process.env.NODE_ENV === 'test';
+    let openPost = links.postUrl;
+    let openGroup = links.groupUrl;
+    if (hasLinkCandidates) {
+      const verified = await verifySocialLinks(links, { skipVerify });
+      if (!verified.verified && !skipVerify) {
+        console.info(
+          '[telegram] skip link_unverified finding=%s err=%s',
+          finding.id,
+          verified.verify?.error || 'verify_failed',
+        );
+        return { ok: false, skipped: true, reason: 'link_unverified' };
+      }
+      // Prefer verified open URL; fallback group already applied inside verifySocialLinks
+      if (verified.openUrl) {
+        if (links.postUrl && verified.openUrl === links.postUrl) openPost = verified.openUrl;
+        else if (!links.postUrl || verified.openUrl === links.groupUrl) {
+          openPost = null;
+          openGroup = verified.openUrl;
+        } else {
+          openPost = verified.openUrl;
+        }
+      }
+      openGroup = openGroup || links.groupUrl;
+    }
+
+    const replyMarkup = leadAlertKeyboard({
+      findingId: finding.id,
+      postUrl: openPost,
+      groupUrl: openGroup,
+    });
 
     await upsertDeliveryLog({
       companyId: finding.companyId,
       eventKey,
       findingId: finding.id,
-      chatId,
+      chatId: leadChatId,
       status: 'queued',
       attempts: (existing?.attempts || 0) + 1,
       payloadPreview: text,
     });
 
-    const send = await sendTelegramMessage({ botToken, chatId, text });
+    const send = await notification.send({
+      type: 'lead_found',
+      payload: {
+        findingId: finding.id,
+        entityId: finding.id,
+        score,
+        summary: text,
+        postUrl: openPost,
+        groupUrl: openGroup,
+      },
+      replyMarkup,
+      dedupeKey: eventKey,
+      settings,
+      immediate: true,
+    });
     if (!send.ok) {
       await upsertDeliveryLog({
         companyId: finding.companyId,
         eventKey,
         findingId: finding.id,
-        chatId,
+        chatId: leadChatId,
         status: 'failed',
         attempts: (existing?.attempts || 0) + 1,
         lastError: send.error || 'send_failed',
@@ -311,7 +383,7 @@ export async function notifyFindingIfEligible(input: {
       companyId: finding.companyId,
       eventKey,
       findingId: finding.id,
-      chatId,
+      chatId: leadChatId,
       status: 'sent',
       attempts: (existing?.attempts || 0) + 1,
       telegramMsgId: send.messageId || null,
@@ -339,14 +411,22 @@ export async function sendTestTelegram(input?: {
   try {
     const settings = input?.settings || getSettings();
     const botToken = String(settings.telegram_bot_token || '').trim();
-    const chatId = String(settings.telegram_chat_id || '').trim();
-    if (!botToken || !chatId) {
-      return { ok: false, error: 'Chưa cấu hình telegram_bot_token / telegram_chat_id.' };
+    const opsChatId = String(process.env.TELEGRAM_OPS_CHAT_ID || '').trim();
+    if (!botToken || !opsChatId) {
+      return {
+        ok: false,
+        error: 'Chưa cấu hình telegram_bot_token / TELEGRAM_OPS_CHAT_ID.',
+      };
     }
     const text =
       input?.text?.trim() ||
-      `Test Telegram từ Real Estate AI Agent — ${new Date().toISOString()}`;
-    const send = await sendTelegramMessage({ botToken, chatId, text });
+      `Test Telegram (OPS) từ Real Estate AI Agent — ${new Date().toISOString()}`;
+    const send = await notification.sendDirect({
+      chatId: opsChatId,
+      text,
+      settings,
+      skipDedup: true,
+    });
     if (!send.ok) {
       console.warn('[telegram] test failed:', send.error);
       return { ok: false, error: send.error };

@@ -102,9 +102,10 @@ export async function updateDraft(
 ): Promise<SocialPostDraft> {
   const existing = await getDraftById(id);
   if (!existing) throw new Error('Draft not found');
-  if (existing.status === 'published' || existing.status === 'archived') {
+  if (existing.status === 'archived') {
     throw new Error(`Cannot update draft in status ${existing.status}`);
   }
+  // published drafts stay editable — content may still be posted to other channels.
 
   const body = patch.body !== undefined ? String(patch.body) : existing.body;
   if (!body.trim()) throw new Error('Draft body is required');
@@ -121,7 +122,7 @@ export async function updateDraft(
         : {}),
       bodyHash: hashes.bodyHash,
       normalizedBodyHash: hashes.normalizedBodyHash,
-      // Edits after approval reset to draft unless still pending_review
+      // Edits after approval reset to draft; published stays published for multi-channel reuse
       status:
         existing.status === 'approved' || existing.status === 'scheduled'
           ? 'draft'
@@ -301,8 +302,66 @@ export async function approveAndSchedule(
   scheduledAt: Date,
   actor?: string | null,
 ) {
+  const result = await approveAndScheduleMany(draftId, [channelId], scheduledAt, actor);
+  return { draft: result.draft, job: result.jobs[0]! };
+}
+
+/**
+ * Schedule the same draft onto one or more channels (1 SocialPublishJob each).
+ * Partial success is allowed: returns jobs created + per-channel errors.
+ */
+export async function approveAndScheduleMany(
+  draftId: string,
+  channelIds: string[],
+  scheduledAt: Date,
+  actor?: string | null,
+): Promise<{
+  draft: Awaited<ReturnType<typeof getDraftById>>;
+  jobs: Awaited<ReturnType<typeof createPublishJob>>[];
+  errors: Array<{ channelId: string; message: string }>;
+}> {
   const draft = await getDraftById(draftId);
   if (!draft) throw new Error('Draft not found');
+
+  const unique = [...new Set(channelIds.map(id => String(id || '').trim()).filter(Boolean))];
+  if (unique.length === 0) throw new Error('At least one channelId is required');
+
+  const previousStatus = draft.status;
+  const jobs: Awaited<ReturnType<typeof createPublishJob>>[] = [];
+  const errors: Array<{ channelId: string; message: string }> = [];
+
+  for (const channelId of unique) {
+    try {
+      const job = await createPublishJob({
+        companyId: draft.companyId,
+        draftId,
+        channelId,
+        scheduledAt,
+        actor,
+      });
+      jobs.push(job);
+      if (scheduledAt.getTime() <= Date.now()) {
+        await startPublishMissionRun({
+          publishJobId: job.id,
+          companyId: job.companyId ?? draft.companyId ?? null,
+          triggerType: 'api',
+          triggeredBy: actor ?? 'social_publish_api',
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const friendly = /Duplicate content within window/i.test(message)
+        ? `${message}. Copy bài đã đăng trên cùng kênh trong 14 ngày sẽ bị chặn — sửa nội dung hoặc bỏ kênh này.`
+        : message;
+      errors.push({ channelId, message: friendly });
+    }
+  }
+
+  if (jobs.length === 0) {
+    throw new Error(
+      errors.map(e => e.message).join(' | ') || 'Không tạo được job đăng cho kênh nào.',
+    );
+  }
 
   if (draft.status !== 'approved' && draft.status !== 'scheduled') {
     await prisma.socialPostDraft.update({
@@ -320,39 +379,38 @@ export async function approveAndSchedule(
     });
   }
 
-  const job = await createPublishJob({
-    companyId: draft.companyId,
-    draftId,
-    channelId,
-    scheduledAt,
-    actor,
-  });
-
-  // If due now, enqueue AgentJob immediately so publish-now does not wait for scheduler tick
-  if (scheduledAt.getTime() <= Date.now()) {
-    await startPublishMissionRun({
-      publishJobId: job.id,
-      companyId: job.companyId ?? draft.companyId ?? null,
-      triggerType: 'api',
-      triggeredBy: actor ?? 'social_publish_api',
-    });
-  }
-
   await appendAuditLog({
     companyId: draft.companyId,
     entityType: 'SocialPostDraft',
     entityId: draftId,
     action: 'scheduled',
     actor,
-    metadata: { channelId, scheduledAt: scheduledAt.toISOString(), jobId: job.id },
+    metadata: {
+      channelIds: unique,
+      scheduledAt: scheduledAt.toISOString(),
+      jobIds: jobs.map(j => j.id),
+      errors,
+      previousStatus,
+    },
   });
 
-  return { draft: await getDraftById(draftId), job };
+  return { draft: await getDraftById(draftId), jobs, errors };
 }
 
 export async function publishNow(
   draftId: string,
   channelId: string,
+  actor?: string | null,
+) {
+  return publishNowMany(draftId, [channelId], actor).then(r => ({
+    draft: r.draft,
+    job: r.jobs[0]!,
+  }));
+}
+
+export async function publishNowMany(
+  draftId: string,
+  channelIds: string[],
   actor?: string | null,
 ) {
   const draft = await getDraftById(draftId);
@@ -361,12 +419,17 @@ export async function publishNow(
   if (draft.status !== 'approved' && draft.status !== 'scheduled') {
     if (['draft', 'pending_review', 'rejected'].includes(draft.status)) {
       await approveDraft(draftId, actor);
+    } else if (draft.status === 'published') {
+      await prisma.socialPostDraft.update({
+        where: { id: draftId },
+        data: { status: 'approved' },
+      });
     } else {
       throw new Error(`Draft must be approved before publish-now (status=${draft.status})`);
     }
   }
 
-  return approveAndSchedule(draftId, channelId, new Date(), actor);
+  return approveAndScheduleMany(draftId, channelIds, new Date(), actor);
 }
 
 /**

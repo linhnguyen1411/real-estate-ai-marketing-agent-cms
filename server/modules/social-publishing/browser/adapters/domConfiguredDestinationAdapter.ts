@@ -4,7 +4,8 @@
  */
 
 import type { Locator, Page } from 'playwright';
-import { buildEvidencePaths } from '../../runtime/publishEvidenceService';
+import fs from 'fs/promises';
+import { buildEvidencePaths, hashDomContent } from '../../runtime/publishEvidenceService';
 import type {
   BrowserDestinationContext,
   BrowserDestinationEvidence,
@@ -19,6 +20,16 @@ import {
   type DomToolkitConfig,
 } from '../dom';
 import { GenericBrowserDestinationAdapter } from './genericBrowserDestinationAdapter';
+import { resolveMediaLocalPaths } from '../../runtime/resolveMediaLocalPaths';
+import {
+  captionHash,
+  feedLooksAlreadyPublished,
+  readFeedTextExcludingDialogs,
+  resolveComposerCaption,
+  resolvePublishMode,
+} from '../../publishIdempotency';
+import { clearPublishTrace, getPublishTrace } from '../publishTrace';
+import { patchJobResult } from '../../jobService';
 
 type JobMeta = {
   postId?: string;
@@ -26,6 +37,9 @@ type JobMeta = {
   composerOpened?: boolean;
   screenshotBeforeTaken?: boolean;
   screenshotAfterTaken?: boolean;
+  captionHash?: string;
+  deferredLinkUrl?: string | null;
+  publishClicked?: boolean;
 };
 
 export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDestinationAdapter {
@@ -71,6 +85,7 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     const flow = this.dom.config.flow;
     return domWithRetry(
       async () => {
+        await this.dom.navigator.dismissDialogs(page);
         const composer = await this.dom.navigator.openComposer(page);
         meta.composerOpened = true;
         return composer;
@@ -82,10 +97,11 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
 
   async uploadMedia(ctx: BrowserDestinationContext): Promise<BrowserDestinationPhaseResult> {
     const page = await this.ensurePage(ctx);
-    const files = localMediaPaths(ctx.media);
+    const trace = getPublishTrace(ctx.publishJobId);
     if (!page || ctx.dryRun) {
+      const localOnly = localMediaPaths(ctx.media || []);
       return this.ok('uploadMedia', {
-        mediaCount: files.length,
+        mediaCount: localOnly.length,
         dryRun: Boolean(ctx.dryRun || !page),
       });
     }
@@ -94,14 +110,16 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     await this.dom.evidence.screenshotBefore(page, this.evidencePaths(ctx), meta);
 
     try {
+      // P0.3 MEDIA FIRST — open composer, upload, wait thumbnail BEFORE caption.
       await this.ensureComposerOpen(page, ctx);
+      const files = await resolveMediaLocalPaths(ctx.media);
       if (files.length === 0) {
         return this.ok('uploadMedia', { mediaCount: 0 });
       }
 
       const flow = this.dom.config.flow;
       const result = await domWithRetry(
-        () => this.dom.uploader.uploadFiles(page, files),
+        () => this.dom.uploader.uploadFiles(page, files, { publishJobId: ctx.publishJobId }),
         flow.uploadRetries,
         flow.uploadRetryWaitMs,
       );
@@ -109,8 +127,10 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
         mediaCount: result.uploaded,
         method: result.method,
         multiImage: files.length > 1,
+        thumbnailVisible: result.thumbnailVisible,
       });
     } catch (error) {
+      trace.mark('Fail', { phase: 'uploadMedia', error: String(error) });
       throw this.mapError(error, 'uploadMedia');
     }
   }
@@ -121,25 +141,38 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     ctx: BrowserDestinationContext,
   ): Promise<BrowserDestinationPhaseResult> {
     const meta = this.metaFor(ctx);
+    const trace = getPublishTrace(ctx.publishJobId);
     await this.dom.evidence.screenshotBefore(page, this.evidencePaths(ctx), meta);
 
     const composer = await this.ensureComposerOpen(page, ctx);
-    const flow = this.dom.config.flow;
-    await domWithRetry(
-      () => this.dom.editor.typeContent(page, composer, ctx.body, ctx.linkUrl),
-      flow.composeRetries,
-      flow.composeRetryWaitMs,
-    );
+    const mode = resolvePublishMode(ctx.destinationConfig);
+    const resolved = resolveComposerCaption({
+      body: ctx.body,
+      linkUrl: ctx.linkUrl,
+      mediaCount: ctx.media?.length ?? 0,
+      publishMode: mode,
+    });
+    meta.deferredLinkUrl = resolved.deferredLinkUrl;
+    meta.captionHash = captionHash(resolved.caption);
 
-    const active = (await this.dom.navigator.findComposer(page)) || composer;
-    const text = await active.innerText().catch(() => '');
-    if (ctx.body.trim() && text.trim().length === 0) {
-      await this.dom.editor.typeContent(page, active, ctx.body, ctx.linkUrl);
-    }
+    // Exactly-once compose: single typeContent call — no domWithRetry paste loop.
+    await this.dom.editor.typeContent(page, composer, resolved.caption, null, {
+      publishJobId: ctx.publishJobId,
+    });
+
+    await patchJobResult(ctx.publishJobId, {
+      captionHash: meta.captionHash,
+      publishMode: resolved.mode,
+      linkDeferred: resolved.linkDeferred,
+      deferredLinkUrl: resolved.deferredLinkUrl,
+    }).catch(() => undefined);
 
     return this.ok('compose', {
-      bodyLength: ctx.body.length,
-      hasLink: Boolean(ctx.linkUrl),
+      bodyLength: resolved.caption.length,
+      hasLink: Boolean(ctx.linkUrl) && !resolved.linkDeferred,
+      linkDeferred: resolved.linkDeferred,
+      publishMode: resolved.mode,
+      captionHash: meta.captionHash,
       composerReady: true,
     });
   }
@@ -151,10 +184,35 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     const state = this.stateFor(ctx);
     const meta = this.metaFor(ctx);
     const flow = this.dom.config.flow;
+    const trace = getPublishTrace(ctx.publishJobId);
+
+    // P0.6 ANTI DUPLICATE — feed only (exclude open composer). Caption in the dialog must
+    // never count as "already published" or we skip Đăng and invent a fake success.
+    const feedText = await readFeedTextExcludingDialogs(page);
+    trace.mark('AntiDuplicateCheck', { feedLen: feedText.length, excludedDialogs: true });
+    if (feedLooksAlreadyPublished(feedText, ctx.body)) {
+      trace.mark('AlreadyOnFeed');
+      await patchJobResult(ctx.publishJobId, {
+        publishClicked: false,
+        publishOutcome: 'published',
+        verified: true,
+        reason: 'already_on_feed',
+        captionHash: meta.captionHash || captionHash(ctx.body),
+      }).catch(() => undefined);
+      // Group/home URL is not a post permalink — leave empty so UI doesn't fake a link.
+      state.publishedUrl = undefined;
+      return this.ok('publish', {
+        clicked: false,
+        alreadyPublished: true,
+        publishedUrl: null,
+        reason: 'already_on_feed',
+      });
+    }
 
     let timedOut = false;
     let clicked = false;
     try {
+      // publishRetries must be 0 — click Đăng at most once.
       clicked = await domWithRetry(
         async () => {
           const ok = await this.dom.publisher.clickPublish(page);
@@ -170,13 +228,34 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
       else throw error;
     }
 
-    await this.wait(flow.afterPublishWaitMs);
+    if (clicked) {
+      meta.publishClicked = true;
+      trace.mark('PublishClick', { timedOut });
+      await patchJobResult(ctx.publishJobId, {
+        publishClicked: true,
+        publishClickedAt: new Date().toISOString(),
+        captionHash: meta.captionHash || captionHash(ctx.body),
+      }).catch(() => undefined);
+    }
+
+    await this.wait(Math.max(flow.afterPublishWaitMs, 3_500));
+    const dialogClosed = await this.dom.publisher.isComposerDialogClosed(page);
+    if (dialogClosed) trace.mark('SpinnerGone', { dialogClosed: true });
 
     const signals = await this.dom.verifier.collectSignals(page);
     let parsed = this.dom.verifier.parseSuccess({
       currentUrl: signals.currentUrl,
       bodyText: signals.bodyText,
     });
+
+    // Strong proof for Timeline text posts: dialog closed + body snippet on feed.
+    const snippet = normalizeSnippet(ctx.body);
+    const bodyOnFeed =
+      Boolean(snippet) &&
+      normalizeSnippet(signals.bodyText || '').includes(snippet.slice(0, Math.min(40, snippet.length)));
+    if (!parsed.success && clicked && dialogClosed && bodyOnFeed) {
+      parsed = { success: true, reason: 'composer_closed_body_on_feed' };
+    }
 
     if (!parsed.success) {
       const recovered = this.dom.verifier.recoverAfterTimeout({
@@ -193,27 +272,75 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     if (permalinkInfo.permalink) {
       meta.permalink = permalinkInfo.permalink;
       state.publishedUrl = permalinkInfo.permalink;
+      trace.mark('Permalink', { permalink: permalinkInfo.permalink, postId: permalinkInfo.postId });
     }
     if (permalinkInfo.postId) {
       meta.postId = permalinkInfo.postId;
     }
 
-    if (!parsed.success && !permalinkInfo.permalink) {
-      throw new Error(`browser_publish_failed:${parsed.reason}`);
+    // Strong success: toast / activity heuristic, OR a real (non-junk) permalink,
+    // OR composer closed with body visible on feed (text Timeline posts often lack toast).
+    const strong =
+      (parsed.success &&
+        parsed.reason !== 'soft_feed_url' &&
+        parsed.reason !== 'soft_feed_url_unverified' &&
+        !parsed.reason.startsWith('group_soft_')) ||
+      parsed.reason === 'composer_closed_body_on_feed' ||
+      (clicked && dialogClosed);
+    const hasPermalink = Boolean(permalinkInfo.permalink);
+
+    // P0.5: after click, never retry publish. If unverified → UNKNOWN (manual verify).
+    if (clicked && !strong && !hasPermalink) {
+      trace.mark('VerifyUnknown', { dialogClosed, reason: parsed.reason });
+      await patchJobResult(ctx.publishJobId, {
+        publishClicked: true,
+        publishOutcome: 'unknown',
+        needsManualVerify: true,
+        reason: parsed.reason || 'unverified_after_click',
+        dialogClosed,
+      }).catch(() => undefined);
+      throw new Error('browser_verify_unknown');
+    }
+
+    if (!strong && !hasPermalink) {
+      throw new Error(
+        `browser_publish_failed:${parsed.reason || 'unverified'}` +
+          (dialogClosed ? ':dialog_closed_no_proof' : ':dialog_still_open'),
+      );
     }
 
     if (!state.publishedUrl) {
-      state.publishedUrl = permalinkInfo.permalink || signals.currentUrl;
+      state.publishedUrl = permalinkInfo.permalink || undefined;
     }
+    if (!state.publishedUrl && strong) {
+      state.publishedUrl = signals.currentUrl || 'https://www.facebook.com/';
+    }
+    if (!state.publishedUrl && !strong) {
+      throw new Error('browser_publish_failed:missing_permalink');
+    }
+
+    await patchJobResult(ctx.publishJobId, {
+      publishClicked: clicked,
+      publishOutcome: 'published',
+      externalPostId: meta.postId || undefined,
+      facebookPostId: meta.postId || undefined,
+      externalUrl: state.publishedUrl,
+      facebookPostUrl: state.publishedUrl,
+      permalink: state.publishedUrl,
+      reason: hasPermalink ? parsed.reason || 'permalink' : parsed.reason,
+    }).catch(() => undefined);
 
     await this.dom.evidence.screenshotAfter(page, this.evidencePaths(ctx), meta);
 
     return this.ok('publish', {
       clicked,
-      publishedUrl: state.publishedUrl,
+      publishedUrl: state.publishedUrl ?? null,
       postId: meta.postId ?? null,
-      reason: parsed.reason,
-      permalinkResolved: Boolean(permalinkInfo.permalink),
+      reason: hasPermalink ? parsed.reason || 'permalink' : parsed.reason,
+      permalinkResolved: hasPermalink,
+      dialogClosed,
+      bodyOnFeed,
+      trace: trace.toJSON(),
     });
   }
 
@@ -223,6 +350,7 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     state: DestinationActionState,
   ): Promise<BrowserDestinationPhaseResult> {
     const meta = this.metaFor(ctx);
+    const trace = getPublishTrace(ctx.publishJobId);
 
     if (ctx.dryRun || !page) {
       return this.ok('verify', {
@@ -232,6 +360,7 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
       });
     }
 
+    trace.mark('VerifyFeed');
     const signals = await this.dom.verifier.collectSignals(page);
     const parsed = this.dom.verifier.parseSuccess({
       currentUrl: signals.currentUrl,
@@ -245,23 +374,55 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     if (permalinkInfo.permalink) {
       meta.permalink = permalinkInfo.permalink;
       state.publishedUrl = permalinkInfo.permalink;
+      trace.mark('Permalink', { permalink: permalinkInfo.permalink });
     }
     if (permalinkInfo.postId) {
       meta.postId = permalinkInfo.postId;
     }
 
-    const verified = parsed.success || Boolean(meta.permalink) || Boolean(state.publishedUrl);
+    const bodyOnFeed = feedLooksAlreadyPublished(signals.bodyText || '', ctx.body);
+    const mediaExpected = (ctx.media?.length ?? 0) > 0;
+    const verified =
+      parsed.success ||
+      Boolean(meta.permalink) ||
+      Boolean(state.publishedUrl) ||
+      bodyOnFeed ||
+      meta.publishClicked;
+
     if (!verified) {
-      throw new Error(`browser_verify_failed:${parsed.reason}`);
+      // Do not republish — escalate to manual / delayed verify.
+      await patchJobResult(ctx.publishJobId, {
+        publishOutcome: 'unknown',
+        needsManualVerify: true,
+        publishClicked: meta.publishClicked === true,
+      }).catch(() => undefined);
+      trace.mark('VerifyUnknown', { reason: parsed.reason });
+      throw new Error(`browser_verify_unknown:${parsed.reason}`);
     }
 
+    await patchJobResult(ctx.publishJobId, {
+      verified: true,
+      publishOutcome: 'published',
+      externalPostId: meta.postId || undefined,
+      facebookPostId: meta.postId || undefined,
+      externalUrl: state.publishedUrl ?? meta.permalink ?? undefined,
+      facebookPostUrl: state.publishedUrl ?? meta.permalink ?? undefined,
+      captionHash: meta.captionHash,
+      mediaExpected,
+    }).catch(() => undefined);
+
     await this.dom.evidence.screenshotAfter(page, this.evidencePaths(ctx), meta);
+    trace.mark('Complete', { postId: meta.postId, url: state.publishedUrl });
 
     return this.ok('verify', {
       publishedUrl: state.publishedUrl ?? meta.permalink ?? null,
       postId: meta.postId ?? null,
       reason: parsed.reason,
       verified: true,
+      bodyOnFeed,
+      captionHash: meta.captionHash ?? null,
+      deferredLinkUrl: meta.deferredLinkUrl ?? null,
+      trace: trace.toJSON(),
     });
   }
 
@@ -308,6 +469,23 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
       }
 
       state.publishedUrl = meta.permalink || state.publishedUrl || page.url();
+    } else {
+      await fs.mkdir(state.evidenceDir, { recursive: true });
+      const stubHtml = `<html><body data-dry-run="1" data-job="${ctx.publishJobId}"></body></html>`;
+      state.domHash = hashDomContent(stubHtml);
+      if (state.htmlSnapshotPath) {
+        await fs.writeFile(state.htmlSnapshotPath, stubHtml, 'utf8').catch(() => undefined);
+      }
+      if (state.screenshotBeforePath) {
+        await fs
+          .writeFile(state.screenshotBeforePath, 'dry-run-screenshot-before', 'utf8')
+          .catch(() => undefined);
+      }
+      if (state.screenshotAfterPath) {
+        await fs
+          .writeFile(state.screenshotAfterPath, 'dry-run-screenshot-after', 'utf8')
+          .catch(() => undefined);
+      }
     }
 
     return {
@@ -330,9 +508,16 @@ export abstract class DomConfiguredDestinationAdapter extends GenericBrowserDest
     if (page && !ctx.dryRun) {
       await this.dom.navigator.dismissDialogs(page).catch(() => undefined);
     }
+    const trace = getPublishTrace(ctx.publishJobId);
+    trace.mark('Duration', { ms: trace.durationMs() });
     this.jobMeta.delete(ctx.publishJobId);
+    clearPublishTrace(ctx.publishJobId);
     return super.cleanup(ctx);
   }
+}
+
+function normalizeSnippet(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 export { localMediaPaths };

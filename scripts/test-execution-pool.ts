@@ -19,6 +19,8 @@ function fakeConfig(): WorkerConfig {
     workerId: 'test-worker',
     browserMode: 'managed',
     profileDir: 'F:/tmp/agent-profile-test',
+    cdpProfileDir: 'F:/tmp/agent-cdp-profile-test',
+    activeProfileDir: 'F:/tmp/agent-profile-test',
     browserChannel: 'chrome',
     headless: true,
     cdpEndpoint: null,

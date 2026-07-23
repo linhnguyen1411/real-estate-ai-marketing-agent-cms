@@ -389,6 +389,7 @@ async function main() {
   ok('3. reject schedule if still draft', !canScheduleDraftStatus('draft'));
   ok('3. reject schedule if pending_review', !canScheduleDraftStatus('pending_review'));
   ok('3. allow schedule when approved', canScheduleDraftStatus('approved'));
+  ok('3. allow schedule when published', canScheduleDraftStatus('published'));
 
   // 4. idempotency key shape
   const at = new Date('2030-01-01T12:00:00.000Z');
@@ -496,6 +497,10 @@ async function main() {
   ok(
     'P4. shouldSkipRetry externalPostId',
     shouldSkipRetry({ status: 'failed', result: { externalPostId: 'p1' } }).skip,
+  );
+  ok(
+    'P4. shouldSkipRetry publishClicked',
+    shouldSkipRetry({ status: 'failed', result: { publishClicked: true } }).skip,
   );
   ok('P4. shouldSkipRetry allows failed without post', !shouldSkipRetry({ status: 'failed' }).skip);
 

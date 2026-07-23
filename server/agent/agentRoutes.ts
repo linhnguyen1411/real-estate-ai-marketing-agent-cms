@@ -1326,10 +1326,44 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
     try {
       const user = getAuthUser(req);
       const { ControlPlane } = await import('../modules/control-plane');
-      const data = await ControlPlane.getRuntime(user);
+      const refreshMetrics =
+        String(req.query.refresh || '').trim() === '1' ||
+        String(req.query.refresh || '').trim().toLowerCase() === 'true';
+      const data = await ControlPlane.getRuntime(user, { refreshMetrics });
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tải được runtime observability.');
+    }
+  });
+
+  app.get('/api/agent/fleet', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { opsGetFleet } = await import('../modules/control-plane/operationsService');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const data = await opsGetFleet(companyId);
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được fleet.');
+    }
+  });
+
+  app.get('/api/agent/operations', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const { opsGetOperationsMetrics } = await import('../modules/control-plane/operationsService');
+      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const refresh =
+        String(req.query.refresh || '').trim() === '1' ||
+        String(req.query.refresh || '').trim().toLowerCase() === 'true';
+      const data = await opsGetOperationsMetrics({
+        companyId,
+        refresh,
+        reason: refresh ? 'manual' : 'dashboard',
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Không tải được operations metrics.');
     }
   });
 
@@ -1368,19 +1402,49 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
       const user = getAuthUser(req);
       const { ControlPlane } = await import('../modules/control-plane');
       const kindRaw = String(req.query.kind || 'daily').trim().toLowerCase();
-      const kind =
-        kindRaw === 'weekly' ||
-        kindRaw === 'campaign' ||
-        kindRaw === 'publish' ||
-        kindRaw === 'scanner' ||
-        kindRaw === 'runtime_health'
-          ? kindRaw
-          : 'daily';
+      const allowed = new Set([
+        'daily',
+        'weekly',
+        'campaign',
+        'publish',
+        'scanner',
+        'runtime_health',
+        'agent',
+        'browser',
+        'fleet',
+        'failed',
+      ]);
+      const kind = allowed.has(kindRaw) ? kindRaw : 'daily';
       const date = String(req.query.date || '').trim() || undefined;
-      const data = await ControlPlane.report(user, kind, { date });
+      const data = await ControlPlane.report(user, kind as never, { date });
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Không tạo được control-plane report.');
+    }
+  });
+
+  /** Shared Command Engine — Web / CLI / any client */
+  app.post('/api/agent/console/command', async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const text = String(req.body?.text || req.body?.command || '').trim();
+      if (!text) {
+        sendError(res, 400, 'Thiếu text command.');
+        return;
+      }
+      const { ControlPlane } = await import('../modules/control-plane');
+      const data = await ControlPlane.command(text, {
+        user,
+        companyId:
+          typeof req.body?.companyId === 'string'
+            ? req.body.companyId
+            : user.company_id ?? null,
+        client: 'web',
+        triggeredBy: user.id,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Console command thất bại.');
     }
   });
 

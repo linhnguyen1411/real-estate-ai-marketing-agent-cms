@@ -76,7 +76,12 @@ import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './se
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
-import { registerRuntimeAgentRoutes } from './server/modules/control-plane/runtimeAgentRoutes';
+import {
+  registerRuntimeAgentRoutes,
+  registerTelegramControlPlaneRoutes,
+  startTelegramControlPlane,
+  stopTelegramControlPlane,
+} from './server/modules/control-plane';
 import {
   maskSettingsSecrets,
   sendTestTelegram,
@@ -1229,12 +1234,38 @@ registerShortLinkPublicRoutes(app, getProperties);
 registerShortLinkRedirect(app, getProperties);
 app.use('/api/public', createInvestorLeadPublicRouter());
 
+// Public social-draft images (unguessable names). Must be BEFORE /api auth gate
+// so <img> preview and agent download work without Bearer token.
+{
+  const socialMediaDir = path.join(process.cwd(), 'runtime', 'social-media');
+  fs.mkdirSync(socialMediaDir, { recursive: true });
+  app.use(
+    '/api/social/media/files',
+    express.static(socialMediaDir, {
+      fallthrough: false,
+      index: false,
+      setHeaders: (res: Response) => {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    }),
+  );
+}
+
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const pathName = String(req.path || '');
+  const original = String(req.originalUrl || '');
   if (
-    req.path === '/health' ||
-    req.path === '/auth/login' ||
-    req.path.startsWith('/public/') ||
-    req.path.startsWith('/agent-ingest/')
+    pathName === '/health' ||
+    pathName === '/auth/login' ||
+    pathName.startsWith('/public/') ||
+    pathName.startsWith('/agent-ingest/') ||
+    // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
+    pathName.startsWith('/agent/runtime/') ||
+    // Fallback allowlist if static middleware did not handle the file.
+    (req.method === 'GET' &&
+      (pathName.startsWith('/social/media/files/') ||
+        pathName.startsWith('/api/social/media/files/') ||
+        original.startsWith('/api/social/media/files/')))
   ) {
     return next();
   }
@@ -1349,11 +1380,22 @@ if (AGENT_ENABLED) {
   registerAgentAdminRoutes(app, { getAuthUser, accessDefaults });
   registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
   registerRuntimeAgentRoutes(app);
+  registerTelegramControlPlaneRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
 registerAgentIngestRoutes(app, { getAuthUser, accessDefaults });
-if (!AGENT_ENABLED) {
+if (AGENT_ENABLED) {
+  // Unknown /api/agent/* must stay JSON (never SPA HTML → "Phản hồi không đúng JSON").
+  // Must run AFTER all /api/agent registrations (admin + ingest credentials).
+  app.use('/api/agent', (_req: Request, res: Response) => {
+    res.status(404).json({
+      status: 'error',
+      message:
+        'Agent API route không tồn tại. Restart server nếu vừa thêm endpoint mới (operations/fleet/runtime).',
+    });
+  });
+} else {
   // Never fall through to Vite HTML for /api/agent/* — frontend expects JSON.
   app.use('/api/agent', (_req: Request, res: Response) => {
     res.status(503).json({
@@ -3522,6 +3564,19 @@ async function main() {
     if (AGENT_ENABLED) {
       startAgentScheduler();
       startAgentSyncOutboxWorker();
+      void startTelegramControlPlane().then(r => {
+        if (r.started) {
+          console.log('[telegram-console] Control Plane client ready', r.status);
+        } else {
+          console.log(`[telegram-console] not started (${r.reason || 'disabled'})`);
+        }
+      });
+      void import('./server/modules/control-plane/operations').then(ops => {
+        ops.startMetricsCollector();
+        console.log('[metrics-collector] Operations Center metrics started (5m + event/manual)');
+      }).catch(err => {
+        console.warn('[metrics-collector] failed to start', err instanceof Error ? err.message : err);
+      });
     } else {
       console.warn('[agent] Scheduler/outbox worker skipped (AGENT_ENABLED=false)');
     }
@@ -3533,6 +3588,10 @@ async function main() {
     console.log(`[Server] ${signal} — stopping scheduler…`);
     stopAgentScheduler();
     stopAgentSyncOutboxWorker();
+    void stopTelegramControlPlane();
+    void import('./server/modules/control-plane/operations')
+      .then(ops => ops.stopMetricsCollector())
+      .catch(() => undefined);
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

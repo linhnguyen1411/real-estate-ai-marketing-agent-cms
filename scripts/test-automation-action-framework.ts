@@ -1,5 +1,5 @@
 /**
- * Action Framework registration + PublishAction wiring tests.
+ * Action Framework registration + PublishAction + interaction actions wiring tests.
  * Run: npx tsx scripts/test-automation-action-framework.ts
  */
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ import { FacebookTimelineAdapter } from '../server/modules/social-publishing/bro
 async function main() {
   _resetAutomationActionRegistryForTests();
 
-  // Construct destination → registers real PublishAction
+  // Construct destination → registers PublishAction + interaction actions
   const adapter = new FacebookTimelineAdapter();
   const regs = listAutomationActions();
   assert.equal(regs.length, AUTOMATION_ACTION_KEYS.length, 'all action keys registered');
@@ -23,11 +23,8 @@ async function main() {
   for (const key of AUTOMATION_ACTION_KEYS) {
     const reg = getAutomationActionRegistration(key);
     assert.ok(reg, `missing registration: ${key}`);
+    assert.equal(isAutomationActionImplemented(key), true, `${key} must be implemented`);
   }
-
-  assert.equal(isAutomationActionImplemented('publish'), true);
-  assert.equal(isAutomationActionImplemented('comment'), false);
-  assert.equal(isAutomationActionImplemented('message'), false);
 
   const publishAction = adapter.getPublishAction();
   assert.equal(publishAction.key, 'publish');
@@ -40,7 +37,7 @@ async function main() {
     body: 'Action framework dry-run',
     linkUrl: null,
     media: [],
-    destinationConfig: {},
+    destinationConfig: { humanApproved: true },
     dryRun: true,
   };
 
@@ -58,15 +55,19 @@ async function main() {
   assert.equal((await adapter.fillContent(ctx)).ok, true);
   assert.equal((await adapter.publish(ctx)).ok, true);
 
-  // Stub actions throw not implemented
-  const comment = getAutomationActionRegistration('comment')!.action;
-  let threw = false;
-  try {
-    await comment.execute(ctx);
-  } catch (e) {
-    threw = e instanceof Error && /not implemented/i.test(e.message);
-  }
-  assert.ok(threw, 'comment stub must throw not implemented');
+  // Comment action is implemented (dry-run)
+  const comment = adapter.getAction('comment')!;
+  assert.equal(comment.key, 'comment');
+  const commentCtx = {
+    ...ctx,
+    publishJobId: 'job_action_fw_comment',
+    destinationConfig: { humanApproved: true, actionText: 'Nice listing' },
+  };
+  assert.equal((await comment.prepare(commentCtx)).ok, true);
+  assert.equal((await comment.execute(commentCtx)).ok, true);
+  assert.equal((await comment.verify(commentCtx)).ok, true);
+  await comment.captureEvidence(commentCtx);
+  assert.equal((await comment.cleanup(commentCtx)).ok, true);
 
   console.log('PASS test-automation-action-framework');
 }

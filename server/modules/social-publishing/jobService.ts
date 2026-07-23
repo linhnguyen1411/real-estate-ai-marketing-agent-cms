@@ -15,6 +15,11 @@ import {
   type PublishResult,
 } from './types';
 import { startPublishMissionRun } from './publishMissionBridge';
+import {
+  isTerminalPublishOutcome,
+  shouldSkipRetry,
+  wasPublishClicked,
+} from './publishIdempotency';
 
 async function syncCampaignTargetForPublishJob(publishJobId: string): Promise<void> {
   const target = await prisma.socialCampaignTarget.findFirst({
@@ -40,21 +45,6 @@ export function computeBackoffMs(attempts: number): number {
 }
 
 const STALE_PUBLISH_JOB_MS = 10 * 60_000;
-
-/** Pure: retry must not republish an already-published job. */
-export function shouldSkipRetry(job: {
-  status: string;
-  result?: unknown;
-}): { skip: boolean; reason?: 'already_published' } {
-  if (job.status === 'published') {
-    return { skip: true, reason: 'already_published' };
-  }
-  const result = (job.result || {}) as Record<string, unknown>;
-  if (result.externalPostId) {
-    return { skip: true, reason: 'already_published' };
-  }
-  return { skip: false };
-}
 
 export async function createPublishJob(input: {
   companyId?: string | null;
@@ -255,7 +245,8 @@ export async function publishJobNow(id: string, actor?: string | null): Promise<
 }
 
 /**
- * Reset ACTIVE jobs stuck longer than 10 minutes back to queued.
+ * Reset ACTIVE jobs stuck longer than 10 minutes.
+ * If publish already clicked / verified unknown → terminal fail (never republish).
  */
 export async function reclaimStalePublishJobs(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - STALE_PUBLISH_JOB_MS);
@@ -269,6 +260,46 @@ export async function reclaimStalePublishJobs(now = new Date()): Promise<number>
 
   let reclaimed = 0;
   for (const job of stale) {
+    const skip = shouldSkipRetry(job);
+    if (skip.skip || wasPublishClicked(job.result) || isTerminalPublishOutcome(job.result)) {
+      const prev =
+        job.result && typeof job.result === 'object' && !Array.isArray(job.result)
+          ? (job.result as Record<string, unknown>)
+          : {};
+      await prisma.socialPublishJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          claimedBy: null,
+          startedAt: null,
+          completedAt: new Date(),
+          errorCode: 'publish_verify_unknown',
+          errorMessage:
+            'Stale after publish click — manual verify required (exactly-once: will not republish)',
+          result: {
+            ...prev,
+            publishOutcome: prev.publishOutcome || 'unknown',
+            publishClicked: true,
+            needsManualVerify: true,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await appendAuditLog({
+        companyId: job.companyId,
+        entityType: 'SocialPublishJob',
+        entityId: job.id,
+        action: 'stale_manual_verify',
+        metadata: {
+          previousStatus: job.status,
+          reason: skip.reason || 'publish_clicked',
+          startedAt: job.startedAt?.toISOString() ?? null,
+          claimedBy: job.claimedBy,
+        },
+      });
+      reclaimed += 1;
+      continue;
+    }
+
     await prisma.socialPublishJob.update({
       where: { id: job.id },
       data: {
@@ -349,8 +380,16 @@ export async function claimPublishJob(
     if (!job) return null;
 
     if (job.status === 'published') return job;
+
+    // Exactly-once: prior click / unknown verify → never claim for a second publish.
+    const skip = shouldSkipRetry(job);
+    if (skip.skip) {
+      return job;
+    }
+
     if (!['queued', 'failed'].includes(job.status) && job.status !== 'claimed') {
       if (ACTIVE_JOB_STATUSES.includes(job.status as (typeof ACTIVE_JOB_STATUSES)[number])) {
+        // Another agent (or same worker re-entry) already owns publishing — do not steal.
         if (job.claimedBy === workerId) return job;
         return null;
       }
@@ -467,8 +506,7 @@ export async function failPublishJob(
   const existing = await prisma.socialPublishJob.findUnique({ where: { id } });
   if (!existing) throw new Error('Job not found');
 
-  // Safety / channel-state errors can fire before claim increments attempts.
-  // Treat them as terminal so jobs do not requeue forever at attempts < maxAttempts.
+  // Safety / channel-state / exactly-once errors: terminal — never republish.
   const nonRetryable = new Set([
     'channel_paused',
     'channel_inactive',
@@ -476,10 +514,22 @@ export async function failPublishJob(
     'channel_disconnected',
     'already_published',
     'daily_cap',
+    'duplicate',
     'duplicate_content',
+    'publish_verify_unknown',
+    'browser_verify_unknown',
+    'browser_composer_mismatch',
+    'browser_already_on_feed',
   ]);
+  const clickedAlready = wasPublishClicked(existing.result) || isTerminalPublishOutcome(existing.result);
   const exhausted =
-    existing.attempts >= existing.maxAttempts || nonRetryable.has(String(errorCode));
+    existing.attempts >= existing.maxAttempts ||
+    nonRetryable.has(String(errorCode)) ||
+    clickedAlready;
+  const prev =
+    existing.result && typeof existing.result === 'object' && !Array.isArray(existing.result)
+      ? (existing.result as Record<string, unknown>)
+      : {};
   const job = await prisma.socialPublishJob.update({
     where: { id },
     data: {
@@ -489,6 +539,16 @@ export async function failPublishJob(
       completedAt: exhausted ? new Date() : null,
       claimedBy: null,
       startedAt: null,
+      ...(clickedAlready
+        ? {
+            result: {
+              ...prev,
+              publishClicked: true,
+              publishOutcome: prev.publishOutcome || 'unknown',
+              needsManualVerify: true,
+            } as Prisma.InputJsonValue,
+          }
+        : {}),
       ...(exhausted
         ? {}
         : {
@@ -532,6 +592,14 @@ export async function runPrePublishSafetyChecks(jobId: string): Promise<{
   const prior = (job.result || {}) as Record<string, unknown>;
   if (prior.externalPostId) {
     return { ok: false, errorCode: 'already_published', errorMessage: 'Result already has externalPostId' };
+  }
+  const skip = shouldSkipRetry(job);
+  if (skip.skip) {
+    return {
+      ok: false,
+      errorCode: skip.reason === 'verify_unknown' ? 'publish_verify_unknown' : 'already_published',
+      errorMessage: `Exactly-once guard: ${skip.reason}`,
+    };
   }
 
   const publishable = assertChannelPublishable(job.channel);

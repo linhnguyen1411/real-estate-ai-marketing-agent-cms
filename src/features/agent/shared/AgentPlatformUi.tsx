@@ -97,7 +97,7 @@ export function AgentStatCard({
   tone = 'default',
 }: {
   label: string;
-  value: number;
+  value: number | string;
   tone?: 'default' | 'success' | 'warning' | 'danger';
 }) {
   const toneClass = {

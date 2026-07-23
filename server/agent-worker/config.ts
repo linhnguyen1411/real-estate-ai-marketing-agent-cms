@@ -17,8 +17,18 @@ export interface WorkerConfig {
   workerId: string;
   /** Default mode when source does not override (facebook still resolves via source type). */
   browserMode: AgentBrowserMode;
-  /** Absolute managed profile path */
+  /** Absolute managed profile path (Playwright launchPersistentContext). */
   profileDir: string;
+  /**
+   * Absolute CDP Chrome --user-data-dir (start-cdp-chrome.ps1).
+   * Distinct from profileDir — never conflate the two.
+   */
+  cdpProfileDir: string;
+  /**
+   * Profile path that is actually in use for the default browser mode
+   * (CDP → cdpProfileDir, managed → profileDir). Safe for heartbeats/ops UI.
+   */
+  activeProfileDir: string;
   browserChannel: typeof AGENT_BROWSER_CHANNEL;
   headless: boolean;
   cdpEndpoint: SanitizedCdpEndpoint | null;
@@ -35,6 +45,14 @@ export function resolveAgentBrowserProfileDir(): string {
   const raw =
     process.env.AGENT_BROWSER_PROFILE_DIR?.trim() ||
     path.join(process.cwd(), 'runtime', 'agent-browser-profile');
+  return path.resolve(raw);
+}
+
+/** Dedicated CDP Chrome user-data-dir (absolute). */
+export function resolveAgentCdpProfileDir(): string {
+  const raw =
+    process.env.AGENT_CDP_PROFILE_DIR?.trim() ||
+    path.join(process.cwd(), 'runtime', 'agent-cdp-profile');
   return path.resolve(raw);
 }
 
@@ -80,12 +98,15 @@ export function parseAndSanitizeCdpEndpoint(raw: string | undefined | null): San
 }
 
 export function loadWorkerConfig(): WorkerConfig {
+  // Stable by default — PID in workerId created a new Fleet "machine" every restart.
   const workerId =
     process.env.AGENT_WORKER_ID?.trim() ||
-    `worker-${os.hostname().replace(/[^a-zA-Z0-9-]/g, '-')}-${process.pid}`;
+    `worker-${os.hostname().replace(/[^a-zA-Z0-9-]/g, '-')}`;
 
   const browserMode = parseAgentBrowserMode(process.env.AGENT_BROWSER_MODE, 'managed');
   const profileDir = resolveAgentBrowserProfileDir();
+  const cdpProfileDir = resolveAgentCdpProfileDir();
+  const activeProfileDir = browserMode === 'cdp' ? cdpProfileDir : profileDir;
   const headless = process.env.AGENT_HEADLESS === 'true';
   const pollIntervalMs = Math.max(500, Number(process.env.AGENT_POLL_INTERVAL_MS || 3000));
   const heartbeatIntervalMs = Math.min(
@@ -115,6 +136,8 @@ export function loadWorkerConfig(): WorkerConfig {
     workerId,
     browserMode,
     profileDir,
+    cdpProfileDir,
+    activeProfileDir,
     browserChannel: AGENT_BROWSER_CHANNEL,
     headless,
     cdpEndpoint,
