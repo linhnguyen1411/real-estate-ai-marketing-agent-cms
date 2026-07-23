@@ -14,6 +14,7 @@ import {
 } from '../agent/leadIntelligence';
 import { detectSubjectDirection } from '../agent/subjectDirection';
 import { sendNotification } from '../notifications/notificationRouter';
+import { enqueueLeadAcquisition } from '../modules/lead-acquisition';
 
 export const FINDING_ENRICHMENT_STATUSES = [
   'raw',
@@ -217,6 +218,9 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
       companyId: finding.companyId,
     });
   }
+
+  // Re-score Lead Acquisition with AI/keyword scores (no Telegram re-blast)
+  enqueueLeadAcquisition(findingId, false);
 }
 
 async function applyKeywordEnrichment(

@@ -278,14 +278,72 @@ export async function notifyFindingIfEligible(input: {
       }
     }
 
-    const alert = formatLeadTelegramAlert(finding, resolved, {
-      includePhone: settings.telegram_include_phone !== false,
-      includeBudget: settings.telegram_include_budget !== false,
-      includeLocation: settings.telegram_include_location !== false,
-      includeLink: settings.telegram_include_link !== false,
-      siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
-    });
-    const text = alert.text;
+    // H3 — prefer Buyer Alert card when Lead Acquisition marks a real buyer
+    let text: string;
+    let replyMarkup: ReturnType<typeof leadAlertKeyboard>;
+    let openPostHint: string | null = null;
+    try {
+      const {
+        processLeadAcquisition,
+        readAcquisitionProfile,
+        formatBuyerAlertText,
+        buyerAlertKeyboard,
+      } = await import('../modules/lead-acquisition');
+      let profile = readAcquisitionProfile(finding.extractedData);
+      if (!profile) {
+        profile = await processLeadAcquisition({
+          findingId: finding.id,
+          notifyTelegram: false,
+        });
+      }
+      if (profile?.isBuyer) {
+        text = formatBuyerAlertText({
+          profile,
+          title: finding.title,
+          budgetMin: finding.budgetMin,
+          budgetMax: finding.budgetMax,
+        });
+        openPostHint = finding.scannedContent?.canonicalUrl || null;
+        replyMarkup = buyerAlertKeyboard({
+          findingId: finding.id,
+          openUrl: openPostHint,
+        });
+      } else {
+        const alert = formatLeadTelegramAlert(finding, resolved, {
+          includePhone: settings.telegram_include_phone !== false,
+          includeBudget: settings.telegram_include_budget !== false,
+          includeLocation: settings.telegram_include_location !== false,
+          includeLink: settings.telegram_include_link !== false,
+          siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
+        });
+        text = alert.text;
+        openPostHint = alert.postUrl;
+        replyMarkup = leadAlertKeyboard({
+          findingId: finding.id,
+          postUrl: alert.postUrl,
+          groupUrl: alert.groupUrl,
+        });
+      }
+    } catch (acqErr) {
+      console.warn(
+        '[telegram] acquisition format fallback:',
+        acqErr instanceof Error ? acqErr.message : acqErr,
+      );
+      const alert = formatLeadTelegramAlert(finding, resolved, {
+        includePhone: settings.telegram_include_phone !== false,
+        includeBudget: settings.telegram_include_budget !== false,
+        includeLocation: settings.telegram_include_location !== false,
+        includeLink: settings.telegram_include_link !== false,
+        siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
+      });
+      text = alert.text;
+      openPostHint = alert.postUrl;
+      replyMarkup = leadAlertKeyboard({
+        findingId: finding.id,
+        postUrl: alert.postUrl,
+        groupUrl: alert.groupUrl,
+      });
+    }
 
     const sourceEd =
       finding.extractedData &&
@@ -296,12 +354,11 @@ export async function notifyFindingIfEligible(input: {
             | undefined)
         : undefined;
     const links = normalizeSocialLinks({
-      postUrl: alert.postUrl || resolved.source.canonicalUrl,
+      postUrl: openPostHint || resolved.source.canonicalUrl,
       groupUrl:
-        alert.groupUrl ||
-        (typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null),
-      postId: alert.postId || (typeof sourceEd?.postId === 'string' ? sourceEd.postId : null),
-      groupId: alert.groupId || (typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null),
+        typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null,
+      postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
+      groupId: typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null,
       canonicalUrl: resolved.source.canonicalUrl,
     });
 
@@ -333,11 +390,20 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
-    const replyMarkup = leadAlertKeyboard({
-      findingId: finding.id,
-      postUrl: openPost,
-      groupUrl: openGroup,
-    });
+    // Refresh Open URL on keyboard after verify; keep Buyer Alert buttons when already set
+    if (text.startsWith('🔥 Buyer Alert')) {
+      const { buyerAlertKeyboard } = await import('../modules/lead-acquisition');
+      replyMarkup = buyerAlertKeyboard({
+        findingId: finding.id,
+        openUrl: openPost || openGroup,
+      });
+    } else {
+      replyMarkup = leadAlertKeyboard({
+        findingId: finding.id,
+        postUrl: openPost,
+        groupUrl: openGroup,
+      });
+    }
 
     await upsertDeliveryLog({
       companyId: finding.companyId,

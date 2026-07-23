@@ -667,3 +667,33 @@ export async function opsLeadRetryNotify(findingId: string) {
   );
   return notifyFindingIfEligible({ findingId, force: true });
 }
+
+/** H3 — Assign buyer to sales pipeline */
+export async function opsLeadAssign(findingId: string, triggeredBy: string) {
+  const { updateLeadPipelineStage, processLeadAcquisition } = await import(
+    '../lead-acquisition'
+  );
+  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
+  const profile = await updateLeadPipelineStage({
+    findingId,
+    stage: 'assigned',
+    actor: triggeredBy,
+  });
+  if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  return { findingId, stage: 'assigned' as const, profile };
+}
+
+/** H3 — Mark for CRM */
+export async function opsLeadCrm(findingId: string, triggeredBy: string) {
+  const { updateLeadPipelineStage, processLeadAcquisition } = await import(
+    '../lead-acquisition'
+  );
+  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
+  const profile = await updateLeadPipelineStage({
+    findingId,
+    stage: 'interested',
+    actor: triggeredBy,
+  });
+  if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  return { findingId, stage: 'interested' as const, profile };
+}

@@ -14,8 +14,17 @@ import {
   JOB_STATUS_COLORS,
 } from './AgentPlatformUi';
 
+type LeadMetrics = {
+  buyerCandidates: number;
+  qualifiedBuyers: number;
+  vipBuyers: number;
+  assigned: number;
+  converted: number;
+};
+
 export default function AgentDashboard() {
   const [counts, setCounts] = useState<AgentDashboardCounts | null>(null);
+  const [leadMetrics, setLeadMetrics] = useState<LeadMetrics | null>(null);
   const [topFindings, setTopFindings] = useState<AgentFinding[]>([]);
   const [recentJobs, setRecentJobs] = useState<AgentJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,12 +34,18 @@ export default function AgentDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [dashboard, findingsRes, jobsRes] = await Promise.all([
+      const [dashboard, findingsRes, jobsRes, leadRes] = await Promise.all([
         fetchAgentDashboard(),
         fetchAgentFindings({ page: 1, limit: 10 }),
         fetchAgentJobs({ page: 1, limit: 10 }),
+        fetch('/api/lead-acquisition/metrics?sinceHours=24')
+          .then(r => r.json())
+          .catch(() => null),
       ]);
       setCounts(dashboard);
+      if (leadRes?.status === 'success' && leadRes.data) {
+        setLeadMetrics(leadRes.data as LeadMetrics);
+      }
       const sorted = [...findingsRes.data].sort((a, b) => b.score - a.score).slice(0, 10);
       setTopFindings(sorted);
       setRecentJobs(jobsRes.data);
@@ -54,10 +69,20 @@ export default function AgentDashboard() {
     <div className="space-y-6">
       <AgentPanelHeader
         title="AI Agent Dashboard"
-        subtitle="Quan sát hệ thống — incremental scan & job queue"
+        subtitle="KPI = Buyer thật · Scanner chỉ là input"
         onRefresh={load}
         refreshing={loading}
       />
+
+      {leadMetrics && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <AgentStatCard label="Buyer Candidates" value={leadMetrics.buyerCandidates} tone="warning" />
+          <AgentStatCard label="Qualified Buyers" value={leadMetrics.qualifiedBuyers} tone="success" />
+          <AgentStatCard label="VIP Buyers" value={leadMetrics.vipBuyers} tone="warning" />
+          <AgentStatCard label="Assigned" value={leadMetrics.assigned} />
+          <AgentStatCard label="Converted" value={leadMetrics.converted} tone="success" />
+        </div>
+      )}
 
       {counts && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">

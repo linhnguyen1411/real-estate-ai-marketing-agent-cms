@@ -246,6 +246,9 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'r') return `/lead retry ${id}`;
     if (action === 's') return `/lead skip ${id}`;
     if (action === 'm') return `/lead mission ${id}`;
+    if (action === 'a') return `/lead assign ${id}`;
+    if (action === 'c') return `/lead crm ${id}`;
+    if (action === 'o') return `/lead retry ${id}`;
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;
