@@ -156,6 +156,13 @@ export async function processLeadAcquisition(input: {
     });
   }
 
+  // H3.5 — Buyer Journey + Sales Pipeline (Sales Layer)
+  if (buyer) {
+    void import('../sales-layer')
+      .then(m => m.enqueueSalesLayer(finding.id))
+      .catch(err => console.warn('[lead-acquisition] sales-layer enqueue failed:', err));
+  }
+
   return profile;
 }
 

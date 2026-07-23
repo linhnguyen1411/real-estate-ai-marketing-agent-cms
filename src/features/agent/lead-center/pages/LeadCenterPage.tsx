@@ -1,65 +1,87 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AgentPanelEmpty, AgentPanelError, AgentPanelLoader } from '../../shared/AgentPlatformUi';
 
-type Priority = {
-  finalScore: number;
-  urgency: number;
-  campaignMatch: number;
-};
-
-type LeadProfile = {
+type SalesProfile = {
   findingId: string;
+  journeyStage: string;
   pipelineStage: string;
-  intent: { intent: string; confidence: number };
-  persona: { persona: string };
-  timeline: string;
-  campaignMatch: { campaignName: string | null; matchScore: number };
-  priority: Priority;
-  action: { label: string; reason: string };
-  isBuyer: boolean;
-  isVip: boolean;
+  owner: string | null;
+  expectedCloseAt: string | null;
+  probability: number;
+  expectedDealTy: number | null;
+  recommendation: { label: string; reason: string; urgency: string };
+  followUp: { needsFollowUp: boolean; reason: string | null; suggestion: string | null };
+  timeline: Array<{ at: string; kind: string; label: string; detail?: string | null }>;
+  stageHistory: Array<{ at: string; from: string | null; to: string; reason?: string | null }>;
+  mergedFindingIds: string[];
+  signals: Array<{ kind: string; at: string }>;
 };
 
 type PipelineCard = {
   findingId: string;
   title: string;
-  profile: LeadProfile;
+  sales: SalesProfile;
+  confidencePct: number;
+  campaignName: string | null;
 };
 
 type Metrics = {
-  buyerCandidates: number;
-  qualifiedBuyers: number;
-  vipBuyers: number;
+  detected: number;
+  qualified: number;
   assigned: number;
-  converted: number;
   contacted: number;
+  appointment: number;
+  negotiating: number;
+  won: number;
   lost: number;
-  byCampaign: Array<{ campaignId: string; name: string; leads: number; vip: number }>;
-  bySource: Array<{ sourceId: string; name: string; leads: number }>;
+  pipelineValueTy: number;
+  estimatedRevenueTy: number;
+  expectedRevenueTy: number;
+  averageDealSizeTy: number;
+  winRate: number;
+  averageDays: number;
+  needFollowUp: number;
+  urgentBuyers: number;
+  byCampaign: Array<{
+    campaignId: string;
+    name: string;
+    leads: number;
+    qualified: number;
+    negotiating: number;
+    closed: number;
+    pipelineValueTy: number;
+    expectedRevenueTy: number;
+  }>;
+  bySource: Array<{ sourceId: string; name: string; leads: number; won: number; pipelineValueTy: number }>;
 };
 
 const COLUMNS: Array<{ id: string; label: string }> = [
-  { id: 'candidate', label: 'Candidate' },
+  { id: 'detected', label: 'Detected' },
   { id: 'qualified', label: 'Qualified' },
   { id: 'assigned', label: 'Assigned' },
   { id: 'contacted', label: 'Contacted' },
-  { id: 'interested', label: 'Interested' },
+  { id: 'appointment', label: 'Appointment' },
   { id: 'negotiating', label: 'Negotiating' },
   { id: 'won', label: 'Won' },
   { id: 'lost', label: 'Lost' },
 ];
 
+function fmtTy(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  return n >= 100 ? `${Math.round(n)} tỷ` : `${Math.round(n * 10) / 10} tỷ`;
+}
+
 async function fetchPipeline(): Promise<Record<string, PipelineCard[]>> {
-  const res = await fetch('/api/lead-acquisition/pipeline');
+  const res = await fetch('/api/sales/pipeline');
   const json = await res.json();
   if (!res.ok || json.status !== 'success') {
-    throw new Error(json.message || 'Không tải được Lead Center');
+    throw new Error(json.message || 'Không tải được Sales Pipeline');
   }
   return json.data as Record<string, PipelineCard[]>;
 }
 
 async function fetchMetrics(): Promise<Metrics> {
-  const res = await fetch('/api/lead-acquisition/metrics?sinceHours=24');
+  const res = await fetch('/api/sales/metrics?sinceHours=720');
   const json = await res.json();
   if (!res.ok || json.status !== 'success') {
     throw new Error(json.message || 'Không tải được metrics');
@@ -67,11 +89,15 @@ async function fetchMetrics(): Promise<Metrics> {
   return json.data as Metrics;
 }
 
-async function patchStage(id: string, stage: string) {
-  const res = await fetch(`/api/lead-acquisition/${id}/stage`, {
+async function patchStage(
+  id: string,
+  stage: string,
+  extra?: { owner?: string; expectedCloseAt?: string; probability?: number },
+) {
+  const res = await fetch(`/api/sales/${id}/stage`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage, actor: 'admin-ui' }),
+    body: JSON.stringify({ stage, actor: 'admin-ui', ...extra }),
   });
   const json = await res.json();
   if (!res.ok || json.status !== 'success') {
@@ -80,7 +106,7 @@ async function patchStage(id: string, stage: string) {
 }
 
 async function postLearn(id: string, outcome: 'won' | 'lost' | 'spam' | 'wrong') {
-  const res = await fetch(`/api/lead-acquisition/${id}/learn`, {
+  const res = await fetch(`/api/sales/${id}/learn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ outcome, actor: 'admin-ui' }),
@@ -98,6 +124,10 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<PipelineCard | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [ownerDraft, setOwnerDraft] = useState('');
+  const [closeDraft, setCloseDraft] = useState('');
+  const [probDraft, setProbDraft] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -114,6 +144,13 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!selected) return;
+    setOwnerDraft(selected.sales.owner || '');
+    setCloseDraft(selected.sales.expectedCloseAt?.slice(0, 10) || '');
+    setProbDraft(String(Math.round((selected.sales.probability || 0) * 100)));
+  }, [selected]);
+
   const move = async (id: string, stage: string) => {
     if (!canManage) return;
     setBusyId(id);
@@ -124,6 +161,26 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
       await load();
     } catch (e: unknown) {
       setMessage(e instanceof Error ? e.message : 'Move failed');
+    } finally {
+      setBusyId(null);
+      setDragId(null);
+    }
+  };
+
+  const saveMeta = async () => {
+    if (!canManage || !selected) return;
+    setBusyId(selected.findingId);
+    try {
+      const p = Number(probDraft);
+      await patchStage(selected.findingId, selected.sales.pipelineStage, {
+        owner: ownerDraft || undefined,
+        expectedCloseAt: closeDraft ? new Date(closeDraft).toISOString() : undefined,
+        probability: Number.isFinite(p) ? p / 100 : undefined,
+      });
+      setMessage('Saved owner / close / probability');
+      await load();
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setBusyId(null);
     }
@@ -152,9 +209,9 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-bold text-slate-100">Lead Center</h2>
+          <h2 className="text-sm font-bold text-slate-100">Lead Center · Sales Pipeline</h2>
           <p className="text-[11px] text-slate-500">
-            KPI = Buyer thật · Scanner chỉ là input · Pipeline sales
+            Lead = điểm bắt đầu · Buyer Journey → Closed · kéo thả để đổi stage
           </p>
         </div>
         <button
@@ -168,20 +225,28 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
 
       {message && <p className="text-xs text-emerald-400">{message}</p>}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-        <Metric label="Buyer Candidates" value={metrics.buyerCandidates} />
-        <Metric label="Qualified" value={metrics.qualifiedBuyers} />
-        <Metric label="VIP" value={metrics.vipBuyers} tone="vip" />
-        <Metric label="Assigned" value={metrics.assigned} />
-        <Metric label="Contacted" value={metrics.contacted} />
-        <Metric label="Converted" value={metrics.converted} tone="ok" />
-        <Metric label="Lost" value={metrics.lost} tone="bad" />
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+        <Metric label="Detected" value={metrics.detected} />
+        <Metric label="Qualified" value={metrics.qualified} />
+        <Metric label="Negotiating" value={metrics.negotiating} />
+        <Metric label="Won" value={metrics.won} tone="ok" />
+        <Metric label="Pipeline Value" value={fmtTy(metrics.pipelineValueTy)} />
+        <Metric label="Expected Rev" value={fmtTy(metrics.expectedRevenueTy)} tone="ok" />
+        <Metric label="Need Follow-up" value={metrics.needFollowUp} tone="warn" />
+        <Metric label="Urgent" value={metrics.urgentBuyers} tone="warn" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Metric label="Avg Deal" value={fmtTy(metrics.averageDealSizeTy)} />
+        <Metric label="Win Rate" value={`${metrics.winRate}%`} />
+        <Metric label="Avg Days" value={metrics.averageDays} />
+        <Metric label="Est. Revenue" value={fmtTy(metrics.estimatedRevenueTy)} />
       </div>
 
       {!total ? (
         <AgentPanelEmpty
-          title="Chưa có buyer lead"
-          description="Khi scanner tạo finding, Intent Engine sẽ gắn profile leadAcquisition và đổ vào pipeline."
+          title="Chưa có buyer trong Sales Pipeline"
+          description="Khi Lead Acquisition gắn buyer, Sales Layer sẽ tạo Journey + Memory + Pipeline card."
         />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
@@ -191,6 +256,15 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
               <div
                 key={col.id}
                 className="min-w-[200px] max-w-[220px] flex-shrink-0 rounded-xl border border-slate-800 bg-slate-950/70"
+                onDragOver={e => {
+                  if (!canManage) return;
+                  e.preventDefault();
+                }}
+                onDrop={e => {
+                  if (!canManage || !dragId) return;
+                  e.preventDefault();
+                  void move(dragId, col.id);
+                }}
               >
                 <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
                   <span className="text-xs font-semibold text-slate-200">{col.label}</span>
@@ -198,35 +272,41 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
                     {items.length}
                   </span>
                 </div>
-                <div className="space-y-2 p-2">
+                <div className="space-y-2 p-2 min-h-[80px]">
                   {items.map(card => (
                     <button
                       type="button"
                       key={card.findingId}
+                      draggable={canManage}
+                      onDragStart={() => setDragId(card.findingId)}
+                      onDragEnd={() => setDragId(null)}
                       onClick={() => setSelected(card)}
                       className={`w-full rounded-lg border p-2.5 text-left text-xs ${
                         selected?.findingId === card.findingId
                           ? 'border-rose-500/50 bg-rose-950/30'
                           : 'border-slate-800 bg-slate-900/80'
-                      }`}
+                      } ${dragId === card.findingId ? 'opacity-60' : ''}`}
                     >
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-semibold text-slate-100 truncate">
                           {card.title || card.findingId.slice(0, 8)}
                         </span>
-                        {card.profile.isVip && (
-                          <span className="rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">
-                            VIP
-                          </span>
-                        )}
+                        <span className="text-[10px] text-amber-300">{card.confidencePct}%</span>
                       </div>
                       <div className="mt-1 text-[10px] text-slate-500">
-                        {card.profile.intent.intent} · {card.profile.persona.persona}
+                        {card.sales.journeyStage} · p{Math.round(card.sales.probability * 100)}%
                       </div>
                       <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-                        <span>{card.profile.campaignMatch.campaignName || '—'}</span>
-                        <span>{card.profile.priority.finalScore}</span>
+                        <span className="truncate">{card.campaignName || '—'}</span>
+                        <span>
+                          {card.sales.expectedDealTy != null
+                            ? fmtTy(card.sales.expectedDealTy)
+                            : '—'}
+                        </span>
                       </div>
+                      {card.sales.followUp.needsFollowUp && (
+                        <div className="mt-1 text-[10px] text-amber-400">⚠ follow-up</div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -251,28 +331,107 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
               Đóng
             </button>
           </div>
+
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <div>
-              Intent: <b className="text-slate-100">{selected.profile.intent.intent}</b> (
-              {Math.round(selected.profile.intent.confidence * 100)}%)
+              Journey: <b className="text-slate-100">{selected.sales.journeyStage}</b>
             </div>
             <div>
-              Timeline: <b className="text-slate-100">{selected.profile.timeline}</b>
+              Pipeline: <b className="text-slate-100">{selected.sales.pipelineStage}</b>
             </div>
             <div>
-              Campaign:{' '}
+              Campaign: <b className="text-slate-100">{selected.campaignName || '—'}</b>
+            </div>
+            <div>
+              Suggestion:{' '}
+              <b className="text-slate-100">{selected.sales.recommendation.label}</b>
+            </div>
+            <div>
+              Signals: {selected.sales.signals.length} · Merged:{' '}
+              {selected.sales.mergedFindingIds.length}
+            </div>
+            <div>
+              Deal:{' '}
               <b className="text-slate-100">
-                {selected.profile.campaignMatch.campaignName || '—'}
+                {selected.sales.expectedDealTy != null
+                  ? fmtTy(selected.sales.expectedDealTy)
+                  : '—'}
               </b>
             </div>
+          </div>
+          <p className="mt-2 text-slate-500">{selected.sales.recommendation.reason}</p>
+
+          {canManage && (
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <label className="space-y-1">
+                <span className="text-[10px] text-slate-500">Owner</span>
+                <input
+                  value={ownerDraft}
+                  onChange={e => setOwnerDraft(e.target.value)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                  placeholder="sales owner"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] text-slate-500">Expected Close</span>
+                <input
+                  type="date"
+                  value={closeDraft}
+                  onChange={e => setCloseDraft(e.target.value)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] text-slate-500">Probability %</span>
+                <input
+                  value={probDraft}
+                  onChange={e => setProbDraft(e.target.value)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                />
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={busyId === selected.findingId}
+                  onClick={() => void saveMeta()}
+                  className="rounded-md border border-slate-600 px-3 py-1.5 text-[11px] hover:bg-slate-900"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div>
-              Action: <b className="text-slate-100">{selected.profile.action.label}</b>
+              <h4 className="mb-1 text-[11px] font-semibold uppercase text-slate-500">Timeline</h4>
+              <ul className="space-y-1 max-h-40 overflow-y-auto">
+                {selected.sales.timeline.slice(-12).map((e, i) => (
+                  <li key={`${e.at}-${i}`} className="text-[11px] text-slate-400">
+                    <span className="text-slate-500">{e.at.slice(0, 10)}</span> · {e.label}
+                    {e.detail ? ` — ${e.detail.slice(0, 60)}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-1 text-[11px] font-semibold uppercase text-slate-500">
+                Stage History
+              </h4>
+              <ul className="space-y-1 max-h-40 overflow-y-auto">
+                {selected.sales.stageHistory.slice(-12).map((e, i) => (
+                  <li key={`${e.at}-${i}`} className="text-[11px] text-slate-400">
+                    <span className="text-slate-500">{e.at.slice(0, 10)}</span> · {e.from || '—'} →{' '}
+                    {e.to}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
-          <p className="mt-2 text-slate-500">{selected.profile.action.reason}</p>
+
           {canManage && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {COLUMNS.filter(c => c.id !== selected.profile.pipelineStage).map(c => (
+              {COLUMNS.filter(c => c.id !== selected.sales.pipelineStage).map(c => (
                 <button
                   key={c.id}
                   type="button"
@@ -313,7 +472,7 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
                 onClick={() => void learn(selected.findingId, 'wrong')}
                 className="rounded-md border border-amber-800/40 px-2 py-1 text-[11px] text-amber-300"
               >
-                Wrong
+                Wrong Buyer
               </button>
             </div>
           )}
@@ -322,22 +481,54 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
 
       {(metrics.byCampaign.length > 0 || metrics.bySource.length > 0) && (
         <div className="grid gap-3 md:grid-cols-2">
-          <RoiTable
-            title="Campaign ROI (leads 24h)"
-            rows={metrics.byCampaign.map(c => ({
-              name: c.name,
-              leads: c.leads,
-              extra: `VIP ${c.vip}`,
-            }))}
-          />
-          <RoiTable
-            title="Lead Source ROI (24h)"
-            rows={metrics.bySource.map(s => ({
-              name: s.name,
-              leads: s.leads,
-              extra: '',
-            }))}
-          />
+          <div className="rounded-xl border border-slate-800 overflow-hidden">
+            <div className="border-b border-slate-800 px-3 py-2 text-xs font-semibold text-slate-300">
+              Campaign Dashboard
+            </div>
+            <table className="w-full text-left text-xs">
+              <thead className="text-[10px] uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-1">Campaign</th>
+                  <th className="px-2 py-1">Lead</th>
+                  <th className="px-2 py-1">Qual</th>
+                  <th className="px-2 py-1">Neg</th>
+                  <th className="px-2 py-1">Closed</th>
+                  <th className="px-2 py-1">PV</th>
+                  <th className="px-2 py-1">ER</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.byCampaign.map(c => (
+                  <tr key={c.campaignId} className="border-t border-slate-800">
+                    <td className="px-3 py-2 text-slate-200">{c.name}</td>
+                    <td className="px-2 py-2">{c.leads}</td>
+                    <td className="px-2 py-2">{c.qualified}</td>
+                    <td className="px-2 py-2">{c.negotiating}</td>
+                    <td className="px-2 py-2">{c.closed}</td>
+                    <td className="px-2 py-2 text-slate-400">{fmtTy(c.pipelineValueTy)}</td>
+                    <td className="px-2 py-2 text-slate-400">{fmtTy(c.expectedRevenueTy)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="rounded-xl border border-slate-800 overflow-hidden">
+            <div className="border-b border-slate-800 px-3 py-2 text-xs font-semibold text-slate-300">
+              Source ROI
+            </div>
+            <table className="w-full text-left text-xs">
+              <tbody>
+                {metrics.bySource.map(s => (
+                  <tr key={s.sourceId} className="border-t border-slate-800">
+                    <td className="px-3 py-2 text-slate-200">{s.name}</td>
+                    <td className="px-3 py-2">{s.leads}</td>
+                    <td className="px-3 py-2">Won {s.won}</td>
+                    <td className="px-3 py-2 text-slate-400">{fmtTy(s.pipelineValueTy)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -350,14 +541,14 @@ function Metric({
   tone,
 }: {
   label: string;
-  value: number;
-  tone?: 'vip' | 'ok' | 'bad';
+  value: string | number;
+  tone?: 'ok' | 'warn' | 'bad';
 }) {
   const toneCls =
-    tone === 'vip'
-      ? 'text-amber-300'
-      : tone === 'ok'
-        ? 'text-emerald-300'
+    tone === 'ok'
+      ? 'text-emerald-300'
+      : tone === 'warn'
+        ? 'text-amber-300'
         : tone === 'bad'
           ? 'text-rose-300'
           : 'text-slate-100';
@@ -365,37 +556,6 @@ function Metric({
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
       <div className={`mt-0.5 text-lg font-bold ${toneCls}`}>{value}</div>
-    </div>
-  );
-}
-
-function RoiTable({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: Array<{ name: string; leads: number; extra: string }>;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-800 overflow-hidden">
-      <div className="border-b border-slate-800 px-3 py-2 text-xs font-semibold text-slate-300">
-        {title}
-      </div>
-      {rows.length === 0 ? (
-        <p className="p-3 text-xs text-slate-500">Chưa có dữ liệu</p>
-      ) : (
-        <table className="w-full text-left text-xs">
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.name} className="border-t border-slate-800">
-                <td className="px-3 py-2 text-slate-200">{r.name}</td>
-                <td className="px-3 py-2 text-slate-400">{r.leads}</td>
-                <td className="px-3 py-2 text-slate-500">{r.extra}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </div>
   );
 }

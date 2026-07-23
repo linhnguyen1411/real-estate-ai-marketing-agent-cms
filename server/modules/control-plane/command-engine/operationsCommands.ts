@@ -27,6 +27,7 @@ import {
   opsLeadRetryNotify,
   opsLeadAssign,
   opsLeadCrm,
+  opsLeadHistory,
   opsRefreshRuntime,
   opsGetFleet,
   opsGetFleetAgent,
@@ -498,13 +499,13 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'lead',
-    description: 'Lead alert actions (skip / mission / retry / assign / crm)',
-    usage: '/lead skip|mission|retry|assign|crm <findingId>',
+    description: 'Lead alert actions (skip / mission / retry / assign / crm / history)',
+    usage: '/lead skip|mission|retry|assign|crm|history <findingId>',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const id = args[1];
-      if (!id || !['skip', 'mission', 'retry', 'assign', 'crm'].includes(action)) {
-        return fail('lead', 'Usage: /lead skip|mission|retry|assign|crm <findingId>');
+      if (!id || !['skip', 'mission', 'retry', 'assign', 'crm', 'history'].includes(action)) {
+        return fail('lead', 'Usage: /lead skip|mission|retry|assign|crm|history <findingId>');
       }
       if (action === 'skip') {
         const r = await opsLeadSkip(id, ctx.triggeredBy);
@@ -521,6 +522,10 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       if (action === 'crm') {
         const r = await opsLeadCrm(id, ctx.triggeredBy);
         return ok('lead', [`Lead → CRM ${r.findingId}`], r);
+      }
+      if (action === 'history') {
+        const r = await opsLeadHistory(id);
+        return ok('lead', r.lines, r);
       }
       const r = await opsLeadRetryNotify(id);
       if (!r.ok) {
@@ -582,7 +587,7 @@ export function operationsHelpLines(): string[] {
     '/browser [profiles|release|recover|restart|refresh]',
     '/runtime · /health',
     '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
-    '/lead skip|mission|retry|assign|crm <id>',
+    '/lead skip|mission|retry|assign|crm|history <id>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

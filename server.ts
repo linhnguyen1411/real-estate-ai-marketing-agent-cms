@@ -78,6 +78,7 @@ import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
 import { registerPlanningRoutes } from './server/modules/planning';
 import { registerLeadAcquisitionRoutes } from './server/modules/lead-acquisition';
+import { registerSalesLayerRoutes } from './server/modules/sales-layer';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1386,6 +1387,7 @@ if (AGENT_ENABLED) {
   registerTelegramControlPlaneRoutes(app);
   registerPlanningRoutes(app);
   registerLeadAcquisitionRoutes(app);
+  registerSalesLayerRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }

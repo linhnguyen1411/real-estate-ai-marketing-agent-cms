@@ -249,6 +249,7 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'a') return `/lead assign ${id}`;
     if (action === 'c') return `/lead crm ${id}`;
     if (action === 'o') return `/lead retry ${id}`;
+    if (action === 'h') return `/lead history ${id}`;
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;

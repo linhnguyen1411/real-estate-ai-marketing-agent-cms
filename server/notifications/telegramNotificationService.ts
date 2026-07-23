@@ -278,7 +278,7 @@ export async function notifyFindingIfEligible(input: {
       }
     }
 
-    // H3 — prefer Buyer Alert card when Lead Acquisition marks a real buyer
+    // H3 / H3.5 — prefer Sales Buyer Card, then Buyer Alert, else legacy lead format
     let text: string;
     let replyMarkup: ReturnType<typeof leadAlertKeyboard>;
     let openPostHint: string | null = null;
@@ -289,16 +289,41 @@ export async function notifyFindingIfEligible(input: {
         formatBuyerAlertText,
         buyerAlertKeyboard,
       } = await import('../modules/lead-acquisition');
-      let profile = readAcquisitionProfile(finding.extractedData);
-      if (!profile) {
-        profile = await processLeadAcquisition({
+      const {
+        processSalesLayer,
+        readSalesProfile,
+        formatSalesBuyerCard,
+        salesBuyerCardKeyboard,
+      } = await import('../modules/sales-layer');
+
+      let acq = readAcquisitionProfile(finding.extractedData);
+      if (!acq) {
+        acq = await processLeadAcquisition({
           findingId: finding.id,
           notifyTelegram: false,
         });
       }
-      if (profile?.isBuyer) {
+      let sales = readSalesProfile(finding.extractedData);
+      if (!sales && acq?.isBuyer) {
+        sales = await processSalesLayer({ findingId: finding.id, notifyFollowUp: false });
+      }
+
+      if (sales && acq?.isBuyer) {
+        const confidencePct = Math.round((acq.intent.confidence || 0.5) * 100);
+        text = formatSalesBuyerCard({
+          profile: sales,
+          confidencePct,
+          campaignName: acq.campaignMatch.campaignName,
+          title: finding.title,
+        });
+        openPostHint = finding.scannedContent?.canonicalUrl || null;
+        replyMarkup = salesBuyerCardKeyboard({
+          findingId: finding.id,
+          openUrl: openPostHint,
+        });
+      } else if (acq?.isBuyer) {
         text = formatBuyerAlertText({
-          profile,
+          profile: acq,
           title: finding.title,
           budgetMin: finding.budgetMin,
           budgetMax: finding.budgetMax,
@@ -390,8 +415,14 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
-    // Refresh Open URL on keyboard after verify; keep Buyer Alert buttons when already set
-    if (text.startsWith('🔥 Buyer Alert')) {
+    // Refresh Open URL on keyboard after verify; keep Sales/Buyer Alert buttons when already set
+    if (text.includes('👤 Buyer') || text.startsWith('═══════════════════')) {
+      const { salesBuyerCardKeyboard } = await import('../modules/sales-layer');
+      replyMarkup = salesBuyerCardKeyboard({
+        findingId: finding.id,
+        openUrl: openPost || openGroup,
+      });
+    } else if (text.startsWith('🔥 Buyer Alert')) {
       const { buyerAlertKeyboard } = await import('../modules/lead-acquisition');
       replyMarkup = buyerAlertKeyboard({
         findingId: finding.id,
