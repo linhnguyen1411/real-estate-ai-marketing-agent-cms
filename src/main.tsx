@@ -156,6 +156,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/seo/tags" element={<AdminRoute />} />
           <Route path="/admin/seo/audit" element={<AdminRoute />} />
           <Route path="/admin/agents" element={<AdminRoute />} />
+          <Route path="/admin/agents/campaign-center" element={<AdminRoute />} />
           <Route path="/admin/agents/sources" element={<AdminRoute />} />
           <Route path="/admin/agents/missions" element={<AdminRoute />} />
           <Route path="/admin/agents/jobs" element={<AdminRoute />} />

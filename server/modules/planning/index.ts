@@ -16,6 +16,17 @@ export {
   formatTimelineLines,
 } from './operationalMemory';
 export {
+  createAndRunCampaign,
+  getCampaign,
+  listCampaigns,
+  listCampaignsKanban,
+  approveCampaign,
+  rejectCampaign,
+  completeCampaign,
+  livingToBoard,
+  campaignRuntimeSummaryLines,
+} from './campaignRuntime';
+export {
   runSalesEmployee,
   detectSalesMode,
   type SalesEmployeeReply,

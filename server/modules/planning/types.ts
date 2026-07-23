@@ -6,6 +6,125 @@
 export type CampaignPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type CampaignBudgetMode = 'organic' | 'paid' | 'hybrid';
 
+/** Living campaign lifecycle (H2.1 Campaign Runtime) */
+export type CampaignLifecycleStatus =
+  | 'planning'
+  | 'researching'
+  | 'mission_planning'
+  | 'finding_leads'
+  | 'content_drafting'
+  | 'waiting_approval'
+  | 'publishing'
+  | 'monitoring'
+  | 'optimizing'
+  | 'completed'
+  | 'rejected';
+
+export const CAMPAIGN_KANBAN_COLUMNS: CampaignLifecycleStatus[] = [
+  'planning',
+  'researching',
+  'mission_planning',
+  'finding_leads',
+  'content_drafting',
+  'waiting_approval',
+  'publishing',
+  'monitoring',
+  'optimizing',
+  'completed',
+];
+
+export type CampaignTimelineEvent = {
+  at: string;
+  phase: CampaignLifecycleStatus | 'system';
+  title: string;
+  detail?: string;
+};
+
+export type CampaignTask = {
+  id: string;
+  phase: CampaignLifecycleStatus;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'skipped';
+  result?: string;
+};
+
+export type CampaignProgress = {
+  percent: number;
+  currentPhase: CampaignLifecycleStatus;
+  phasesDone: CampaignLifecycleStatus[];
+  blockedReason?: string | null;
+};
+
+export type CampaignMetrics = {
+  leadTotal: number;
+  leadVip: number;
+  leadContacted: number;
+  leadConverted: number;
+  missionsProposed: number;
+  contentSlots: number;
+  contentApproved: number;
+  recommendationsOpen: number;
+};
+
+export type CampaignLeadRecord = {
+  rank: number;
+  confidence: number;
+  name: string;
+  budget: string;
+  need: string;
+  area: string;
+  timeline: string;
+  intent: string;
+  mission: string;
+  reason: string[];
+  recommendation: string;
+  suggestedReply: string;
+  priority: CampaignPriority;
+  findingId?: string | null;
+  campaignId: string;
+  leadStatus: 'new' | 'scored' | 'contacted' | 'assigned' | 'follow_up' | 'converted' | 'closed';
+  assignedTo?: string | null;
+  followUpAt?: string | null;
+};
+
+export type CampaignState = {
+  audience: string[];
+  budget: CampaignBudgetMode;
+  health: number;
+  timeline: CampaignTimelineEvent[];
+  tasks: CampaignTask[];
+  progress: CampaignProgress;
+  metrics: CampaignMetrics;
+  research: MarketIntelligenceReport | null;
+  missions: MissionProposal[];
+  content: ContentPlan | null;
+  leads: CampaignLeadRecord[];
+  recommendations: RecommendationItem[];
+  publishProposal: {
+    suggestedAt: string;
+    channel: string;
+    note: string;
+    approved: boolean;
+  } | null;
+  operationalMemory: CampaignTimelineEvent[];
+  planChecklist: Array<{ key: string; label: string; done: boolean }>;
+};
+
+export type LivingCampaign = {
+  id: string;
+  companyId: string | null;
+  name: string;
+  goal: string;
+  priority: CampaignPriority;
+  owner: string | null;
+  status: CampaignLifecycleStatus;
+  propertyHint: string;
+  utterance: string | null;
+  state: CampaignState;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CampaignBoard = {
   id: string;
   name: string;
@@ -19,6 +138,9 @@ export type CampaignBoard = {
   health: number;
   createdAt: string;
   metadata?: Record<string, unknown>;
+  /** When backed by Campaign Runtime */
+  lifecycleStatus?: CampaignLifecycleStatus;
+  livingCampaignId?: string;
 };
 
 export type MarketIntelligenceReport = {
@@ -34,6 +156,11 @@ export type MarketIntelligenceReport = {
   topBrokers: string[];
   topKeywords: string[];
   trends: string[];
+  competitors: string[];
+  priceTrend: string;
+  demandTrend: string;
+  buyerSignals: string[];
+  suggestedPositioning: string;
   summary: string;
   createdAt: string;
 };
@@ -63,6 +190,7 @@ export type LeadCardV2 = {
   suggestedReply: string;
   priority: CampaignPriority;
   findingId?: string | null;
+  campaignId?: string | null;
 };
 
 export type ContentScheduleItem = {
@@ -105,6 +233,8 @@ export type SalesEmployeeResult = {
     | 'content_plan'
     | 'timeline'
     | 'recommendations'
+    | 'campaign_approve'
+    | 'campaign_reject'
     | 'help';
   board?: CampaignBoard;
   research?: MarketIntelligenceReport;
@@ -113,6 +243,7 @@ export type SalesEmployeeResult = {
   content?: ContentPlan;
   timeline?: TimelineEntry[];
   recommendations?: RecommendationItem[];
+  livingCampaign?: LivingCampaign;
   lines: string[];
   text: string;
 };

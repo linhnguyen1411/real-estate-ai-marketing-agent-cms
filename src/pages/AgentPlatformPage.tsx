@@ -43,9 +43,13 @@ const PublishingHistoryPage = React.lazy(
 const PublishingCampaignsPage = React.lazy(
   () => import('../features/agent/publishing-campaigns/pages/PublishingCampaignsPage'),
 );
+const CampaignCenterPage = React.lazy(
+  () => import('../features/agent/campaign-center/pages/CampaignCenterPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
+  { path: '/admin/agents/campaign-center', label: 'Campaign Center' },
   { path: '/admin/agents/sources', label: 'Nguồn' },
   { path: '/admin/agents/missions', label: 'Mission' },
   { path: '/admin/agents/jobs', label: 'Jobs' },
@@ -67,6 +71,7 @@ type Props = {
 
 function resolveSection(pathname: string) {
   if (pathname === '/admin/agents' || pathname === '/admin/agents/') return 'dashboard';
+  if (pathname.startsWith('/admin/agents/campaign-center')) return 'campaign-center';
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
   if (pathname.startsWith('/admin/agents/missions')) return 'missions';
   if (pathname.startsWith('/admin/agents/jobs')) return 'jobs';
@@ -121,6 +126,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
 
       <div className="min-h-0">
         {section === 'dashboard' && <AgentDashboard />}
+        {section === 'campaign-center' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <CampaignCenterPage canManage={canManage} />
+          </Suspense>
+        )}
         {section === 'sources' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <SourcesPage canManage={canManage} />

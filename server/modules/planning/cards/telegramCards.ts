@@ -14,12 +14,18 @@ import type {
 } from '../types';
 import type { InlineKeyboard } from '../../control-plane/inlineKeyboard';
 
-export function campaignCard(board: CampaignBoard): { lines: string[]; replyMarkup: InlineKeyboard } {
+export function campaignCard(
+  board: CampaignBoard,
+  campaignId?: string,
+): { lines: string[]; replyMarkup: InlineKeyboard } {
+  const cid = (campaignId || board.livingCampaignId || board.id).slice(0, 28);
   const check = board.planChecklist.map(c => `${c.done ? '✓' : '○'} ${c.label}`).join('\n');
   const lines = [
     'Campaign Card',
     '────────────────────────────────',
     board.name,
+    `ID: ${board.id}`,
+    board.lifecycleStatus ? `Status: ${board.lifecycleStatus}` : null,
     `Goal: ${board.goal}`,
     `Audience: ${board.audience.join(' · ')}`,
     `Budget: ${board.budget}`,
@@ -32,11 +38,16 @@ export function campaignCard(board: CampaignBoard): { lines: string[]; replyMark
     'Tasks',
     ...board.tasks.map(t => `• ${t}`),
     '────────────────────────────────',
-  ];
+  ].filter((x): x is string => Boolean(x));
   return {
     lines,
     replyMarkup: {
       inline_keyboard: [
+        [
+          { text: 'Approve', callback_data: `ai:ap:${cid}` },
+          { text: 'Reject', callback_data: `ai:rj:${cid}` },
+          { text: 'View', callback_data: `ai:vw:${cid}` },
+        ],
         [
           { text: 'Research', callback_data: 'ai:research' },
           { text: 'Content', callback_data: 'ai:content' },

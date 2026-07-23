@@ -100,6 +100,20 @@ export async function buildMarketIntelligenceReport(input: {
       'Bài có sổ + tiện ích quanh bán kính 2km giữ engagement tốt hơn',
       'Threads/SEO đang thiếu so với Facebook Groups',
     ],
+    competitors: [
+      `${hint} — listing đối thủ A (FB Group)`,
+      'Bài cạnh tranh Batdongsan / Chotot cùng band giá',
+      'Broker local đăng dày hơn 2–3 bài/ngày',
+    ],
+    priceTrend: 'Ổn định nhẹ tăng cuối tuần; band đỉnh ~12% trên TB.',
+    demandTrend: 'Nhu cầu hỏi mua tăng cuối tuần; lead VIP xuất hiện sau 18:00.',
+    buyerSignals: [
+      'Hỏi sổ / pháp lý',
+      'So sánh giá/m² với dự án lân cận',
+      'Xin video thực tế + hướng nhà',
+    ],
+    suggestedPositioning:
+      'Position: giá cạnh tranh −2% vs đỉnh band + video walkthrough + Threads/SEO bổ sung Facebook.',
     summary,
     createdAt: new Date().toISOString(),
   };
