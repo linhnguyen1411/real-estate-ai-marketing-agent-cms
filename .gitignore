@@ -87,4 +87,6 @@ data/browser-debug/
 *.bak
 desktop.ini
 docs/
+!docs/engineering/
+!docs/engineering/**
 /runtime/
