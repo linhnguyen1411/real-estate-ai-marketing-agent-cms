@@ -143,6 +143,21 @@ export async function learnFromLeadCorrection(input: {
   concept.source = 'learning';
   concept.updatedAt = new Date().toISOString();
   await upsertConcept(concept);
+
+  // False-negative / learning analytics
+  try {
+    const { recordFalseNegative, bumpLearningEvent } = await import('./analyticsStore');
+    await bumpLearningEvent();
+    for (const term of unknowns.slice(0, 3)) {
+      await recordFalseNegative({
+        term,
+        suggestedConcept: concept.concept,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
   return concept;
 }
 
@@ -185,6 +200,12 @@ export async function learnFromAdminRule(input: {
     concept.updatedAt = new Date().toISOString();
   }
   await upsertConcept(concept);
+  try {
+    const { bumpLearningEvent } = await import('./analyticsStore');
+    await bumpLearningEvent();
+  } catch {
+    /* ignore */
+  }
   return concept;
 }
 

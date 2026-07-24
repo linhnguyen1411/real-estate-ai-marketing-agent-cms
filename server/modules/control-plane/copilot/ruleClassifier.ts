@@ -127,7 +127,17 @@ const RULES: Rule[] = [
         t,
       ) ||
       (/knowledge|kb\b/.test(t) &&
-        /report|báo cáo|bao cao|coverage|unknown|concept|thế nào|the nao/.test(t)),
+        /report|báo cáo|bao cao|coverage|unknown|concept|thế nào|the nao/.test(t) &&
+        !/health|accuracy|dead rule|optimizer/.test(t)),
+  },
+  {
+    name: 'knowledge_health',
+    confidence: 0.98,
+    test: t =>
+      /knowledge health|sức khỏe knowledge|suc khoe knowledge|dead rules|top rule|rule accuracy|knowledge analytics|optimizer/.test(
+        t,
+      ) ||
+      (/knowledge|rule/.test(t) && /health|accuracy|dead|archive|roi/.test(t)),
   },
   {
     name: 'publisher_summary',

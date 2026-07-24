@@ -43,6 +43,7 @@ export type CopilotIntentName =
   | 'ai_status'
   | 'decision_report'
   | 'knowledge_report'
+  | 'knowledge_health'
   | 'mission_summary'
   | 'incident_summary'
   | 'machine_detail'

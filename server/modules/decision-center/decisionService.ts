@@ -76,6 +76,8 @@ export async function processFindingDecision(findingId: string): Promise<{
     where: { id: findingId },
     include: {
       scannedContent: { select: { contentText: true } },
+      source: { select: { id: true, name: true } },
+      mission: { select: { id: true, name: true } },
     },
   });
   if (!finding) {
@@ -173,6 +175,39 @@ export async function processFindingDecision(findingId: string): Promise<{
     matchedRules: result.matchedRules.map(m => m.keyword).slice(0, 8),
     at: result.at,
   });
+
+  // Knowledge Analytics — measure rule effectiveness (no AI)
+  try {
+    const { listConcepts, recordRuleDecisionEvent } = await import('../knowledge-base');
+    const concepts = await listConcepts();
+    const matchedKeywords = result.matchedRules.map(hit => {
+      const concept = concepts.find(
+        c =>
+          c.aliases.some(a => a.toLowerCase() === hit.keyword.toLowerCase()) ||
+          c.synonyms.some(a => a.toLowerCase() === hit.keyword.toLowerCase()),
+      );
+      return {
+        keyword: hit.keyword,
+        category: hit.category,
+        conceptId: concept?.id || null,
+        conceptName: concept?.concept || hit.group,
+      };
+    });
+    await recordRuleDecisionEvent({
+      matchedKeywords,
+      decision: result.decision,
+      intent: result.intent,
+      locationLabel: result.campaign?.campaignName || finding.primaryLocation,
+      sourceId: finding.sourceId || finding.source?.id || null,
+      sourceLabel: finding.source?.name || null,
+      missionId: finding.missionId || finding.mission?.id || null,
+      missionLabel: finding.mission?.name || null,
+      missionKeyword: finding.mission?.name || result.campaign?.campaignName || null,
+      hadUnknown: false,
+    });
+  } catch (err) {
+    console.warn('[decision-center] rule analytics failed:', err);
+  }
 
   return { result, allowAi: result.aiAllowed };
 }

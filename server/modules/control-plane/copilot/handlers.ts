@@ -255,6 +255,19 @@ const knowledgeReport: IntentHandler = {
   },
 };
 
+const knowledgeHealth: IntentHandler = {
+  name: 'knowledge_health',
+  supports: i => i.name === 'knowledge_health',
+  async execute({ intent }) {
+    const { buildKnowledgeAnalytics, formatKnowledgeHealthBriefing } = await import(
+      '../../knowledge-base'
+    );
+    const snap = await buildKnowledgeAnalytics();
+    const text = formatKnowledgeHealthBriefing(snap);
+    return replyOk(intent.name, text.split('\n'), { analytics: snap });
+  },
+};
+
 const missionSummary: IntentHandler = {
   name: 'mission_summary',
   supports: i => i.name === 'mission_summary',
@@ -730,7 +743,7 @@ const helpHandler: IntentHandler = {
         'AI Operations Center — hỏi tiếng Việt, không cần slash.',
         '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
         '• Scanner / Publisher / Mission / Browser / Lead',
-        '• AI Status · Decision Report · Knowledge Report',
+        '• AI Status · Decision Report · Knowledge Health',
         '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
@@ -773,6 +786,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     aiStatus,
     decisionReport,
     knowledgeReport,
+    knowledgeHealth,
     missionSummary,
     incidentSummary,
     machineDetail,

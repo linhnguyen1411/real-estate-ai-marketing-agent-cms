@@ -43,4 +43,25 @@ export {
   formatKnowledgeReport,
   getKnowledgeReportText,
 } from './knowledgeService';
+export {
+  recordRuleDecisionEvent,
+  recordRuleConversion,
+  recordFalseNegative,
+  bumpLearningEvent,
+} from './analyticsStore';
+export {
+  buildKnowledgeAnalytics,
+  formatKnowledgeHealthBriefing,
+} from './analyticsEngine';
+export type {
+  RuleRoiLabel,
+  RuleStat,
+  LocationStat,
+  SourceStat,
+  MissionStat,
+  RuleAnalyticsRow,
+  OptimizerRecommendation,
+  KnowledgeScorecard,
+  KnowledgeAnalyticsSnapshot,
+} from './analyticsTypes';
 export { registerKnowledgeBaseRoutes } from './api/knowledgeRoutes';

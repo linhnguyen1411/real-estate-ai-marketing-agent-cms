@@ -8,6 +8,14 @@ import {
   getKnowledgeReportText,
 } from '../knowledgeService';
 import {
+  buildKnowledgeAnalytics,
+  formatKnowledgeHealthBriefing,
+} from '../analyticsEngine';
+import {
+  recordFalseNegative,
+  recordRuleConversion,
+} from '../analyticsStore';
+import {
   learnFromAdminRule,
   learnFromLeadCorrection,
   proposeFromAiEnrichment,
@@ -62,6 +70,61 @@ export function registerKnowledgeBaseRoutes(app: Express): void {
       });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Report failed');
+    }
+  });
+
+  app.get('/api/knowledge/analytics', async (_req, res) => {
+    try {
+      res.json({ status: 'success', data: await buildKnowledgeAnalytics() });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Analytics failed');
+    }
+  });
+
+  app.get('/api/knowledge/health-briefing', async (_req, res) => {
+    try {
+      const snap = await buildKnowledgeAnalytics();
+      res.json({
+        status: 'success',
+        data: { text: formatKnowledgeHealthBriefing(snap), analytics: snap },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Health briefing failed');
+    }
+  });
+
+  app.post('/api/knowledge/analytics/conversion', async (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const keywords = Array.isArray(body.keywords)
+        ? body.keywords.map(String)
+        : typeof body.keyword === 'string'
+          ? [body.keyword]
+          : [];
+      await recordRuleConversion({
+        keywords,
+        locationLabel: typeof body.locationLabel === 'string' ? body.locationLabel : null,
+        sourceId: typeof body.sourceId === 'string' ? body.sourceId : null,
+        missionId: typeof body.missionId === 'string' ? body.missionId : null,
+      });
+      res.json({ status: 'success', data: { recorded: true } });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Conversion failed');
+    }
+  });
+
+  app.post('/api/knowledge/analytics/false-negative', async (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const term = String(body.term || '').trim();
+      if (!term) return sendError(res, 400, 'term required');
+      await recordFalseNegative({
+        term,
+        suggestedConcept: typeof body.suggestedConcept === 'string' ? body.suggestedConcept : undefined,
+      });
+      res.json({ status: 'success', data: { recorded: true } });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'FN failed');
     }
   });
 
