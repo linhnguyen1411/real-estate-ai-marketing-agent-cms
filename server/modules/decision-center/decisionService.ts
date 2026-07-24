@@ -31,6 +31,36 @@ export async function evaluateTextDecision(text: string): Promise<LeadDecisionRe
   const cached = await getCachedDecision(normalizedHashPreview.contentHash);
   const result = evaluateLeadDecision({ text, rules, campaignMap, cached });
   if (!result.cacheHit) await putCachedDecision(result);
+
+  // H3.6.1 — feed Knowledge (unknown terms + concept hits); never blocks decision
+  try {
+    const { observeTextForKnowledge, listConcepts, recordCoverageEvent } = await import(
+      '../knowledge-base'
+    );
+    const concepts = await listConcepts();
+    const matchedIds = new Set<string>();
+    for (const hit of result.matchedRules) {
+      const concept = concepts.find(
+        c =>
+          c.aliases.some(a => a.toLowerCase() === hit.keyword.toLowerCase()) ||
+          c.synonyms.some(a => a.toLowerCase() === hit.keyword.toLowerCase()),
+      );
+      if (concept) matchedIds.add(concept.id);
+    }
+    const observed = await observeTextForKnowledge({
+      text,
+      matchedConceptIds: [...matchedIds],
+    });
+    await recordCoverageEvent({
+      ruleMatched: result.matchedRules.length > 0,
+      aiNeeded: result.decision === 'ai_review',
+      discarded: result.decision === 'discard',
+      hadUnknown: observed.unknownTerms.length > 0,
+    });
+  } catch (err) {
+    console.warn('[decision-center] knowledge observe failed:', err);
+  }
+
   return result;
 }
 

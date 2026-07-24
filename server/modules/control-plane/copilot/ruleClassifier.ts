@@ -120,6 +120,16 @@ const RULES: Rule[] = [
         /report|báo cáo|bao cao|tóm tắt|tom tat|status|thế nào|the nao/.test(t)),
   },
   {
+    name: 'knowledge_report',
+    confidence: 0.97,
+    test: t =>
+      /knowledge report|báo cáo knowledge|bao cao knowledge|knowledge center|unknown terms|coverage knowledge|kiến thức/.test(
+        t,
+      ) ||
+      (/knowledge|kb\b/.test(t) &&
+        /report|báo cáo|bao cao|coverage|unknown|concept|thế nào|the nao/.test(t)),
+  },
+  {
     name: 'publisher_summary',
     confidence: 0.94,
     test: t =>

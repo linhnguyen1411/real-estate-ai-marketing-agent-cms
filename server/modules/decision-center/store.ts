@@ -85,11 +85,26 @@ async function saveState(state: StoredState): Promise<void> {
 }
 
 export async function listDecisionRules(): Promise<DecisionRule[]> {
+  // H3.6.1 — Rules compile from Knowledge Base (no hardcoded engine dependency)
+  try {
+    const { getCompiledDecisionRules } = await import('../knowledge-base');
+    const compiled = await getCompiledDecisionRules();
+    if (compiled.length) return compiled;
+  } catch (err) {
+    console.warn('[decision-center] KB compile failed, using stored rules:', err);
+  }
   const state = await loadState();
   return [...state.rules].sort((a, b) => a.priority - b.priority || a.keyword.localeCompare(b.keyword));
 }
 
 export async function getCampaignMap(): Promise<Array<{ keyword: string; campaignName: string }>> {
+  try {
+    const { getCompiledCampaignMap } = await import('../knowledge-base');
+    const compiled = await getCompiledCampaignMap();
+    if (compiled.length) return compiled;
+  } catch {
+    /* fall through */
+  }
   return (await loadState()).campaignMap;
 }
 
@@ -99,7 +114,19 @@ export async function upsertDecisionRule(rule: DecisionRule): Promise<DecisionRu
   if (idx >= 0) state.rules[idx] = rule;
   else state.rules.push(rule);
   await saveState(state);
-  return state.rules;
+  // Mirror into Knowledge Base
+  try {
+    const { learnFromAdminRule } = await import('../knowledge-base');
+    await learnFromAdminRule({
+      keyword: rule.keyword,
+      weight: rule.weight,
+      category: rule.category as import('../knowledge-base').KnowledgeCategory,
+      group: rule.group,
+    });
+  } catch (err) {
+    console.warn('[decision-center] KB learnFromAdminRule failed:', err);
+  }
+  return listDecisionRules();
 }
 
 export async function deleteDecisionRule(id: string): Promise<DecisionRule[]> {
@@ -117,6 +144,13 @@ export async function importDecisionRules(rules: DecisionRule[]): Promise<Decisi
 }
 
 export async function resetDecisionRulesToDefault(): Promise<DecisionRule[]> {
+  try {
+    const { resetConceptsToDefault, getCompiledDecisionRules } = await import('../knowledge-base');
+    await resetConceptsToDefault();
+    return getCompiledDecisionRules();
+  } catch (err) {
+    console.warn('[decision-center] KB reset failed:', err);
+  }
   const state = await loadState();
   state.rules = [...DEFAULT_DECISION_RULES];
   state.campaignMap = [...DEFAULT_CAMPAIGN_MAP];

@@ -218,6 +218,55 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
         degraded,
       };
 
+      // H3.6.1 — AI may only propose Knowledge synonyms (Waiting Approval)
+      try {
+        const { proposeFromAiEnrichment, observeTextForKnowledge } = await import(
+          '../modules/knowledge-base'
+        );
+        await observeTextForKnowledge({ text: `${title}\n${body}` });
+        const category =
+          actorRole === 'demand_side' ||
+          classification === 'buyer' ||
+          classification === 'renter' ||
+          classification === 'investor'
+            ? 'buyer'
+            : actorRole === 'supply_side' ||
+                classification === 'seller' ||
+                classification === 'landlord' ||
+                classification === 'broker'
+              ? 'seller'
+              : 'signal';
+        const candidates = [
+          ...(Array.isArray(analysis.reasons) ? analysis.reasons : []).map(String),
+          analysis.summary || '',
+        ]
+          .join(' ')
+          .toLowerCase()
+          .split(/[^a-zà-ỹ0-9\s]+/i)
+          .map(s => s.trim())
+          .filter(s => s.split(/\s+/).length >= 2 && s.length >= 4 && s.length <= 40)
+          .slice(0, 3);
+        for (const term of candidates) {
+          await proposeFromAiEnrichment({
+            term,
+            proposedCategory: category,
+            confidence: 0.72,
+            conceptName:
+              category === 'buyer' ? 'Buyer Intent' : category === 'seller' ? 'Seller Intent' : 'Signal',
+          });
+        }
+        if (analysis.region) {
+          await proposeFromAiEnrichment({
+            term: String(analysis.region).toLowerCase(),
+            proposedCategory: 'location',
+            confidence: 0.65,
+            conceptName: String(analysis.region),
+          });
+        }
+      } catch (err) {
+        console.warn('[finding-enrichment] knowledge propose failed:', err);
+      }
+
       await prisma.agentFinding.update({
         where: { id: findingId },
         data: {
