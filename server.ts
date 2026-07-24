@@ -34,7 +34,8 @@ import {
   generateAILiveChatReply, 
   generateAIConsultantReply,
   generateText,
-  getAIProviderStatus
+  getAIProviderStatus,
+  getAiStatusBriefingText,
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 import type { AgentTier } from './src/utils/agentTier';
@@ -80,6 +81,7 @@ import { registerPlanningRoutes } from './server/modules/planning';
 import { registerLeadAcquisitionRoutes } from './server/modules/lead-acquisition';
 import { registerSalesLayerRoutes } from './server/modules/sales-layer';
 import { registerMarketingOrgRoutes } from './server/modules/marketing-org';
+import { registerAiGatewayRoutes } from './server/modules/ai-gateway';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1390,6 +1392,7 @@ if (AGENT_ENABLED) {
   registerLeadAcquisitionRoutes(app);
   registerSalesLayerRoutes(app);
   registerMarketingOrgRoutes(app);
+  registerAiGatewayRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
@@ -2484,7 +2487,9 @@ app.post('/api/inbox/:id/reply', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/ai/status', async (req: Request, res: Response) => {
   try {
-    res.json({ status: 'success', data: await getAIProviderStatus() });
+    const providers = await getAIProviderStatus();
+    const briefing = await getAiStatusBriefingText();
+    res.json({ status: 'success', data: providers, briefing });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }

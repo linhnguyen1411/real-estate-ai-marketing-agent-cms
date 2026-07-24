@@ -1,15 +1,29 @@
-import { GoogleGenAI } from "@google/genai";
 import { AppSettings } from "../src/types";
 import { getSettings as getSettingsFromDB } from "./dbHelper";
+import {
+  formatAiStatusBriefing,
+  gatewayChat,
+  getGatewayHealth,
+  type GatewayProviderId,
+  type LegacyProviderName,
+} from "./modules/ai-gateway";
 
-type ProviderName = "ollama" | "openai" | "gemini";
+type ProviderName = LegacyProviderName;
 
 interface AIProviderStatus {
-  provider: ProviderName;
+  provider: ProviderName | GatewayProviderId | string;
   ok: boolean;
   model?: string;
   endpoint?: string;
   message: string;
+  /** H3.6 gateway fields */
+  id?: string;
+  label?: string;
+  status?: string;
+  quotaPercent?: number | null;
+  latencyMs?: number | null;
+  callsToday?: number;
+  successRate?: number;
 }
 
 export interface GenerationOptions {
@@ -47,10 +61,6 @@ async function getAppSettings(): Promise<AppSettings> {
   }
 }
 
-function normalizeEndpoint(endpoint: string) {
-  return endpoint.replace(/\/+$/, "");
-}
-
 function buildSystemInstruction(systemInstruction: string, options: GenerationOptions = {}) {
   if (options.promptContext === 'editorial') {
     return [
@@ -69,12 +79,6 @@ function buildSystemInstruction(systemInstruction: string, options: GenerationOp
     "",
     systemInstruction
   ].join("\n");
-}
-
-function withTimeout(ms: number) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  return { signal: controller.signal, cancel: () => clearTimeout(timeout) };
 }
 
 function stripThinking(text: string) {
@@ -157,208 +161,58 @@ export function appendStandardHashtags(content: string, hashtags: string[]) {
   return missingHashtags.length ? `${content.trim()}\n\n${missingHashtags.join(' ')}` : content.trim();
 }
 
-async function callOllama(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
-  const settings = await getAppSettings();
-  const endpoint = `${normalizeEndpoint(settings.ollama_endpoint)}/api/chat`;
-  const timeout = withTimeout(options.timeoutMs || Number(process.env.OLLAMA_TIMEOUT_MS || 45000));
-
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      signal: timeout.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: settings.ollama_model,
-        think: false,
-        messages: [
-          { role: "system", content: buildSystemInstruction(systemInstruction, options) },
-          { role: "user", content: prompt }
-        ],
-        stream: false,
-        options: {
-          temperature: options.temperature ?? 0.2,
-          num_ctx: 8192,
-          num_predict: options.maxOutputTokens || 700
-        }
-      })
-    });
-  } finally {
-    timeout.cancel();
-  }
-
-  if (!response.ok) {
-    throw new Error(`Ollama HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const json = await response.json();
-  const content = json.message?.content || json.response;
-  if (!content) throw new Error("Ollama không trả về nội dung.");
-  return stripThinking(content);
-}
-
-async function callOpenAI(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY chưa được cấu hình.");
-  }
-
-  const settings = await getAppSettings();
-  const timeout = withTimeout(options.timeoutMs || Number(process.env.OPENAI_TIMEOUT_MS || 60000));
-  let response: Response;
-
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      signal: timeout.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: settings.openai_model || process.env.OPENAI_MODEL || "gpt-5-mini",
-        input: [
-          { role: "system", content: buildSystemInstruction(systemInstruction, options) },
-          { role: "user", content: prompt }
-        ]
-      })
-    });
-  } finally {
-    timeout.cancel();
-  }
-
-  const json = await response.json();
-  if (!response.ok) {
-    throw new Error(json.error?.message || `OpenAI HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  if (json.output_text) return stripThinking(json.output_text);
-
-  const outputText = json.output
-    ?.flatMap((item: any) => item.content || [])
-    ?.map((content: any) => content.text)
-    ?.filter(Boolean)
-    ?.join("\n")
-    ?.trim();
-
-  if (!outputText) throw new Error("OpenAI không trả về nội dung text.");
-  return stripThinking(outputText);
-}
-
-function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: { "User-Agent": "aistudio-build" }
-    }
-  });
-}
-
-async function callGemini(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
-  const ai = getGeminiClient();
-  if (!ai) {
-    throw new Error("GEMINI_API_KEY chưa được cấu hình.");
-  }
-
-  const response = await ai.models.generateContent({
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      systemInstruction: buildSystemInstruction(systemInstruction, options),
-      temperature: options.temperature ?? 0.2,
-      maxOutputTokens: options.maxOutputTokens
-    }
-  });
-
-  return stripThinking(response.text || "");
-}
-
 function providerOrder(mode: AppSettings["ai_mode"]): ProviderName[] {
+  // H3.6 default cascade: Gemini primary → Kira → Local
   if (mode === "ollama") return ["ollama", "openai", "gemini"];
   if (mode === "openai") return ["openai", "ollama", "gemini"];
   if (mode === "gemini") return ["gemini", "openai", "ollama"];
-  return ["ollama", "openai", "gemini"];
-}
-
-async function callProvider(provider: ProviderName, systemInstruction: string, prompt: string, options: GenerationOptions = {}) {
-  if (provider === "ollama") return callOllama(systemInstruction, prompt, options);
-  if (provider === "openai") return callOpenAI(systemInstruction, prompt, options);
-  return callGemini(systemInstruction, prompt, options);
+  return ["gemini", "openai", "ollama"];
 }
 
 export async function generateText(systemInstruction: string, prompt: string, options: GenerationOptions = {}): Promise<string> {
   const settings = await getAppSettings();
-  const errors: string[] = [];
-  const order =
+  const preferred =
     options.preferredProviders?.length
       ? options.preferredProviders
       : providerOrder(settings.ai_mode);
 
-  for (const provider of order) {
-    try {
-      const result = await callProvider(provider, systemInstruction, prompt, options);
-      if (result.trim()) return result;
-      errors.push(`${provider}: empty response`);
-    } catch (error: any) {
-      errors.push(`${provider}: ${error.message || error}`);
-      console.warn(`[AI fallback] ${provider} failed:`, error.message || error);
-    }
-  }
-
-  throw new Error(`Không gọi được AI provider nào. ${errors.join(" | ")}`);
+  // H3.6 — all AI chat goes through AI Gateway (Gemini → Kira → Local → Rule)
+  const result = await gatewayChat(
+    buildSystemInstruction(systemInstruction, options),
+    prompt,
+    {
+      temperature: options.temperature,
+      maxOutputTokens: options.maxOutputTokens,
+      timeoutMs: options.timeoutMs,
+      preferredProviders: preferred,
+      // Business callers expect throw when no live model (they have their own fallbacks)
+      allowRuleFallback: false,
+    },
+  );
+  return result.text;
 }
 
 export async function getAIProviderStatus(): Promise<AIProviderStatus[]> {
-  const settings = await getAppSettings();
-  const statuses: AIProviderStatus[] = [];
+  const health = await getGatewayHealth();
+  return health.map(h => ({
+    provider: h.id === 'kira' ? 'openai' : h.id === 'local' ? 'ollama' : h.id,
+    id: h.id,
+    label: h.label,
+    ok: h.online && h.status !== 'down' && h.status !== 'unconfigured',
+    model: h.model,
+    endpoint: h.endpoint || undefined,
+    message: h.message,
+    status: h.status,
+    quotaPercent: h.quotaPercent,
+    latencyMs: h.latencyMs,
+    callsToday: h.callsToday,
+    successRate: h.successRate,
+  }));
+}
 
-  try {
-    const response = await fetch(`${normalizeEndpoint(settings.ollama_endpoint)}/api/tags`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const json = await response.json();
-    const models = json.models || [];
-    const hasConfiguredModel = models.some((model: any) => model.name === settings.ollama_model || model.model === settings.ollama_model);
-    statuses.push({
-      provider: "ollama",
-      ok: hasConfiguredModel,
-      model: settings.ollama_model,
-      endpoint: settings.ollama_endpoint,
-      message: hasConfiguredModel
-        ? `Ollama local sẵn sàng với model ${settings.ollama_model}.`
-        : `Ollama đang chạy nhưng chưa thấy model ${settings.ollama_model}. Models hiện có: ${models.map((model: any) => model.name || model.model).join(", ") || "none"}.`
-    });
-  } catch (error: any) {
-    statuses.push({
-      provider: "ollama",
-      ok: false,
-      model: settings.ollama_model,
-      endpoint: settings.ollama_endpoint,
-      message: `Không kết nối được Ollama: ${error.message || error}`
-    });
-  }
-
-  statuses.push({
-    provider: "openai",
-    ok: Boolean(process.env.OPENAI_API_KEY),
-    model: settings.openai_model || process.env.OPENAI_MODEL || "gpt-5-mini",
-    message: process.env.OPENAI_API_KEY
-      ? "OpenAI/ChatGPT fallback đã cấu hình OPENAI_API_KEY."
-      : "Thiếu OPENAI_API_KEY; fallback ChatGPT chưa sẵn sàng."
-  });
-
-  statuses.push({
-    provider: "gemini",
-    ok: Boolean(process.env.GEMINI_API_KEY),
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-    message: process.env.GEMINI_API_KEY
-      ? "Gemini fallback đã cấu hình GEMINI_API_KEY."
-      : "Thiếu GEMINI_API_KEY."
-  });
-
-  return statuses;
+/** Telegram / admin briefing helper */
+export async function getAiStatusBriefingText(): Promise<string> {
+  return formatAiStatusBriefing(await getGatewayHealth());
 }
 
 function jsonOnlyInstruction() {

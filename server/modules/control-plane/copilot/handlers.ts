@@ -222,6 +222,17 @@ const marketingOrgSummary: IntentHandler = {
   },
 };
 
+const aiStatus: IntentHandler = {
+  name: 'ai_status',
+  supports: i => i.name === 'ai_status',
+  async execute({ intent }) {
+    const { getAiStatusBriefingText, getAIProviderStatus } = await import('../../../aiService');
+    const text = await getAiStatusBriefingText();
+    const providers = await getAIProviderStatus();
+    return replyOk(intent.name, text.split('\n'), { providers });
+  },
+};
+
 const missionSummary: IntentHandler = {
   name: 'mission_summary',
   supports: i => i.name === 'mission_summary',
@@ -697,6 +708,7 @@ const helpHandler: IntentHandler = {
         'AI Operations Center — hỏi tiếng Việt, không cần slash.',
         '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
         '• Scanner / Publisher / Mission / Browser / Lead',
+        '• AI Status · Hôm nay Marketing thế nào?',
         '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
@@ -736,6 +748,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     scannerSummary,
     publisherSummary,
     marketingOrgSummary,
+    aiStatus,
     missionSummary,
     incidentSummary,
     machineDetail,

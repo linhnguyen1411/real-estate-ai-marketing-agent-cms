@@ -100,6 +100,16 @@ const RULES: Rule[] = [
       (/marketing/.test(t) && /sao|thế nào|the nao|hôm nay|hom nay|tóm tắt|tom tat|health/.test(t)),
   },
   {
+    name: 'ai_status',
+    confidence: 0.97,
+    test: t =>
+      /^ai status$|ai status\?$|tình hình ai|tinh hinh ai|ai thế nào|ai the nao|provider ai|ai provider|quota gemini|gemini quota/.test(
+        t,
+      ) ||
+      (/^ai\b|\bai\b/.test(t) &&
+        /status|healthy|quota|latency|provider|gateway|kira|gemini|ollama|local llm/.test(t)),
+  },
+  {
     name: 'publisher_summary',
     confidence: 0.94,
     test: t =>
