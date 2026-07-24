@@ -22,6 +22,8 @@ Thumbs.db
 *.swp
 *.swo
 .cursor/
+!.cursor/rules/
+!.cursor/rules/engineering-constitution.mdc
 
 # Logs
 *.log
