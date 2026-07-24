@@ -1,0 +1,30 @@
+---
+description: Architecture First — audit and design before any code
+alwaysApply: true
+---
+
+# Architecture First
+
+Do **not** jump to code.
+
+Mandatory flow:
+
+```text
+Audit → Reuse → Design → Implement
+```
+
+Before coding, answer:
+
+1. Which module owns this?  
+2. Which Bounded Context / Workspace?  
+3. Does an existing module already do it?  
+4. Can we reuse?  
+5. Separation of Concerns OK?  
+6. Circular dependency risk?  
+7. Clean Architecture OK?  
+
+**No duplicate modules:** do not create `xxxV2` / `xxxNew` / `xxxHelper` / `xxxUtils` without proving no owner exists.
+
+Large decisions → `docs/adr/`.
+
+Full law: `docs/engineering/ENGINEERING_CONSTITUTION.md` (§ Architecture First).

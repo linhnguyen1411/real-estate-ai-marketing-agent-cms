@@ -1,0 +1,26 @@
+---
+description: Protected Runtime boundary — do not touch without authorization
+alwaysApply: true
+---
+
+# Runtime Boundary
+
+Protected Modules — do **not** modify unless the mission explicitly requires it:
+
+- Runtime  
+- Fleet  
+- Queue  
+- Browser  
+- Scheduler  
+- Publisher Runtime  
+- Scanner Runtime  
+
+Prefer **read + compose**.
+
+If you must change Protected code:
+
+1. Confirm mission authority  
+2. Document **Runtime Impact** (what / why / risk / rollback)  
+3. List it in Impact Analysis (Affected), not only in Not Affected  
+
+Full law: `docs/engineering/ENGINEERING_CONSTITUTION.md` (§ Runtime Boundary).

@@ -1,19 +1,23 @@
 ---
-description: Read Engineering Constitution before any feature work
+description: Read Engineering Constitution v2 before any feature work
 alwaysApply: true
 ---
 
-# Engineering Constitution (mandatory)
+# Engineering Constitution v2 (mandatory)
 
-Before implementing any development / feature / refactor / hotfix prompt in this repo:
+Before implementing any development / feature / bugfix / refactor prompt:
 
-1. Read `docs/engineering/ENGINEERING_CONSTITUTION.md`
-2. Respect Protected Modules (Runtime, Fleet, Queue, Browser, Publisher, Scheduler, Scanner Runtime) unless the mission explicitly authorizes changes
-3. Follow Audit → Design → Implement → Test → Cleanup → Report → Deploy → Smoke
-4. If the user prompt conflicts with the Constitution, **warn first** and propose a compliant approach
+## Prompt Contract
 
-Also see:
+1. Read `docs/engineering/ENGINEERING_CONSTITUTION.md`  
+2. Read `docs/engineering/PROJECT_STRUCTURE.md`  
+3. Read relevant `docs/adr/*`  
+4. Honor Runtime Boundary (Protected Modules)  
+5. Produce Impact Analysis (Affected / Not Affected)  
+6. Declare Business Goal  
 
-- `docs/engineering/PROJECT_STRUCTURE.md`
-- `docs/engineering/CODE_REVIEW_CHECKLIST.md`
-- `docs/engineering/RELEASE_PROCESS.md`
+Then follow: Audit → Architecture → Impact → Implement → Tests → Cleanup → Report → Deploy → Smoke.
+
+If the user prompt conflicts with the Constitution → **warn first**.
+
+Also enforced by: `product-philosophy.mdc`, `runtime-boundary.mdc`, `architecture-first.mdc`, `impact-analysis.mdc`.

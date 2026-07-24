@@ -1,0 +1,28 @@
+---
+description: Require Impact Analysis before implementing changes
+alwaysApply: true
+---
+
+# Impact Analysis
+
+Before writing code for a feature, bugfix, or refactor, produce:
+
+## Affected Modules
+
+Modules / workspaces that will change or couple tightly.
+
+## Not Affected Modules
+
+Including Protected ones that stay untouched, e.g.:
+
+- Runtime  
+- Fleet  
+- Browser  
+- Queue  
+- Scheduler  
+
+This table is mandatory in the Release Report.
+
+If Protected code is in Affected → add **Runtime Impact**.
+
+Full law: `docs/engineering/ENGINEERING_CONSTITUTION.md` (§ Impact Analysis).

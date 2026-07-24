@@ -1,24 +1,43 @@
 # Project Structure
 
 Canonical layout for `real-estate-ai-marketing-agent-cms`.  
-Companion to [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md).
+Companion to [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
 
 ---
 
 ## Top level
 
 ```text
-server.ts                 # HTTP bootstrap (register routes; keep thin)
-server/                   # Backend Node/TS — APIs, workers, modules
-src/                      # Frontend React (CMS Admin + Agent Platform)
+server.ts                 # HTTP bootstrap (keep thin)
+server/                   # Backend — APIs, workers, modules
+src/                      # Frontend React (CMS shell + Agent Platform)
 prisma/                   # Schema + migrations
-shared/                   # Cross-cutting types/helpers shared by server+src
-scripts/                  # Ops/dev scripts (must not become hidden product logic)
-runtime/                  # Local runtime artifacts / profiles (do not commit junk)
-data/                     # Local data dumps (gitignored as appropriate)
-docs/engineering/         # This constitution set
+shared/                   # Shared types/helpers
+scripts/                  # Ops/dev scripts (delete probes after use)
+runtime/                  # Local runtime artifacts (do not commit junk)
+docs/engineering/         # Constitution set
+docs/adr/                 # Architecture Decision Records
 public/                   # Static assets
 ```
+
+---
+
+## Workspaces (product contexts)
+
+These are **Bounded Contexts** for Architecture First. UI hubs and modules map into them.
+
+| Workspace | Responsibility | Primary modules / UI | Not responsible for |
+|-----------|----------------|----------------------|---------------------|
+| **Campaign Workspace** | Living campaigns: plan → research → mission → content → approval → optimize | `planning/`, Campaign Center, execution-trace | Fleet, Browser lease |
+| **Lead Workspace** | Detect / decide / qualify buyers & candidates | `lead-acquisition/`, `decision-center/`, Lead hub | Publisher click path |
+| **Sales Workspace** | Journey, pipeline value, expected revenue, follow-up | `sales-layer/`, Lead Center (sales views) | Scanner execution |
+| **Knowledge Workspace** | Concepts, rules, learning, feedback, coverage | `knowledge-base/`, Knowledge hub | Runtime ops |
+| **Publishing Workspace** | Drafts, schedule, channels, publish jobs | `social-publishing/` (+ Admin publishing pages) | Campaign planning logic |
+| **Executive** | CEO command center: summary, KPIs, insights, actions | `executive-dashboard/`, `/admin/dashboard`, Executive hub | CPU/RAM/queue dumps |
+| **Operations** | Operator surfaces over fleet/jobs/sessions/reports | Ops hub → Runtime Monitor, Jobs, Sessions | Fake business KPIs |
+| **Runtime** | Execution substrate: workers, fleet, queue, browser, scheduler | `agent-worker/`, control-plane fleet/runtime, scheduler | Product philosophy / CRM |
+
+**Rule:** Campaign is the center of AI Sales Employee work. Runtime exists to execute — not to define business goals.
 
 ---
 
@@ -28,43 +47,42 @@ public/                   # Static assets
 
 | Path | Responsibility |
 |------|----------------|
-| `server.ts` | Express app wiring, auth shell, route registration |
+| `server.ts` | Express wiring, auth, route registration |
 | `server/prisma.ts` | Prisma client |
-| `server/agent/` | Agent admin DB helpers, scheduler tick (Protected when changing job cores) |
-| `server/agent-worker/` | Local/remote worker execution (Protected Runtime) |
+| `server/agent/` | Agent admin DB helpers, scheduler tick (**Protected** when changing job cores) |
+| `server/agent-worker/` | Worker execution (**Protected Runtime**) |
 | `server/automation-agent/` | Automation agent process |
-| `server/agentIngest/` | Ingest credentials / remote agent ingest |
+| `server/agentIngest/` | Remote ingest |
 
 ### Product modules (`server/modules/`)
 
-Each module exposes a public façade via `index.ts`. Prefer importing from the façade.
+Public API via `index.ts`. No deep cross-imports.
 
-| Module | Owns | Must not become |
-|--------|------|-----------------|
-| `planning/` | AI Sales Employee, Campaign Runtime (living campaigns), planners, Telegram cards | Publisher/Scanner executor |
-| `execution-trace/` | Telegram→Campaign execution traces + analytics | Runtime debugger |
-| `executive-dashboard/` | Executive snapshot + main Dashboard KPIs (compose-only) | Ops fleet UI |
-| `control-plane/` | Telegram console, Copilot, command-engine, ops metrics, fleet views | Business lead rules |
-| `social-publishing/` | Drafts, channels, publish jobs, browser publishers (Protected publish cores) | CRM |
-| `mission-engine/` | Mission workflow steps / registry | CMS pages |
-| `lead-acquisition/` | Buyer intent / acquisition profiles | Browser lease |
-| `sales-layer/` | Pipeline, journey, expected revenue metrics | Queue cores |
-| `decision-center/` | Rule-first lead decisions + metrics | AI gateway internals |
-| `knowledge-base/` | Concepts, learning, feedback, analytics | Runtime |
-| `ai-gateway/` | Multi-provider AI routing | Prompt dump in UI |
-| `marketing-org/` | Content packs, calendar, marketing health | Publisher click path |
-| `automation-engine/` | Automation workflows | — |
-| `link-normalization/` | URL normalize/verify | — |
+| Module | Owns | Workspace |
+|--------|------|-----------|
+| `planning/` | AI Sales Employee, living campaigns, planners | Campaign |
+| `execution-trace/` | Telegram→Campaign traces + analytics | Campaign / Executive |
+| `executive-dashboard/` | Executive snapshot + main Dashboard KPIs | Executive |
+| `control-plane/` | Telegram, Copilot, commands, ops metrics, fleet views | Operations / Runtime (fleet protected) |
+| `social-publishing/` | Drafts, channels, publish jobs, publishers | Publishing (**Publisher Runtime protected**) |
+| `mission-engine/` | Mission workflow steps | Runtime-adjacent / Scanner paths protected |
+| `lead-acquisition/` | Buyer acquisition profiles | Lead |
+| `sales-layer/` | Pipeline / journey / revenue metrics | Sales |
+| `decision-center/` | Rule-first decisions | Lead |
+| `knowledge-base/` | Concepts, learning, feedback | Knowledge |
+| `ai-gateway/` | Multi-provider AI routing | Cross-cutting capability |
+| `marketing-org/` | Content packs, calendar, marketing health | Campaign / Publishing advisory |
+| `automation-engine/` | Automation workflows | Automation |
+| `link-normalization/` | URL normalize/verify | Shared |
 
-### Control-plane sub-areas (sensitive)
+### Control-plane sensitive subpaths
 
 | Subpath | Notes |
 |---------|-------|
-| `control-plane/fleet/` | Protected Fleet |
-| `control-plane/fleet-orchestrator/` | Placement / drain policies — Protected |
-| `control-plane/telegram/` | Transport only; business in handlers/planning |
-| `control-plane/copilot/` | Intent classification + handlers |
-| `control-plane/command-engine/` | Slash commands (`/dashboard`, `/trace`, `/ops`, …) |
+| `fleet/`, `fleet-orchestrator/` | **Protected Fleet** |
+| `telegram/` | Transport; business in handlers/planning |
+| `copilot/` | Intent → façades |
+| `command-engine/` | Slash commands |
 
 ---
 
@@ -72,23 +90,22 @@ Each module exposes a public façade via `index.ts`. Prefer importing from the f
 
 | Path | Responsibility |
 |------|----------------|
-| `src/App.tsx` | Core CMS shell (login, tabs, Executive Dashboard host) |
-| `src/pages/AgentPlatformPage.tsx` | Agent hubs: Executive / Marketing / Lead / Sales / Operations / Knowledge |
-| `src/features/agent/*` | Agent feature pages (Campaign Center, Knowledge, Runtime Monitor, …) |
-| `src/features/dashboard/` | Main `/admin/dashboard` Executive Command Center UI |
-| `src/services/api.ts` | CMS API client + Dashboard types |
-| `src/components/agent/` | Legacy/shared agent widgets (prefer features/ going forward) |
+| `src/App.tsx` | CMS shell + Executive Dashboard host |
+| `src/pages/AgentPlatformPage.tsx` | Hubs: Executive · Marketing · Lead · Sales · Operations · Knowledge |
+| `src/features/agent/*` | Agent feature pages |
+| `src/features/dashboard/` | `/admin/dashboard` Command Center |
+| `src/services/api.ts` | CMS API client |
 
-### Admin navigation intent
+### Hub → Workspace mapping
 
-| Hub | Business purpose | Not for |
-|-----|------------------|---------|
-| **Executive** (`/admin/agents`, `/admin/dashboard`) | CEO: AI status, buyers, pipeline, recommendations | CPU/RAM dumps |
-| **Marketing** | Campaign, publishing, calendar/ROI | Fleet |
-| **Lead** | Decision, candidates, scanned | Browser leases |
-| **Sales** | Pipeline / journey / revenue | Queue internals |
-| **Operations** | Runtime / Fleet / Jobs / Sessions | Fake business KPIs |
-| **Knowledge** | Concepts, analytics, feedback | Publisher |
+| Hub | Workspace focus |
+|-----|-----------------|
+| Executive | Executive |
+| Marketing | Campaign + Publishing |
+| Lead | Lead |
+| Sales | Sales |
+| Operations | Operations / Runtime views |
+| Knowledge | Knowledge |
 
 ---
 
@@ -101,34 +118,27 @@ Module public API (index.ts)
         ↓
 Module services / stores
         ↓
-Prisma / AppSetting / external ports
+Prisma / AppSetting / ports
 ```
 
-**Forbidden**
+**Forbidden:** UI→worker internals; Planning→Publisher click impl; Executive mutate Fleet; circular façades.
 
-- Feature UI importing worker internals
-- Planning importing Publisher click implementations
-- Executive compose layer mutating Fleet state
-- Circular module imports without a façade
-
-**Allowed**
-
-- Compose modules reading metrics from sales / decision / knowledge / ops **snapshots**
-- Copilot calling `runSalesEmployee` / planning façades
-- Trace module recording summaries (no full prompts)
+**Allowed:** Compose-read metrics; Copilot→`runSalesEmployee`; Trace summaries (no full prompts).
 
 ---
 
 ## Where new code goes
 
-| If you are building… | Put it in… |
-|----------------------|------------|
-| New business capability | `server/modules/<name>/` + Admin feature page |
-| Telegram slash command | `control-plane/command-engine/` (+ optional Copilot intent) |
-| CEO dashboard metric | `executive-dashboard/` compose + `src/features/dashboard/` |
-| Campaign AI lifecycle | `planning/` (not Runtime) |
-| Publish to social | `social-publishing/` (Protected — mission must allow) |
-| One-off probe | `scripts/` then **delete** after cleanup |
+| Building… | Put in… |
+|-----------|---------|
+| Campaign AI lifecycle | `planning/` (Campaign Workspace) |
+| Buyer qualification | `decision-center/` / `lead-acquisition/` |
+| Pipeline/revenue | `sales-layer/` |
+| Knowledge/learning | `knowledge-base/` |
+| CEO KPIs | `executive-dashboard/` + dashboard UI |
+| Publish execute | `social-publishing/` (mission must allow) |
+| Large design choice | `docs/adr/ADR-xxx-….md` |
+| Probe | `scripts/` then delete |
 
 ---
 
@@ -136,10 +146,10 @@ Prisma / AppSetting / external ports
 
 | Store | Use |
 |-------|-----|
-| PostgreSQL via Prisma | Entities: jobs, findings, campaigns, drafts, publish jobs |
-| `AppSetting` JSON keys | Module state (knowledge, decision metrics, traces, …) |
-| `runtime/` local profiles | Dev browser/CDP artifacts — keep out of git commits |
+| PostgreSQL / Prisma | Entities |
+| AppSetting JSON | Module state (knowledge, decision, traces, …) |
+| `runtime/` | Dev artifacts — keep out of git |
 
 ---
 
-*Keep this file aligned with the repo. When modules are added/renamed, update this map in the same PR.*
+*Update this map in the same PR when modules/workspaces change.*

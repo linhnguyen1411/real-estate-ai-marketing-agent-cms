@@ -1,10 +1,12 @@
 # Engineering Constitution
 
-> **Project root law.** Every feature, hotfix, and agent prompt MUST read this document before writing code.  
-> If a prompt conflicts with this Constitution, **warn first** — do not proceed silently.
+> **Highest source of truth (SSOT) for this repository.**  
+> Every development prompt, feature, bugfix, and refactor **MUST** read this document **before writing code**.  
+> If a prompt conflicts with this Constitution, the agent **MUST warn first** — never proceed silently.
 
-**Version:** 1.0.0  
+**Version:** 2.0.0  
 **Effective:** 2026-07-24  
+**Supersedes:** 1.0.0  
 **Scope:** Entire repository (`real-estate-ai-marketing-agent-cms`)
 
 Related:
@@ -12,6 +14,62 @@ Related:
 - [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)
 - [CODE_REVIEW_CHECKLIST.md](./CODE_REVIEW_CHECKLIST.md)
 - [RELEASE_PROCESS.md](./RELEASE_PROCESS.md)
+- [ADR index](../adr/README.md)
+
+---
+
+## Prompt Contract (mandatory gate)
+
+Before any code change, the agent must complete:
+
+| Step | Artifact |
+|------|----------|
+| Read Constitution | this file ✓ |
+| Read Project Structure | `PROJECT_STRUCTURE.md` ✓ |
+| Read relevant ADRs | `docs/adr/` ✓ |
+| Read Runtime Boundary | §3 + `runtime-boundary.mdc` ✓ |
+| Impact Analysis | Affected / Not Affected table ✓ |
+| Business Goal | Lead / Sales / Campaign / Knowledge / Publishing / Automation ✓ |
+
+**If any row cannot be answered → do not code.**
+
+---
+
+## 0. Product Philosophy
+
+### Project Vision
+
+We are building an **AI Sales Employee** — an autonomous marketing & sales operator for real estate.
+
+We are **not** primarily building:
+
+- a generic CMS
+- a generic CRM
+- a Facebook bot toy
+
+Those UIs may exist as **shells**. The product is the employee.
+
+### Capability map (not the center)
+
+| Capability | Role |
+|------------|------|
+| Scanner | Find market signals / posts |
+| Publisher | Distribute content |
+| Knowledge | Rules & learning memory |
+| Decision | Qualify / discard / route |
+| Campaign | **Center of gravity** — living go-to-market work |
+| Sales | Journey, pipeline, revenue |
+
+### North-star metrics
+
+| Priority | Metric |
+|----------|--------|
+| 1 | **Buyer** (qualified demand) |
+| 2 | **Campaign** effectiveness |
+| 3 | **Revenue** (expected → won) |
+| 4 | **Automation** rate (work done without human ops friction) |
+
+Every feature must serve at least one Business Goal (§ Business Goal). If it does not, it should not ship.
 
 ---
 
@@ -19,304 +77,353 @@ Related:
 
 Mandatory. Non-negotiable.
 
-| Principle | Meaning in this project |
-|-----------|-------------------------|
-| **DRY** | One business rule lives in one module. No duplicate lead scoring, publish safety, or campaign planning logic. |
-| **KISS** | Prefer the simplest design that meets the stated mission. |
-| **YAGNI** | Do not build Runtime/Scanner/Publisher “extras” when the mission is Dashboard, Trace, or Knowledge. |
-| **SOLID** | Small, focused services; open for extension via composition; depend on module facades (`index.ts`), not internals. |
-| **Composition over Inheritance** | Compose planners / ports / handlers. Avoid deep class hierarchies. |
-| **Single Source of Truth** | Metrics, campaign state, and ops snapshots have one authoritative reader. Do not invent parallel stores “for convenience”. |
-| **Separation of Concerns** | Executive UI ≠ Runtime ops. Planning ≠ Publisher Core. Telegram formatting ≠ business rules. |
-| **Clean Architecture** | `types` → `store/service` → `api` → UI/Telegram adapters. Inward dependencies only. |
+| Principle | Meaning |
+|-----------|---------|
+| **DRY** | One business rule in one module. No duplicate scoring, safety, or planning. |
+| **KISS** | Simplest design that meets the mission. |
+| **YAGNI** | No speculative Runtime / Scanner / Publisher extras. |
+| **SOLID** | Focused services; extend via composition; depend on façades. |
+| **Composition over Inheritance** | Compose planners / ports / handlers. |
+| **Single Source of Truth** | One authoritative reader for each metric/state. |
+| **Separation of Concerns** | Executive ≠ Operations. Planning ≠ Publisher Core. |
+| **Clean Architecture** | `types` → `store/service` → `api` → adapters. Inward only. |
+| **Architecture First** | Design answers before code (§ Architecture First). |
+| **No Duplicate Module** | Reuse existing modules; no `V2`/`New`/`Helper` without audit. |
 
-**Forbidden patterns**
+**Forbidden**
 
-- Duplicate business logic across Admin / Telegram / Worker
-- Copy-paste of large blocks “just for this feature”
-- God Services (`*Service.ts` that owns half the product)
-- Giant `utils.ts` dumping grounds
-- Hardcoded secrets, env-specific hosts, magic numbers without named constants
-- Silent catch-and-ignore of business failures
+- Duplicate business logic across Admin / Telegram / Worker  
+- God Services / giant utils  
+- Hardcoded secrets / magic numbers without names  
+- Silent catch-and-ignore  
+- `xxxV2`, `xxxNew`, `xxxHelper`, `xxxUtils` created without proving no existing owner  
 
 ---
 
-## 2. Project Structure
+## 2. Architecture First
 
-See [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) for the canonical map.
+**Before code**, answer all of the following. Incomplete answers → **stop**.
 
-**Rules**
+1. Which **module** owns this feature?  
+2. Which **Bounded Context** is it in? (Campaign / Lead / Sales / Knowledge / Publishing / Operations / Executive / Runtime)  
+3. Does an existing module already do this?  
+4. Can we **reuse** it (compose/extend) instead of inventing?  
+5. Does the design break **Separation of Concerns**?  
+6. Does it create a **circular dependency**?  
+7. Does it violate **Clean Architecture** (UI/Telegram owning business rules, etc.)?  
 
-- New product capability → new or existing **module** under `server/modules/<name>/` with `index.ts` public API.
-- Admin surfaces → `src/features/agent/<feature>/` (or CMS pages under `src/` when core CRM).
-- Do **not** create cross-module deep imports (`../other-module/internalFile`). Import from the module `index.ts`.
-- Do **not** put business rules in `server.ts`, Telegram routers, or React pages.
+Output a short Architecture block in the chat/report before implementation.
+
+### No Duplicate Module
+
+Mandatory search before creating files:
+
+- Campaign Planner / Planning  
+- Knowledge  
+- Decision  
+- Lead Acquisition / Lead Center  
+- Sales Layer  
+- Publisher / Social Publishing  
+- Scanner / Mission Engine  
+- Executive Dashboard / Execution Trace  
+
+If found → **reuse**. Creating parallel modules requires an ADR.
+
+### Architecture Decision Records
+
+Large decisions live in `docs/adr/`:
+
+| ADR | Topic |
+|-----|--------|
+| [ADR-001](../adr/ADR-001-stateless-execution.md) | Stateless Execution |
+| [ADR-002](../adr/ADR-002-browser-lease.md) | Browser Lease |
+| [ADR-003](../adr/ADR-003-decision-engine.md) | Decision Engine |
+| [ADR-004](../adr/ADR-004-knowledge-center.md) | Knowledge Center |
+| [ADR-005](../adr/ADR-005-campaign-workspace.md) | Campaign Workspace |
+
+Format: Problem · Alternatives · Decision · Consequences.
+
+New structural choices → new ADR in the same PR when possible.
 
 ---
 
 ## 3. Runtime Boundary (Protected Modules)
 
-The following are **Protected Modules**. Feature work **MUST NOT** modify them unless the mission explicitly authorizes it:
+These are **Protected**. Unrelated features **MUST NOT** modify them.
 
-| Area | Typical paths |
-|------|----------------|
-| **Runtime** | `server/agent-worker/`, `server/modules/control-plane/runtime*`, automation runtime snapshots |
-| **Fleet** | `server/modules/control-plane/fleet/`, `fleet-orchestrator/` |
-| **Queue / Jobs core** | Agent job claim/execute cores, outbox workers (unless mission is Queue) |
-| **Browser** | Browser lease/session ownership, CDP publish page factories (unless mission is Browser) |
-| **Publisher** | `server/modules/social-publishing/` publisher cores & bridges (unless mission is Publisher) |
-| **Scheduler** | `server/agent/agentScheduler.ts` and mission tick cores (unless mission is Scheduler) |
-| **Scanner Runtime** | Scan execution / mission-engine scan steps (unless mission is Scanner) |
+| Protected | Typical paths |
+|-----------|----------------|
+| **Runtime** | `server/agent-worker/`, control-plane runtime surfaces |
+| **Fleet** | `control-plane/fleet/`, `fleet-orchestrator/` |
+| **Queue** | Agent job claim/execute cores, outbox workers |
+| **Browser** | Lease/session ownership, CDP page factories |
+| **Scheduler** | `agentScheduler` / mission tick cores |
+| **Publisher Runtime** | Social publish execute / bridge cores |
+| **Scanner Runtime** | Scan execution / mission scan steps |
 
-**Allowed without touching Protected Modules**
+If modification is required:
 
-- Compose-only dashboards / traces / knowledge / decision / planning facades
-- Telegram Copilot intents that call planning or read metrics
-- Admin UI redesigns that call existing APIs
+1. Mission must explicitly authorize it  
+2. Report must include **Runtime Impact** section  
+3. Prefer compose/read over mutate  
 
-**Rule:** Prefer **read + compose** over **mutate protected cores**.
+**Default:** Prefer **read + compose**.
 
 ---
 
-## 4. Coding Standard
+## 4. Impact Analysis
+
+Before implementation, produce:
+
+### Affected Modules
+
+List modules/contexts that will change or be tightly coupled.
+
+### Not Affected Modules
+
+List protected and unrelated subsystems that stay untouched.
+
+**Example**
+
+| Affected | Not Affected |
+|----------|--------------|
+| Campaign / Planning | Runtime |
+| Lead | Fleet |
+| Knowledge | Browser |
+| | Queue |
+| | Scheduler |
+
+This table is **mandatory** in the Release Report.
+
+---
+
+## 5. Business Goal
+
+Every feature declares one or more:
+
+| Goal | Meaning |
+|------|---------|
+| **Lead** | Find / qualify / route buyers |
+| **Sales** | Pipeline, journey, revenue |
+| **Campaign** | Living go-to-market work |
+| **Knowledge** | Rules, learning, coverage |
+| **Publishing** | Content distribution |
+| **Automation** | Reduce manual ops friction |
+
+If none apply → challenge the feature before coding.
+
+---
+
+## 6. Feature Development Flow
+
+Mandatory sequence — **no jumping to code**:
+
+```text
+Audit
+  → Architecture
+  → Impact Analysis
+  → Implementation
+  → Tests
+  → Cleanup
+  → Release Report
+  → Deploy
+  → Smoke
+```
+
+| Stage | Required |
+|-------|----------|
+| Audit | Existing owners, ADRs, reuse candidates |
+| Architecture | Architecture First answers |
+| Impact Analysis | Affected / Not Affected |
+| Implementation | Minimal diff; honor boundaries |
+| Tests | Scenario · Coverage · Result |
+| Cleanup | Code + test data (§ Data / Code Cleanup) |
+| Release Report | Template in RELEASE_PROCESS |
+| Deploy | Build / migrate / restart as needed |
+| Smoke | Health + critical path |
+
+---
+
+## 7. Coding Standard
 
 ### Naming
 
-| Kind | Convention | Example |
-|------|------------|---------|
-| Folders | `kebab-case` | `execution-trace/`, `lead-center/` |
-| Modules | `kebab-case` directory | `sales-layer` |
-| Files | `camelCase` or role suffix | `traceService.ts`, `kpiTypes.ts` |
-| Types | `PascalCase` | `ExecutionTrace`, `LivingCampaign` |
-| Functions | `camelCase`, verb-first | `buildExecutiveKpiDashboard` |
-| Constants | `SCREAMING_SNAKE` or `UPPER` for true constants | `SETTING_KEY` |
-| DTOs / API payloads | Explicit types; version field when stored | `version: 'h06_trace_v1'` |
-| Prisma / DB | Follow existing schema; no drive-by renames | — |
+| Kind | Convention |
+|------|------------|
+| Folders | `kebab-case` |
+| Files | role suffix (`traceService.ts`) |
+| Types | `PascalCase` |
+| Functions | `camelCase`, verb-first |
+| Stored payloads | include `version` when persisted |
 
-### Comments
+### Comments / Imports / Errors / Logs
 
-- Explain **why**, not what.
-- No commented-out code in commits.
-- Module header: one-line purpose + “does not touch X” when compose-only.
+- Why, not what; no commented-out code  
+- Import module façades; avoid cycles  
+- Clear API errors; best-effort side channels must not break business path  
+- No `console.log` debug; no secrets; no full prompt dumps (summaries only)  
 
-### Imports
+### Code Lifetime
 
-- Prefer module public exports.
-- No circular imports between `planning` ↔ `control-plane` ↔ `social-publishing` without a clear façade.
+Temporary · Experimental · Feature Flag · Deprecated artifacts **must** have:
 
-### Error handling
+| Field | Required |
+|-------|----------|
+| Owner | who |
+| Created | date |
+| **Expires** | date or mission id |
+| Removal plan | how |
 
-- Fail with clear messages at API boundaries (`status: 'error', message`).
-- Best-effort side channels (event bus, notifications) must not break the business path.
-- Never swallow errors without logging or surfacing.
-
-### Logging
-
-- Prefer structured, domain logs (`[planning]`, `[telegram-console]`).
-- No `console.log` debug litter in committed code.
-- No secrets in logs.
-
-### Dependency style
-
-- Explicit deps via function args / ports (Copilot `ControlPlanePort` pattern).
-- Avoid hidden global mutable state except deliberate stores (AppSetting JSON, ALS for trace context).
+Past expiration → agent **must cleanup** in the next related mission (or dedicated cleanup PR).
 
 ---
 
-## 5. Feature Development Process
+## 8. Mandatory Pre-Commit Checklist
 
-Every feature follows this sequence:
+- [ ] Architecture First answered  
+- [ ] Impact Analysis table present  
+- [ ] Business Goal declared  
+- [ ] DRY / SOLID / KISS / YAGNI  
+- [ ] No duplicate module / no unauthorized `V2`  
+- [ ] Protected modules untouched (or Runtime Impact documented)  
+- [ ] No dead code / unused imports  
+- [ ] No TODO/FIXME left undocumented as debt  
+- [ ] No console.log / commented code / temp patch / mock KPIs  
+- [ ] Tests + cleanup done  
+- [ ] Docs/ADR updated if needed  
+
+---
+
+## 9. Quality Gate (before commit)
+
+| Gate | Required |
+|------|----------|
+| Architecture | PASS |
+| SOLID | PASS |
+| DRY | PASS |
+| KISS | PASS |
+| YAGNI | PASS |
+| Tests | PASS (scenario/coverage/result) |
+| Cleanup | PASS |
+| Docs | PASS |
+| Release Report | PASS |
+| Smoke | PASS (when deploy/restart in scope) |
+| Production Ready | YES |
+
+---
+
+## 10. Test Requirement
+
+“PASS” alone is invalid.
+
+| Field | Required |
+|-------|----------|
+| Scenario | What was exercised |
+| Coverage | What surfaces/APIs |
+| Result | Observed evidence |
+| Environment | Branch / URL |
+| Cleanup | What was deleted |
+
+Layers: Smoke · Regression · Manual (when UI).
+
+---
+
+## 11. Data Cleanup
+
+After tests, delete **test artifacts only**:
+
+Drafts · Campaigns · Leads · Missions · Jobs · Traces · Notifications · Scheduler leftovers · Browser lease probes — identified by known test IDs (`h0-*`, `tmp-*`, probe names).
+
+Never mass-wipe production business data.
+
+---
+
+## 12. Code Cleanup
+
+Remove: unused scripts, obsolete docs, dead components/services, expired flags, stale TODOs, temporary helpers in `server.ts`.
+
+---
+
+## 13. Documentation
+
+Update when behavior changes: structure, ADR, API notes, release summary. Standards live under `docs/engineering/`.
+
+---
+
+## 14. Report Standard
+
+Every feature summary includes:
+
+1. Objective  
+2. Business Goal  
+3. Architecture  
+4. Impact Analysis (Affected / Not Affected)  
+5. Deliverables  
+6. Runtime Impact (if any)  
+7. Tests (scenario/coverage/result)  
+8. Cleanup  
+9. Known Issues  
+10. Technical Debt / Next  
+11. AI Self Review  
+
+---
+
+## 15. Deploy Standard
+
+See [RELEASE_PROCESS.md](./RELEASE_PROCESS.md).
 
 ```text
-Audit → Design → Implement → Test → Cleanup → Release Report → Deploy → Smoke Test
+Build → Migration → Backup (prod) → Deploy → Health → Smoke → Rollback plan → Report
 ```
 
-| Stage | Required output |
-|-------|-----------------|
-| **Audit** | Current files, owners, protected boundaries |
-| **Design** | Approach, SSOT, no-impact list |
-| **Implement** | Minimal diff; honor mission scope |
-| **Test** | Smoke + regression + manual (with scenarios) |
-| **Cleanup** | Delete test data, temp scripts, dead code |
-| **Release Report** | Per Report Standard (§11) |
-| **Deploy** | Per Deploy Standard (§12) |
-| **Smoke** | Health + critical path on live/local target |
+Every release must cover: **Architecture · Impact · Cleanup · Smoke · Rollback · Report**.
 
 ---
 
-## 6. Mandatory Pre-Commit Checklist
+## 16. No-Impact / Runtime Impact
 
-Before every commit, self-check:
-
-- [ ] DRY — no duplicated business logic
-- [ ] SOLID — no new god service
-- [ ] No duplicate types/APIs for the same concept
-- [ ] No dead code
-- [ ] No unused imports
-- [ ] No leftover `TODO` / `FIXME` for this mission (or documented as Technical Debt)
-- [ ] No `console.log` debug
-- [ ] No commented-out code blocks
-- [ ] No temporary patch left “for later”
-- [ ] No mocks / fake KPIs / random placeholders in production paths
-- [ ] Protected modules untouched (unless mission allows)
-- [ ] Commit message matches agreed format
+- Default: declare **Not Affected** protected list.  
+- If protected code changed: mandatory **Runtime Impact** (what / why / risk / rollback).  
 
 ---
 
-## 7. Test Requirement
+## 17. Technical Debt
 
-“PASS” alone is **invalid**.
-
-Each feature test record must include:
-
-| Field | Example |
-|-------|---------|
-| **Scenario** | Create campaign via Telegram utterance → waiting_approval |
-| **Coverage** | Trace steps Intent→…→Response; `/trace`; Campaign Center timeline |
-| **Result** | Observed statuses, durations, HTTP 200, UI render |
-| **Environment** | Local CMS `:3000` / branch name |
-| **Cleanup** | What test data was deleted |
-
-Required layers:
-
-1. **Smoke** — critical path of the feature  
-2. **Regression** — adjacent Executive / Campaign / Telegram paths still work  
-3. **Manual verification** — CEO/operator UX when UI is in scope  
+Unfinished intentional work needs: Debt · Why · Risk · Roadmap. Unlogged debt is forbidden.
 
 ---
 
-## 8. Data Cleanup
+## 18. AI Self Review
 
-After testing, **mandatory** deletion of test artifacts only (never wipe real business data):
-
-- Test drafts / publish jobs (`h0-*`, `tmp-*`, known probe IDs)
-- Test campaigns / missions / leads / findings created for the probe
-- Trace rows / AppSetting probe keys created for the test
-- Notifications / scheduler leftovers from the probe
-- Browser lease / profile junk created by the probe (if any)
-
-Prefer cancel/delete **known test IDs**. Do not mass-delete production channels or live campaigns.
+After each feature: What went well · Weakness · Risk · Confidence (High/Medium/Low).
 
 ---
 
-## 9. Code Cleanup
+## 19. Definition of Done
 
-After the feature lands:
+Done only when:
 
-- Remove unused scripts under `scripts/` created for the probe
-- Remove obsolete docs that contradict the new truth
-- Remove deprecated API stubs only when replaced and unused
-- Remove dead React components / services
-- Remove expired feature flags and stale TODOs for this scope
-- Do not leave “temporary” helpers in `server.ts`
-
----
-
-## 10. Documentation
-
-If the feature changes behavior, update the relevant docs:
-
-- Architecture / module README (this folder or module header)
-- API surface (route list in module or release note)
-- Product README only when user-facing entrypoints change
-- Release notes / chat summary with commit SHA
-
-New engineering standards belong under `docs/engineering/`.
-
----
-
-## 11. Report Standard
-
-Every completed feature should be summarizable as:
-
-1. **Objective** — mission goal  
-2. **Architecture** — what was composed / added  
-3. **Deliverables** — files, APIs, UI, Telegram commands  
-4. **Impact** — who benefits; what changed  
-5. **No-Impact Declaration** — protected subsystems untouched (§13)  
-6. **Known Issues** — honest gaps  
-7. **Technical Debt / Next** — if any (§14)  
-8. **AI Self Review** — (§15)  
-
----
-
-## 12. Deploy Standard
-
-```text
-Build → Migration (if any) → Backup (prod) → Deploy → Health → Smoke → Rollback plan → Report
-```
-
-- Local: restart CMS (`npm run dev` / agreed process), hit `/api/health`
-- Prod: follow ops runbook; never force-push protected branches without explicit ask
-- Always verify health before declaring done
-
----
-
-## 13. No-Impact Declaration
-
-Every feature MUST declare which subsystems were **not** affected, e.g.:
-
-```text
-No impact: Runtime · Fleet · Queue · Browser · Publisher · Scheduler · Scanner Runtime
-```
-
-If a protected module **was** touched, the mission must have authorized it and the report must say so explicitly.
-
----
-
-## 14. Technical Debt
-
-Intentional omissions must be recorded:
-
-| Field | Content |
-|-------|---------|
-| Debt | What was skipped |
-| Why | Time/scope/risk |
-| Risk | What breaks if ignored |
-| Roadmap | When / which mission to fix |
-
-Unlogged debt is not allowed.
-
----
-
-## 15. AI Self Review
-
-After each feature, the agent must self-evaluate:
-
-| Lens | Prompt |
-|------|--------|
-| **What went well** | Clear wins |
-| **Weakness** | Shortcuts, thin tests, naming |
-| **Risk** | Prod risk, data, protected boundary |
-| **Confidence** | High / Medium / Low + why |
-
----
-
-## 16. Definition of Done
-
-A feature is **done** only when all are true:
-
-- [x] Code merged/committed as requested  
-- [x] Tests recorded (scenario + coverage + result)  
+- [x] Architecture First + Impact + Business Goal  
+- [x] Code  
+- [x] Tests (scenario/coverage/result)  
 - [x] Cleanup (code + test data)  
-- [x] Docs updated when behavior changed  
-- [x] Release-style summary provided  
-- [x] Deploy/restart performed when required  
-- [x] Smoke + health verified  
-- [x] No leftover test data in the target environment  
-- [x] No dead code / obsolete contradictory docs introduced  
-- [x] No-Impact Declaration stated  
-- [x] Constitution checklist passed  
+- [x] Docs / ADR as needed  
+- [x] Release Report  
+- [x] Deploy/restart when required  
+- [x] Smoke + Health  
+- [x] Quality Gate PASS  
+- [x] No dead code / obsolete contradictory docs  
+- [x] Constitution Prompt Contract satisfied  
 
 ---
 
-## Project Rule (Agents & Humans)
+## Project Rule
 
-1. **Read this file first** before implementing any development prompt.  
-2. If the user prompt conflicts with this Constitution, **warn** and propose a compliant alternative.  
-3. Prefer compose-only changes outside Protected Modules.  
-4. Treat Executive/business surfaces and Runtime/ops surfaces as **different products** sharing one repo.
+1. Constitution is the **operating system** of the project.  
+2. Cursor rules under `.cursor/rules/` reinforce this (alwaysApply).  
+3. Conflicting prompts → **warn**, then propose a compliant path.  
+4. Campaign is the center; Buyer is the KPI; Revenue is the end goal; Automation is the success measure.
 
 ---
 
-*End of Engineering Constitution.*
+*End of Engineering Constitution v2.*
