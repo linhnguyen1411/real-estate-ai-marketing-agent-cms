@@ -59,6 +59,8 @@ export function registerPlanningRoutes(app: Express): void {
         '../taskOrchestrator'
       );
       const progress = orchestratorProgress(tasks);
+      const { getLatestTraceForCampaign } = await import('../../execution-trace');
+      const trace = await getLatestTraceForCampaign(row.id);
       res.json({
         status: 'success',
         data: {
@@ -72,6 +74,24 @@ export function registerPlanningRoutes(app: Express): void {
           progress,
           ready: listReadyTasks(tasks).map(t => t.key),
           timeline: row.state.operationalMemory,
+          executionTrace: trace
+            ? {
+                traceId: trace.traceId,
+                status: trace.status,
+                durationMs: trace.durationMs,
+                startedAt: trace.startedAt,
+                finishedAt: trace.finishedAt,
+                steps: trace.steps.map(s => ({
+                  step: s.step,
+                  status: s.status,
+                  startedAt: s.startedAt,
+                  finishedAt: s.finishedAt,
+                  durationMs: s.durationMs,
+                  summary: s.summary,
+                  errorReason: s.errorReason,
+                })),
+              }
+            : null,
         },
       });
     } catch (error: unknown) {

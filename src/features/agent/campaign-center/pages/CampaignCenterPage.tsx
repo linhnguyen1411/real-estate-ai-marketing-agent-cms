@@ -53,6 +53,22 @@ type TaskDetail = {
   };
   ready: string[];
   timeline: Array<{ at: string; title: string; detail?: string }>;
+  executionTrace?: {
+    traceId: string;
+    status: string;
+    durationMs: number | null;
+    startedAt: string;
+    finishedAt: string | null;
+    steps: Array<{
+      step: string;
+      status: string;
+      startedAt: string;
+      finishedAt?: string;
+      durationMs?: number;
+      summary: string;
+      errorReason?: string;
+    }>;
+  } | null;
 };
 
 const COLUMNS: Array<{ id: string; label: string }> = [
@@ -111,11 +127,25 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
   const [message, setMessage] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [execAnalytics, setExecAnalytics] = useState<{
+    totalTraces: number;
+    successRate: number;
+    averageDurationMs: number | null;
+    mostFailedStep: string | null;
+    averageResearchMs: number | null;
+    averageMissionMs: number | null;
+    averageContentMs: number | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setBoard(await fetchKanban());
+      const [kanban, analyticsRes] = await Promise.all([
+        fetchKanban(),
+        fetch('/api/execution-trace/analytics').then(r => r.json()).catch(() => null),
+      ]);
+      setBoard(kanban);
+      if (analyticsRes?.status === 'success') setExecAnalytics(analyticsRes.data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Load failed');
     }
@@ -172,6 +202,32 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
   return (
     <div className="space-y-3">
       <Header message={message} onRefresh={() => void load()} />
+      {execAnalytics ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          {[
+            ['Traces', String(execAnalytics.totalTraces)],
+            ['Success', `${execAnalytics.successRate}%`],
+            [
+              'Avg Duration',
+              execAnalytics.averageDurationMs != null
+                ? fmtDuration(execAnalytics.averageDurationMs)
+                : '—',
+            ],
+            ['Failed Step', execAnalytics.mostFailedStep || '—'],
+            ['Avg Research', fmtDuration(execAnalytics.averageResearchMs)],
+            ['Avg Mission', fmtDuration(execAnalytics.averageMissionMs)],
+            ['Avg Content', fmtDuration(execAnalytics.averageContentMs)],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2"
+            >
+              <div className="text-[10px] uppercase text-slate-500">{label}</div>
+              <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNS.map(col => {
           const items = board[col.id] || [];
@@ -304,6 +360,50 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
               {detail.ready.length ? (
                 <p className="mt-2 text-[10px] text-amber-400">Ready: {detail.ready.join(', ')}</p>
               ) : null}
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+              <h3 className="text-sm font-bold text-slate-100">Campaign Trace</h3>
+              {detail.executionTrace?.steps?.length ? (
+                <div className="mt-2 max-h-72 space-y-0 overflow-y-auto text-[11px]">
+                  <div className="mb-2 text-[10px] text-slate-500">
+                    {detail.executionTrace.traceId} · {detail.executionTrace.status} ·{' '}
+                    {fmtDuration(detail.executionTrace.durationMs)}
+                  </div>
+                  {detail.executionTrace.steps.map((s, i) => (
+                    <div key={`${s.step}-${i}`} className="relative border-l border-slate-700 pl-3 pb-3">
+                      <div className="absolute -left-1 top-1.5 h-2 w-2 rounded-full bg-rose-400/80" />
+                      <div className="text-slate-500">
+                        {new Date(s.startedAt).toLocaleTimeString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false,
+                        })}
+                      </div>
+                      <div className="font-semibold text-slate-100">
+                        {s.step}{' '}
+                        <span className="text-[10px] font-normal uppercase text-slate-500">
+                          {s.status}
+                        </span>
+                      </div>
+                      <div className="text-slate-400">{s.summary}</div>
+                      {s.durationMs != null ? (
+                        <div className="text-[10px] text-slate-600">{fmtDuration(s.durationMs)}</div>
+                      ) : null}
+                      {s.errorReason ? (
+                        <div className="text-[10px] text-rose-400">{s.errorReason}</div>
+                      ) : null}
+                      {i < detail.executionTrace!.steps.length - 1 ? (
+                        <div className="mt-1 text-slate-600">↓</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  No execution trace yet. Create campaign via Telegram to record Intent → Research →
+                  Mission → Content → Approval.
+                </p>
+              )}
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
               <h3 className="text-sm font-bold text-slate-100">Task Timeline</h3>

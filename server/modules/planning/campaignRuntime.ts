@@ -35,6 +35,13 @@ import type {
   OrchestratorTask,
 } from './types';
 import { CAMPAIGN_KANBAN_COLUMNS } from './types';
+import {
+  attachCampaignToTrace,
+  finishTraceStep,
+  getActiveTraceId,
+  startTraceStep,
+  tracedStep,
+} from '../execution-trace';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -535,7 +542,11 @@ export async function createAndRunCampaign(input: {
   companyId?: string | null;
   owner?: string | null;
 }): Promise<LivingCampaign> {
-  const board = planCampaignBoard({ utterance: input.utterance, companyId: input.companyId });
+  const board = await tracedStep(
+    'Campaign Planner',
+    async () => planCampaignBoard({ utterance: input.utterance, companyId: input.companyId }),
+    b => `Goal ${b.goal} · Priority ${b.priority} · ${b.name}`,
+  );
   const initialState: CampaignState = {
     audience: board.audience,
     budget: board.budget,
@@ -578,7 +589,6 @@ export async function createAndRunCampaign(input: {
   });
 
   let campaign = rowToLiving(row);
-  // Bind real campaign id into orchestrator graph
   campaign.state.orchestratorTasks = createCampaignTaskGraph({
     campaignId: campaign.id,
     priority: campaign.priority,
@@ -587,6 +597,22 @@ export async function createAndRunCampaign(input: {
   syncLegacyTasks(campaign.state);
   pushMemory(campaign.state, 'planning', 'Research queued', 'Task Orchestrator graph ready');
   campaign = await persist(campaign);
+
+  const traceId = getActiveTraceId();
+  if (traceId) {
+    await attachCampaignToTrace(traceId, {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      missionId: campaign.state.missions[0]?.id || null,
+    });
+    await startTraceStep(traceId, 'Campaign Created', 'creating');
+    await finishTraceStep(traceId, 'Campaign Created', {
+      status: 'ok',
+      summary: `Campaign ${campaign.name} · Priority ${campaign.priority}`,
+      metadata: { campaignId: campaign.id },
+    });
+  }
+
   await rememberPlanningEvent({
     companyId: input.companyId,
     kind: 'campaign',
@@ -608,18 +634,73 @@ export async function createAndRunCampaign(input: {
     ],
   });
 
-  await runResearchPhase(campaign);
-  campaign = (await getCampaign(campaign.id))!;
-  await runMissionPhase(campaign);
-  campaign = (await getCampaign(campaign.id))!;
-  await runContentPhase(campaign);
-  campaign = (await getCampaign(campaign.id))!;
-  await runLeadPhase(campaign);
-  campaign = (await getCampaign(campaign.id))!;
+  await tracedStep(
+    'Research',
+    async () => {
+      await runResearchPhase(campaign);
+      campaign = (await getCampaign(campaign.id))!;
+      return campaign;
+    },
+    c => `Collected ${c.state.research?.competitors?.length || 0} competitors`,
+  );
+  await tracedStep(
+    'Mission Planner',
+    async () => {
+      await runMissionPhase(campaign);
+      campaign = (await getCampaign(campaign.id))!;
+      return campaign;
+    },
+    c => `Generated ${c.state.missions.length} missions`,
+  );
+  await runKeywordTraceStep(campaign);
+  await tracedStep(
+    'Content Planner',
+    async () => {
+      await runContentPhase(campaign);
+      campaign = (await getCampaign(campaign.id))!;
+      return campaign;
+    },
+    c => `Created ${c.state.content?.schedule?.length || c.state.metrics.contentSlots || 0} drafts`,
+  );
+  await tracedStep(
+    'Decision',
+    async () => {
+      await runLeadPhase(campaign);
+      campaign = (await getCampaign(campaign.id))!;
+      return campaign;
+    },
+    c => `Reviewed ${c.state.leads.length} leads`,
+  );
   await runWaitingApproval(campaign);
   campaign = (await getCampaign(campaign.id))!;
 
+  if (traceId) {
+    await startTraceStep(traceId, 'Waiting Approval', 'awaiting user');
+    await finishTraceStep(traceId, 'Waiting Approval', {
+      status: 'ok',
+      summary: 'Waiting user Approve / Reject',
+    });
+  }
+
   return campaign!;
+}
+
+async function runKeywordTraceStep(campaign: LivingCampaign): Promise<void> {
+  const keywords = new Set<string>();
+  for (const m of campaign.state.missions || []) {
+    for (const part of [m.name, m.persona, m.areaHint, m.intent, campaign.propertyHint]) {
+      String(part || '')
+        .split(/[\s,/|·•-]+/)
+        .map(x => x.trim())
+        .filter(x => x.length >= 2)
+        .forEach(k => keywords.add(k));
+    }
+  }
+  await tracedStep(
+    'Keyword Generator',
+    async () => Array.from(keywords).slice(0, 40),
+    list => `Generated ${list.length} keywords`,
+  );
 }
 
 export async function getCampaign(id: string): Promise<LivingCampaign | null> {

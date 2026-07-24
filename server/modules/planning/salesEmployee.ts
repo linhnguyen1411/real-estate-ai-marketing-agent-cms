@@ -91,6 +91,10 @@ export async function runSalesEmployee(input: {
   utterance: string;
   companyId?: string | null;
   mode?: SalesEmployeeResult['mode'];
+  telegramChatId?: string | null;
+  telegramUserId?: string | null;
+  sessionId?: string | null;
+  intentName?: string | null;
 }): Promise<SalesEmployeeReply> {
   const mode = input.mode || detectSalesMode(input.utterance);
   const utteranceNorm = norm(input.utterance);
@@ -318,9 +322,50 @@ export async function runSalesEmployee(input: {
   }
 
   // Campaign Runtime — create + auto-run lifecycle (not ephemeral board)
-  const living = await createAndRunCampaign({
+  const {
+    beginExecutionTrace,
+    finishExecutionTrace,
+    finishTraceStep,
+    runWithTraceContext,
+    startTraceStep,
+  } = await import('../execution-trace');
+
+  const trace = await beginExecutionTrace({
     utterance: input.utterance,
+    intentName: input.intentName || 'ai_sales_campaign',
+    sessionId: input.sessionId,
+    telegramChatId: input.telegramChatId,
+    telegramUserId: input.telegramUserId,
     companyId: input.companyId,
+  });
+
+  const living = await runWithTraceContext(trace.traceId, async () => {
+    await startTraceStep(trace.traceId, 'Intent Parser', 'parsing');
+    await finishTraceStep(trace.traceId, 'Intent Parser', {
+      status: 'ok',
+      summary: `Campaign request detected · ${input.utterance.slice(0, 80)}`,
+    });
+    await startTraceStep(trace.traceId, 'Copilot', 'routing');
+    await finishTraceStep(trace.traceId, 'Copilot', {
+      status: 'ok',
+      summary: 'Routed to Campaign Planner',
+    });
+    try {
+      const created = await createAndRunCampaign({
+        utterance: input.utterance,
+        companyId: input.companyId,
+      });
+      await startTraceStep(trace.traceId, 'Response Telegram', 'reply');
+      await finishTraceStep(trace.traceId, 'Response Telegram', {
+        status: 'ok',
+        summary: `Reply campaign ${created.name}`,
+      });
+      await finishExecutionTrace(trace.traceId, 'waiting_approval');
+      return created;
+    } catch (error: unknown) {
+      await finishExecutionTrace(trace.traceId, 'failed');
+      throw error;
+    }
   });
   const board = livingToBoard(living);
   const research = living.state.research!;

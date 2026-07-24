@@ -44,6 +44,7 @@ async function runAiEmployeeHandler(
   intentName: CopilotIntentName,
   text: string,
   companyId?: string | null,
+  ctx?: { chatId?: string; userId?: string },
 ) {
   const modeMap: Partial<Record<CopilotIntentName, Parameters<typeof runSalesEmployee>[0]['mode']>> = {
     ai_sales_campaign: 'campaign_board',
@@ -59,6 +60,10 @@ async function runAiEmployeeHandler(
     utterance: text,
     companyId,
     mode: modeMap[intentName],
+    intentName,
+    telegramChatId: ctx?.chatId || null,
+    telegramUserId: ctx?.userId || null,
+    sessionId: ctx?.chatId ? `tg_${ctx.chatId}` : null,
   });
   return replyOk(intentName, result.lines, {
     mode: result.mode,
@@ -78,49 +83,49 @@ const aiSalesCampaign: IntentHandler = {
   name: 'ai_sales_campaign',
   supports: i => i.name === 'ai_sales_campaign',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesResearch: IntentHandler = {
   name: 'ai_sales_research',
   supports: i => i.name === 'ai_sales_research',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesMissions: IntentHandler = {
   name: 'ai_sales_missions',
   supports: i => i.name === 'ai_sales_missions',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesLeads: IntentHandler = {
   name: 'ai_sales_leads',
   supports: i => i.name === 'ai_sales_leads',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesContent: IntentHandler = {
   name: 'ai_sales_content',
   supports: i => i.name === 'ai_sales_content',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesTimeline: IntentHandler = {
   name: 'ai_sales_timeline',
   supports: i => i.name === 'ai_sales_timeline',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesRecommendations: IntentHandler = {
   name: 'ai_sales_recommendations',
   supports: i => i.name === 'ai_sales_recommendations',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 const aiSalesHelp: IntentHandler = {
   name: 'ai_sales_help',
   supports: i => i.name === 'ai_sales_help',
   execute: async ({ intent, text, ctx }) =>
-    runAiEmployeeHandler(intent.name, text, ctx.companyId),
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
 };
 
 function dayBounds(hint?: string): { from: string; to: string } {

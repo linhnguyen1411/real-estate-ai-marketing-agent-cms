@@ -557,6 +557,37 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
   });
 
   registry.register({
+    name: 'trace',
+    description: 'Campaign execution trace (Telegram → AI → Campaign)',
+    usage: '/trace [campaignId|name] · /debug campaign',
+    handler: async (args, _ctx) => {
+      const q = args.join(' ').trim();
+      const {
+        resolveTraceForQuery,
+        formatTraceSummaryLines,
+        buildExecutionAnalytics,
+      } = await import('../../execution-trace');
+      if (!q || q.toLowerCase() === 'stats' || q.toLowerCase() === 'analytics') {
+        const a = await buildExecutionAnalytics();
+        return ok('trace', [
+          'AI Execution Analytics',
+          `Traces ${a.totalTraces}`,
+          `Success ${a.successRate}%`,
+          `Avg duration ${a.averageDurationMs != null ? `${Math.round(a.averageDurationMs / 1000)}s` : '—'}`,
+          `Most failed ${a.mostFailedStep || '—'}`,
+          `Avg research ${a.averageResearchMs ?? '—'}ms`,
+          `Avg mission ${a.averageMissionMs ?? '—'}ms`,
+          `Avg content ${a.averageContentMs ?? '—'}ms`,
+        ]);
+      }
+      const trace = await resolveTraceForQuery(q);
+      if (!trace) return fail('trace', 'No execution trace found. Create a campaign first.');
+      return ok('trace', formatTraceSummaryLines(trace), { traceId: trace.traceId });
+    },
+  });
+  registry.alias('debug', 'trace');
+
+  registry.register({
     name: 'help',
     description: 'List commands',
     usage: '/help',
@@ -565,6 +596,7 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
         'Control Plane · Operations Center',
         '/dashboard · Executive',
         '/ops · Runtime metrics',
+        '/trace [campaign] · /debug campaign',
         '/health · /runtime · /agents',
         '/jobs [running|pending|failed|completed]',
         '/missions · /mission <id>|retry|cancel|pause|resume',
