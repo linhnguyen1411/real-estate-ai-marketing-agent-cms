@@ -342,7 +342,7 @@ const RULES: Rule[] = [
   {
     name: 'dashboard',
     confidence: 0.85,
-    test: t => /dashboard|health|sức khỏe|suc khoe|runtime/.test(t),
+    test: t => /dashboard|executive|ceo|sức khỏe hệ thống|suc khoe he thong/.test(t),
   },
   {
     name: 'report',

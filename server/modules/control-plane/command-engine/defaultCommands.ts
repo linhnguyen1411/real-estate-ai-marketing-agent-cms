@@ -563,7 +563,8 @@ export function registerDefaultCommands(registry: CommandRegistry): void {
     handler: async (_args, _ctx) => {
       const lines = [
         'Control Plane · Operations Center',
-        '/dashboard',
+        '/dashboard · Executive',
+        '/ops · Runtime metrics',
         '/health · /runtime · /agents',
         '/jobs [running|pending|failed|completed]',
         '/missions · /mission <id>|retry|cancel|pause|resume',

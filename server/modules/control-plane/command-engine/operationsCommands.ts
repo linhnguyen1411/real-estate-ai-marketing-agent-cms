@@ -78,20 +78,33 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
 export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'dashboard',
-    description: 'Operations Center dashboard',
+    description: 'Executive AI operations dashboard (business)',
     usage: '/dashboard',
+    handler: async () => {
+      const { buildExecutiveSnapshot, formatExecutiveDashboardLines } = await import(
+        '../../executive-dashboard'
+      );
+      const snap = await buildExecutiveSnapshot();
+      return ok('dashboard', formatExecutiveDashboardLines(snap), { snap });
+    },
+  });
+
+  registry.register({
+    name: 'ops',
+    description: 'Operations / Runtime metrics dashboard',
+    usage: '/ops',
     handler: async (_args, ctx) => {
       const d = await opsGetDashboard(ctx.user);
       const { formatOperationsDashboardLines } = await import('../operations');
       if (d.operations) {
-        return ok('dashboard', formatOperationsDashboardLines(d.operations), {
+        return ok('ops', formatOperationsDashboardLines(d.operations), {
           dashboard: d,
         });
       }
       return ok(
-        'dashboard',
+        'ops',
         [
-          '══ Dashboard ══',
+          '══ Operations ══',
           `Health ${d.healthScore}/100`,
           `Agents online ${d.agentsOnline}/${d.agentsTotal}`,
           `Queue wait=${d.queue.waiting} run=${d.queue.running} fail=${d.queue.deadLetter}`,
@@ -577,7 +590,8 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 /** Used by help listing from operations surface */
 export function operationsHelpLines(): string[] {
   return [
-    '/dashboard',
+    '/dashboard · Executive',
+    '/ops · Runtime metrics',
     '/fleet',
     '/jobs [running|waiting|pending|failed|completed]',
     '/mission <id> | retry|cancel|pause|resume',

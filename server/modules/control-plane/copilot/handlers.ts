@@ -35,6 +35,10 @@ import { formatLeadLines, replyFail, replyOk } from './replyFormatter';
 import type { IntentHandler, IntentRegistry } from './intentRegistry';
 import type { ClassifiedIntent, CopilotIntentName } from './types';
 import { runSalesEmployee } from '../../planning/salesEmployee';
+import {
+  buildExecutiveSnapshot,
+  formatExecutiveDashboardLines,
+} from '../../executive-dashboard';
 
 async function runAiEmployeeHandler(
   intentName: CopilotIntentName,
@@ -143,6 +147,19 @@ const whatsNew: IntentHandler = {
   name: 'whats_new',
   supports: i => i.name === 'whats_new' || i.name === 'dashboard',
   async execute({ intent, port, ctx }) {
+    // /dashboard → Executive briefing (business), not runtime fleet dump
+    if (intent.name === 'dashboard') {
+      const snap = await buildExecutiveSnapshot();
+      const ops = await port.getOpsMetrics(false).catch(() => null);
+      if (ops) ctx.lastAgentIds = ops.machines.map(m => m.agentId);
+      const entity = ops?.machines[0]?.agentId;
+      return replyOk(
+        intent.name,
+        formatExecutiveDashboardLines(snap),
+        { snap },
+        opsActionKeyboard(entity),
+      );
+    }
     const ops = await port.getOpsMetrics(true);
     const leads = await port.countLeadsToday();
     const signals = await port.detectIncidents();

@@ -84,6 +84,7 @@ import { registerMarketingOrgRoutes } from './server/modules/marketing-org';
 import { registerAiGatewayRoutes } from './server/modules/ai-gateway';
 import { registerDecisionCenterRoutes } from './server/modules/decision-center';
 import { registerKnowledgeBaseRoutes } from './server/modules/knowledge-base';
+import { registerExecutiveDashboardRoutes } from './server/modules/executive-dashboard';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1397,6 +1398,7 @@ if (AGENT_ENABLED) {
   registerAiGatewayRoutes(app);
   registerDecisionCenterRoutes(app);
   registerKnowledgeBaseRoutes(app);
+  registerExecutiveDashboardRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
