@@ -39,6 +39,7 @@ export type CopilotIntentName =
   | 'fleet_summary'
   | 'scanner_summary'
   | 'publisher_summary'
+  | 'marketing_org_summary'
   | 'mission_summary'
   | 'incident_summary'
   | 'machine_detail'

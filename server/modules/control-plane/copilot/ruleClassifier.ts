@@ -91,6 +91,15 @@ const RULES: Rule[] = [
         (/scanner|scan/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t))),
   },
   {
+    name: 'marketing_org_summary',
+    confidence: 0.96,
+    test: t =>
+      /hôm nay marketing|hom nay marketing|marketing thế nào|marketing the nao|marketing health|phòng marketing|marketing funnel|omnichannel/.test(
+        t,
+      ) ||
+      (/marketing/.test(t) && /sao|thế nào|the nao|hôm nay|hom nay|tóm tắt|tom tat|health/.test(t)),
+  },
+  {
     name: 'publisher_summary',
     confidence: 0.94,
     test: t =>

@@ -209,6 +209,19 @@ const publisherSummary: IntentHandler = {
   },
 };
 
+const marketingOrgSummary: IntentHandler = {
+  name: 'marketing_org_summary',
+  supports: i => i.name === 'marketing_org_summary',
+  async execute({ intent }) {
+    const { buildMarketingSnapshot, formatMarketingBriefing } = await import(
+      '../../marketing-org'
+    );
+    const snapshot = await buildMarketingSnapshot({});
+    const text = formatMarketingBriefing(snapshot);
+    return replyOk(intent.name, text.split('\n'), { health: snapshot.health });
+  },
+};
+
 const missionSummary: IntentHandler = {
   name: 'mission_summary',
   supports: i => i.name === 'mission_summary',
@@ -722,6 +735,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     fleetSummary,
     scannerSummary,
     publisherSummary,
+    marketingOrgSummary,
     missionSummary,
     incidentSummary,
     machineDetail,

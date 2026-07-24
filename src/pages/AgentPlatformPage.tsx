@@ -49,10 +49,14 @@ const CampaignCenterPage = React.lazy(
 const LeadCenterPage = React.lazy(
   () => import('../features/agent/lead-center/pages/LeadCenterPage'),
 );
+const MarketingCenterPage = React.lazy(
+  () => import('../features/agent/marketing-center/pages/MarketingCenterPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
   { path: '/admin/agents/campaign-center', label: 'Campaign Center' },
+  { path: '/admin/agents/marketing-center', label: 'Marketing Center' },
   { path: '/admin/agents/lead-center', label: 'Lead Center' },
   { path: '/admin/agents/sources', label: 'Nguồn' },
   { path: '/admin/agents/missions', label: 'Mission' },
@@ -76,6 +80,7 @@ type Props = {
 function resolveSection(pathname: string) {
   if (pathname === '/admin/agents' || pathname === '/admin/agents/') return 'dashboard';
   if (pathname.startsWith('/admin/agents/campaign-center')) return 'campaign-center';
+  if (pathname.startsWith('/admin/agents/marketing-center')) return 'marketing-center';
   if (pathname.startsWith('/admin/agents/lead-center')) return 'lead-center';
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
   if (pathname.startsWith('/admin/agents/missions')) return 'missions';
@@ -134,6 +139,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'campaign-center' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <CampaignCenterPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'marketing-center' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <MarketingCenterPage canManage={canManage} />
           </Suspense>
         )}
         {section === 'lead-center' && (
