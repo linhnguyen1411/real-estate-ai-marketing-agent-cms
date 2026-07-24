@@ -58,33 +58,21 @@ export interface DashboardTrafficItem {
   url?: string;
 }
 
+export interface ExecutiveKpiCard {
+  id: string;
+  title: string;
+  bigNumber: string;
+  trend: string | null;
+  trendDirection: 'up' | 'down' | 'flat' | null;
+  miniStatus: string[];
+  href: string;
+}
+
+/** H0.5.1 — main CMS Dashboard is AI business KPIs, not legacy CRM/views. */
 export interface DashboardData {
-  stats: {
-    totalCustomers: number;
-    leads: {
-      hot: number;
-      warm: number;
-      cold: number;
-    };
-    totalProperties: number;
-    totalPosts: number;
-    pendingInbox: number;
-    todayTasksCount: number;
-    siteViews?: number;
-    propertyViews?: number;
-    postViews?: number;
-  };
-  metrics: Array<{
-    platform: string;
-    reach: number;
-    engagement: number;
-    leads: number;
-  }>;
-  traffic?: {
-    lastSiteViewAt?: string;
-    topProperties: DashboardTrafficItem[];
-    topPosts: DashboardTrafficItem[];
-  };
+  version: 'h051_executive_kpis';
+  generatedAt: string;
+  kpis: ExecutiveKpiCard[];
 }
 
 export interface InitialAppData {
