@@ -29,7 +29,6 @@ import {
   type LeadClassification,
 } from '../../agent/leadIntelligence';
 import { enqueueFindingEnrichment } from '../../agent/findingEnrichmentService';
-import { enqueueLeadAcquisition } from '../../modules/lead-acquisition';
 import type { LeadAnalysisResult } from '../../agent/leadAnalysisSchema';
 import {
   buildContentDedupeMeta,
@@ -892,10 +891,8 @@ export async function processFindingForContent(input: {
       });
       findingId = finding.id;
       findingCreated = true;
-      // Async AI enrichment — never blocks scanner
+      // H3.6 — Decision Engine gate inside enrichment (AI only when allowed)
       enqueueFindingEnrichment(finding.id);
-      // H3 Lead Acquisition — rule/intent path (no Gemini); Telegram via notifyFindingIfEligible
-      enqueueLeadAcquisition(finding.id, false);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;
       if (code === 'P2003') {

@@ -233,6 +233,17 @@ const aiStatus: IntentHandler = {
   },
 };
 
+const decisionReport: IntentHandler = {
+  name: 'decision_report',
+  supports: i => i.name === 'decision_report',
+  async execute({ intent }) {
+    const { getDecisionReportText, getDecisionMetrics } = await import('../../decision-center');
+    const text = await getDecisionReportText();
+    const metrics = await getDecisionMetrics();
+    return replyOk(intent.name, text.split('\n'), { metrics });
+  },
+};
+
 const missionSummary: IntentHandler = {
   name: 'mission_summary',
   supports: i => i.name === 'mission_summary',
@@ -708,7 +719,7 @@ const helpHandler: IntentHandler = {
         'AI Operations Center — hỏi tiếng Việt, không cần slash.',
         '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
         '• Scanner / Publisher / Mission / Browser / Lead',
-        '• AI Status · Hôm nay Marketing thế nào?',
+        '• AI Status · Decision Report · Hôm nay Marketing thế nào?',
         '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
@@ -749,6 +760,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     publisherSummary,
     marketingOrgSummary,
     aiStatus,
+    decisionReport,
     missionSummary,
     incidentSummary,
     machineDetail,

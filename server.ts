@@ -82,6 +82,7 @@ import { registerLeadAcquisitionRoutes } from './server/modules/lead-acquisition
 import { registerSalesLayerRoutes } from './server/modules/sales-layer';
 import { registerMarketingOrgRoutes } from './server/modules/marketing-org';
 import { registerAiGatewayRoutes } from './server/modules/ai-gateway';
+import { registerDecisionCenterRoutes } from './server/modules/decision-center';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1393,6 +1394,7 @@ if (AGENT_ENABLED) {
   registerSalesLayerRoutes(app);
   registerMarketingOrgRoutes(app);
   registerAiGatewayRoutes(app);
+  registerDecisionCenterRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }

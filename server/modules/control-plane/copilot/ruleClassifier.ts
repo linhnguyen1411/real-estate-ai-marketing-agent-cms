@@ -110,6 +110,16 @@ const RULES: Rule[] = [
         /status|healthy|quota|latency|provider|gateway|kira|gemini|ollama|local llm/.test(t)),
   },
   {
+    name: 'decision_report',
+    confidence: 0.97,
+    test: t =>
+      /decision report|báo cáo decision|bao cao decision|decision center|token saved|ai saving|rule passed|quyết định lead|quyet dinh lead/.test(
+        t,
+      ) ||
+      (/decision|rule engine|rule-first/.test(t) &&
+        /report|báo cáo|bao cao|tóm tắt|tom tat|status|thế nào|the nao/.test(t)),
+  },
+  {
     name: 'publisher_summary',
     confidence: 0.94,
     test: t =>

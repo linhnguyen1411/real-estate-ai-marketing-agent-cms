@@ -1,6 +1,6 @@
 /**
  * Async AI enrichment for AgentFinding — never blocks scan/finding creation.
- * Fallback: Gemini → GPT → local LLM → keyword enrichment.
+ * H3.6: Decision Engine gate — AI only when rule score 60–79 (ai_review).
  */
 
 import { prisma } from '../prisma';
@@ -15,6 +15,11 @@ import {
 import { detectSubjectDirection } from '../agent/subjectDirection';
 import { sendNotification } from '../notifications/notificationRouter';
 import { enqueueLeadAcquisition } from '../modules/lead-acquisition';
+import {
+  markDecisionAiUsed,
+  processFindingDecision,
+  readDecisionProfile,
+} from '../modules/decision-center';
 
 export const FINDING_ENRICHMENT_STATUSES = [
   'raw',
@@ -89,7 +94,44 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
   });
   if (!finding) return;
   if (finding.status === 'dismissed' || finding.status === 'duplicate') return;
-  if (finding.status === 'enriched') return;
+
+  // Already enriched — still ensure Lead Acquisition / Sales Layer profiles exist
+  if (finding.status === 'enriched') {
+    const ed = finding.extractedData as Record<string, unknown> | null;
+    const hasAcq =
+      ed &&
+      typeof ed === 'object' &&
+      ed.leadAcquisition &&
+      typeof ed.leadAcquisition === 'object';
+    if (!hasAcq) enqueueLeadAcquisition(findingId, false);
+    return;
+  }
+
+  // H3.6 — Rule-first Decision Engine BEFORE AI
+  let decision = readDecisionProfile(finding.extractedData);
+  if (!decision) {
+    try {
+      const processed = await processFindingDecision(findingId);
+      decision = processed.result;
+      if (!processed.allowAi) {
+        // qualified / manual / discard — no AI; still run acquisition for non-discard
+        if (decision.decision !== 'discard') {
+          enqueueLeadAcquisition(findingId, false);
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('[finding-enrichment] decision gate failed, continue AI:', err);
+    }
+  } else if (!decision.aiAllowed || decision.decision === 'discard') {
+    if (decision.decision !== 'discard') {
+      enqueueLeadAcquisition(findingId, false);
+    }
+    return;
+  } else if (decision.aiUsed) {
+    enqueueLeadAcquisition(findingId, false);
+    return;
+  }
 
   await prisma.agentFinding.update({
     where: { id: findingId },
@@ -101,7 +143,7 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
 
   const title = finding.title || '';
   const body = finding.scannedContent?.contentText || finding.summary || '';
-  const keywordScore = finding.keywordScore ?? 0;
+  const keywordScore = Math.max(finding.keywordScore ?? 0, decision?.ruleScore ?? 0);
   const leadFitScore = finding.leadFitScore ?? 0;
   const sourceConfig =
     finding.source?.config && typeof finding.source.config === 'object' && !Array.isArray(finding.source.config)
@@ -120,6 +162,7 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
   let degradedDetail = '';
 
   try {
+    // AI Gate: enrich / summarize / extract / recommend only — never creates Candidate alone
     const analysisOutput = await analyzeLeadContent(
       {
         title,
@@ -141,6 +184,7 @@ export async function enrichFindingAsync(findingId: string): Promise<void> {
     }
 
     if (analysisOutput.ran && analysisOutput.analysis) {
+      await markDecisionAiUsed(findingId);
       const analysis = analysisOutput.analysis;
       aiScore = analysis.score;
       enrichmentSource = analysisOutput.meta?.source === 'ai' ? 'ai' : 'fallback';
