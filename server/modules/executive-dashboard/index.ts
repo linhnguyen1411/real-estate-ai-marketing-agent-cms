@@ -10,7 +10,16 @@ export type {
   ExecutiveFunnel,
   ExecutiveSnapshot,
 } from './types';
-export type { ExecutiveKpiCard, ExecutiveKpiDashboard, ExecutiveKpiTrend } from './kpiTypes';
+export type {
+  ExecutiveKpiCard,
+  ExecutiveKpiDashboard,
+  ExecutiveKpiTrend,
+  SnapshotMetric,
+  HeroBlock,
+  RecommendationAction,
+  AttentionItem,
+  QuickAction,
+} from './kpiTypes';
 export { buildExecutiveSnapshot, formatExecutiveDashboardLines } from './executiveService';
 export { buildExecutiveKpiDashboard } from './kpiService';
 export { registerExecutiveDashboardRoutes } from './api/executiveRoutes';

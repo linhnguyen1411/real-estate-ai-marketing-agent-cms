@@ -68,10 +68,57 @@ export interface ExecutiveKpiCard {
   href: string;
 }
 
-/** H0.5.1 — main CMS Dashboard is AI business KPIs, not legacy CRM/views. */
+export interface SnapshotMetric {
+  id: string;
+  title: string;
+  value: string;
+  valueNumeric: number | null;
+  trendVsYesterday: string | null;
+  trendVs7d: string | null;
+  trendDirection: 'up' | 'down' | 'flat' | null;
+  href: string;
+  hasData: boolean;
+}
+
+export interface HeroBlock {
+  aiStatus: 'Working' | 'Attention' | 'Degraded' | 'Offline';
+  aiStatusLabel: string;
+  businessHealth: number | null;
+  todayGoal: { label: string; current: number; target: number } | null;
+  expectedRevenueTy: number | null;
+  currentCampaign: string | null;
+  confidence: number | null;
+}
+
+export interface RecommendationAction {
+  id: string;
+  action: string;
+  detail: string;
+  href: string;
+}
+
+export interface AttentionItem {
+  severity: 'critical' | 'warning' | 'info';
+  text: string;
+  href: string;
+}
+
+export interface QuickAction {
+  label: string;
+  href: string;
+}
+
+/** H0.5.2 — Executive Command Center for main CMS Dashboard */
 export interface DashboardData {
-  version: 'h051_executive_kpis';
+  version: 'h052_executive_command' | 'h051_executive_kpis';
   generatedAt: string;
+  summary?: string;
+  hero?: HeroBlock;
+  snapshot?: SnapshotMetric[];
+  insights?: string[];
+  recommendations?: RecommendationAction[];
+  attention?: AttentionItem[];
+  quickActions?: QuickAction[];
   kpis: ExecutiveKpiCard[];
 }
 

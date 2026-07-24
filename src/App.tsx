@@ -108,8 +108,23 @@ function ModuleFallback({ label = 'Đang tải module…' }: { label?: string })
 }
 
 const EMPTY_DASHBOARD: DashboardData = {
-  version: 'h051_executive_kpis',
+  version: 'h052_executive_command',
   generatedAt: new Date(0).toISOString(),
+  summary: '',
+  hero: {
+    aiStatus: 'Offline',
+    aiStatusLabel: 'Offline',
+    businessHealth: null,
+    todayGoal: null,
+    expectedRevenueTy: null,
+    currentCampaign: null,
+    confidence: null,
+  },
+  snapshot: [],
+  insights: [],
+  recommendations: [],
+  attention: [],
+  quickActions: [],
   kpis: [],
 };
 
@@ -192,9 +207,11 @@ export default function App() {
   React.useEffect(() => {
     if (!currentUser || activeTab !== 'dashboard') return;
 
+    let cancelled = false;
     const syncTraffic = () => {
       refreshTrafficData()
         .then(({ dashboard, settings: nextSettings }) => {
+          if (cancelled) return;
           setDashboardData(dashboard);
           setSettings(nextSettings);
         })
@@ -202,8 +219,11 @@ export default function App() {
     };
 
     syncTraffic();
-    const timer = window.setInterval(syncTraffic, 15000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(syncTraffic, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [activeTab, currentUser]);
 
   // Toast auto-dismiss
@@ -696,7 +716,7 @@ export default function App() {
               {/* ==================================================== */}
               {activeTab === 'dashboard' && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Executive KPIs…" />}>
-                  <ExecutiveKpiGrid data={dashboardData} />
+                  <ExecutiveKpiGrid data={dashboardData} refreshing={refreshing} />
                 </Suspense>
               )}
 
