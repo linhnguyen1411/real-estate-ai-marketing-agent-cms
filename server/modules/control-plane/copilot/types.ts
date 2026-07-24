@@ -44,6 +44,7 @@ export type CopilotIntentName =
   | 'decision_report'
   | 'knowledge_report'
   | 'knowledge_health'
+  | 'weekly_evolution'
   | 'mission_summary'
   | 'incident_summary'
   | 'machine_detail'

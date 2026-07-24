@@ -161,6 +161,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/decision-center" element={<AdminRoute />} />
           <Route path="/admin/agents/knowledge-center" element={<AdminRoute />} />
           <Route path="/admin/agents/knowledge-analytics" element={<AdminRoute />} />
+          <Route path="/admin/agents/feedback-center" element={<AdminRoute />} />
           <Route path="/admin/agents/ai-providers" element={<AdminRoute />} />
           <Route path="/admin/agents/lead-center" element={<AdminRoute />} />
           <Route path="/admin/agents/sources" element={<AdminRoute />} />

@@ -137,7 +137,16 @@ const RULES: Rule[] = [
       /knowledge health|sức khỏe knowledge|suc khoe knowledge|dead rules|top rule|rule accuracy|knowledge analytics|optimizer/.test(
         t,
       ) ||
-      (/knowledge|rule/.test(t) && /health|accuracy|dead|archive|roi/.test(t)),
+      (/knowledge|rule/.test(t) && /health|accuracy|dead|archive|roi/.test(t) && !/weekly|evolution/.test(t)),
+  },
+  {
+    name: 'weekly_evolution',
+    confidence: 0.98,
+    test: t =>
+      /weekly evolution|feedback center|rule improved|campaign improved|tiến hóa|tien hoa|học từ sales|hoc tu sales/.test(
+        t,
+      ) ||
+      (/weekly|evolution|feedback/.test(t) && /knowledge|rule|source|campaign|buyer accuracy/.test(t)),
   },
   {
     name: 'publisher_summary',

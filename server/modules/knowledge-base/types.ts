@@ -25,13 +25,15 @@ export type KnowledgeConcept = {
   aliases: string[];
   synonyms: string[];
   weight: number;
+  /** H3.6.3 — continuous learning trust 0~100 */
+  trust: number;
   examples: string[];
   negativeExamples: string[];
   campaignMapping: string | null;
   enabled: boolean;
   priority: number;
   hitCount: number;
-  source: 'seed' | 'admin' | 'learning' | 'import' | 'merge';
+  source: 'seed' | 'admin' | 'learning' | 'import' | 'merge' | 'feedback';
   updatedAt: string;
 };
 

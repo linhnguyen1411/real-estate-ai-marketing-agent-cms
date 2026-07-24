@@ -4,13 +4,15 @@
 
 import type { KnowledgeConcept } from './types';
 
-function c(input: Omit<KnowledgeConcept, 'updatedAt' | 'hitCount' | 'source' | 'enabled'> & {
+function c(input: Omit<KnowledgeConcept, 'updatedAt' | 'hitCount' | 'source' | 'enabled' | 'trust'> & {
   enabled?: boolean;
   hitCount?: number;
+  trust?: number;
   source?: KnowledgeConcept['source'];
 }): KnowledgeConcept {
   return {
     ...input,
+    trust: typeof input.trust === 'number' ? input.trust : 70,
     enabled: input.enabled !== false,
     hitCount: input.hitCount ?? 0,
     source: input.source || 'seed',

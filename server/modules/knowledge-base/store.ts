@@ -35,11 +35,15 @@ function emptyCoverage() {
 async function loadState(): Promise<StoredState> {
   const row = await prisma.appSetting.findUnique({ where: { key: SETTING_KEY } }).catch(() => null);
   const data = (row?.data || {}) as Partial<StoredState>;
+  const concepts =
+    Array.isArray(data.concepts) && data.concepts.length
+      ? data.concepts.map(c => ({
+          ...c,
+          trust: typeof c.trust === 'number' ? Math.max(0, Math.min(100, c.trust)) : 70,
+        }))
+      : [...DEFAULT_KNOWLEDGE_CONCEPTS];
   return {
-    concepts:
-      Array.isArray(data.concepts) && data.concepts.length
-        ? data.concepts
-        : [...DEFAULT_KNOWLEDGE_CONCEPTS],
+    concepts,
     unknownTerms: Array.isArray(data.unknownTerms) ? data.unknownTerms : [],
     suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
     coverageCounters: { ...emptyCoverage(), ...(data.coverageCounters || {}) },
@@ -217,6 +221,7 @@ export async function mapUnknownTerm(input: {
       aliases: [term.term],
       synonyms: [],
       weight: typeof input.weight === 'number' ? input.weight : input.category === 'seller' ? -40 : 25,
+      trust: 55,
       examples: term.sampleTexts.slice(0, 3),
       negativeExamples: [],
       campaignMapping: null,
@@ -306,6 +311,7 @@ export async function resolveSuggestion(
         aliases: [row.term],
         synonyms: [],
         weight: row.proposedCategory === 'seller' || row.proposedCategory === 'spam' ? -40 : 28,
+        trust: 55,
         examples: [],
         negativeExamples: [],
         campaignMapping: null,

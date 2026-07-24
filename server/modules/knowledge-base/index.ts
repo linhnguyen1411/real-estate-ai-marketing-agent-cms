@@ -64,4 +64,15 @@ export type {
   KnowledgeScorecard,
   KnowledgeAnalyticsSnapshot,
 } from './analyticsTypes';
+export {
+  applyOutcomeFeedback,
+  buildFeedbackCenterSnapshot,
+  formatWeeklyEvolution,
+} from './feedbackEngine';
+export type {
+  FeedbackOutcome,
+  FeedbackEvent,
+  FeedbackCenterSnapshot,
+  WeeklyEvolutionSummary,
+} from './feedbackTypes';
 export { registerKnowledgeBaseRoutes } from './api/knowledgeRoutes';

@@ -4,6 +4,11 @@
 
 import type { Express, Request, Response } from 'express';
 import {
+  applyOutcomeFeedback,
+  buildFeedbackCenterSnapshot,
+  formatWeeklyEvolution,
+} from '../feedbackEngine';
+import {
   buildKnowledgeSnapshot,
   getKnowledgeReportText,
 } from '../knowledgeService';
@@ -20,6 +25,7 @@ import {
   learnFromLeadCorrection,
   proposeFromAiEnrichment,
 } from '../learning';
+import type { FeedbackOutcome } from '../feedbackTypes';
 import {
   deleteConcept,
   exportKnowledgeLibrary,
@@ -128,6 +134,51 @@ export function registerKnowledgeBaseRoutes(app: Express): void {
     }
   });
 
+  /** H3.6.3 — Continuous feedback from real outcomes (does not import Sales Layer) */
+  app.post('/api/knowledge/feedback/outcome', async (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const outcome = String(body.outcome || '').trim() as FeedbackOutcome;
+      if (!outcome) return sendError(res, 400, 'outcome required');
+      const data = await applyOutcomeFeedback({
+        outcome,
+        keywords: Array.isArray(body.keywords) ? body.keywords.map(String) : undefined,
+        conceptIds: Array.isArray(body.conceptIds) ? body.conceptIds.map(String) : undefined,
+        sourceId: typeof body.sourceId === 'string' ? body.sourceId : null,
+        sourceLabel: typeof body.sourceLabel === 'string' ? body.sourceLabel : null,
+        missionId: typeof body.missionId === 'string' ? body.missionId : null,
+        missionLabel: typeof body.missionLabel === 'string' ? body.missionLabel : null,
+        campaignKey: typeof body.campaignKey === 'string' ? body.campaignKey : null,
+        contentId: typeof body.contentId === 'string' ? body.contentId : null,
+        revenue: typeof body.revenue === 'number' ? body.revenue : undefined,
+        note: typeof body.note === 'string' ? body.note : null,
+      });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Feedback failed');
+    }
+  });
+
+  app.get('/api/knowledge/feedback/snapshot', async (_req, res) => {
+    try {
+      res.json({ status: 'success', data: await buildFeedbackCenterSnapshot() });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Feedback snapshot failed');
+    }
+  });
+
+  app.get('/api/knowledge/feedback/weekly', async (_req, res) => {
+    try {
+      const snap = await buildFeedbackCenterSnapshot();
+      res.json({
+        status: 'success',
+        data: { text: formatWeeklyEvolution(snap), weekly: snap.weekly, snapshot: snap },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Weekly failed');
+    }
+  });
+
   app.get('/api/knowledge/concepts', async (_req, res) => {
     try {
       res.json({ status: 'success', data: await listConcepts() });
@@ -147,6 +198,7 @@ export function registerKnowledgeBaseRoutes(app: Express): void {
         aliases: Array.isArray(body.aliases) ? body.aliases.map(String) : [],
         synonyms: Array.isArray(body.synonyms) ? body.synonyms.map(String) : [],
         weight: typeof body.weight === 'number' ? body.weight : 20,
+        trust: typeof body.trust === 'number' ? body.trust : 60,
         examples: Array.isArray(body.examples) ? body.examples.map(String) : [],
         negativeExamples: Array.isArray(body.negativeExamples) ? body.negativeExamples.map(String) : [],
         campaignMapping: body.campaignMapping ? String(body.campaignMapping) : null,

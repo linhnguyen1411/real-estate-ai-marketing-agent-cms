@@ -64,6 +64,9 @@ const KnowledgeCenterPage = React.lazy(
 const KnowledgeAnalyticsPage = React.lazy(
   () => import('../features/agent/knowledge-analytics/pages/KnowledgeAnalyticsPage'),
 );
+const FeedbackCenterPage = React.lazy(
+  () => import('../features/agent/feedback-center/pages/FeedbackCenterPage'),
+);
 
 const NAV_ITEMS = [
   { path: '/admin/agents', label: 'Dashboard', end: true },
@@ -72,6 +75,7 @@ const NAV_ITEMS = [
   { path: '/admin/agents/decision-center', label: 'Decision Center' },
   { path: '/admin/agents/knowledge-center', label: 'Knowledge Center' },
   { path: '/admin/agents/knowledge-analytics', label: 'Knowledge Analytics' },
+  { path: '/admin/agents/feedback-center', label: 'Feedback Center' },
   { path: '/admin/agents/ai-providers', label: 'AI Providers' },
   { path: '/admin/agents/lead-center', label: 'Lead Center' },
   { path: '/admin/agents/sources', label: 'Nguồn' },
@@ -100,6 +104,7 @@ function resolveSection(pathname: string) {
   if (pathname.startsWith('/admin/agents/decision-center')) return 'decision-center';
   if (pathname.startsWith('/admin/agents/knowledge-center')) return 'knowledge-center';
   if (pathname.startsWith('/admin/agents/knowledge-analytics')) return 'knowledge-analytics';
+  if (pathname.startsWith('/admin/agents/feedback-center')) return 'feedback-center';
   if (pathname.startsWith('/admin/agents/ai-providers')) return 'ai-providers';
   if (pathname.startsWith('/admin/agents/lead-center')) return 'lead-center';
   if (pathname.startsWith('/admin/agents/sources')) return 'sources';
@@ -179,6 +184,11 @@ export default function AgentPlatformPage({ userRole }: Props) {
         {section === 'knowledge-analytics' && (
           <Suspense fallback={<AgentPanelLoader />}>
             <KnowledgeAnalyticsPage canManage={canManage} />
+          </Suspense>
+        )}
+        {section === 'feedback-center' && (
+          <Suspense fallback={<AgentPanelLoader />}>
+            <FeedbackCenterPage canManage={canManage} />
           </Suspense>
         )}
         {section === 'ai-providers' && (

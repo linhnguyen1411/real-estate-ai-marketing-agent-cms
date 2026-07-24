@@ -268,6 +268,19 @@ const knowledgeHealth: IntentHandler = {
   },
 };
 
+const weeklyEvolution: IntentHandler = {
+  name: 'weekly_evolution',
+  supports: i => i.name === 'weekly_evolution',
+  async execute({ intent }) {
+    const { buildFeedbackCenterSnapshot, formatWeeklyEvolution } = await import(
+      '../../knowledge-base'
+    );
+    const snap = await buildFeedbackCenterSnapshot();
+    const text = formatWeeklyEvolution(snap);
+    return replyOk(intent.name, text.split('\n'), { weekly: snap.weekly });
+  },
+};
+
 const missionSummary: IntentHandler = {
   name: 'mission_summary',
   supports: i => i.name === 'mission_summary',
@@ -743,7 +756,7 @@ const helpHandler: IntentHandler = {
         'AI Operations Center — hỏi tiếng Việt, không cần slash.',
         '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
         '• Scanner / Publisher / Mission / Browser / Lead',
-        '• AI Status · Decision Report · Knowledge Health',
+        '• AI Status · Knowledge Health · Weekly Evolution',
         '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
@@ -787,6 +800,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     decisionReport,
     knowledgeReport,
     knowledgeHealth,
+    weeklyEvolution,
     missionSummary,
     incidentSummary,
     machineDetail,
