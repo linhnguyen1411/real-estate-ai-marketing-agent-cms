@@ -3298,7 +3298,23 @@ app.get('/listings', (req: Request, res: Response) => {
       return;
     }
   }
-  res.redirect(301, publicListingsPath);
+  res.redirect(301, '/bat-dong-san');
+});
+
+app.get('/can-ho', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/can-ho');
+});
+
+app.get('/dat-nen', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/dat-nen');
+});
+
+app.get('/nha-pho', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/nha-pho');
+});
+
+app.get('/nam-da-nang', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/nam-da-nang');
 });
 
 app.get('/robots.txt', (req: Request, res: Response) => {

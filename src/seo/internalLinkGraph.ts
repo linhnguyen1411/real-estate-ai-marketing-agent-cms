@@ -126,7 +126,7 @@ export function getRelatedProjectLinksForSlug(slug: string): LinkItem[] {
   if (slug.includes('sun-symphony') || slug.includes('sun-cosmo')) {
     return [{ label: 'Sun Group Đà Nẵng', href: '/du-an#sun-group' }];
   }
-  if (slug.includes('can-ho')) return [{ label: 'Danh mục căn hộ', href: '/can-ho' }];
+  if (slug.includes('can-ho')) return [{ label: 'Danh mục căn hộ', href: '/bat-dong-san/can-ho' }];
   return [];
 }
 

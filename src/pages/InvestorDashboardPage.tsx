@@ -91,13 +91,13 @@ export default function InvestorDashboardPage() {
                 </Link>
               </li>
               <li>
-                <Link to="/can-ho" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
+                <Link to="/bat-dong-san/can-ho" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
                   Căn hộ cho thuê & đầu tư
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </li>
               <li>
-                <Link to="/dat-nen" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
+                <Link to="/bat-dong-san/dat-nen" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
                   Đất nền Nam Đà Nẵng
                   <ArrowRight className="h-4 w-4" />
                 </Link>

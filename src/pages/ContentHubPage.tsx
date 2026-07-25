@@ -139,7 +139,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
                   </p>
                 </div>
                 <Link
-                  to="/can-ho"
+                  to="/bat-dong-san/can-ho"
                   className="text-sm font-semibold text-invest-blue hover:underline"
                 >
                   Xem căn hộ Sun Group →

@@ -37,9 +37,19 @@ import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
 import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
-import { compareProjectDisplayOrder, getPropertyProjectLabel, matchProjectName, sortProjectEntries } from './seo/propertyCatalog';
+import { compareProjectDisplayOrder, getPropertyProjectLabel, sortProjectEntries } from './seo/propertyCatalog';
 import { sortByCreatedAtDesc } from './utils/propertySort';
-import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
+import PaginationBar from './components/common/PaginationBar';
+import {
+  AREA_RANGES,
+  LISTING_CATALOG_ROOT,
+  PRICE_RANGES,
+  applyListingFilters,
+  buildListingPath,
+  getTransactionType,
+  useListingPageSize,
+  useListingUrlState,
+} from './features/listings';
 
 const MultiStepInvestorForm = React.lazy(() => import('./components/leadGen/MultiStepInvestorForm'));
 
@@ -93,26 +103,9 @@ const DEFAULT_SEO_KEYWORDS = [
 ];
 const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
 const DEFAULT_SEO_DESCRIPTION = 'Đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn — pháp lý rõ, hình ảnh thật, giỏ ký gửi cập nhật 2026.';
-const PRICE_RANGES = [
-  { value: 'all', label: 'Tất cả mức giá' },
-  { value: 'under3', label: 'Dưới 3 tỷ' },
-  { value: '3to5', label: '3 - 5 tỷ' },
-  { value: '5to10', label: '5 - 10 tỷ' },
-  { value: 'over10', label: 'Trên 10 tỷ' }
-];
-const AREA_RANGES = [
-  { value: 'all', label: 'Tất cả diện tích' },
-  { value: 'under80', label: 'Dưới 80 m²' },
-  { value: '80to150', label: '80 - 150 m²' },
-  { value: 'over150', label: 'Trên 150 m²' }
-];
 
 function formatPrice(price: number) {
   return `${price.toLocaleString('vi-VN')} tỷ`;
-}
-
-function getTransactionType(property: Property) {
-  return String(property.transaction_type || 'Bán').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán';
 }
 
 function getPropertyViewCount(property: Property) {
@@ -133,17 +126,6 @@ function getGoogleMapUrl(property: Property) {
 
 function getGoogleMapLink(property: Property) {
   return `https://www.google.com/maps/search/?api=1&query=${property.map_latitude},${property.map_longitude}`;
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 120);
 }
 
 function getPropertySlug(property: Property) {
@@ -336,12 +318,22 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     return created;
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState('all');
-  const [selectedTransactionType, setSelectedTransactionType] = useState('all');
-  const [selectedPriceRange, setSelectedPriceRange] = useState('all');
-  const [selectedAreaRange, setSelectedAreaRange] = useState('all');
-  const [selectedProject, setSelectedProject] = useState('all');
+  const { filters, setFilters, resetFilters } = useListingUrlState();
+  const listingPageSize = useListingPageSize(3);
+  const searchQuery = filters.q;
+  const selectedType = filters.type;
+  const selectedTransactionType = filters.transaction;
+  const selectedPriceRange = filters.price;
+  const selectedAreaRange = filters.area;
+  const selectedProject = filters.project;
+  const listingPage = filters.page;
+  const setSearchQuery = (value: string) => setFilters({ q: value }, { replace: true });
+  const setSelectedType = (value: string) => setFilters({ type: value });
+  const setSelectedTransactionType = (value: string) => setFilters({ transaction: value });
+  const setSelectedPriceRange = (value: string) => setFilters({ price: value });
+  const setSelectedAreaRange = (value: string) => setFilters({ area: value });
+  const setSelectedProject = (value: string) => setFilters({ project: value });
+  const setListingPage = (page: number) => setFilters({ page }, { resetPage: false });
   const initialRouteProperty = findPropertyFromLocation(properties, location.pathname, location.search, propertySlug);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(() => initialRouteProperty);
   const [detailViewCount, setDetailViewCount] = useState(() => Number(initialRouteProperty?.public_view_count || 0));
@@ -364,7 +356,6 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     }
   ]);
   const [contactStatus, setContactStatus] = useState('');
-  const [listingPage, setListingPage] = useState(1);
   const [localProperties, setLocalProperties] = useState<Property[]>(properties);
 
   React.useEffect(() => {
@@ -581,35 +572,10 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     [activeProperties]
   );
 
-  const filteredProperties = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    return activeProperties.filter(property => {
-      const matchesQuery = !normalizedQuery
-        || property.title.toLowerCase().includes(normalizedQuery)
-        || property.location.toLowerCase().includes(normalizedQuery)
-        || property.type.toLowerCase().includes(normalizedQuery)
-        || getTransactionType(property).toLowerCase().includes(normalizedQuery)
-        || property.description.toLowerCase().includes(normalizedQuery)
-        || (property.rich_description || '').toLowerCase().includes(normalizedQuery);
-      const matchesType = selectedType === 'all' || property.type === selectedType;
-      const matchesTransaction = selectedTransactionType === 'all' || getTransactionType(property) === selectedTransactionType;
-      const matchesPrice =
-        selectedPriceRange === 'all'
-          || (selectedPriceRange === 'under3' && property.price < 3)
-          || (selectedPriceRange === '3to5' && property.price >= 3 && property.price <= 5)
-          || (selectedPriceRange === '5to10' && property.price > 5 && property.price <= 10)
-          || (selectedPriceRange === 'over10' && property.price > 10);
-      const matchesArea =
-        selectedAreaRange === 'all'
-          || (selectedAreaRange === 'under80' && property.area < 80)
-          || (selectedAreaRange === '80to150' && property.area >= 80 && property.area <= 150)
-          || (selectedAreaRange === 'over150' && property.area > 150);
-      const matchesProject = matchProjectName(property, selectedProject);
-
-      return matchesQuery && matchesType && matchesTransaction && matchesPrice && matchesArea && matchesProject;
-    });
-  }, [activeProperties, searchQuery, selectedAreaRange, selectedPriceRange, selectedProject, selectedTransactionType, selectedType]);
+  const filteredProperties = useMemo(
+    () => applyListingFilters(activeProperties, filters),
+    [activeProperties, filters],
+  );
 
   const projectGroups = useMemo(() => {
     const groups = new Map<string, Property[]>();
@@ -627,14 +593,20 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     ) as string[];
     return names.sort((a, b) => compareProjectDisplayOrder(a, b, projectDisplayOrder));
   }, [activeProperties, projectDisplayOrder]);
-  const paginatedFilteredProperties = useMemo(() => {
-    const start = (listingPage - 1) * DEFAULT_PAGE_SIZE;
-    return filteredProperties.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [filteredProperties, listingPage]);
+
+  const listingTotalPages = Math.max(1, Math.ceil(filteredProperties.length / listingPageSize));
+  const safeListingPage = Math.min(listingPage, listingTotalPages);
 
   React.useEffect(() => {
-    setListingPage(1);
-  }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType, selectedProject]);
+    if (listingPage !== safeListingPage) {
+      setListingPage(safeListingPage);
+    }
+  }, [listingPage, safeListingPage]);
+
+  const paginatedFilteredProperties = useMemo(() => {
+    const start = (safeListingPage - 1) * listingPageSize;
+    return filteredProperties.slice(start, start + listingPageSize);
+  }, [filteredProperties, safeListingPage, listingPageSize]);
 
   const propertyTypes = Array.from(new Set(activeProperties.map(property => property.type)));
   const siteOrigin = window.location.origin;
@@ -862,17 +834,6 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     }
   };
 
-  const quickFilterResults = filteredProperties.slice(0, 6);
-
-  const resetFilters = () => {
-    setSearchQuery('');
-    setSelectedType('all');
-    setSelectedTransactionType('all');
-    setSelectedPriceRange('all');
-    setSelectedAreaRange('all');
-    setSelectedProject('all');
-  };
-
   const applyProjectFilter = (projectName: string) => {
     setSelectedProject(projectName);
     document.getElementById('listings')?.scrollIntoView({ behavior: 'smooth' });
@@ -968,9 +929,9 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 <a href="#contact" className="btn-cta px-5 py-3">
                   Nhận báo cáo thị trường
                 </a>
-                <a href="#listings" className="btn-primary px-5 py-3">
+                <Link to={LISTING_CATALOG_ROOT} className="btn-primary px-5 py-3">
                   Xem cơ hội đầu tư
-                </a>
+                </Link>
               </div>
             </div>
           </div>
@@ -1042,12 +1003,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 </select>
               </div>
               <div className="flex gap-2 lg:justify-end">
-                <a href="#listings" className="inline-flex flex-1 items-center justify-center rounded-lg bg-invest-cta px-4 py-2.5 text-sm font-bold text-white hover:bg-invest-cta-hover lg:flex-none">
+                <Link
+                  to={buildListingPath(null, filters)}
+                  className="inline-flex flex-1 items-center justify-center rounded-lg bg-invest-cta px-4 py-2.5 text-sm font-bold text-white hover:bg-invest-cta-hover lg:flex-none"
+                >
                   Xem {filteredProperties.length} BĐS
-                </a>
+                </Link>
                 <button
                   type="button"
-                  onClick={resetFilters}
+                  onClick={() => resetFilters()}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:border-slate-300"
                 >
                   Xóa
@@ -1185,18 +1149,27 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 property={property}
                 onSelect={openProperty}
                 viewCount={getPropertyViewCount(property)}
-                priorityLoad={listingPage === 1 && index === 0 && featuredProperties.length === 0}
+                priorityLoad={safeListingPage === 1 && index === 0 && featuredProperties.length === 0}
               />
             ))}
           </div>
 
           <PaginationBar
             className="mt-8"
-            page={listingPage}
-            pageSize={DEFAULT_PAGE_SIZE}
+            page={safeListingPage}
+            pageSize={listingPageSize}
             totalItems={filteredProperties.length}
             onPageChange={setListingPage}
           />
+
+          <div className="mt-6 text-center">
+            <Link
+              to={buildListingPath(null, filters)}
+              className="text-sm font-bold text-invest-blue hover:underline"
+            >
+              Xem toàn bộ danh sách trên /bat-dong-san
+            </Link>
+          </div>
 
           {filteredProperties.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">

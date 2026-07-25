@@ -16,6 +16,7 @@ import type { Property } from './types.ts';
 import LeadGenProvider from './components/leadGen/LeadGenProvider.tsx';
 import { isPropertySlugCandidate } from './seo/routes.ts';
 import { captureShortLinkFromUrl } from './utils/shortLinkAttribution.ts';
+import { HashListingsRedirect, LEGACY_LISTING_REDIRECTS, LISTING_CATALOG_ROOT } from './features/listings';
 import './index.css';
 
 const AboutPage = React.lazy(() => import('./pages/AboutPage.tsx'));
@@ -183,7 +184,12 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/reports" element={<AdminRoute />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
-          <Route path="/listings" element={<Navigate to="/" replace />} />
+          <Route path="/listings" element={<Navigate to={LISTING_CATALOG_ROOT} replace />} />
+          {Object.entries(LEGACY_LISTING_REDIRECTS)
+            .filter(([from]) => from !== '/listings')
+            .map(([from, to]) => (
+              <Route key={from} path={from} element={<Navigate to={to} replace />} />
+            ))}
 
           <Route element={<PublicSiteLayout />}>
             <Route
@@ -234,39 +240,15 @@ createRoot(document.getElementById('root')!).render(
               path="/bat-dong-san"
               element={
                 <SuspensePage>
-                  <CategoryListingsPage categoryPath="/bat-dong-san" />
+                  <CategoryListingsPage />
                 </SuspensePage>
               }
             />
             <Route
-              path="/can-ho"
+              path="/bat-dong-san/:facet"
               element={
                 <SuspensePage>
-                  <CategoryListingsPage categoryPath="/can-ho" filterType="căn" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/dat-nen"
-              element={
-                <SuspensePage>
-                  <CategoryListingsPage categoryPath="/dat-nen" filterType="đất" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/nha-pho"
-              element={
-                <SuspensePage>
-                  <CategoryListingsPage categoryPath="/nha-pho" filterType="nhà" />
-                </SuspensePage>
-              }
-            />
-            <Route
-              path="/nam-da-nang"
-              element={
-                <SuspensePage>
-                  <CategoryListingsPage categoryPath="/nam-da-nang" filterLocation="nam" filterMarketZone="nam-da-nang" />
+                  <CategoryListingsPage />
                 </SuspensePage>
               }
             />
@@ -341,6 +323,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path=":propertySlug" element={<PropertySlugOutlet />} />
           </Route>
         </Routes>
+        <HashListingsRedirect />
       </HelmetProvider>
     </Router>
     </LeadGenProvider>

@@ -114,7 +114,7 @@ async function loadCandidateListings(
       location: r.location,
       propertyType: r.property_type,
       area: r.area,
-      url: r.slug ? `/listings/${r.slug}` : null,
+      url: r.slug ? `/${r.slug}` : null,
     }));
   } catch {
     // Table may not exist — soft fail

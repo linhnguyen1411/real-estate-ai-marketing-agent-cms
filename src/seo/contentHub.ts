@@ -47,14 +47,14 @@ export const CONTENT_HUB_CATEGORIES: ContentCategory[] = [
     slug: 'can-ho',
     title: 'Căn hộ',
     description: 'Căn hộ Sun Group ven sông Hàn và trung tâm.',
-    path: '/can-ho',
+    path: '/bat-dong-san/can-ho',
     keywords: ['căn hộ đà nẵng', 'căn hộ sun group'],
   },
   {
     slug: 'dat-nen',
     title: 'Đất nền',
     description: 'Đất nền Nam Đà Nẵng và đất nền dự án Sun Group.',
-    path: '/dat-nen',
+    path: '/bat-dong-san/dat-nen',
     keywords: ['đất nền đà nẵng'],
   },
   {
