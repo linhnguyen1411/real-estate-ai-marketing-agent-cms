@@ -467,17 +467,29 @@ export async function listSalesPipeline(input?: {
 
   const lim = input?.limit ?? 200;
   let placed = 0;
+  let hydrated = 0;
+  const HYDRATE_BUDGET = 40;
   for (const row of rows) {
     if (placed >= lim) break;
     let sales = readSalesProfile(row.extractedData);
+    let acq = readAcquisitionProfile(row.extractedData);
     if (!sales) {
-      const acq = readAcquisitionProfile(row.extractedData);
-      if (!acq?.isBuyer) continue;
-      // lazy hydrate
-      sales = await processSalesLayer({ findingId: row.id, notifyFollowUp: false });
+      if (hydrated >= HYDRATE_BUDGET) continue;
+      try {
+        const { processLeadAcquisition } = await import('../lead-acquisition');
+        acq =
+          (await processLeadAcquisition({
+            findingId: row.id,
+            notifyTelegram: false,
+          })) || acq;
+        hydrated += 1;
+        if (!acq?.isBuyer) continue;
+        sales = await processSalesLayer({ findingId: row.id, notifyFollowUp: false });
+      } catch {
+        continue;
+      }
       if (!sales) continue;
     }
-    const acq = readAcquisitionProfile(row.extractedData);
     const confidencePct = Math.round((acq?.intent.confidence ?? 0.5) * 100);
     board[sales.pipelineStage].push({
       findingId: row.id,

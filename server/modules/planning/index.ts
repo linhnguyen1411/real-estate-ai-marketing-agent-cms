@@ -28,6 +28,19 @@ export {
   getCampaignOrchestratorTasks,
 } from './campaignRuntime';
 export {
+  getCampaignWorkspace,
+  listCampaignWorkspaceHealth,
+  resolveCampaignWorkspace,
+  formatCampaignWorkspaceLines,
+  deriveCampaignHealth,
+  workspaceTelegramMarkup,
+} from './campaignWorkspace';
+export type {
+  CampaignWorkspace,
+  CampaignWorkspaceHealth,
+  CampaignHealthLevel,
+} from './campaignWorkspace';
+export {
   createCampaignTaskGraph,
   formatOrchestratorWorkLines,
   formatOrchestratorTaskCardLines,

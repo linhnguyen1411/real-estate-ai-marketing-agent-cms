@@ -36,6 +36,11 @@ import type { IntentHandler, IntentRegistry } from './intentRegistry';
 import type { ClassifiedIntent, CopilotIntentName } from './types';
 import { runSalesEmployee } from '../../planning/salesEmployee';
 import {
+  formatCampaignWorkspaceLines,
+  resolveCampaignWorkspace,
+  workspaceTelegramMarkup,
+} from '../../planning/campaignWorkspace';
+import {
   buildExecutiveSnapshot,
   formatExecutiveDashboardLines,
 } from '../../executive-dashboard';
@@ -126,6 +131,23 @@ const aiSalesHelp: IntentHandler = {
   supports: i => i.name === 'ai_sales_help',
   execute: async ({ intent, text, ctx }) =>
     runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+
+const campaignWorkspace: IntentHandler = {
+  name: 'campaign_workspace',
+  supports: i => i.name === 'campaign_workspace',
+  execute: async ({ intent, text, ctx }) => {
+    const ws = await resolveCampaignWorkspace(text, ctx.companyId);
+    if (!ws) {
+      return replyFail(intent.name, 'Chưa có Campaign Workspace phù hợp. Tạo campaign trước (ví dụ: bán mạnh Mai Đăng Chơn).');
+    }
+    const lines = formatCampaignWorkspaceLines(ws);
+    return replyOk(intent.name, lines, {
+      campaignId: ws.campaign.id,
+      health: ws.health,
+      aiThoughts: ws.aiThoughts,
+    }, workspaceTelegramMarkup(ws.campaign.id));
+  },
 };
 
 function dayBounds(hint?: string): { from: string; to: string } {
@@ -837,6 +859,7 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     aiSalesTimeline,
     aiSalesRecommendations,
     aiSalesHelp,
+    campaignWorkspace,
     leadCount,
     agentsOffline,
     retryFailedPublish,

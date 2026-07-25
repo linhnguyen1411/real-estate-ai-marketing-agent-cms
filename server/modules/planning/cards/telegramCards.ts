@@ -20,6 +20,18 @@ export function campaignCard(
   board: CampaignBoard,
   campaignId?: string,
   orchestratorTasks?: OrchestratorTask[],
+  workspaceSummary?: {
+    health?: string;
+    researchDone?: boolean;
+    missions?: number;
+    leads?: number;
+    buyers?: number;
+    drafts?: number;
+    published?: number;
+    salesLine?: string;
+    revenueLine?: string;
+    aiThoughts?: string;
+  },
 ): { lines: string[]; replyMarkup: InlineKeyboard } {
   const cid = (campaignId || board.livingCampaignId || board.id).slice(0, 28);
   const check = board.planChecklist.map(c => `${c.done ? '✓' : '○'} ${c.label}`).join('\n');
@@ -27,8 +39,24 @@ export function campaignCard(
     orchestratorTasks && orchestratorTasks.length
       ? formatOrchestratorTaskCardLines(orchestratorTasks)
       : ['Tasks', ...board.tasks.map(t => `• ${t}`), '────────────────────────────────'];
+  const dash = workspaceSummary
+    ? [
+        '',
+        'Campaign Dashboard',
+        `Research  ${workspaceSummary.researchDone ? '✓' : '○'}`,
+        `Mission  ${workspaceSummary.missions ?? 0}`,
+        `Lead  ${workspaceSummary.leads ?? 0}`,
+        `Buyer  ${workspaceSummary.buyers ?? 0}`,
+        `Draft  ${workspaceSummary.drafts ?? 0}`,
+        `Published  ${workspaceSummary.published ?? 0}`,
+        workspaceSummary.salesLine || null,
+        workspaceSummary.revenueLine || null,
+        workspaceSummary.health ? `Health  ${workspaceSummary.health}` : null,
+        workspaceSummary.aiThoughts ? `\n${workspaceSummary.aiThoughts}` : null,
+      ].filter((x): x is string => Boolean(x))
+    : [];
   const lines = [
-    'Campaign Card',
+    'Campaign Workspace',
     '────────────────────────────────',
     board.name,
     `ID: ${board.id}`,
@@ -38,6 +66,7 @@ export function campaignCard(
     `Budget: ${board.budget}`,
     `Priority: ${board.priority}`,
     `Health: ${board.health}`,
+    ...dash,
     '',
     'Plan',
     check,
@@ -49,19 +78,19 @@ export function campaignCard(
     replyMarkup: {
       inline_keyboard: [
         [
-          { text: 'Approve', callback_data: `ai:ap:${cid}` },
-          { text: 'Reject', callback_data: `ai:rj:${cid}` },
-          { text: 'View', callback_data: `ai:vw:${cid}` },
-        ],
-        [
           { text: 'Research', callback_data: 'ai:research' },
-          { text: 'Content', callback_data: 'ai:content' },
+          { text: 'Buyer', callback_data: 'ai:leads' },
           { text: 'Mission', callback_data: 'ai:mission' },
         ],
         [
-          { text: 'Leads', callback_data: 'ai:leads' },
+          { text: 'Content', callback_data: 'ai:content' },
           { text: 'Publish', callback_data: 'ai:publish' },
-          { text: 'Recs', callback_data: 'ai:recs' },
+          { text: 'Sales', callback_data: 'ai:recs' },
+        ],
+        [
+          { text: 'Summary', callback_data: `ai:vw:${cid}` },
+          { text: 'Approve', callback_data: `ai:ap:${cid}` },
+          { text: 'Reject', callback_data: `ai:rj:${cid}` },
         ],
       ],
     },

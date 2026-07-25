@@ -59,7 +59,8 @@ export type CopilotIntentName =
   | 'ai_sales_content'
   | 'ai_sales_timeline'
   | 'ai_sales_recommendations'
-  | 'ai_sales_help';
+  | 'ai_sales_help'
+  | 'campaign_workspace';
 
 export type CopilotSlots = {
   location?: string;

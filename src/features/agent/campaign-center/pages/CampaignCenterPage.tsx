@@ -1,20 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AgentPanelEmpty, AgentPanelError, AgentPanelLoader } from '../../shared/AgentPlatformUi';
 
-type OrchestratorTask = {
-  id: string;
-  key: string;
-  label: string;
-  agent: string;
-  status: string;
-  dependencies: string[];
-  resultSummary?: string | null;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  durationMs?: number | null;
-  retryCount?: number;
-};
-
 type LivingCampaignLite = {
   id: string;
   name: string;
@@ -30,45 +16,110 @@ type LivingCampaignLite = {
       missionsProposed?: number;
       contentSlots?: number;
     };
-    orchestratorTasks?: OrchestratorTask[];
-    operationalMemory?: Array<{ at: string; title: string; detail?: string }>;
   };
   updatedAt: string;
 };
 
-type TaskDetail = {
-  campaignId: string;
-  name: string;
-  status: string;
-  tasks: OrchestratorTask[];
-  progress: {
-    total: number;
-    completed: number;
-    running: number;
-    waitingApproval: number;
-    failed: number;
-    pending: number;
-    percent: number;
-    stuck: OrchestratorTask[];
+type Workspace = {
+  overview: {
+    name: string;
+    goal: string;
+    priority: string;
+    status: string;
+    progressPercent: number;
+    owner: string | null;
+    propertyHint: string;
+    confidence: number;
+    roiNote: string;
   };
-  ready: string[];
-  timeline: Array<{ at: string; title: string; detail?: string }>;
-  executionTrace?: {
+  health: { level: string; score: number; signals: string[] };
+  research: {
+    title?: string;
+    summary?: string;
+    competitors?: string[];
+    trends?: string[];
+    topKeywords?: string[];
+    priceTrend?: string;
+    demandTrend?: string;
+    buyerSignals?: string[];
+    suggestedPositioning?: string;
+  } | null;
+  missions: Array<{ id: string; name: string; priority: string; areaHint: string; intent: string }>;
+  buyers: {
+    candidates: number;
+    vip: number;
+    contacted: number;
+    converted: number;
+    leads: Array<{
+      name: string;
+      priority: string;
+      leadStatus: string;
+      budget: string;
+      area: string;
+      recommendation: string;
+    }>;
+  };
+  content: {
+    slots: number;
+    approved: number;
+    draft: number;
+    scheduled: number;
+    published: number;
+    plan: { schedule?: Array<{ time: string; channel: string; format: string; topic: string }> } | null;
+  };
+  publish: {
+    suggestedChannel: string | null;
+    approved: boolean;
+    successNote: string;
+    proposal: { channel: string; note: string; approved: boolean } | null;
+  };
+  knowledge: {
+    mappedConcepts: Array<{ id: string; name: string; campaignMapping: string | null }>;
+    keywordHints: string[];
+  };
+  sales: {
+    pipelineValueTy: number;
+    expectedRevenueTy: number;
+    negotiating: number;
+    won: number;
+    lost: number;
+    nextAction: string | null;
+  };
+  orchestrator: {
+    tasks: Array<{
+      id: string;
+      label: string;
+      agent: string;
+      status: string;
+      dependencies: string[];
+      resultSummary?: string | null;
+      durationMs?: number | null;
+    }>;
+    progress: {
+      total: number;
+      completed: number;
+      waitingApproval: number;
+      stuck: unknown[];
+      percent: number;
+    };
+    ready: string[];
+  };
+  trace: {
     traceId: string;
     status: string;
     durationMs: number | null;
-    startedAt: string;
-    finishedAt: string | null;
     steps: Array<{
       step: string;
       status: string;
       startedAt: string;
-      finishedAt?: string;
       durationMs?: number;
       summary: string;
       errorReason?: string;
     }>;
   } | null;
+  timeline: Array<{ at: string; title: string; detail?: string }>;
+  recommendations: Array<{ message: string; severity: string; actionLabel?: string }>;
+  aiThoughts: string;
 };
 
 const COLUMNS: Array<{ id: string; label: string }> = [
@@ -84,6 +135,21 @@ const COLUMNS: Array<{ id: string; label: string }> = [
   { id: 'completed', label: 'Completed' },
 ];
 
+const TABS = [
+  'Overview',
+  'Research',
+  'Mission',
+  'Buyer',
+  'Content',
+  'Publish',
+  'Knowledge',
+  'Sales',
+  'Trace',
+  'AI Thoughts',
+] as const;
+
+type Tab = (typeof TABS)[number];
+
 async function fetchKanban(): Promise<Record<string, LivingCampaignLite[]>> {
   const res = await fetch('/api/planning/campaigns?kanban=1');
   const json = await res.json();
@@ -93,13 +159,13 @@ async function fetchKanban(): Promise<Record<string, LivingCampaignLite[]>> {
   return json.data as Record<string, LivingCampaignLite[]>;
 }
 
-async function fetchTasks(id: string): Promise<TaskDetail> {
-  const res = await fetch(`/api/planning/campaigns/${id}/tasks`);
+async function fetchWorkspace(id: string): Promise<Workspace> {
+  const res = await fetch(`/api/planning/campaigns/${id}/workspace`);
   const json = await res.json();
   if (!res.ok || json.status !== 'success') {
-    throw new Error(json.message || 'Không tải được tasks');
+    throw new Error(json.message || 'Không tải được Campaign Workspace');
   }
-  return json.data as TaskDetail;
+  return json.data as Workspace;
 }
 
 async function postAction(id: string, action: 'approve' | 'reject' | 'complete') {
@@ -120,21 +186,25 @@ function fmtDuration(ms?: number | null): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function healthClass(level: string) {
+  if (level === 'critical') return 'text-rose-400 border-rose-500/40 bg-rose-950/40';
+  if (level === 'warning') return 'text-amber-300 border-amber-500/40 bg-amber-950/30';
+  return 'text-emerald-300 border-emerald-500/40 bg-emerald-950/30';
+}
+
 export default function CampaignCenterPage({ canManage }: { canManage: boolean }) {
   const [board, setBoard] = useState<Record<string, LivingCampaignLite[]> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [tab, setTab] = useState<Tab>('Overview');
   const [execAnalytics, setExecAnalytics] = useState<{
     totalTraces: number;
     successRate: number;
     averageDurationMs: number | null;
     mostFailedStep: string | null;
-    averageResearchMs: number | null;
-    averageMissionMs: number | null;
-    averageContentMs: number | null;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -151,11 +221,11 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
     }
   }, []);
 
-  const loadDetail = useCallback(async (id: string) => {
+  const loadWorkspace = useCallback(async (id: string) => {
     try {
-      setDetail(await fetchTasks(id));
+      setWorkspace(await fetchWorkspace(id));
     } catch (e: unknown) {
-      setMessage(e instanceof Error ? e.message : 'Detail failed');
+      setMessage(e instanceof Error ? e.message : 'Workspace failed');
     }
   }, []);
 
@@ -164,8 +234,8 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
   }, [load]);
 
   useEffect(() => {
-    if (selectedId) void loadDetail(selectedId);
-  }, [selectedId, loadDetail]);
+    if (selectedId) void loadWorkspace(selectedId);
+  }, [selectedId, loadWorkspace]);
 
   const run = async (id: string, action: 'approve' | 'reject' | 'complete') => {
     if (!canManage) return;
@@ -175,7 +245,7 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
       await postAction(id, action);
       setMessage(`${action} OK — ${id.slice(0, 10)}…`);
       await load();
-      if (selectedId === id) await loadDetail(id);
+      if (selectedId === id) await loadWorkspace(id);
     } catch (e: unknown) {
       setMessage(e instanceof Error ? e.message : 'Action failed');
     } finally {
@@ -184,7 +254,7 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
   };
 
   if (error) return <AgentPanelError message={error} onRetry={() => void load()} />;
-  if (!board) return <AgentPanelLoader label="Đang tải Campaign Center…" />;
+  if (!board) return <AgentPanelLoader label="Đang tải Campaign Workspace…" />;
 
   const total = Object.values(board).reduce((n, arr) => n + (arr?.length || 0), 0);
   if (!total) {
@@ -193,7 +263,7 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
         <Header message={message} onRefresh={() => void load()} />
         <AgentPanelEmpty
           title="Chưa có living campaign"
-          description='Nói với Copilot: "Hôm nay cần bán mạnh lô Mai Đăng Chơn" — Campaign Runtime + Task Orchestrator sẽ tự chạy.'
+          description='Nói với Copilot: "Hôm nay cần bán mạnh lô Mai Đăng Chơn" — Campaign Workspace sẽ trở thành trung tâm điều phối AI.'
         />
       </div>
     );
@@ -203,31 +273,21 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
     <div className="space-y-3">
       <Header message={message} onRefresh={() => void load()} />
       {execAnalytics ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             ['Traces', String(execAnalytics.totalTraces)],
             ['Success', `${execAnalytics.successRate}%`],
-            [
-              'Avg Duration',
-              execAnalytics.averageDurationMs != null
-                ? fmtDuration(execAnalytics.averageDurationMs)
-                : '—',
-            ],
+            ['Avg Duration', fmtDuration(execAnalytics.averageDurationMs)],
             ['Failed Step', execAnalytics.mostFailedStep || '—'],
-            ['Avg Research', fmtDuration(execAnalytics.averageResearchMs)],
-            ['Avg Mission', fmtDuration(execAnalytics.averageMissionMs)],
-            ['Avg Content', fmtDuration(execAnalytics.averageContentMs)],
           ].map(([label, value]) => (
-            <div
-              key={label}
-              className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2"
-            >
+            <div key={label} className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
               <div className="text-[10px] uppercase text-slate-500">{label}</div>
               <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{value}</div>
             </div>
           ))}
         </div>
       ) : null}
+
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNS.map(col => {
           const items = board[col.id] || [];
@@ -247,7 +307,10 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
                   <button
                     type="button"
                     key={c.id}
-                    onClick={() => setSelectedId(c.id)}
+                    onClick={() => {
+                      setSelectedId(c.id);
+                      setTab('Overview');
+                    }}
                     className={`w-full rounded-lg border p-2.5 text-left text-xs text-slate-300 ${
                       selectedId === c.id
                         ? 'border-rose-500/50 bg-rose-950/30'
@@ -298,9 +361,7 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
                             Complete
                           </span>
                         )}
-                        {busyId === c.id ? (
-                          <span className="text-[10px] text-slate-500">…</span>
-                        ) : null}
+                        {busyId === c.id ? <span className="text-[10px] text-slate-500">…</span> : null}
                       </div>
                     )}
                   </button>
@@ -314,115 +375,282 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
         })}
       </div>
 
-      {detail && (
-        <div className="grid gap-3 lg:grid-cols-3">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 lg:col-span-2">
-            <h3 className="text-sm font-bold text-slate-100">
-              Task Progress — {detail.name}
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-500">
-              {detail.progress.completed}/{detail.progress.total} done · waiting{' '}
-              {detail.progress.waitingApproval} · stuck {detail.progress.stuck.length} ·{' '}
-              {detail.progress.percent}%
-            </p>
-            <div className="mt-3 space-y-2">
-              {detail.tasks.map(t => (
-                <div
-                  key={t.id}
-                  className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-100">{t.label}</span>
-                    <span className="text-[10px] uppercase text-slate-400">{t.status}</span>
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500">
-                    agent={t.agent} · duration={fmtDuration(t.durationMs)} · deps=
-                    {t.dependencies.length ? t.dependencies.map(d => d.split('_').pop()).join(' → ') : '—'}
-                  </div>
-                  {t.resultSummary ? (
-                    <div className="mt-1 text-[10px] text-emerald-400/90">{t.resultSummary}</div>
-                  ) : null}
-                </div>
-              ))}
+      {workspace && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/70">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">
+                Campaign Workspace — {workspace.overview.name}
+              </h3>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {workspace.overview.propertyHint} · {workspace.overview.status} · Progress{' '}
+                {workspace.overview.progressPercent}% · Confidence {workspace.overview.confidence}
+              </p>
             </div>
+            <span
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold uppercase ${healthClass(workspace.health.level)}`}
+            >
+              {workspace.health.level} · {workspace.health.score}
+            </span>
           </div>
-          <div className="space-y-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-              <h3 className="text-sm font-bold text-slate-100">Task Dependency</h3>
-              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-slate-400">
-                {detail.tasks.map(t => (
-                  <li key={t.id}>
-                    <span className="text-slate-200">{t.label}</span>{' '}
-                    <span className="text-slate-600">[{t.status}]</span>
-                  </li>
-                ))}
-              </ol>
-              {detail.ready.length ? (
-                <p className="mt-2 text-[10px] text-amber-400">Ready: {detail.ready.join(', ')}</p>
-              ) : null}
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-              <h3 className="text-sm font-bold text-slate-100">Campaign Trace</h3>
-              {detail.executionTrace?.steps?.length ? (
-                <div className="mt-2 max-h-72 space-y-0 overflow-y-auto text-[11px]">
-                  <div className="mb-2 text-[10px] text-slate-500">
-                    {detail.executionTrace.traceId} · {detail.executionTrace.status} ·{' '}
-                    {fmtDuration(detail.executionTrace.durationMs)}
+
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-800 px-2 py-2">
+            {TABS.map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                  tab === t
+                    ? 'bg-rose-600/90 text-white'
+                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-4 text-xs text-slate-300">
+            {tab === 'Overview' && (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['Goal', workspace.overview.goal],
+                  ['Priority', workspace.overview.priority],
+                  ['Owner', workspace.overview.owner || 'AI Sales Employee'],
+                  ['ROI / Revenue', workspace.overview.roiNote],
+                  ['Research', workspace.research ? '✓' : '○'],
+                  ['Mission', String(workspace.missions.length)],
+                  ['Lead / VIP', `${workspace.buyers.candidates} / ${workspace.buyers.vip}`],
+                  ['Draft / Published', `${workspace.content.draft} / ${workspace.content.published}`],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-500">{k}</div>
+                    <div className="mt-1 font-semibold text-slate-100">{v}</div>
                   </div>
-                  {detail.executionTrace.steps.map((s, i) => (
-                    <div key={`${s.step}-${i}`} className="relative border-l border-slate-700 pl-3 pb-3">
-                      <div className="absolute -left-1 top-1.5 h-2 w-2 rounded-full bg-rose-400/80" />
-                      <div className="text-slate-500">
-                        {new Date(s.startedAt).toLocaleTimeString('vi-VN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false,
-                        })}
+                ))}
+                <div className="sm:col-span-2 lg:col-span-4 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                  <div className="text-[10px] uppercase text-slate-500">Health signals</div>
+                  <ul className="mt-2 space-y-1 text-slate-400">
+                    {workspace.health.signals.map(s => (
+                      <li key={s}>• {s}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {tab === 'Research' && (
+              <div className="space-y-2">
+                {workspace.research ? (
+                  <>
+                    <p className="font-semibold text-slate-100">{workspace.research.title}</p>
+                    <p className="text-slate-400">{workspace.research.summary}</p>
+                    <p>Price: {workspace.research.priceTrend || '—'} · Demand: {workspace.research.demandTrend || '—'}</p>
+                    <p>Competitors: {(workspace.research.competitors || []).join(', ') || '—'}</p>
+                    <p>Keywords: {(workspace.research.topKeywords || []).join(', ') || '—'}</p>
+                    <p>Opportunities / trends: {(workspace.research.trends || []).join(' · ') || '—'}</p>
+                    <p>Positioning: {workspace.research.suggestedPositioning || '—'}</p>
+                  </>
+                ) : (
+                  <p className="text-slate-500">Chưa có research — Campaign vẫn chạy (business rule).</p>
+                )}
+              </div>
+            )}
+
+            {tab === 'Mission' && (
+              <div className="space-y-2">
+                {workspace.missions.length ? (
+                  workspace.missions.map(m => (
+                    <div key={m.id} className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+                      <div className="font-semibold text-slate-100">{m.name}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {m.priority} · {m.areaHint} · {m.intent}
                       </div>
-                      <div className="font-semibold text-slate-100">
-                        {s.step}{' '}
-                        <span className="text-[10px] font-normal uppercase text-slate-500">
-                          {s.status}
-                        </span>
-                      </div>
-                      <div className="text-slate-400">{s.summary}</div>
-                      {s.durationMs != null ? (
-                        <div className="text-[10px] text-slate-600">{fmtDuration(s.durationMs)}</div>
-                      ) : null}
-                      {s.errorReason ? (
-                        <div className="text-[10px] text-rose-400">{s.errorReason}</div>
-                      ) : null}
-                      {i < detail.executionTrace!.steps.length - 1 ? (
-                        <div className="mt-1 text-slate-600">↓</div>
-                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-500">Chưa có mission đề xuất.</p>
+                )}
+              </div>
+            )}
+
+            {tab === 'Buyer' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    ['Candidates', workspace.buyers.candidates],
+                    ['VIP', workspace.buyers.vip],
+                    ['Contacted', workspace.buyers.contacted],
+                    ['Converted', workspace.buyers.converted],
+                  ].map(([k, v]) => (
+                    <div key={String(k)} className="rounded-lg border border-slate-800 p-2">
+                      <div className="text-[10px] text-slate-500">{k}</div>
+                      <div className="text-lg font-bold text-slate-100">{v}</div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="mt-2 text-[11px] text-slate-500">
-                  No execution trace yet. Create campaign via Telegram to record Intent → Research →
-                  Mission → Content → Approval.
-                </p>
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-              <h3 className="text-sm font-bold text-slate-100">Task Timeline</h3>
-              <div className="mt-2 max-h-64 space-y-1 overflow-y-auto text-[11px] text-slate-400">
-                {(detail.timeline || []).slice(-20).map((e, i) => (
-                  <div key={`${e.at}-${i}`}>
-                    <span className="text-slate-500">
-                      {new Date(e.at).toLocaleTimeString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                      })}
-                    </span>{' '}
-                    <span className="text-slate-200">{e.title}</span>
-                    {e.detail ? <span className="text-slate-500"> — {e.detail}</span> : null}
+                {workspace.buyers.leads.map((l, i) => (
+                  <div key={`${l.name}-${i}`} className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+                    <div className="font-semibold text-slate-100">
+                      {l.name}{' '}
+                      <span className="text-[10px] uppercase text-slate-500">
+                        {l.leadStatus} · {l.priority}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-slate-400">
+                      {l.budget} · {l.area}
+                    </div>
+                    <div className="mt-1 text-emerald-400/90">{l.recommendation}</div>
                   </div>
                 ))}
+                {!workspace.buyers.leads.length && (
+                  <p className="text-slate-500">Không có lead — Campaign vẫn là trung tâm điều phối.</p>
+                )}
               </div>
-            </div>
+            )}
+
+            {tab === 'Content' && (
+              <div className="space-y-2">
+                <p>
+                  Draft {workspace.content.draft} · Approved {workspace.content.approved} · Scheduled{' '}
+                  {workspace.content.scheduled} · Published {workspace.content.published}
+                </p>
+                {(workspace.content.plan?.schedule || []).map((s, i) => (
+                  <div key={`${s.topic}-${i}`} className="rounded-lg border border-slate-800 p-2">
+                    {s.time} · {s.channel} · {s.format} — {s.topic}
+                  </div>
+                ))}
+                {!workspace.content.plan?.schedule?.length && (
+                  <p className="text-slate-500">Chưa có content plan.</p>
+                )}
+              </div>
+            )}
+
+            {tab === 'Publish' && (
+              <div className="space-y-2">
+                <p>Channel đề xuất: {workspace.publish.suggestedChannel || '—'}</p>
+                <p>Approved: {workspace.publish.approved ? 'Yes' : 'No'}</p>
+                <p className="text-slate-400">{workspace.publish.successNote}</p>
+                {workspace.publish.proposal ? (
+                  <p className="rounded-lg border border-slate-800 p-3">{workspace.publish.proposal.note}</p>
+                ) : (
+                  <p className="text-slate-500">Chưa có publish proposal — Campaign vẫn research được.</p>
+                )}
+              </div>
+            )}
+
+            {tab === 'Knowledge' && (
+              <div className="space-y-2">
+                <p>Keywords: {workspace.knowledge.keywordHints.join(', ') || '—'}</p>
+                {workspace.knowledge.mappedConcepts.map(c => (
+                  <div key={c.id} className="rounded-lg border border-slate-800 p-2">
+                    {c.name}
+                    {c.campaignMapping ? (
+                      <span className="text-slate-500"> → {c.campaignMapping}</span>
+                    ) : null}
+                  </div>
+                ))}
+                {!workspace.knowledge.mappedConcepts.length && (
+                  <p className="text-slate-500">Chưa map knowledge concept — soft-link by name/hint.</p>
+                )}
+              </div>
+            )}
+
+            {tab === 'Sales' && (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['Pipeline', `${workspace.sales.pipelineValueTy.toFixed(1)} tỷ`],
+                  ['Expected', `${workspace.sales.expectedRevenueTy.toFixed(1)} tỷ`],
+                  ['Negotiating', String(workspace.sales.negotiating)],
+                  ['Won', String(workspace.sales.won)],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg border border-slate-800 p-3">
+                    <div className="text-[10px] text-slate-500">{k}</div>
+                    <div className="text-lg font-bold text-slate-100">{v}</div>
+                  </div>
+                ))}
+                <div className="sm:col-span-2 lg:col-span-4 rounded-lg border border-slate-800 p-3">
+                  Next action: {workspace.sales.nextAction || '—'}
+                </div>
+              </div>
+            )}
+
+            {tab === 'Trace' && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 font-semibold text-slate-100">
+                    Orchestrator {workspace.orchestrator.progress.completed}/
+                    {workspace.orchestrator.progress.total} · {workspace.orchestrator.progress.percent}%
+                  </h4>
+                  <div className="space-y-2">
+                    {workspace.orchestrator.tasks.map(t => (
+                      <div key={t.id} className="rounded-lg border border-slate-800 p-2">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-semibold text-slate-100">{t.label}</span>
+                          <span className="text-[10px] uppercase text-slate-500">{t.status}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {t.agent} · {fmtDuration(t.durationMs)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="mb-2 font-semibold text-slate-100">Execution Trace</h4>
+                  {workspace.trace?.steps?.length ? (
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
+                      {workspace.trace.steps.map((s, i) => (
+                        <div key={`${s.step}-${i}`} className="border-l border-slate-700 pl-3">
+                          <div className="font-semibold text-slate-100">
+                            {s.step}{' '}
+                            <span className="text-[10px] font-normal uppercase text-slate-500">
+                              {s.status}
+                            </span>
+                          </div>
+                          <div className="text-slate-400">{s.summary}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">Chưa có execution trace.</p>
+                  )}
+                  <h4 className="mb-2 mt-4 font-semibold text-slate-100">Timeline</h4>
+                  <div className="max-h-40 space-y-1 overflow-y-auto text-[11px] text-slate-400">
+                    {(workspace.timeline || []).slice(-15).map((e, i) => (
+                      <div key={`${e.at}-${i}`}>
+                        <span className="text-slate-500">
+                          {new Date(e.at).toLocaleTimeString('vi-VN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                          })}
+                        </span>{' '}
+                        {e.title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'AI Thoughts' && (
+              <div className="space-y-3">
+                <p className="rounded-lg border border-rose-500/30 bg-rose-950/20 p-4 text-sm leading-6 text-slate-100">
+                  {workspace.aiThoughts}
+                </p>
+                <div className="space-y-2">
+                  {workspace.recommendations.map((r, i) => (
+                    <div key={`${r.message}-${i}`} className="rounded-lg border border-slate-800 p-3">
+                      <span className="text-[10px] uppercase text-slate-500">{r.severity}</span>
+                      <div className="font-semibold text-slate-100">{r.message}</div>
+                      {r.actionLabel ? <div className="text-slate-400">{r.actionLabel}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -434,9 +662,9 @@ function Header({ message, onRefresh }: { message: string; onRefresh: () => void
   return (
     <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3">
       <div>
-        <h2 className="text-sm font-bold text-slate-100">Campaign Center</h2>
+        <h2 className="text-sm font-bold text-slate-100">Campaign Workspace</h2>
         <p className="text-xs text-slate-500">
-          Kanban + Task Orchestrator — click campaign để xem Task Timeline / Dependency / Duration
+          AI Sales operating center — Research · Mission · Buyer · Content · Publish · Sales · Trace
         </p>
         {message ? <p className="mt-1 text-[11px] text-emerald-400">{message}</p> : null}
       </div>

@@ -313,6 +313,15 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
     null;
   const currentCampaign = namedCampaign;
 
+  const activeCampaigns = campaigns.filter(c => !['completed', 'rejected'].includes(c.status));
+  const { deriveCampaignHealth } = await import('../planning');
+  const campHealth = activeCampaigns.map(c => ({
+    name: c.name,
+    health: deriveCampaignHealth(c),
+  }));
+  const criticalCamps = campHealth.filter(c => c.health.level === 'critical');
+  const warningCamps = campHealth.filter(c => c.health.level === 'warning');
+
   const avg7dBuyers = buyers7d / 7;
   const avgPrev7dBuyers = buyersPrev7d / 7;
   const goalTarget = Math.max(
@@ -480,6 +489,13 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
   ];
 
   const insights: string[] = [];
+  if (criticalCamps.length || warningCamps.length) {
+    insights.push(
+      `Campaign Workspace: ${campHealth.filter(c => c.health.level === 'healthy').length} Healthy · ${warningCamps.length} Warning · ${criticalCamps.length} Critical.`,
+    );
+  } else if (activeCampaigns.length) {
+    insights.push(`Campaign Workspace: ${activeCampaigns.length} campaign đang Healthy.`);
+  }
   if (campaignShare.topName && campaignShare.topName !== 'Unmatched' && campaignShare.total > 0) {
     insights.push(
       `Campaign ${campaignShare.topName} tạo ${campaignShare.sharePct}% buyer hôm nay.`,
@@ -569,6 +585,20 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
   }
 
   const attention: AttentionItem[] = [];
+  if (criticalCamps.length) {
+    attention.push({
+      severity: 'critical',
+      text: `Campaign Critical: ${criticalCamps.map(c => c.name).slice(0, 2).join(', ')}`,
+      href: '/admin/agents/campaign-center',
+    });
+  } else if (warningCamps.length) {
+    attention.push({
+      severity: 'warning',
+      text: `Campaign Warning: ${warningCamps.map(c => c.name).slice(0, 2).join(', ')}`,
+      href: '/admin/agents/campaign-center',
+    });
+  }
+
   if (followUp > 0) {
     attention.push({
       severity: 'critical',

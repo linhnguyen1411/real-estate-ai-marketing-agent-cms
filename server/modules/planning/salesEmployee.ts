@@ -32,12 +32,38 @@ import {
   timelineCard,
   workStatusCard,
 } from './cards/telegramCards';
+import { getCampaignWorkspace } from './campaignWorkspace';
+import type { LivingCampaign } from './types';
 import type { SalesEmployeeResult } from './types';
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
 
 export type SalesEmployeeReply = SalesEmployeeResult & {
   replyMarkup?: InlineKeyboard;
 };
+
+async function enrichedCampaignCard(living: LivingCampaign) {
+  const board = livingToBoard(living);
+  try {
+    const ws = await getCampaignWorkspace(living.id);
+    if (ws) {
+      return campaignCard(board, living.id, living.state.orchestratorTasks, {
+        health: `${ws.health.level} (${ws.health.score})`,
+        researchDone: Boolean(ws.research),
+        missions: ws.missions.length,
+        leads: ws.buyers.candidates,
+        buyers: ws.buyers.vip + ws.sales.negotiating + ws.buyers.converted,
+        drafts: ws.content.draft,
+        published: ws.content.published,
+        salesLine: `Sales  ${ws.sales.negotiating} negotiating · won ${ws.sales.won}`,
+        revenueLine: `Revenue  expected ${ws.sales.expectedRevenueTy.toFixed(1)} tỷ`,
+        aiThoughts: ws.aiThoughts,
+      });
+    }
+  } catch {
+    /* workspace enrich is best-effort */
+  }
+  return campaignCard(board, living.id, living.state.orchestratorTasks);
+}
 
 function norm(text: string): string {
   return text
@@ -133,7 +159,7 @@ export async function runSalesEmployee(input: {
     }
     const living = await approveCampaign({ campaignId: id, actor: 'copilot' });
     const lines = campaignRuntimeSummaryLines(living);
-    const card = campaignCard(livingToBoard(living), living.id, living.state.orchestratorTasks);
+    const card = await enrichedCampaignCard(living);
     return {
       mode,
       livingCampaign: living,
@@ -302,7 +328,7 @@ export async function runSalesEmployee(input: {
       const living = await findCampaignByPrefix(id);
       if (living) {
         const board = livingToBoard(living);
-        const card = campaignCard(board, living.id, living.state.orchestratorTasks);
+        const card = await enrichedCampaignCard(living);
         const lines = [...card.lines, '', ...campaignRuntimeSummaryLines(living).slice(4, 20)];
         return {
           mode: 'campaign_board',
@@ -372,7 +398,7 @@ export async function runSalesEmployee(input: {
   const missions = living.state.missions;
   const content = living.state.content!;
   const recommendations = living.state.recommendations;
-  const card = campaignCard(board, living.id, living.state.orchestratorTasks);
+  const card = await enrichedCampaignCard(living);
   const summary = campaignRuntimeSummaryLines(living);
 
   return {

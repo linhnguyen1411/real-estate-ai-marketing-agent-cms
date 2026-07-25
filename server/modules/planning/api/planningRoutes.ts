@@ -12,6 +12,13 @@ import {
   rejectCampaign,
 } from '../campaignRuntime';
 import { detectSalesMode, runSalesEmployee } from '../salesEmployee';
+import {
+  formatCampaignWorkspaceLines,
+  getCampaignWorkspace,
+  listCampaignWorkspaceHealth,
+  resolveCampaignWorkspace,
+  workspaceTelegramMarkup,
+} from '../campaignWorkspace';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -47,6 +54,54 @@ export function registerPlanningRoutes(app: Express): void {
       res.json({ status: 'success', data: rows });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'List campaigns failed');
+    }
+  });
+
+  app.get('/api/planning/campaigns/health', async (req: Request, res: Response) => {
+    try {
+      const companyId =
+        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const rows = await listCampaignWorkspaceHealth({ companyId });
+      res.json({ status: 'success', data: rows });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Campaign health failed');
+    }
+  });
+
+  app.get('/api/planning/campaigns/:id/workspace', async (req: Request, res: Response) => {
+    try {
+      const ws = await getCampaignWorkspace(req.params.id);
+      if (!ws) return sendError(res, 404, 'Campaign not found');
+      res.json({
+        status: 'success',
+        data: {
+          ...ws,
+          telegramLines: formatCampaignWorkspaceLines(ws),
+          replyMarkup: workspaceTelegramMarkup(ws.campaign.id),
+        },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Workspace failed');
+    }
+  });
+
+  app.get('/api/planning/workspace', async (req: Request, res: Response) => {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q : '';
+      const companyId =
+        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const ws = await resolveCampaignWorkspace(q, companyId);
+      if (!ws) return sendError(res, 404, 'No campaign workspace matched');
+      res.json({
+        status: 'success',
+        data: {
+          ...ws,
+          telegramLines: formatCampaignWorkspaceLines(ws),
+          replyMarkup: workspaceTelegramMarkup(ws.campaign.id),
+        },
+      });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Workspace resolve failed');
     }
   });
 

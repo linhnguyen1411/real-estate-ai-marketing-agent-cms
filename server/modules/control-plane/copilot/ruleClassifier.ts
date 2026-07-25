@@ -208,6 +208,15 @@ const RULES: Rule[] = [
       ),
   },
   {
+    name: 'campaign_workspace',
+    confidence: 0.98,
+    test: t =>
+      /campaign .+đang tới đâu|campaign .+dang toi dau|ai đã làm gì|ai da lam gi|buyer tốt nhất|buyer tot nhat|mission nào hiệu quả|mission nao hieu qua|content nào hiệu quả|content nao hieu qua|tại sao campaign chậm|tai sao campaign cham|workspace campaign|campaign workspace|tóm tắt campaign|tom tat campaign|campaign dashboard/.test(
+        t,
+      ) ||
+      (/đang tới đâu|dang toi dau|tới đâu rồi|toi dau roi/.test(t) && /campaign|chiến dịch|chien dich|mai đăng|mai dang/.test(t)),
+  },
+  {
     name: 'ai_sales_research',
     confidence: 0.97,
     test: t =>
