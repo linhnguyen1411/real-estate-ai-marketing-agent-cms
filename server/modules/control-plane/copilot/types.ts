@@ -39,12 +39,28 @@ export type CopilotIntentName =
   | 'fleet_summary'
   | 'scanner_summary'
   | 'publisher_summary'
+  | 'marketing_org_summary'
+  | 'ai_status'
+  | 'decision_report'
+  | 'knowledge_report'
+  | 'knowledge_health'
+  | 'weekly_evolution'
   | 'mission_summary'
   | 'incident_summary'
   | 'machine_detail'
   | 'browser_detail'
   | 'runtime_explain'
-  | 'ops_recommendation';
+  | 'ops_recommendation'
+  /** H2 — AI Sales Employee (Planning Layer) */
+  | 'ai_sales_campaign'
+  | 'ai_sales_research'
+  | 'ai_sales_missions'
+  | 'ai_sales_leads'
+  | 'ai_sales_content'
+  | 'ai_sales_timeline'
+  | 'ai_sales_recommendations'
+  | 'ai_sales_help'
+  | 'campaign_workspace';
 
 export type CopilotSlots = {
   location?: string;

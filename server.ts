@@ -34,7 +34,8 @@ import {
   generateAILiveChatReply, 
   generateAIConsultantReply,
   generateText,
-  getAIProviderStatus
+  getAIProviderStatus,
+  getAiStatusBriefingText,
 } from './server/aiService';
 import { AuthUser, Customer, Property, Post, InboxMessage, AutomationTask, User, AppSettings } from './src/types';
 import type { AgentTier } from './src/utils/agentTier';
@@ -76,6 +77,15 @@ import { registerFacebookWebhookRoutes, registerFacebookAdminRoutes } from './se
 import { registerAgentAdminRoutes } from './server/agent/agentRoutes';
 import { registerAgentIngestRoutes } from './server/agentIngest/ingestRoutes';
 import { registerSocialPublishingRoutes } from './server/modules/social-publishing/api/socialPublishingRoutes';
+import { registerPlanningRoutes } from './server/modules/planning';
+import { registerLeadAcquisitionRoutes } from './server/modules/lead-acquisition';
+import { registerSalesLayerRoutes } from './server/modules/sales-layer';
+import { registerMarketingOrgRoutes } from './server/modules/marketing-org';
+import { registerAiGatewayRoutes } from './server/modules/ai-gateway';
+import { registerDecisionCenterRoutes } from './server/modules/decision-center';
+import { registerKnowledgeBaseRoutes } from './server/modules/knowledge-base';
+import { registerExecutiveDashboardRoutes } from './server/modules/executive-dashboard';
+import { registerExecutionTraceRoutes } from './server/modules/execution-trace';
 import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
@@ -1256,6 +1266,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   const original = String(req.originalUrl || '');
   if (
     pathName === '/health' ||
+    pathName === '/planning/health' ||
     pathName === '/auth/login' ||
     pathName.startsWith('/public/') ||
     pathName.startsWith('/agent-ingest/') ||
@@ -1381,6 +1392,15 @@ if (AGENT_ENABLED) {
   registerSocialPublishingRoutes(app, { getAuthUser, accessDefaults });
   registerRuntimeAgentRoutes(app);
   registerTelegramControlPlaneRoutes(app);
+  registerPlanningRoutes(app);
+  registerLeadAcquisitionRoutes(app);
+  registerSalesLayerRoutes(app);
+  registerMarketingOrgRoutes(app);
+  registerAiGatewayRoutes(app);
+  registerDecisionCenterRoutes(app);
+  registerKnowledgeBaseRoutes(app);
+  registerExecutiveDashboardRoutes(app);
+  registerExecutionTraceRoutes(app);
 } else {
   console.warn('[agent] Admin agent routes disabled (AGENT_ENABLED=false)');
 }
@@ -1702,86 +1722,19 @@ function triggerAutomationEvent(event: string, detail: string, db: any) {
 }
 
 // ----------------------------------------------------
-// Dashboard Summary API
+// Dashboard Summary API — AI business executive KPIs (H0.5.1)
 // ----------------------------------------------------
-app.get('/api/dashboard', (req: Request, res: Response) => {
-  const db = readDatabase();
-  const customers = scopeCollection(db.customers, req);
-  const properties = scopeCollection(db.properties, req);
-  const posts = scopeCollection(db.posts, req);
-  const inbox = scopeCollection(db.inbox, req);
-  
-  // Counts
-  const totalCustomers = customers.length;
-  const leadHot = customers.filter(c => c.status === 'hot').length;
-  const leadWarm = customers.filter(c => c.status === 'warm').length;
-  const leadCold = customers.filter(c => c.status === 'new').length;
-  
-  const totalProperties = properties.filter(p => !['sold', 'hidden'].includes(p.sale_status || 'available')).length;
-  const totalPosts = posts.length;
-  const pendingInbox = inbox.filter(i => i.status === 'pending').length;
-  const propertyViews = properties.reduce((sum, property: Property) => sum + Number(property.public_view_count || 0), 0);
-  const siteViews = Number((db.settings as any).site_view_count || 0);
-  const postViews = posts.reduce((sum, post: Post) => sum + Number(post.engagement?.views || 0), 0);
-  const topProperties = properties
-    .filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available'))
-    .sort((a: Property, b: Property) => Number(b.public_view_count || 0) - Number(a.public_view_count || 0))
-    .slice(0, 10)
-    .map((property: Property) => ({
-      id: property.id,
-      title: property.title,
-      views: Number(property.public_view_count || 0),
-      lastViewAt: property.last_public_view_at
-    }));
-  const topPosts = posts
-    .slice()
-    .sort((a: Post, b: Post) => Number(b.engagement?.views || 0) - Number(a.engagement?.views || 0))
-    .slice(0, 10)
-    .map((post: Post) => ({
-      id: post.id,
-      title: post.title,
-      platform: post.platform,
-      views: Number(post.engagement?.views || 0)
-    }));
-
-  const metrics = ['facebook', 'zalo', 'tiktok', 'website'].map(platform => {
-    const platformPosts = posts.filter(post => post.platform === platform);
-    return {
-      platform,
-      reach: platformPosts.reduce((sum, post) => sum + (post.engagement?.views || 0), 0),
-      engagement: platformPosts.reduce(
-        (sum, post) => sum
-          + (post.engagement?.likes || 0)
-          + (post.engagement?.shares || 0)
-          + (post.engagement?.comments || 0),
-        0
-      ),
-      leads: customers.filter(customer => customer.source === platform).length
-    };
-  });
-
-  res.json({
-    status: 'success',
-    data: {
-      stats: {
-        totalCustomers,
-        leads: { hot: leadHot, warm: leadWarm, cold: leadCold },
-        totalProperties,
-        totalPosts,
-        pendingInbox,
-        siteViews,
-        propertyViews,
-        postViews,
-        todayTasksCount: customers.filter(c => c.lead_score > 80 && c.status === 'hot').length,
-      },
-      metrics,
-      traffic: {
-        lastSiteViewAt: (db.settings as any).last_site_view_at,
-        topProperties,
-        topPosts
-      }
-    }
-  });
+app.get('/api/dashboard', async (_req: Request, res: Response) => {
+  try {
+    const { buildExecutiveKpiDashboard } = await import('./server/modules/executive-dashboard');
+    const data = await buildExecutiveKpiDashboard();
+    res.json({ status: 'success', data });
+  } catch (error: unknown) {
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Dashboard KPI load failed',
+    });
+  }
 });
 
 // Lightweight sidebar badges — counts only, no entity lists.
@@ -2475,7 +2428,9 @@ app.post('/api/inbox/:id/reply', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 app.get('/api/ai/status', async (req: Request, res: Response) => {
   try {
-    res.json({ status: 'success', data: await getAIProviderStatus() });
+    const providers = await getAIProviderStatus();
+    const briefing = await getAiStatusBriefingText();
+    res.json({ status: 'success', data: providers, briefing });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }
@@ -3343,7 +3298,23 @@ app.get('/listings', (req: Request, res: Response) => {
       return;
     }
   }
-  res.redirect(301, publicListingsPath);
+  res.redirect(301, '/bat-dong-san');
+});
+
+app.get('/can-ho', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/can-ho');
+});
+
+app.get('/dat-nen', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/dat-nen');
+});
+
+app.get('/nha-pho', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/nha-pho');
+});
+
+app.get('/nam-da-nang', (_req: Request, res: Response) => {
+  res.redirect(301, '/bat-dong-san/nam-da-nang');
 });
 
 app.get('/robots.txt', (req: Request, res: Response) => {

@@ -58,33 +58,68 @@ export interface DashboardTrafficItem {
   url?: string;
 }
 
+export interface ExecutiveKpiCard {
+  id: string;
+  title: string;
+  bigNumber: string;
+  trend: string | null;
+  trendDirection: 'up' | 'down' | 'flat' | null;
+  miniStatus: string[];
+  href: string;
+}
+
+export interface SnapshotMetric {
+  id: string;
+  title: string;
+  value: string;
+  valueNumeric: number | null;
+  trendVsYesterday: string | null;
+  trendVs7d: string | null;
+  trendDirection: 'up' | 'down' | 'flat' | null;
+  href: string;
+  hasData: boolean;
+}
+
+export interface HeroBlock {
+  aiStatus: 'Working' | 'Attention' | 'Degraded' | 'Offline';
+  aiStatusLabel: string;
+  businessHealth: number | null;
+  todayGoal: { label: string; current: number; target: number } | null;
+  expectedRevenueTy: number | null;
+  currentCampaign: string | null;
+  confidence: number | null;
+}
+
+export interface RecommendationAction {
+  id: string;
+  action: string;
+  detail: string;
+  href: string;
+}
+
+export interface AttentionItem {
+  severity: 'critical' | 'warning' | 'info';
+  text: string;
+  href: string;
+}
+
+export interface QuickAction {
+  label: string;
+  href: string;
+}
+
+/** H0.5.2 — Executive Command Center for main CMS Dashboard */
 export interface DashboardData {
-  stats: {
-    totalCustomers: number;
-    leads: {
-      hot: number;
-      warm: number;
-      cold: number;
-    };
-    totalProperties: number;
-    totalPosts: number;
-    pendingInbox: number;
-    todayTasksCount: number;
-    siteViews?: number;
-    propertyViews?: number;
-    postViews?: number;
-  };
-  metrics: Array<{
-    platform: string;
-    reach: number;
-    engagement: number;
-    leads: number;
-  }>;
-  traffic?: {
-    lastSiteViewAt?: string;
-    topProperties: DashboardTrafficItem[];
-    topPosts: DashboardTrafficItem[];
-  };
+  version: 'h052_executive_command' | 'h051_executive_kpis';
+  generatedAt: string;
+  summary?: string;
+  hero?: HeroBlock;
+  snapshot?: SnapshotMetric[];
+  insights?: string[];
+  recommendations?: RecommendationAction[];
+  attention?: AttentionItem[];
+  quickActions?: QuickAction[];
+  kpis: ExecutiveKpiCard[];
 }
 
 export interface InitialAppData {

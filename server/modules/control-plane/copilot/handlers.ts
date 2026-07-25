@@ -33,7 +33,122 @@ import {
 import { recommendAll } from './recommendations';
 import { formatLeadLines, replyFail, replyOk } from './replyFormatter';
 import type { IntentHandler, IntentRegistry } from './intentRegistry';
-import type { ClassifiedIntent } from './types';
+import type { ClassifiedIntent, CopilotIntentName } from './types';
+import { runSalesEmployee } from '../../planning/salesEmployee';
+import {
+  formatCampaignWorkspaceLines,
+  resolveCampaignWorkspace,
+  workspaceTelegramMarkup,
+} from '../../planning/campaignWorkspace';
+import {
+  buildExecutiveSnapshot,
+  formatExecutiveDashboardLines,
+} from '../../executive-dashboard';
+
+async function runAiEmployeeHandler(
+  intentName: CopilotIntentName,
+  text: string,
+  companyId?: string | null,
+  ctx?: { chatId?: string; userId?: string },
+) {
+  const modeMap: Partial<Record<CopilotIntentName, Parameters<typeof runSalesEmployee>[0]['mode']>> = {
+    ai_sales_campaign: 'campaign_board',
+    ai_sales_research: 'research_report',
+    ai_sales_missions: 'mission_proposals',
+    ai_sales_leads: 'lead_cards',
+    ai_sales_content: 'content_plan',
+    ai_sales_timeline: 'work_status',
+    ai_sales_recommendations: 'recommendations',
+    ai_sales_help: 'help',
+  };
+  const result = await runSalesEmployee({
+    utterance: text,
+    companyId,
+    mode: modeMap[intentName],
+    intentName,
+    telegramChatId: ctx?.chatId || null,
+    telegramUserId: ctx?.userId || null,
+    sessionId: ctx?.chatId ? `tg_${ctx.chatId}` : null,
+  });
+  return replyOk(intentName, result.lines, {
+    mode: result.mode,
+    board: result.board,
+    research: result.research,
+    missions: result.missions,
+    leads: result.leads,
+    content: result.content,
+    recommendations: result.recommendations,
+    timeline: result.timeline,
+    orchestratorTasks: result.orchestratorTasks,
+    livingCampaign: result.livingCampaign,
+  }, result.replyMarkup);
+}
+
+const aiSalesCampaign: IntentHandler = {
+  name: 'ai_sales_campaign',
+  supports: i => i.name === 'ai_sales_campaign',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesResearch: IntentHandler = {
+  name: 'ai_sales_research',
+  supports: i => i.name === 'ai_sales_research',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesMissions: IntentHandler = {
+  name: 'ai_sales_missions',
+  supports: i => i.name === 'ai_sales_missions',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesLeads: IntentHandler = {
+  name: 'ai_sales_leads',
+  supports: i => i.name === 'ai_sales_leads',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesContent: IntentHandler = {
+  name: 'ai_sales_content',
+  supports: i => i.name === 'ai_sales_content',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesTimeline: IntentHandler = {
+  name: 'ai_sales_timeline',
+  supports: i => i.name === 'ai_sales_timeline',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesRecommendations: IntentHandler = {
+  name: 'ai_sales_recommendations',
+  supports: i => i.name === 'ai_sales_recommendations',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+const aiSalesHelp: IntentHandler = {
+  name: 'ai_sales_help',
+  supports: i => i.name === 'ai_sales_help',
+  execute: async ({ intent, text, ctx }) =>
+    runAiEmployeeHandler(intent.name, text, ctx.companyId, ctx),
+};
+
+const campaignWorkspace: IntentHandler = {
+  name: 'campaign_workspace',
+  supports: i => i.name === 'campaign_workspace',
+  execute: async ({ intent, text, ctx }) => {
+    const ws = await resolveCampaignWorkspace(text, ctx.companyId);
+    if (!ws) {
+      return replyFail(intent.name, 'Chưa có Campaign Workspace phù hợp. Tạo campaign trước (ví dụ: bán mạnh Mai Đăng Chơn).');
+    }
+    const lines = formatCampaignWorkspaceLines(ws);
+    return replyOk(intent.name, lines, {
+      campaignId: ws.campaign.id,
+      health: ws.health,
+      aiThoughts: ws.aiThoughts,
+    }, workspaceTelegramMarkup(ws.campaign.id));
+  },
+};
 
 function dayBounds(hint?: string): { from: string; to: string } {
   const now = new Date();
@@ -59,6 +174,19 @@ const whatsNew: IntentHandler = {
   name: 'whats_new',
   supports: i => i.name === 'whats_new' || i.name === 'dashboard',
   async execute({ intent, port, ctx }) {
+    // /dashboard → Executive briefing (business), not runtime fleet dump
+    if (intent.name === 'dashboard') {
+      const snap = await buildExecutiveSnapshot();
+      const ops = await port.getOpsMetrics(false).catch(() => null);
+      if (ops) ctx.lastAgentIds = ops.machines.map(m => m.agentId);
+      const entity = ops?.machines[0]?.agentId;
+      return replyOk(
+        intent.name,
+        formatExecutiveDashboardLines(snap),
+        { snap },
+        opsActionKeyboard(entity),
+      );
+    }
     const ops = await port.getOpsMetrics(true);
     const leads = await port.countLeadsToday();
     const signals = await port.detectIncidents();
@@ -122,6 +250,78 @@ const publisherSummary: IntentHandler = {
       { ops },
       ops.publisher.retry > 0 ? publishJobKeyboard('queue') : opsActionKeyboard(),
     );
+  },
+};
+
+const marketingOrgSummary: IntentHandler = {
+  name: 'marketing_org_summary',
+  supports: i => i.name === 'marketing_org_summary',
+  async execute({ intent }) {
+    const { buildMarketingSnapshot, formatMarketingBriefing } = await import(
+      '../../marketing-org'
+    );
+    const snapshot = await buildMarketingSnapshot({});
+    const text = formatMarketingBriefing(snapshot);
+    return replyOk(intent.name, text.split('\n'), { health: snapshot.health });
+  },
+};
+
+const aiStatus: IntentHandler = {
+  name: 'ai_status',
+  supports: i => i.name === 'ai_status',
+  async execute({ intent }) {
+    const { getAiStatusBriefingText, getAIProviderStatus } = await import('../../../aiService');
+    const text = await getAiStatusBriefingText();
+    const providers = await getAIProviderStatus();
+    return replyOk(intent.name, text.split('\n'), { providers });
+  },
+};
+
+const decisionReport: IntentHandler = {
+  name: 'decision_report',
+  supports: i => i.name === 'decision_report',
+  async execute({ intent }) {
+    const { getDecisionReportText, getDecisionMetrics } = await import('../../decision-center');
+    const text = await getDecisionReportText();
+    const metrics = await getDecisionMetrics();
+    return replyOk(intent.name, text.split('\n'), { metrics });
+  },
+};
+
+const knowledgeReport: IntentHandler = {
+  name: 'knowledge_report',
+  supports: i => i.name === 'knowledge_report',
+  async execute({ intent }) {
+    const { getKnowledgeReportText, getKnowledgeHealth } = await import('../../knowledge-base');
+    const text = await getKnowledgeReportText();
+    const health = await getKnowledgeHealth();
+    return replyOk(intent.name, text.split('\n'), { health });
+  },
+};
+
+const knowledgeHealth: IntentHandler = {
+  name: 'knowledge_health',
+  supports: i => i.name === 'knowledge_health',
+  async execute({ intent }) {
+    const { buildKnowledgeAnalytics, formatKnowledgeHealthBriefing } = await import(
+      '../../knowledge-base'
+    );
+    const snap = await buildKnowledgeAnalytics();
+    const text = formatKnowledgeHealthBriefing(snap);
+    return replyOk(intent.name, text.split('\n'), { analytics: snap });
+  },
+};
+
+const weeklyEvolution: IntentHandler = {
+  name: 'weekly_evolution',
+  supports: i => i.name === 'weekly_evolution',
+  async execute({ intent }) {
+    const { buildFeedbackCenterSnapshot, formatWeeklyEvolution } = await import(
+      '../../knowledge-base'
+    );
+    const snap = await buildFeedbackCenterSnapshot();
+    const text = formatWeeklyEvolution(snap);
+    return replyOk(intent.name, text.split('\n'), { weekly: snap.weekly });
   },
 };
 
@@ -600,6 +800,7 @@ const helpHandler: IntentHandler = {
         'AI Operations Center — hỏi tiếng Việt, không cần slash.',
         '• Có gì mới? · Máy nào đang bận? · Có lỗi gì không?',
         '• Scanner / Publisher / Mission / Browser / Lead',
+        '• AI Status · Knowledge Health · Weekly Evolution',
         '• Mỗi trả lời có nút: Refresh · Fleet · Retry · Release Browser',
       ],
       {},
@@ -638,12 +839,27 @@ export function registerDefaultIntentHandlers(registry: IntentRegistry): void {
     fleetSummary,
     scannerSummary,
     publisherSummary,
+    marketingOrgSummary,
+    aiStatus,
+    decisionReport,
+    knowledgeReport,
+    knowledgeHealth,
+    weeklyEvolution,
     missionSummary,
     incidentSummary,
     machineDetail,
     browserDetail,
     runtimeExplain,
     opsRecommendation,
+    aiSalesCampaign,
+    aiSalesResearch,
+    aiSalesMissions,
+    aiSalesLeads,
+    aiSalesContent,
+    aiSalesTimeline,
+    aiSalesRecommendations,
+    aiSalesHelp,
+    campaignWorkspace,
     leadCount,
     agentsOffline,
     retryFailedPublish,

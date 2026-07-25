@@ -368,6 +368,16 @@ export function createControlPlanePort(input: {
       const signals = await port.detectIncidents();
       const recs = recommendAll(signals.incidents);
       const label = slot === 'morning' ? '08:00' : slot === 'noon' ? '12:00' : '18:00';
+      let salesBriefing: string | null = null;
+      try {
+        const { getSalesPipelineMetrics, formatSalesDailyBriefing } = await import(
+          '../../sales-layer'
+        );
+        const metrics = await getSalesPipelineMetrics({ sinceHours: 720 });
+        salesBriefing = formatSalesDailyBriefing(metrics);
+      } catch {
+        salesBriefing = null;
+      }
       const lines = formatDailyBriefingLines({
         slotLabel: label,
         ops,
@@ -375,6 +385,7 @@ export function createControlPlanePort(input: {
         topLeads: leads.items,
         incidents: signals.incidents,
         recommendations: recs.map(r => r.summary),
+        salesBriefing,
       });
       return { text: lines.join('\n'), lines };
     },

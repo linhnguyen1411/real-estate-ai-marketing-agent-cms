@@ -414,7 +414,7 @@ export function formatLeadSummaryLines(
   return lines;
 }
 
-/** Daily briefing — max ~15 lines. */
+/** Daily briefing — max ~18 lines. Includes Sales Pipeline (H3.5). */
 export function formatDailyBriefingLines(input: {
   slotLabel: string;
   ops: OperationsMetricsSnapshot;
@@ -422,6 +422,7 @@ export function formatDailyBriefingLines(input: {
   topLeads: Array<{ title?: string | null; score?: number | null }>;
   incidents: OpsIncident[];
   recommendations: string[];
+  salesBriefing?: string | null;
 }): string[] {
   const { ops } = input;
   const verdict =
@@ -430,6 +431,19 @@ export function formatDailyBriefingLines(input: {
       : input.incidents.some(i => i.severity === 'warning')
         ? '🟡 Có cảnh báo'
         : '🟢 Ổn định';
+
+  if (input.salesBriefing) {
+    const salesLines = input.salesBriefing.split('\n').filter(Boolean);
+    const lines = [
+      `📈 Sales Briefing · ${input.slotLabel}`,
+      '--------',
+      ...salesLines.slice(0, 12),
+      '--------',
+      `Ops · ${verdict} · fleet ${ops.fleet.machinesOnline}`,
+    ];
+    if (input.recommendations[0]) lines.push(`→ ${input.recommendations[0]}`);
+    return lines.slice(0, 18);
+  }
 
   const lines = [
     `🤖 AI Operations Briefing · ${input.slotLabel}`,

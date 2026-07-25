@@ -77,7 +77,7 @@ export const PROJECTS: Record<string, ProjectData> = {
       },
       ...SUN_FAQ_DEFAULT,
     ],
-    ctaHref: '/can-ho',
+    ctaHref: '/bat-dong-san/can-ho',
   },
   'sun-cosmo': {
     slug: 'sun-cosmo',
@@ -94,7 +94,7 @@ export const PROJECTS: Record<string, ProjectData> = {
       },
       ...SUN_FAQ_DEFAULT,
     ],
-    ctaHref: '/can-ho',
+    ctaHref: '/bat-dong-san/can-ho',
   },
   'sun-ponte': {
     slug: 'sun-ponte',
@@ -105,7 +105,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Sông Hàn', 'Shophouse', 'Sun Group', 'Thương mại & ở'],
     productTypes: ['Căn hộ', 'Shophouse', 'Nhà phố thương mại'],
     faqs: SUN_FAQ_DEFAULT,
-    ctaHref: '/can-ho',
+    ctaHref: '/bat-dong-san/can-ho',
   },
   'nam-da-nang': {
     slug: 'nam-da-nang',
@@ -161,8 +161,8 @@ export const PROJECT_SLUGS = [...SUN_GROUP_PROJECT_SLUGS, ...PORTFOLIO_SEGMENT_S
 
 /** URL cũ → chuyển hướng (giữ SEO, không gãy link) */
 export const LEGACY_PROJECT_REDIRECTS: Record<string, string> = {
-  'fpt-city': '/nam-da-nang',
-  'mai-dang-chon': '/du-an/nam-da-nang',
+  'fpt-city': '/bat-dong-san/fpt-city',
+  'mai-dang-chon': '/bat-dong-san/mai-dang-chon',
   'gio-hang-ky-gui': '/du-an/bds-noi-bat',
 };
 

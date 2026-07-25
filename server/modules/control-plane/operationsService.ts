@@ -667,3 +667,57 @@ export async function opsLeadRetryNotify(findingId: string) {
   );
   return notifyFindingIfEligible({ findingId, force: true });
 }
+
+/** H3 — Assign buyer to sales pipeline */
+export async function opsLeadAssign(findingId: string, triggeredBy: string) {
+  const { updateLeadPipelineStage, processLeadAcquisition } = await import(
+    '../lead-acquisition'
+  );
+  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
+  const profile = await updateLeadPipelineStage({
+    findingId,
+    stage: 'assigned',
+    actor: triggeredBy,
+  });
+  if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  return { findingId, stage: 'assigned' as const, profile };
+}
+
+/** H3 — Mark for CRM */
+export async function opsLeadCrm(findingId: string, triggeredBy: string) {
+  const { updateLeadPipelineStage, processLeadAcquisition } = await import(
+    '../lead-acquisition'
+  );
+  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
+  const profile = await updateLeadPipelineStage({
+    findingId,
+    stage: 'interested',
+    actor: triggeredBy,
+  });
+  if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  return { findingId, stage: 'interested' as const, profile };
+}
+
+/** H3.5 — Buyer journey / timeline history */
+export async function opsLeadHistory(findingId: string) {
+  const { processSalesLayer, readSalesProfile } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  let profile = readSalesProfile(finding.extractedData);
+  if (!profile) {
+    profile = await processSalesLayer({ findingId, notifyFollowUp: false });
+  }
+  if (!profile) throw new Error(`No sales profile: ${findingId}`);
+  const lines = [
+    `Buyer ${findingId}`,
+    `Journey · ${profile.journeyStage}`,
+    `Pipeline · ${profile.pipelineStage}`,
+    `Owner · ${profile.owner || '—'}`,
+    `Probability · ${Math.round(profile.probability * 100)}%`,
+    `Expected · ${profile.expectedDealTy ?? '—'} tỷ`,
+    '',
+    'Timeline',
+    ...profile.timeline.slice(-8).map(e => `• ${e.at.slice(0, 10)} · ${e.label}`),
+  ];
+  return { findingId, profile, lines };
+}

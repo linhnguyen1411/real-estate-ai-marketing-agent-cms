@@ -94,7 +94,9 @@ const PropertiesPage = React.lazy(() => import('./features/properties/pages/Prop
 const InboxPage = React.lazy(() => import('./features/inbox/pages/InboxPage'));
 const ChatFeatureHost = React.lazy(() => import('./features/chat/pages/ChatFeatureHost'));
 const UsersPage = React.lazy(() => import('./features/users/pages/UsersPage'));
-const DashboardHotLeads = React.lazy(() => import('./features/dashboard/components/DashboardHotLeads'));
+const ExecutiveKpiGrid = React.lazy(
+  () => import('./features/dashboard/components/ExecutiveKpiGrid'),
+);
 
 function ModuleFallback({ label = 'Đang tải module…' }: { label?: string }) {
   return (
@@ -106,24 +108,24 @@ function ModuleFallback({ label = 'Đang tải module…' }: { label?: string })
 }
 
 const EMPTY_DASHBOARD: DashboardData = {
-  stats: {
-    totalCustomers: 0,
-    leads: { hot: 0, warm: 0, cold: 0 },
-    totalProperties: 0,
-    totalPosts: 0,
-    pendingInbox: 0,
-    todayTasksCount: 0,
-    siteViews: 0,
-    propertyViews: 0,
-    postViews: 0,
+  version: 'h052_executive_command',
+  generatedAt: new Date(0).toISOString(),
+  summary: '',
+  hero: {
+    aiStatus: 'Offline',
+    aiStatusLabel: 'Offline',
+    businessHealth: null,
+    todayGoal: null,
+    expectedRevenueTy: null,
+    currentCampaign: null,
+    confidence: null,
   },
-  metrics: [
-    { platform: 'facebook', reach: 0, engagement: 0, leads: 0 },
-    { platform: 'zalo', reach: 0, engagement: 0, leads: 0 },
-    { platform: 'tiktok', reach: 0, engagement: 0, leads: 0 },
-    { platform: 'website', reach: 0, engagement: 0, leads: 0 },
-  ],
-  traffic: { topProperties: [], topPosts: [] },
+  snapshot: [],
+  insights: [],
+  recommendations: [],
+  attention: [],
+  quickActions: [],
+  kpis: [],
 };
 
 const EMPTY_NAV_COUNTS: NavigationCounts = {
@@ -139,13 +141,6 @@ const EMPTY_NAV_COUNTS: NavigationCounts = {
   sources: 0,
   websiteChat: 0,
   chatHistory: 0,
-};
-
-const DASHBOARD_PLATFORM_META: Record<Post['platform'], { name: string; color: string }> = {
-  facebook: { name: 'Facebook', color: 'bg-indigo-500' },
-  zalo: { name: 'Zalo', color: 'bg-blue-400' },
-  tiktok: { name: 'TikTok', color: 'bg-rose-500' },
-  website: { name: 'Website', color: 'bg-emerald-400' }
 };
 
 type MarketingCreativeChannel = 'facebook' | 'zalo' | 'tiktok';
@@ -212,9 +207,11 @@ export default function App() {
   React.useEffect(() => {
     if (!currentUser || activeTab !== 'dashboard') return;
 
+    let cancelled = false;
     const syncTraffic = () => {
       refreshTrafficData()
         .then(({ dashboard, settings: nextSettings }) => {
+          if (cancelled) return;
           setDashboardData(dashboard);
           setSettings(nextSettings);
         })
@@ -222,15 +219,12 @@ export default function App() {
     };
 
     syncTraffic();
-    const timer = window.setInterval(syncTraffic, 15000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(syncTraffic, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [activeTab, currentUser]);
-
-  const maxDashboardReach = Math.max(1, ...dashboardData.metrics.map(metric => metric.reach));
-  const topDashboardMetric = dashboardData.metrics.reduce(
-    (top, metric) => metric.reach > top.reach ? metric : top,
-    dashboardData.metrics[0] || EMPTY_DASHBOARD.metrics[0]
-  );
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -721,344 +715,9 @@ export default function App() {
               {/* TAB 1: DASHBOARD OVERVIEW */}
               {/* ==================================================== */}
               {activeTab === 'dashboard' && (
-                <div className="space-y-4 sm:space-y-6">
-                  {/* Heading header */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                        Bảng điều khiển Tổng quan
-                      </h2>
-                      <p className="text-slate-400 text-sm">Cập nhật và theo dõi hiệu suất tiếp thị trong ngày.</p>
-                    </div>
-                    <div className="bg-rose-950/40 px-4 py-2 rounded-xl text-xs font-mono border border-rose-500/20 text-rose-300">
-                      Cập nhật lúc: {new Date().toLocaleString('vi-VN')}
-                    </div>
-                  </div>
-
-                  {/* Summary Metric Cards */}
-                  <div className="grid grid-cols-2 lg:grid-cols-8 gap-4">
-                    {[
-                      { label: 'Tổng số khách hàng CRM', value: dashboardData.stats.totalCustomers, icon: Users, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
-                      { label: 'Lead Hot tiềm năng', value: dashboardData.stats.leads.hot, icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
-                      { label: 'Bất động sản mở bán', value: dashboardData.stats.totalProperties, icon: Home, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-                      { label: 'Bài quảng cáo đã tạo', value: dashboardData.stats.totalPosts, icon: FileText, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-                      { label: 'Inbox chưa trả lời', value: dashboardData.stats.pendingInbox, icon: MessageSquare, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 animate-pulse' },
-                      { label: 'Lượt truy cập trang', value: dashboardData.stats.siteViews || 0, icon: Globe, color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' },
-                      { label: 'Lượt xem BĐS', value: dashboardData.stats.propertyViews || 0, icon: Eye, color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
-                      { label: 'Lượt xem bài viết', value: dashboardData.stats.postViews || 0, icon: TrendingUp, color: 'text-teal-400 bg-teal-500/10 border-teal-500/20' },
-                    ].map((stat, idx) => {
-                      const Icon = stat.icon;
-                      return (
-                        <div key={idx} className={`p-4 rounded-2xl border bg-slate-900/40 flex flex-col justify-between h-32 ${stat.color}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-400 tracking-wide">{stat.label}</span>
-                            <Icon className="w-5 h-5 opacity-80" />
-                          </div>
-                          <div>
-                            <div className="text-3xl font-extrabold tracking-tight text-white">{stat.value}</div>
-                            <div className="text-2xs text-slate-500 mt-1 flex items-center gap-1">
-                              <TrendingUp className="w-3 h-3 text-emerald-400" /> Dữ liệu hiện tại
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-5">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-white tracking-wide">Thống kê truy cập website</h3>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Lần truy cập gần nhất:{' '}
-                          {dashboardData.traffic?.lastSiteViewAt
-                            ? new Date(dashboardData.traffic.lastSiteViewAt).toLocaleString('vi-VN')
-                            : 'Chưa có dữ liệu'}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 font-semibold text-sky-300">
-                          Trang: {(dashboardData.stats.siteViews || 0).toLocaleString('vi-VN')}
-                        </span>
-                        <span className="rounded-xl border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 font-semibold text-violet-300">
-                          BĐS: {(dashboardData.stats.propertyViews || 0).toLocaleString('vi-VN')}
-                        </span>
-                        <span className="rounded-xl border border-teal-500/20 bg-teal-500/10 px-3 py-1.5 font-semibold text-teal-300">
-                          Bài viết: {(dashboardData.stats.postViews || 0).toLocaleString('vi-VN')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-wide text-violet-300">Top BĐS được xem nhiều</h4>
-                        {(dashboardData.traffic?.topProperties || []).length > 0 ? (
-                          <div className="space-y-2">
-                            {(dashboardData.traffic?.topProperties || []).map((item, index) => (
-                              <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs">
-                                <div className="min-w-0">
-                                  <div className="font-bold text-slate-200">
-                                    #{index + 1}{' '}
-                                    {item.url ? (
-                                      <a
-                                        href={item.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="hover:text-violet-300 hover:underline"
-                                      >
-                                        {item.title}
-                                      </a>
-                                    ) : (
-                                      item.title
-                                    )}
-                                  </div>
-                                  {item.lastViewAt && (
-                                    <div className="mt-0.5 text-2xs text-slate-500">
-                                      Xem gần nhất: {new Date(item.lastViewAt).toLocaleString('vi-VN')}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="shrink-0 inline-flex items-center gap-1 font-bold text-violet-300">
-                                  <Eye className="h-3.5 w-3.5" />
-                                  {item.views.toLocaleString('vi-VN')}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500">Chưa có lượt xem BĐS nào được ghi nhận.</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-wide text-teal-300">Top bài viết / quảng cáo</h4>
-                        {(dashboardData.traffic?.topPosts || []).length > 0 ? (
-                          <div className="space-y-2">
-                            {(dashboardData.traffic?.topPosts || []).map((item, index) => (
-                              <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs">
-                                <div className="min-w-0">
-                                  <div className="font-bold text-slate-200">#{index + 1} {item.title}</div>
-                                  {item.platform && (
-                                    <div className="mt-0.5 text-2xs uppercase text-slate-500">{item.platform}</div>
-                                  )}
-                                </div>
-                                <div className="shrink-0 inline-flex items-center gap-1 font-bold text-teal-300">
-                                  <TrendingUp className="h-3.5 w-3.5" />
-                                  {item.views.toLocaleString('vi-VN')}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500">Chưa có dữ liệu lượt xem bài viết.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Charts and Lists */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Platform effectiveness stats */}
-                    <div className="lg:col-span-7 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-white tracking-wide">Hiệu quả phễu Marketing theo Kênh</h3>
-                        <span className="text-2xs text-slate-400 font-mono">Đồng bộ tự động</span>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-2 pt-2 text-center text-xs text-slate-400 font-medium pb-2 border-b border-slate-900">
-                        <div className="text-left font-semibold text-slate-300">Nền tảng</div>
-                        <div>Reach (Lượt xem)</div>
-                        <div>Engagement</div>
-                        <div className="text-right">Lead Thu được</div>
-                      </div>
-
-                      <div className="space-y-4">
-                        {dashboardData.metrics.map((metric) => {
-                          const platform = metric.platform as Post['platform'];
-                          const meta = DASHBOARD_PLATFORM_META[platform];
-                          return (
-                            <div key={metric.platform} className="space-y-1">
-                              <div className="grid grid-cols-4 items-center text-xs">
-                                <div className="font-bold text-slate-200">{meta.name}</div>
-                                <div className="text-center font-mono text-slate-400">{metric.reach.toLocaleString('vi-VN')}</div>
-                                <div className="text-center font-mono text-slate-400">{metric.engagement.toLocaleString('vi-VN')}</div>
-                                <div className="text-right font-bold text-emerald-400">{metric.leads} lead</div>
-                              </div>
-                              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${meta.color}`}
-                                  style={{ width: `${(metric.reach / maxDashboardReach) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-900 flex items-start gap-3 mt-4 text-xs text-slate-400 leading-relaxed">
-                        <Cpu className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                        <div>
-                          <strong className="text-rose-400 block mb-0.5">Tổng hợp dữ liệu marketing:</strong>
-                          {topDashboardMetric.reach > 0 ? (
-                            <>
-                              Kênh <span className="text-rose-400 font-bold border-b border-rose-500/20">{DASHBOARD_PLATFORM_META[topDashboardMetric.platform as Post['platform']].name}</span> đang có reach cao nhất với {topDashboardMetric.reach.toLocaleString('vi-VN')} lượt xem. Số liệu được tổng hợp từ các bài đăng và lead hiện có trong hệ thống.
-                            </>
-                          ) : (
-                            'Chưa có dữ liệu tương tác từ các bài đăng để xác định kênh hiệu quả nhất.'
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Automation triggers visual logs */}
-                    <div className="lg:col-span-5 bg-slate-900/40 p-5 rounded-2xl border border-slate-900 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-white tracking-wide">Nhật ký Tự Động Hóa Thực Tế</h3>
-                        <span className="text-2xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">Live</span>
-                      </div>
-
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                        {automations.flatMap(a => a.logs.map(log => ({ name: a.name, log }))).slice(0, 5).map((item, idx) => (
-                          <div key={idx} className="p-3 bg-slate-950/60 rounded-xl border border-slate-900 text-xs space-y-1">
-                            <div className="flex items-center justify-between text-slate-500 font-mono text-2xs">
-                              <span className="text-rose-400 font-semibold">{item.name}</span>
-                              <span>Chúng tôi vừa chạy</span>
-                            </div>
-                            <p className="text-slate-300 leading-relaxed">{item.log}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      <button
-                        onClick={() => setActiveTab('automations')}
-                        className="w-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-xs py-2.5 rounded-xl transition-all font-semibold"
-                      >
-                        Mở Trung Tâm Tự Động Hóa Automation
-                      </button>
-                    </div>
-                  </div>
-
-                  <Suspense fallback={<ModuleFallback label="Đang tải lead nóng…" />}>
-                    <DashboardHotLeads
-                      onOpenCrm={() => setActiveTab('crm')}
-                      onAskChatbot={(name) => {
-                        setActiveTab('chatbot');
-                        setUserChatInput(`Đề xuất kế hoạch marketing và tóm tắt chăm sóc khách hàng ${name}`);
-                      }}
-                    />
-                  </Suspense>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                    <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                      <div className="flex items-start justify-between gap-4 mb-4">
-                        <div>
-                          <h3 className="text-sm font-bold text-white">Publish queue actions</h3>
-                          {/* Legacy stub — use AI Agent → Lịch đăng bài (social-publishing MVP) */}
-                          <p className="text-xs text-slate-500 mt-1">Facebook va Zalo duoc uu tien. Moi thao tac ben duoi deu goi API va luu database. (legacy stub — use AI Agent → Lịch đăng bài)</p>
-                        </div>
-                        <span className="text-2xs text-slate-500 font-mono">{publishPosts.length} posts</span>
-                      </div>
-
-                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-                        {publishPosts.map(post => (
-                          <div key={`publish-action-${post.id}`} className="border border-slate-800 rounded-lg p-4 bg-slate-950/40">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-white line-clamp-1">{post.title}</div>
-                                <div className="flex items-center gap-2 mt-2">
-                                  <span className="uppercase text-2xs font-bold text-emerald-300">{post.platform}</span>
-                                  <span className="text-2xs text-slate-500">{post.status}</span>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyText(post.content)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-900 text-2xs font-bold"
-                                >
-                                  <Copy className="w-3 h-3" /> Copy
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handlePostStatusUpdate(post, 'scheduled')}
-                                  disabled={actionLoading === `post-scheduled-${post.id}` || post.status === 'published'}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-40 text-2xs font-bold"
-                                >
-                                  <Clock className="w-3 h-3" /> Schedule
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handlePostStatusUpdate(post, 'published')}
-                                  disabled={actionLoading === `post-published-${post.id}` || post.status === 'published'}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40 text-2xs font-bold"
-                                >
-                                  <Send className="w-3 h-3" /> Publish
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
-                      <div className="flex items-start justify-between gap-4 mb-4">
-                        <div>
-                          <h3 className="text-sm font-bold text-white">Generated content training</h3>
-                          <p className="text-xs text-slate-500 mt-1">Raw content va verified content cho Facebook/Zalo.</p>
-                        </div>
-                        <span className="text-2xs text-slate-500 font-mono">{priorityGeneratedContents.length} items</span>
-                      </div>
-
-                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-                        {priorityGeneratedContents.length === 0 && (
-                          <div className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg p-4">
-                            Chua co content sinh tu AI cho Facebook/Zalo. Hay generate content tu gio hang bat dong san truoc.
-                          </div>
-                        )}
-
-                        {priorityGeneratedContents.map(record => (
-                          <div key={record.id} className="border border-slate-800 rounded-lg p-4 bg-slate-950/40">
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              <div className="flex items-center gap-2">
-                                <span className="uppercase text-2xs font-bold text-emerald-300">{record.channel}</span>
-                                <span className={`text-2xs px-2 py-0.5 rounded-full border ${
-                                  record.status === 'verified'
-                                    ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
-                                    : 'text-amber-300 border-amber-500/30 bg-amber-500/10'
-                                }`}>
-                                  {record.status}
-                                </span>
-                              </div>
-                              <span className="text-2xs text-slate-600 font-mono">{record.created_at}</span>
-                            </div>
-                            <div className="text-xs font-semibold text-slate-300 mb-2">{record.property_title || 'No property linked'}</div>
-                            <p className="text-xs text-slate-400 whitespace-pre-line line-clamp-4 leading-relaxed">
-                              {record.verified_content || record.raw_content}
-                            </p>
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => handleCopyText(record.verified_content || record.raw_content)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-900 text-2xs font-bold"
-                              >
-                                <Copy className="w-3 h-3" /> Copy
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleVerifyGeneratedContent(record)}
-                                disabled={record.status === 'verified' || actionLoading === `verify-content-${record.id}`}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40 text-2xs font-bold"
-                              >
-                                <CheckCircle2 className="w-3 h-3" /> Verify
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <Suspense fallback={<ModuleFallback label="Đang tải Executive KPIs…" />}>
+                  <ExecutiveKpiGrid data={dashboardData} refreshing={refreshing} />
+                </Suspense>
               )}
 
               {/* ==================================================== */}

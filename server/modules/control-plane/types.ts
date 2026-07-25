@@ -29,6 +29,8 @@ export const RUNTIME_EVENT_TYPES = [
   'PUBLISH_FINISHED',
   'CAMPAIGN_STARTED',
   'CAMPAIGN_COMPLETED',
+  /** AI Sales Employee / Planning Layer (advisory) */
+  'PLANNING_EVENT',
   /** Ops Center soft commands (restart / browser release) — Event Bus only */
   'OPS_REQUEST',
 ] as const;

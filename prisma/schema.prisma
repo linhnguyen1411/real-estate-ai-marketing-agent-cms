@@ -1507,3 +1507,26 @@ model SocialCampaignTarget {
   @@index([status])
   @@map("social_campaign_targets")
 }
+
+/// Living AI Sales Campaign (H2.1) — planning lifecycle entity (not SocialCampaign publish fan-out)
+model AiSalesCampaign {
+  id           String   @id @default(cuid())
+  companyId    String?  @map("company_id")
+  name         String
+  goal         String
+  priority     String   @default("medium")
+  owner        String?
+  /// planning | researching | mission_planning | finding_leads | content_drafting | waiting_approval | publishing | monitoring | optimizing | completed | rejected
+  status       String   @default("planning")
+  propertyHint String   @map("property_hint")
+  utterance    String?  @db.Text
+  /// CampaignState blob: timeline, tasks, progress, metrics, research, missions, content, leads, recommendations, memory
+  state        Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_sales_campaigns")
+}

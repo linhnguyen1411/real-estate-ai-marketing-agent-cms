@@ -91,6 +91,64 @@ const RULES: Rule[] = [
         (/scanner|scan/.test(t) && /sao|thế nào|the nao|status|tóm tắt|tom tat/.test(t))),
   },
   {
+    name: 'marketing_org_summary',
+    confidence: 0.96,
+    test: t =>
+      /hôm nay marketing|hom nay marketing|marketing thế nào|marketing the nao|marketing health|phòng marketing|marketing funnel|omnichannel/.test(
+        t,
+      ) ||
+      (/marketing/.test(t) && /sao|thế nào|the nao|hôm nay|hom nay|tóm tắt|tom tat|health/.test(t)),
+  },
+  {
+    name: 'ai_status',
+    confidence: 0.97,
+    test: t =>
+      /^ai status$|ai status\?$|tình hình ai|tinh hinh ai|ai thế nào|ai the nao|provider ai|ai provider|quota gemini|gemini quota/.test(
+        t,
+      ) ||
+      (/^ai\b|\bai\b/.test(t) &&
+        /status|healthy|quota|latency|provider|gateway|kira|gemini|ollama|local llm/.test(t)),
+  },
+  {
+    name: 'decision_report',
+    confidence: 0.97,
+    test: t =>
+      /decision report|báo cáo decision|bao cao decision|decision center|token saved|ai saving|rule passed|quyết định lead|quyet dinh lead/.test(
+        t,
+      ) ||
+      (/decision|rule engine|rule-first/.test(t) &&
+        /report|báo cáo|bao cao|tóm tắt|tom tat|status|thế nào|the nao/.test(t)),
+  },
+  {
+    name: 'knowledge_report',
+    confidence: 0.97,
+    test: t =>
+      /knowledge report|báo cáo knowledge|bao cao knowledge|knowledge center|unknown terms|coverage knowledge|kiến thức/.test(
+        t,
+      ) ||
+      (/knowledge|kb\b/.test(t) &&
+        /report|báo cáo|bao cao|coverage|unknown|concept|thế nào|the nao/.test(t) &&
+        !/health|accuracy|dead rule|optimizer/.test(t)),
+  },
+  {
+    name: 'knowledge_health',
+    confidence: 0.98,
+    test: t =>
+      /knowledge health|sức khỏe knowledge|suc khoe knowledge|dead rules|top rule|rule accuracy|knowledge analytics|optimizer/.test(
+        t,
+      ) ||
+      (/knowledge|rule/.test(t) && /health|accuracy|dead|archive|roi/.test(t) && !/weekly|evolution/.test(t)),
+  },
+  {
+    name: 'weekly_evolution',
+    confidence: 0.98,
+    test: t =>
+      /weekly evolution|feedback center|rule improved|campaign improved|tiến hóa|tien hoa|học từ sales|hoc tu sales/.test(
+        t,
+      ) ||
+      (/weekly|evolution|feedback/.test(t) && /knowledge|rule|source|campaign|buyer accuracy/.test(t)),
+  },
+  {
     name: 'publisher_summary',
     confidence: 0.94,
     test: t =>
@@ -134,19 +192,91 @@ const RULES: Rule[] = [
     },
   },
   {
+    name: 'ai_sales_timeline',
+    confidence: 0.97,
+    test: t =>
+      /hôm nay ai đang làm|hom nay ai dang lam|ai đang làm gì|ai dang lam gi|đang làm gì|dang lam gi|hôm nay ai đã làm|hom nay ai da lam|ai đã làm gì|ai da lam gi|timeline hôm nay|timeline hom nay/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_leads',
+    confidence: 0.96,
+    test: t =>
+      /lead nổi bật|lead noi bat|top lead|lead vip|lead card|xác suất giao dịch|xac suat giao dich/.test(
+        t,
+      ),
+  },
+  {
+    name: 'campaign_workspace',
+    confidence: 0.98,
+    test: t =>
+      /campaign .+đang tới đâu|campaign .+dang toi dau|ai đã làm gì|ai da lam gi|buyer tốt nhất|buyer tot nhat|mission nào hiệu quả|mission nao hieu qua|content nào hiệu quả|content nao hieu qua|tại sao campaign chậm|tai sao campaign cham|workspace campaign|campaign workspace|tóm tắt campaign|tom tat campaign|campaign dashboard/.test(
+        t,
+      ) ||
+      (/đang tới đâu|dang toi dau|tới đâu rồi|toi dau roi/.test(t) && /campaign|chiến dịch|chien dich|mai đăng|mai dang/.test(t)),
+  },
+  {
+    name: 'ai_sales_research',
+    confidence: 0.97,
+    test: t =>
+      /market report|research|giá thị trường|gia thi truong|khảo sát thị trường|khao sat thi truong|market intelligence/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_campaign',
+    confidence: 0.96,
+    test: t =>
+      !/research|market report|giá thị trường|gia thi truong|khảo sát|khao sat/.test(t) &&
+      /bán mạnh|ban manh|lập campaign|lap campaign|chiến dịch|chien dich|cần bán|can ban|mai đăng chơn|mai dang chon|campaign board/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_missions',
+    confidence: 0.94,
+    test: t =>
+      /đề xuất mission|de xuat mission|mission planner|nhiệm vụ buyer|nhiem vu buyer|mission đề xuất/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_content',
+    confidence: 0.94,
+    test: t =>
+      /content plan|lịch đăng|lich dang|content planner|lịch content|lich content/.test(t),
+  },
+  {
+    name: 'ai_sales_recommendations',
+    confidence: 0.93,
+    test: t =>
+      /thiếu bài threads|thieu bai threads|thiếu bài seo|thieu bai seo|nên giảm giá|nen giam gia|recommendation engine/.test(
+        t,
+      ),
+  },
+  {
+    name: 'ai_sales_help',
+    confidence: 0.9,
+    test: t =>
+      /^\/?ai\b/.test(t) ||
+      /sales employee|ai employee|nhân viên ai|nhan vien ai|ai sales/.test(t),
+  },
+  {
     name: 'ops_recommendation',
     confidence: 0.9,
     test: t =>
       /nên làm gì|nen lam gi|khuyến nghị|khuyen nghi|recommend|cần mình xử lý|can minh xu ly|làm gì tiếp|lam gi tiep/.test(
         t,
-      ),
+      ) && !/threads|seo|giảm giá|giam gia|campaign/.test(t),
   },
   {
     name: 'lead_count',
     confidence: 0.93,
     test: t =>
-      /(bao nhiêu|bao nhieu|how many).*(lead|finding)/.test(t) ||
-      /hôm nay có.*lead|hom nay co.*lead|lead hôm nay|lead hom nay|lead today|top lead/.test(t),
+      !/nổi bật|noi bat|vip|xác suất|xac suat/.test(t) &&
+      (/(bao nhiêu|bao nhieu|how many).*(lead|finding)/.test(t) ||
+        /hôm nay có.*lead|hom nay co.*lead|lead hôm nay|lead hom nay|lead today|top lead/.test(t)),
     slots: t => ({
       dateHint: 'today',
       location: extractLocation(t),
@@ -221,7 +351,7 @@ const RULES: Rule[] = [
   {
     name: 'dashboard',
     confidence: 0.85,
-    test: t => /dashboard|health|sức khỏe|suc khoe|runtime/.test(t),
+    test: t => /dashboard|executive|ceo|sức khỏe hệ thống|suc khoe he thong/.test(t),
   },
   {
     name: 'report',

@@ -87,6 +87,8 @@ export interface LeadAnalysisMeta {
   provider?: string;
   promptVersion?: string;
   analyzedAt: string;
+  degradedQuota?: boolean;
+  degradedDetail?: string;
 }
 
 export function isLeadUrgency(value: string): value is LeadUrgency {

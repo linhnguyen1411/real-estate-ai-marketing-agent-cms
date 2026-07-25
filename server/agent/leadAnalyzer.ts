@@ -35,6 +35,8 @@ export interface LeadAnalyzerOptions {
   timeoutMs?: number;
   temperature?: number;
   skipAi?: boolean;
+  /** Provider cascade for enrichment (Gemini → GPT → local LLM) */
+  preferredProviders?: Array<'gemini' | 'openai' | 'ollama'>;
 }
 
 export interface LeadAnalyzerOutput {
@@ -109,7 +111,11 @@ export async function analyzeLeadContent(
     maxOutputTokens: 1200,
     timeoutMs: options.timeoutMs ?? limits.timeoutMs,
     promptContext: 'editorial',
+    preferredProviders: options.preferredProviders,
   };
+
+  let degradedQuota = false;
+  let degradedDetail = '';
 
   try {
     const raw = await generateText(LEAD_ANALYZER_SYSTEM_PROMPT, userPrompt, generation);
@@ -148,7 +154,12 @@ export async function analyzeLeadContent(
       };
     }
   } catch (error) {
-    console.warn('[lead-analyzer] AI failed, using fallback:', error instanceof Error ? error.message : error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn('[lead-analyzer] AI failed, using fallback:', msg);
+    if (/429|resource_exhausted|quota|rate.?limit/i.test(msg)) {
+      degradedQuota = true;
+      degradedDetail = msg.slice(0, 300);
+    }
   }
 
   const fallback = buildDeterministicFallback(input, prefilter);
@@ -156,6 +167,8 @@ export async function analyzeLeadContent(
     source: 'fallback',
     prefilterScore: prefilter.score,
     analyzedAt: new Date().toISOString(),
+    degradedQuota: degradedQuota || undefined,
+    degradedDetail: degradedDetail || undefined,
   };
 
   return {

@@ -25,6 +25,9 @@ import {
   opsLeadSkip,
   opsLeadCreateMission,
   opsLeadRetryNotify,
+  opsLeadAssign,
+  opsLeadCrm,
+  opsLeadHistory,
   opsRefreshRuntime,
   opsGetFleet,
   opsGetFleetAgent,
@@ -75,20 +78,33 @@ function parseReportKind(arg: string | undefined): ControlPlaneReportKind {
 export function registerOperationsCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'dashboard',
-    description: 'Operations Center dashboard',
+    description: 'Executive AI operations dashboard (business)',
     usage: '/dashboard',
+    handler: async () => {
+      const { buildExecutiveSnapshot, formatExecutiveDashboardLines } = await import(
+        '../../executive-dashboard'
+      );
+      const snap = await buildExecutiveSnapshot();
+      return ok('dashboard', formatExecutiveDashboardLines(snap), { snap });
+    },
+  });
+
+  registry.register({
+    name: 'ops',
+    description: 'Operations / Runtime metrics dashboard',
+    usage: '/ops',
     handler: async (_args, ctx) => {
       const d = await opsGetDashboard(ctx.user);
       const { formatOperationsDashboardLines } = await import('../operations');
       if (d.operations) {
-        return ok('dashboard', formatOperationsDashboardLines(d.operations), {
+        return ok('ops', formatOperationsDashboardLines(d.operations), {
           dashboard: d,
         });
       }
       return ok(
-        'dashboard',
+        'ops',
         [
-          '══ Dashboard ══',
+          '══ Operations ══',
           `Health ${d.healthScore}/100`,
           `Agents online ${d.agentsOnline}/${d.agentsTotal}`,
           `Queue wait=${d.queue.waiting} run=${d.queue.running} fail=${d.queue.deadLetter}`,
@@ -496,13 +512,13 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'lead',
-    description: 'Lead alert actions (skip / mission / retry notify)',
-    usage: '/lead skip|mission|retry <findingId>',
+    description: 'Lead alert actions (skip / mission / retry / assign / crm / history)',
+    usage: '/lead skip|mission|retry|assign|crm|history <findingId>',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const id = args[1];
-      if (!id || !['skip', 'mission', 'retry'].includes(action)) {
-        return fail('lead', 'Usage: /lead skip|mission|retry <findingId>');
+      if (!id || !['skip', 'mission', 'retry', 'assign', 'crm', 'history'].includes(action)) {
+        return fail('lead', 'Usage: /lead skip|mission|retry|assign|crm|history <findingId>');
       }
       if (action === 'skip') {
         const r = await opsLeadSkip(id, ctx.triggeredBy);
@@ -511,6 +527,18 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       if (action === 'mission') {
         const r = await opsLeadCreateMission(id, ctx.triggeredBy);
         return ok('lead', [`Lead mission requested ${r.findingId}`], r);
+      }
+      if (action === 'assign') {
+        const r = await opsLeadAssign(id, ctx.triggeredBy);
+        return ok('lead', [`Lead assigned ${r.findingId}`], r);
+      }
+      if (action === 'crm') {
+        const r = await opsLeadCrm(id, ctx.triggeredBy);
+        return ok('lead', [`Lead → CRM ${r.findingId}`], r);
+      }
+      if (action === 'history') {
+        const r = await opsLeadHistory(id);
+        return ok('lead', r.lines, r);
       }
       const r = await opsLeadRetryNotify(id);
       if (!r.ok) {
@@ -562,7 +590,8 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 /** Used by help listing from operations surface */
 export function operationsHelpLines(): string[] {
   return [
-    '/dashboard',
+    '/dashboard · Executive',
+    '/ops · Runtime metrics',
     '/fleet',
     '/jobs [running|waiting|pending|failed|completed]',
     '/mission <id> | retry|cancel|pause|resume',
@@ -572,7 +601,7 @@ export function operationsHelpLines(): string[] {
     '/browser [profiles|release|recover|restart|refresh]',
     '/runtime · /health',
     '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
-    '/lead skip|mission|retry <id>',
+    '/lead skip|mission|retry|assign|crm|history <id>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

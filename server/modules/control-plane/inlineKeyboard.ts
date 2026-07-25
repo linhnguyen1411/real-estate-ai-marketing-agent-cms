@@ -198,6 +198,24 @@ export function browserActionKeyboard(agentId?: string | null): InlineKeyboard {
 export function callbackDataToCommand(data: string): string | null {
   const raw = String(data || '').trim();
   const parts = raw.split(':');
+  // AI Sales Employee dashboard buttons: ai:research | ai:ap:<id> | ...
+  if (parts[0] === 'ai' && parts[1]) {
+    const action = parts[1];
+    const id = parts.slice(2).join(':');
+    if (action === 'ap' && id) return `Approve campaign ${id}`;
+    if (action === 'rj' && id) return `Reject campaign ${id}`;
+    if (action === 'vw' && id) return `View campaign ${id}`;
+    if (action === 'done' && id) return `Complete campaign ${id}`;
+    if (action === 'research') return 'Research thị trường';
+    if (action === 'content') return 'Content plan lịch đăng';
+    if (action === 'mission') return 'Đề xuất mission buyer';
+    if (action === 'leads') return 'Lead nổi bật nhất hôm nay';
+    if (action === 'publish') return 'Publisher thế nào';
+    if (action === 'recs') return 'Thiếu bài Threads SEO recommendation';
+    if (action === 'campaign') return 'Lập campaign bán mạnh';
+    if (action === 'timeline') return 'Hôm nay AI đang làm gì';
+    return 'AI sales employee';
+  }
   if (parts.length < 3) return null;
   const [scope, action, ...rest] = parts;
   const id = rest.join(':');
@@ -228,6 +246,10 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'r') return `/lead retry ${id}`;
     if (action === 's') return `/lead skip ${id}`;
     if (action === 'm') return `/lead mission ${id}`;
+    if (action === 'a') return `/lead assign ${id}`;
+    if (action === 'c') return `/lead crm ${id}`;
+    if (action === 'o') return `/lead retry ${id}`;
+    if (action === 'h') return `/lead history ${id}`;
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;
