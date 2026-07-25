@@ -1,13 +1,15 @@
 # Engineering Constitution
 
-> **Highest source of truth (SSOT) for this repository.**  
-> Every development prompt, feature, bugfix, and refactor **MUST** read this document **before writing code**.  
-> If a prompt conflicts with this Constitution, the agent **MUST warn first** — never proceed silently.
+> **Highest source of truth (SSOT) for this repository — FINAL LOCK (v2.1).**  
+> Every development prompt, feature, bug fix, and refactor **MUST** read this document **before writing code**.  
+> If a prompt conflicts with this Constitution, the agent **MUST warn first** — never proceed silently.  
+> **After H0.0.2: do not add new Constitution rules.** Architecture change → **ADR only**. Do **not** edit this file unless Product Philosophy or Engineering Principles change (see § ADR Policy).
 
-**Version:** 2.0.0  
-**Effective:** 2026-07-24  
-**Supersedes:** 1.0.0  
-**Scope:** Entire repository (`real-estate-ai-marketing-agent-cms`)
+**Version:** 2.1.0  
+**Effective:** 2026-07-25  
+**Supersedes:** 2.0.0  
+**Scope:** Entire repository (`real-estate-ai-marketing-agent-cms`)  
+**Status:** Operating System — **FINAL LOCK**
 
 Related:
 
@@ -15,23 +17,62 @@ Related:
 - [CODE_REVIEW_CHECKLIST.md](./CODE_REVIEW_CHECKLIST.md)
 - [RELEASE_PROCESS.md](./RELEASE_PROCESS.md)
 - [ADR index](../adr/README.md)
+- [Evolution log](../evolution/README.md)
 
 ---
 
-## Prompt Contract (mandatory gate)
+## PROJECT NORTH STAR
 
-Before any code change, the agent must complete:
+**Generate Qualified Buyers Automatically.**
+
+This is the highest KPI of the project.
+
+We are **not** optimizing for:
+
+- CMS  
+- CRM  
+- Facebook Bot  
+- Automation-as-the-goal  
+
+**Automation is a means.**  
+**Buyer is the objective.**  
+**Revenue is the outcome.**
+
+Every feature hereafter must answer:
+
+> How does this feature help create a **Qualified Buyer**?
+
+If it does not relate → strongly consider **not doing it**.
+
+---
+
+## Prompt Policy (mandatory gate)
+
+Every development prompt must follow this flow. **Missing any step → do not code.**
+
+```text
+Read Constitution
+  → Read ADR
+  → Read Runtime Boundary
+  → Architecture Audit
+  → Impact Analysis
+  → Implementation
+  → Cleanup
+  → Report
+```
 
 | Step | Artifact |
 |------|----------|
 | Read Constitution | this file ✓ |
-| Read Project Structure | `PROJECT_STRUCTURE.md` ✓ |
-| Read relevant ADRs | `docs/adr/` ✓ |
-| Read Runtime Boundary | §3 + `runtime-boundary.mdc` ✓ |
-| Impact Analysis | Affected / Not Affected table ✓ |
-| Business Goal | Lead / Sales / Campaign / Knowledge / Publishing / Automation ✓ |
+| Read ADR | relevant `docs/adr/*` ✓ |
+| Read Runtime Boundary | § Runtime Boundary ✓ |
+| Architecture Audit | reuse / dead / debt signals ✓ |
+| Impact Analysis | Affected / Not Affected ✓ |
+| Implementation | only after gates above ✓ |
+| Cleanup | code + test data + dead artifacts ✓ |
+| Report | Release Report template ✓ |
 
-**If any row cannot be answered → do not code.**
+Also declare: **Business Goal**, **Feature Classification**, **KPI Pyramid tier**, **North Star link** (how it creates Qualified Buyers).
 
 ---
 
@@ -43,9 +84,9 @@ We are building an **AI Sales Employee** — an autonomous marketing & sales ope
 
 We are **not** primarily building:
 
-- a generic CMS
-- a generic CRM
-- a Facebook bot toy
+- a generic CMS  
+- a generic CRM  
+- a Facebook bot toy  
 
 Those UIs may exist as **shells**. The product is the employee.
 
@@ -60,16 +101,64 @@ Those UIs may exist as **shells**. The product is the employee.
 | Campaign | **Center of gravity** — living go-to-market work |
 | Sales | Journey, pipeline, revenue |
 
-### North-star metrics
+### North-star alignment
 
 | Priority | Metric |
 |----------|--------|
-| 1 | **Buyer** (qualified demand) |
+| 1 | **Qualified Buyer** (North Star) |
 | 2 | **Campaign** effectiveness |
-| 3 | **Revenue** (expected → won) |
-| 4 | **Automation** rate (work done without human ops friction) |
+| 3 | **Revenue** (outcome) |
+| 4 | **Automation** (means / success measure of ops leverage) |
 
-Every feature must serve at least one Business Goal (§ Business Goal). If it does not, it should not ship.
+Every feature must serve at least one Business Goal (§ Business Goal) **and** explain its path to Qualified Buyer.
+
+---
+
+## BUSINESS KPI PYRAMID
+
+```text
+Revenue
+  ↑
+Closed Won
+  ↑
+Negotiation
+  ↑
+Qualified Buyer   ← NORTH STAR
+  ↑
+Lead
+  ↑
+Finding
+  ↑
+Scanner
+```
+
+Every module must declare which **tier(s)** it moves:
+
+| Module | Primary tier impact |
+|--------|---------------------|
+| Scanner | Finding |
+| Decision | Lead |
+| Sales | Negotiation → Closed Won |
+| Campaign | Revenue (via Buyer pipeline) |
+| Knowledge | Qualified Buyer |
+| Publisher | Lead |
+
+Feature / ADR / module docs should state: **KPI tier = …**
+
+---
+
+## Feature Classification
+
+Every feature, ADR, and module declares one class:
+
+| Class | Meaning |
+|-------|---------|
+| **Core** | Essential product capability (e.g. Knowledge) |
+| **Business** | Direct GTM / revenue path (e.g. Campaign) |
+| **Infrastructure** | Platform substrate (e.g. Fleet) |
+| **Experimental** | Time-boxed trial (e.g. TikTok) — must have expiration |
+
+Examples: Campaign = Business · Fleet = Infrastructure · Knowledge = Core · TikTok = Experimental.
 
 ---
 
@@ -111,6 +200,9 @@ Mandatory. Non-negotiable.
 5. Does the design break **Separation of Concerns**?  
 6. Does it create a **circular dependency**?  
 7. Does it violate **Clean Architecture** (UI/Telegram owning business rules, etc.)?  
+8. Which **KPI Pyramid tier** does it move?  
+9. What is its **Feature Classification**?  
+10. How does it help create a **Qualified Buyer**?  
 
 Output a short Architecture block in the chat/report before implementation.
 
@@ -140,10 +232,22 @@ Large decisions live in `docs/adr/`:
 | [ADR-003](../adr/ADR-003-decision-engine.md) | Decision Engine |
 | [ADR-004](../adr/ADR-004-knowledge-center.md) | Knowledge Center |
 | [ADR-005](../adr/ADR-005-campaign-workspace.md) | Campaign Workspace |
+| [ADR-006](../adr/ADR-006-constitution-final-lock.md) | Constitution Final Lock |
 
-Format: Problem · Alternatives · Decision · Consequences.
+Format: Problem · Alternatives · Decision · Consequences · **Classification**.
 
-New structural choices → new ADR in the same PR when possible.
+---
+
+## ADR Policy (FINAL LOCK)
+
+| Change type | Action |
+|-------------|--------|
+| Product Philosophy change | May amend Constitution (rare; version bump) |
+| Engineering Principles change | May amend Constitution (rare; version bump) |
+| Any other architecture / module / boundary / tech choice | **Must create ADR** — **do not edit Constitution** |
+| New “engineering rules” wish-list | **Forbidden** — ADR or reject |
+
+**After v2.1:** do not grow this document with more chapters/rules. Evolve via ADR + business capability code.
 
 ---
 
@@ -160,6 +264,8 @@ These are **Protected**. Unrelated features **MUST NOT** modify them.
 | **Scheduler** | `agentScheduler` / mission tick cores |
 | **Publisher Runtime** | Social publish execute / bridge cores |
 | **Scanner Runtime** | Scan execution / mission scan steps |
+
+Also treat **Decision** and **Knowledge** cores as high-caution: prefer compose; structural change → ADR.
 
 If modification is required:
 
@@ -208,9 +314,50 @@ Every feature declares one or more:
 | **Campaign** | Living go-to-market work |
 | **Knowledge** | Rules, learning, coverage |
 | **Publishing** | Content distribution |
-| **Automation** | Reduce manual ops friction |
+| **Automation** | Reduce manual ops friction (means, not North Star) |
 
 If none apply → challenge the feature before coding.
+
+---
+
+## Weekly Architecture Audit
+
+The agent must be able to self-audit. Checklist:
+
+| Check | Look for |
+|-------|----------|
+| Dead Service | unused modules / exports |
+| Duplicate Logic | scoring, safety, planning copied |
+| Unused Docs | contradictory / obsolete |
+| Unused Script | orphan `scripts/tmp-*` left forever |
+| Deprecated API | unremoved surface |
+| Feature Flag expired | past expiration |
+| Technical Debt | unlogged intentional debt |
+| Circular Dependency | import cycles |
+| God Service | oversized orchestrators |
+| Large Module | unbounded folder growth |
+| Long Function | unreadable units |
+
+**Output:** Architecture Audit Report (short table + findings) in chat or `docs/engineering/` / release notes when mission requests a full audit.
+
+---
+
+## AI Evolution Log
+
+Track progress in [`docs/evolution/`](../evolution/README.md).
+
+Metrics (one line per sprint is enough):
+
+- Lead Precision  
+- Lead Recall  
+- Spam Rate  
+- Buyer Conversion  
+- Campaign Success  
+- Knowledge Growth  
+- Automation Rate  
+- Publish Success  
+
+Purpose: know whether the AI Sales Employee is **improving**.
 
 ---
 
@@ -230,14 +377,16 @@ Audit
   → Smoke
 ```
 
+Aligns with Prompt Policy. Architecture Audit is part of Audit.
+
 | Stage | Required |
 |-------|----------|
-| Audit | Existing owners, ADRs, reuse candidates |
-| Architecture | Architecture First answers |
+| Audit | Existing owners, ADRs, reuse, dead/debt signals |
+| Architecture | Architecture First answers + Classification + KPI tier |
 | Impact Analysis | Affected / Not Affected |
 | Implementation | Minimal diff; honor boundaries |
 | Tests | Scenario · Coverage · Result |
-| Cleanup | Code + test data (§ Data / Code Cleanup) |
+| Cleanup | Code + test data + Clean Repository checks |
 | Release Report | Template in RELEASE_PROCESS |
 | Deploy | Build / migrate / restart as needed |
 | Smoke | Health + critical path |
@@ -278,37 +427,63 @@ Past expiration → agent **must cleanup** in the next related mission (or dedic
 
 ---
 
+## Clean Repository
+
+Before merge, the agent must self-check:
+
+| Check | Action |
+|-------|--------|
+| Dead Docs | remove or mark superseded |
+| Dead Scripts | delete or debt-log |
+| Dead Components | remove |
+| Dead APIs | remove or deprecate with expiration |
+| Dead Tests | remove / fix |
+| Obsolete Prompt | archive or delete |
+| Obsolete Migration | never rewrite applied; document only |
+
+If found → **cleanup now** or record under **Technical Debt** with roadmap.
+
+---
+
 ## 8. Mandatory Pre-Commit Checklist
 
+- [ ] North Star link (Qualified Buyer path) stated  
+- [ ] Feature Classification declared  
+- [ ] KPI Pyramid tier declared  
 - [ ] Architecture First answered  
 - [ ] Impact Analysis table present  
 - [ ] Business Goal declared  
 - [ ] DRY / SOLID / KISS / YAGNI  
 - [ ] No duplicate module / no unauthorized `V2`  
 - [ ] Protected modules untouched (or Runtime Impact documented)  
+- [ ] Clean Repository checks done  
 - [ ] No dead code / unused imports  
 - [ ] No TODO/FIXME left undocumented as debt  
 - [ ] No console.log / commented code / temp patch / mock KPIs  
 - [ ] Tests + cleanup done  
-- [ ] Docs/ADR updated if needed  
+- [ ] Docs/ADR updated if needed (Constitution untouched unless Philosophy/Principles)  
 
 ---
 
-## 9. Quality Gate (before commit)
+## 9. Release Quality Gate (Definition of Done)
 
 | Gate | Required |
 |------|----------|
+| Code | PASS |
 | Architecture | PASS |
-| SOLID | PASS |
-| DRY | PASS |
-| KISS | PASS |
-| YAGNI | PASS |
 | Tests | PASS (scenario/coverage/result) |
 | Cleanup | PASS |
-| Docs | PASS |
-| Release Report | PASS |
-| Smoke | PASS (when deploy/restart in scope) |
+| Report | PASS |
+| Deploy | PASS (when in scope) |
+| Smoke | PASS (when in scope) |
+| Health | PASS (when in scope) |
+| No Test Data | PASS |
+| No Dead Code | PASS |
+| No Obsolete Docs | PASS |
+| SOLID / DRY / KISS / YAGNI | PASS |
 | Production Ready | YES |
+
+**If any item fails → Feature = NOT DONE.**
 
 ---
 
@@ -346,7 +521,10 @@ Remove: unused scripts, obsolete docs, dead components/services, expired flags, 
 
 ## 13. Documentation
 
-Update when behavior changes: structure, ADR, API notes, release summary. Standards live under `docs/engineering/`.
+Update when behavior changes: structure, ADR, API notes, release summary, evolution log line when sprint ends.
+
+Standards live under `docs/engineering/`.  
+**Do not** amend Constitution for ordinary architecture — write ADR.
 
 ---
 
@@ -355,16 +533,17 @@ Update when behavior changes: structure, ADR, API notes, release summary. Standa
 Every feature summary includes:
 
 1. Objective  
-2. Business Goal  
-3. Architecture  
-4. Impact Analysis (Affected / Not Affected)  
-5. Deliverables  
-6. Runtime Impact (if any)  
-7. Tests (scenario/coverage/result)  
-8. Cleanup  
-9. Known Issues  
-10. Technical Debt / Next  
-11. AI Self Review  
+2. North Star link (Qualified Buyer)  
+3. Business Goal + Feature Classification + KPI tier  
+4. Architecture  
+5. Impact Analysis (Affected / Not Affected)  
+6. Deliverables  
+7. Runtime Impact (if any)  
+8. Tests (scenario/coverage/result)  
+9. Cleanup / Clean Repository  
+10. Known Issues  
+11. Technical Debt / Next  
+12. AI Self Review  
 
 ---
 
@@ -399,31 +578,14 @@ After each feature: What went well · Weakness · Risk · Confidence (High/Mediu
 
 ---
 
-## 19. Definition of Done
-
-Done only when:
-
-- [x] Architecture First + Impact + Business Goal  
-- [x] Code  
-- [x] Tests (scenario/coverage/result)  
-- [x] Cleanup (code + test data)  
-- [x] Docs / ADR as needed  
-- [x] Release Report  
-- [x] Deploy/restart when required  
-- [x] Smoke + Health  
-- [x] Quality Gate PASS  
-- [x] No dead code / obsolete contradictory docs  
-- [x] Constitution Prompt Contract satisfied  
-
----
-
 ## Project Rule
 
-1. Constitution is the **operating system** of the project.  
-2. Cursor rules under `.cursor/rules/` reinforce this (alwaysApply).  
-3. Conflicting prompts → **warn**, then propose a compliant path.  
-4. Campaign is the center; Buyer is the KPI; Revenue is the end goal; Automation is the success measure.
+1. Constitution v2.1 is the **Operating System** of the AI Sales Employee — **FINAL LOCK**.  
+2. From this point: **no new Constitution rules** — only **Business Capability** (+ ADRs).  
+3. Cursor rules under `.cursor/rules/` reinforce this (alwaysApply).  
+4. Conflicting prompts → **warn**, then propose a compliant path.  
+5. **Generate Qualified Buyers Automatically** is the North Star. Campaign is the center of gravity; Automation is a means; Revenue is the outcome.
 
 ---
 
-*End of Engineering Constitution v2.*
+*End of Engineering Constitution v2.1 — FINAL LOCK.*

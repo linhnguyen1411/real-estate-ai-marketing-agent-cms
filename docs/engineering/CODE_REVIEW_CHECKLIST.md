@@ -1,18 +1,21 @@
 # Code Review Checklist
 
 Use before every commit / PR.  
-Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
+Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2.1 FINAL LOCK**.
 
 ---
 
-## A. Prompt Contract
+## A. Prompt Policy
 
 - [ ] Constitution read
-- [ ] Project Structure read
 - [ ] Relevant ADRs read
 - [ ] Runtime Boundary considered
+- [ ] Architecture Audit considered (reuse / dead / debt)
 - [ ] Impact Analysis table produced
+- [ ] North Star link (Qualified Buyer path) stated
 - [ ] Business Goal declared
+- [ ] Feature Classification declared (Core / Business / Infrastructure / Experimental)
+- [ ] KPI Pyramid tier declared
 - [ ] Conflicting prompt warned (if any)
 
 ---
@@ -26,7 +29,7 @@ Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
 - [ ] No Separation of Concerns violation
 - [ ] No circular dependency
 - [ ] Clean Architecture respected (no business rules in UI/Telegram routers)
-- [ ] ADR created/updated when decision is structural
+- [ ] ADR created/updated when decision is structural (**not** Constitution edit)
 
 ---
 
@@ -39,9 +42,10 @@ Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
 
 ---
 
-## D. Business Goal
+## D. Business Goal & North Star
 
 - [ ] Feature serves Lead / Sales / Campaign / Knowledge / Publishing / Automation
+- [ ] Explains how it creates / improves **Qualified Buyers**
 - [ ] Aligns with AI Sales Employee (not “CMS for CMS’s sake”)
 
 ---
@@ -61,7 +65,7 @@ Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
 - [ ] No unused imports / dead exports / dead components
 - [ ] No commented-out code / `console.log`
 - [ ] No secrets / magic numbers without names
-- [ ] Temporary / flag / deprecated items have **expiration**
+- [ ] Temporary / flag / deprecated / Experimental items have **expiration**
 - [ ] No full prompt dumps in traces/logs
 
 ---
@@ -85,31 +89,35 @@ Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
 
 ---
 
-## I. Cleanup & docs
+## I. Clean Repository
 
-- [ ] Cleanup Done (code + test data)
-- [ ] No Dead Code
+- [ ] Dead Docs / Scripts / Components / APIs / Tests checked
+- [ ] Obsolete Prompt / Migration notes handled
+- [ ] Cleanup Done (code + test data) **or** Technical Debt logged
 - [ ] No Obsolete Docs left contradictory
-- [ ] ADR / engineering docs updated when needed
+- [ ] Evolution log line when sprint closes (if applicable)
 - [ ] Git excludes runtime junk / secrets
 
 ---
 
-## J. Quality Gate signoff
+## J. Release Quality Gate signoff
 
 | Gate | PASS? |
 |------|-------|
+| Code | |
 | Architecture | |
-| SOLID | |
-| DRY | |
-| KISS | |
-| YAGNI | |
 | Tests | |
 | Cleanup | |
-| Docs | |
-| Release Report | |
+| Report | |
+| Deploy | |
 | Smoke | |
+| Health | |
+| No Test Data | |
+| No Dead Code | |
+| No Obsolete Docs | |
 | Production Ready | YES / NO |
+
+**Any fail → Feature = NOT DONE.**
 
 ---
 
@@ -119,17 +127,21 @@ Reject if:
 
 1. Protected modules changed without authorization + Runtime Impact  
 2. Duplicate module / parallel `V2` without ADR  
-3. Missing Impact Analysis or Business Goal  
+3. Missing Impact Analysis, Business Goal, Classification, or North Star link  
 4. Mock KPIs on Executive surfaces  
 5. Test data left behind  
 6. “PASS” without scenario/coverage/result  
+7. Attempt to expand Constitution instead of writing ADR  
 
 ---
 
 ## L. Agent self-signoff
 
 ```text
-Constitution v2: read ✓
+Constitution v2.1: read ✓
+North Star (Qualified Buyer): …
+Classification: Core|Business|Infrastructure|Experimental
+KPI tier: …
 Architecture First: ✓
 Impact: Affected […] | Not Affected […]
 Business Goal: […]
@@ -137,7 +149,7 @@ Reuse: […]
 ADR: n/a | ADR-xxx
 Protected: untouched | Runtime Impact: …
 Tests: scenario/coverage/result ✓
-Cleanup: ✓
+Clean Repository: ✓
 Quality Gate: PASS
 Confidence: High | Medium | Low
 ```

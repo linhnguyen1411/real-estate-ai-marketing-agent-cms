@@ -95,4 +95,6 @@ docs/
 !docs/engineering/**
 !docs/adr/
 !docs/adr/**
+!docs/evolution/
+!docs/evolution/**
 /runtime/

@@ -1,7 +1,7 @@
 # Release Process
 
 Official ship path.  
-Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2**.
+Parent: [ENGINEERING_CONSTITUTION.md](./ENGINEERING_CONSTITUTION.md) **v2.1 FINAL LOCK**.
 
 Every release **must** include: **Architecture · Impact · Cleanup · Smoke · Rollback · Report**.
 
@@ -11,13 +11,14 @@ Every release **must** include: **Architecture · Impact · Cleanup · Smoke · 
 
 Do not deploy until:
 
-1. Prompt Contract satisfied (Constitution / Structure / ADR / Boundary / Impact / Business Goal)
+1. Prompt Policy satisfied (Constitution → ADR → Boundary → Architecture Audit → Impact → …)
 2. [CODE_REVIEW_CHECKLIST.md](./CODE_REVIEW_CHECKLIST.md) passed
-3. Quality Gate PASS
+3. Release Quality Gate PASS (all rows)
 4. Tests recorded (Scenario · Coverage · Result)
-5. Cleanup done (code + test data)
+5. Cleanup + Clean Repository done (or debt logged)
 6. Impact Analysis table ready for the report
-7. Rollback idea known (prior SHA / artifact)
+7. North Star / Classification / KPI tier declared
+8. Rollback idea known (prior SHA / artifact)
 
 ---
 
@@ -106,8 +107,17 @@ No force-push to main/master unless explicitly requested.
 ### Objective
 …
 
+### North Star
+How this helps create Qualified Buyers: …
+
 ### Business Goal
 Lead | Sales | Campaign | Knowledge | Publishing | Automation
+
+### Classification
+Core | Business | Infrastructure | Experimental
+
+### KPI Pyramid tier
+Scanner | Finding | Lead | Qualified Buyer | Negotiation | Closed Won | Revenue
 
 ### Architecture
 Module / Bounded Context / Reuse / ADR refs
@@ -134,8 +144,9 @@ none | <what/why/risk/rollback>
 - Coverage:
 - Result:
 
-### Cleanup
+### Cleanup / Clean Repository
 - Test data removed: …
+- Dead docs/scripts/APIs: …
 - Temp scripts / expired flags: …
 
 ### Known Issues
@@ -156,11 +167,12 @@ none | <what/why/risk/rollback>
 ## 10. Post-release
 
 - Health still green after soak  
-- Docs/ADR updated if behavior changed  
-- Definition of Done (Constitution §19) closed  
+- ADR updated if architecture changed (Constitution untouched unless Philosophy/Principles)  
+- Evolution log line when sprint closes  
+- Release Quality Gate closed — any miss = **NOT DONE**  
 
 ---
 
 ## 11. Hotfix
 
-May shorten design prose; **may not** skip Impact, Cleanup, Health, Protected-boundary respect, or Report essentials.
+May shorten design prose; **may not** skip Impact, Cleanup, Health, Protected-boundary respect, Quality Gate essentials, or Report essentials.
