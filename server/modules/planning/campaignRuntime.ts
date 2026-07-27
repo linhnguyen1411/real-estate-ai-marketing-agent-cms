@@ -963,6 +963,29 @@ export async function approveCampaign(input: {
   refreshMetrics(campaign.state);
   campaign = await persist(campaign);
 
+  // ADR-007 — Planning Approval → Acquisition Request (public enqueueSourceScan only).
+  // Does not call Publisher Core or Scanner Runtime internals.
+  try {
+    const { startAcquisitionAfterCampaignApproval } = await import('../campaign-acquisition');
+    const acq = await startAcquisitionAfterCampaignApproval({
+      campaignId: campaign.id,
+      actor: input.actor || 'approve',
+    });
+    pushMemory(
+      campaign.state,
+      'publishing',
+      'Acquisition requested',
+      `${acq.status} · sources ${acq.sourceIds.length} · jobs ${acq.jobIds.length}`,
+    );
+    campaign = (await getCampaign(campaign.id)) || campaign;
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    pushMemory(campaign.state, 'publishing', 'Acquisition bridge failed', reason.slice(0, 200));
+    campaign.state.progress.blockedReason = `Acquisition: ${reason.slice(0, 160)}`;
+    campaign = await persist(campaign);
+    console.warn('[campaign-runtime] acquisition bridge failed:', reason);
+  }
+
   await notifyProactive({
     companyId: campaign.companyId,
     campaignId: campaign.id,
@@ -971,6 +994,7 @@ export async function approveCampaign(input: {
       `✅ Approved — ${campaign.name}`,
       `Đề xuất đăng ${campaign.state.publishProposal?.suggestedAt} · ${campaign.state.publishProposal?.channel}`,
       '(Planning layer — chưa gọi Publisher Core)',
+      '(Acquisition bridge — scan jobs via public façade)',
     ],
   });
 

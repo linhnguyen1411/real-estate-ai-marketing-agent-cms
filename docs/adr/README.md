@@ -14,6 +14,7 @@ Parent law: [Engineering Constitution v2.1 FINAL LOCK](../engineering/ENGINEERIN
 | [ADR-004](./ADR-004-knowledge-center.md) | Knowledge Center | Core |
 | [ADR-005](./ADR-005-campaign-workspace.md) | Campaign Workspace | Business |
 | [ADR-006](./ADR-006-constitution-final-lock.md) | Constitution Final Lock | Infrastructure |
+| [ADR-007](./ADR-007-campaign-buyer-acquisition-bridge.md) | Campaign → Buyer Acquisition Bridge | Business |
 
 ## When to write an ADR
 

@@ -145,6 +145,8 @@ export type CampaignState = {
   } | null;
   operationalMemory: CampaignTimelineEvent[];
   planChecklist: Array<{ key: string; label: string; done: boolean }>;
+  /** ADR-007 — acquisition bridge requests (shape owned by campaign-acquisition) */
+  acquisitionRequests?: Array<Record<string, unknown>>;
 };
 
 export type LivingCampaign = {

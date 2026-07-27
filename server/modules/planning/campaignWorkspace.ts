@@ -85,6 +85,18 @@ export type CampaignWorkspace = {
     progress: ReturnType<typeof orchestratorProgress>;
     ready: string[];
   };
+  acquisition: {
+    status: string;
+    sources: number;
+    postsScanned: number;
+    candidates: number;
+    qualified: number;
+    hot: number;
+    lastRunAt: string | null;
+    coverage: string | null;
+    errors: string[];
+    nextAction: string | null;
+  };
   trace: ExecutionTrace | null;
   timeline: LivingCampaign['state']['operationalMemory'];
   recommendations: RecommendationItem[];
@@ -169,9 +181,15 @@ export function deriveCampaignHealth(campaign: LivingCampaign): CampaignWorkspac
 }
 
 export function buildAiThoughts(workspace: Omit<CampaignWorkspace, 'aiThoughts'>): string {
-  const { campaign, buyers, research, health, sales, content, missions } = workspace;
+  const { campaign, buyers, research, health, sales, content, missions, acquisition } = workspace;
   const parts: string[] = [];
   const hint = campaign.propertyHint || campaign.name;
+
+  if (acquisition && acquisition.status !== 'NOT_STARTED') {
+    parts.push(
+      `acquisition ${acquisition.status} (cand ${acquisition.candidates}, Q ${acquisition.qualified}, HOT ${acquisition.hot})`,
+    );
+  }
 
   if (buyers.candidates > 0) {
     parts.push(
@@ -335,10 +353,45 @@ export async function getCampaignWorkspace(campaignId: string): Promise<Campaign
       progress,
       ready: listReadyTasks(tasks).map(t => t.key),
     },
+    acquisition: {
+      status: 'NOT_STARTED',
+      sources: 0,
+      postsScanned: 0,
+      candidates: 0,
+      qualified: 0,
+      hot: 0,
+      lastRunAt: null,
+      coverage: null,
+      errors: [],
+      nextAction: 'Approve campaign để mở Acquisition Request',
+    },
     trace,
     timeline: campaign.state.operationalMemory || campaign.state.timeline || [],
     recommendations: campaign.state.recommendations || [],
   };
+
+  try {
+    const { getCampaignAcquisitionSnapshot } = await import('../campaign-acquisition');
+    const snap = await getCampaignAcquisitionSnapshot(campaign.id);
+    base.acquisition = {
+      status: snap.status,
+      sources: snap.sources,
+      postsScanned: snap.postsScanned,
+      candidates: snap.candidates,
+      qualified: snap.qualified,
+      hot: snap.hot,
+      lastRunAt: snap.lastRunAt,
+      coverage: snap.coverage,
+      errors: snap.errors,
+      nextAction: snap.nextAction,
+    };
+    if (snap.qualified > 0) {
+      base.buyers.candidates = Math.max(base.buyers.candidates, snap.candidates);
+      base.buyers.vip = Math.max(base.buyers.vip, snap.hot);
+    }
+  } catch {
+    /* acquisition compose optional */
+  }
 
   return {
     ...base,
@@ -358,6 +411,7 @@ export function formatCampaignWorkspaceLines(ws: CampaignWorkspace): string[] {
     '',
     `Research  ${ws.research ? '✓' : '○'}`,
     `Mission  ${ws.missions.length}`,
+    `Acquisition  ${ws.acquisition.status} · src ${ws.acquisition.sources} · cand ${ws.acquisition.candidates} · Q ${ws.acquisition.qualified} · HOT ${ws.acquisition.hot}`,
     `Lead  ${ws.buyers.candidates} · VIP ${ws.buyers.vip}`,
     `Buyer  ${ws.buyers.converted} converted · ${ws.sales.negotiating} negotiating`,
     `Draft  ${ws.content.draft} · Approved ${ws.content.approved}`,
