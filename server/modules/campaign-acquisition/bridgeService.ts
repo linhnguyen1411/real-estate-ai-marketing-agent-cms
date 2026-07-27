@@ -420,9 +420,15 @@ export async function summarizeAcquisitionResults(input: {
   const { processSalesLayer } = await import('../sales-layer');
   const { shouldSendBuyerAlert, resolveBuyerConfidencePct } = await import('../sales-layer/buyerHeat');
 
+  // Prefer decisionCenter (H3.6) when counting / tracing
+  const { readDecisionProfile } = await import('../decision-center');
   for (const f of candidates.slice(0, 15)) {
     findingIds.push(f.id);
     try {
+      const decision = readDecisionProfile(f.extractedData);
+      if (decision?.decision === 'discard') {
+        continue;
+      }
       let acq = readAcquisitionProfile(f.extractedData);
       if (!acq) {
         acq = await processLeadAcquisition({ findingId: f.id, notifyTelegram: false });

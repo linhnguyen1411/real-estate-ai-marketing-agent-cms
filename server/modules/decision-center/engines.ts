@@ -120,20 +120,43 @@ export function decideOutcome(input: {
 }): { decision: DecisionOutcome; aiAllowed: boolean; reason: string } {
   const { ruleScore, intent } = input;
 
-  if (intent === 'spam' || ruleScore < 40) {
+  // Spam always discarded — never conflate with unknown/low-score.
+  if (intent === 'spam') {
     return {
       decision: 'discard',
       aiAllowed: false,
-      reason: intent === 'spam' ? 'spam_intent' : `rule_score_${ruleScore}_lt_40`,
+      reason: 'spam_intent',
     };
   }
 
-  // Seller/broker/rent are not buyer candidates — discard or manual
+  // Non-buyer intents: classify before generic low-score discard
+  // (seller/broker keywords often yield ruleScore 0 via negative weights).
   if (intent === 'seller' || intent === 'broker') {
     if (ruleScore >= 60) {
       return { decision: 'manual_review', aiAllowed: false, reason: `${intent}_manual` };
     }
     return { decision: 'discard', aiAllowed: false, reason: `${intent}_discard` };
+  }
+
+  if (intent === 'rent') {
+    return { decision: 'discard', aiAllowed: false, reason: 'rent_discard' };
+  }
+
+  // UNKNOWN ≠ SPAM: insufficient evidence → manual queue (not auto-dismiss).
+  if (intent === 'unknown' && ruleScore < 40) {
+    return {
+      decision: 'manual_review',
+      aiAllowed: false,
+      reason: `unknown_insufficient_evidence_score_${ruleScore}`,
+    };
+  }
+
+  if (ruleScore < 40) {
+    return {
+      decision: 'discard',
+      aiAllowed: false,
+      reason: `rule_score_${ruleScore}_lt_40`,
+    };
   }
 
   if (ruleScore >= 80) {

@@ -927,6 +927,43 @@ export async function listCampaignsKanban(input?: {
   return board;
 }
 
+/**
+ * Refresh acquisition after approval without restarting orchestrator tasks.
+ * Safe for first approve and idempotent re-approve.
+ */
+async function refreshAcquisitionOnApprove(
+  campaign: LivingCampaign,
+  actor?: string | null,
+): Promise<LivingCampaign> {
+  try {
+    const { startAcquisitionAfterCampaignApproval } = await import('../campaign-acquisition');
+    const acq = await startAcquisitionAfterCampaignApproval({
+      campaignId: campaign.id,
+      actor: actor || 'approve',
+    });
+    // Bridge persists acquisitionRequests itself — reload before any further persist
+    // so we never overwrite state with a stale in-memory campaign.
+    let fresh = (await getCampaign(campaign.id)) || campaign;
+    pushMemory(
+      fresh.state,
+      (['publishing', 'monitoring', 'optimizing', 'completed'].includes(fresh.status)
+        ? fresh.status
+        : 'publishing') as CampaignTimelineEvent['phase'],
+      'Acquisition requested',
+      `${acq.status} · sources ${acq.sourceIds.length} · jobs ${acq.jobIds.length}`,
+    );
+    fresh = await persist(fresh);
+    return fresh;
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    pushMemory(campaign.state, 'publishing', 'Acquisition bridge failed', reason.slice(0, 200));
+    campaign.state.progress.blockedReason = `Acquisition: ${reason.slice(0, 160)}`;
+    campaign = await persist(campaign);
+    console.warn('[campaign-runtime] acquisition bridge failed:', reason);
+    return campaign;
+  }
+}
+
 /** Approve → Publishing → Monitoring → Optimizing (no Publisher Core calls). */
 export async function approveCampaign(input: {
   campaignId: string;
@@ -936,7 +973,14 @@ export async function approveCampaign(input: {
   if (!found) throw new Error(`Campaign not found: ${input.campaignId}`);
   let campaign = found;
 
-  if (campaign.status === 'rejected' || campaign.status === 'completed') {
+  if (campaign.status === 'rejected') {
+    return campaign;
+  }
+
+  // Idempotent re-approve: do not restart completed orchestrator tasks / re-scan.
+  // Acquisition bridge owns its own request+job idempotency (ADR-007).
+  if (['publishing', 'monitoring', 'optimizing', 'completed'].includes(campaign.status)) {
+    campaign = await refreshAcquisitionOnApprove(campaign, input.actor || 'approve-idempotent');
     return campaign;
   }
 
@@ -965,26 +1009,7 @@ export async function approveCampaign(input: {
 
   // ADR-007 — Planning Approval → Acquisition Request (public enqueueSourceScan only).
   // Does not call Publisher Core or Scanner Runtime internals.
-  try {
-    const { startAcquisitionAfterCampaignApproval } = await import('../campaign-acquisition');
-    const acq = await startAcquisitionAfterCampaignApproval({
-      campaignId: campaign.id,
-      actor: input.actor || 'approve',
-    });
-    pushMemory(
-      campaign.state,
-      'publishing',
-      'Acquisition requested',
-      `${acq.status} · sources ${acq.sourceIds.length} · jobs ${acq.jobIds.length}`,
-    );
-    campaign = (await getCampaign(campaign.id)) || campaign;
-  } catch (error: unknown) {
-    const reason = error instanceof Error ? error.message : String(error);
-    pushMemory(campaign.state, 'publishing', 'Acquisition bridge failed', reason.slice(0, 200));
-    campaign.state.progress.blockedReason = `Acquisition: ${reason.slice(0, 160)}`;
-    campaign = await persist(campaign);
-    console.warn('[campaign-runtime] acquisition bridge failed:', reason);
-  }
+  campaign = await refreshAcquisitionOnApprove(campaign, input.actor || 'approve');
 
   await notifyProactive({
     companyId: campaign.companyId,
