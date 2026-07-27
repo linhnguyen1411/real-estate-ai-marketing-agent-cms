@@ -133,7 +133,14 @@ function recomputeProgress(state: CampaignState, status: CampaignLifecycleStatus
     percent,
     currentPhase: status === 'rejected' ? 'rejected' : status,
     phasesDone: CAMPAIGN_KANBAN_COLUMNS.slice(0, Math.max(0, safeIdx)),
-    blockedReason: status === 'waiting_approval' ? 'Chờ Approve / Reject' : null,
+    blockedReason:
+      status === 'waiting_approval'
+        ? state.progress.blockedReason && /failed/i.test(state.progress.blockedReason)
+          ? state.progress.blockedReason
+          : 'Chờ Approve / Reject'
+        : status === 'rejected'
+          ? state.progress.blockedReason
+          : null,
   };
 }
 
@@ -289,6 +296,83 @@ export function livingToBoard(c: LivingCampaign): CampaignBoard {
 
 function shortId(id: string): string {
   return id.slice(0, 28);
+}
+
+const ACTIVE_REUSE_STATUSES: CampaignLifecycleStatus[] = [
+  'planning',
+  'researching',
+  'mission_planning',
+  'finding_leads',
+  'content_drafting',
+  'waiting_approval',
+  'publishing',
+  'monitoring',
+  'optimizing',
+];
+
+function normalizeHint(value: string | null | undefined): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Reuse an active campaign with the same property hint (idempotent create). */
+export async function findReusableActiveCampaign(input: {
+  propertyHint: string;
+  companyId?: string | null;
+  utterance?: string | null;
+}): Promise<LivingCampaign | null> {
+  const hint = normalizeHint(input.propertyHint);
+  if (!hint || hint === 'bđs đà nẵng' || hint === 'bds da nang') return null;
+
+  const rows = await prisma.aiSalesCampaign.findMany({
+    where: {
+      status: { in: [...ACTIVE_REUSE_STATUSES] },
+      ...(input.companyId ? { companyId: input.companyId } : {}),
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 40,
+  });
+
+  const utteranceNorm = normalizeHint(input.utterance);
+  for (const row of rows) {
+    const rowHint = normalizeHint(row.propertyHint);
+    const rowName = normalizeHint(row.name);
+    const rowUtter = normalizeHint(row.utterance);
+    const hintHit =
+      (rowHint && (rowHint.includes(hint) || hint.includes(rowHint))) ||
+      (rowName && (rowName.includes(hint) || hint.includes(rowName)));
+    const utterHit =
+      utteranceNorm.length >= 12 &&
+      rowUtter.length >= 12 &&
+      (rowUtter.includes(utteranceNorm.slice(0, 40)) || utteranceNorm.includes(rowUtter.slice(0, 40)));
+    if (hintHit || utterHit) return rowToLiving(row);
+  }
+  return null;
+}
+
+/**
+ * Run a campaign phase without crashing the whole campaign.
+ * Persists failure into memory + progress.blockedReason.
+ */
+async function safeCampaignPhase(
+  campaign: LivingCampaign,
+  phase: string,
+  work: () => Promise<void>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await work();
+    return { ok: true };
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    campaign.state.progress.blockedReason = `${phase} failed: ${reason.slice(0, 180)}`;
+    pushMemory(campaign.state, campaign.status, `${phase} failed`, reason.slice(0, 240));
+    await persist(campaign).catch(() => null);
+    console.warn(`[campaign-runtime] ${phase} failed campaign=${campaign.id}:`, reason);
+    return { ok: false, error: reason };
+  }
 }
 
 async function runResearchPhase(campaign: LivingCampaign): Promise<void> {
@@ -536,17 +620,74 @@ async function runWaitingApproval(campaign: LivingCampaign): Promise<void> {
   });
 }
 
-/** Create + auto-run lifecycle through Waiting Approval. */
+/** Create + auto-run lifecycle through Waiting Approval.
+ * Idempotent: reuses active campaign with same property hint instead of duplicating.
+ */
 export async function createAndRunCampaign(input: {
   utterance: string;
   companyId?: string | null;
   owner?: string | null;
+  /** Force new campaign even if active match exists */
+  forceNew?: boolean;
 }): Promise<LivingCampaign> {
   const board = await tracedStep(
     'Campaign Planner',
     async () => planCampaignBoard({ utterance: input.utterance, companyId: input.companyId }),
     b => `Goal ${b.goal} · Priority ${b.priority} · ${b.name}`,
   );
+
+  if (!input.forceNew) {
+    const reusable = await findReusableActiveCampaign({
+      propertyHint: board.propertyHint,
+      companyId: input.companyId,
+      utterance: input.utterance,
+    });
+    if (reusable) {
+      reusable.utterance = input.utterance.slice(0, 2000);
+      pushMemory(
+        reusable.state,
+        reusable.status,
+        'Campaign reused',
+        `Duplicate command — reused active ${reusable.id.slice(0, 10)} (${reusable.status})`,
+      );
+      const saved = await persist(reusable);
+      await rememberPlanningEvent({
+        companyId: input.companyId,
+        kind: 'campaign',
+        title: 'Campaign reused',
+        detail: `${saved.name} · ${saved.status}`,
+        entityType: 'ai_sales_campaign',
+        entityId: saved.id,
+      });
+      const traceIdReuse = getActiveTraceId();
+      if (traceIdReuse) {
+        await attachCampaignToTrace(traceIdReuse, {
+          campaignId: saved.id,
+          campaignName: saved.name,
+          missionId: saved.state.missions[0]?.id || null,
+        });
+        await startTraceStep(traceIdReuse, 'Campaign Created', 'creating');
+        await finishTraceStep(traceIdReuse, 'Campaign Created', {
+          status: 'ok',
+          summary: `Reused active campaign ${saved.name} · ${saved.status}`,
+          metadata: { campaignId: saved.id, reused: true },
+        });
+      }
+      await notifyProactive({
+        companyId: input.companyId,
+        campaignId: saved.id,
+        title: 'Campaign reused',
+        lines: [
+          '♻️ Campaign reused (idempotent)',
+          saved.name,
+          `Status: ${saved.status}`,
+          `Goal: ${saved.goal}`,
+        ],
+      });
+      return saved;
+    }
+  }
+
   const initialState: CampaignState = {
     audience: board.audience,
     budget: board.budget,
@@ -637,48 +778,84 @@ export async function createAndRunCampaign(input: {
   await tracedStep(
     'Research',
     async () => {
-      await runResearchPhase(campaign);
-      campaign = (await getCampaign(campaign.id))!;
+      const r = await safeCampaignPhase(campaign, 'Research', async () => {
+        await runResearchPhase(campaign);
+        campaign = (await getCampaign(campaign.id))!;
+      });
+      if (!r.ok) throw new Error(r.error || 'Research failed');
       return campaign;
     },
     c => `Collected ${c.state.research?.competitors?.length || 0} competitors`,
-  );
+  ).catch(async () => {
+    // Continue campaign — research optional for waiting_approval path
+    campaign = (await getCampaign(campaign.id)) || campaign;
+    return campaign;
+  });
+
   await tracedStep(
     'Mission Planner',
     async () => {
-      await runMissionPhase(campaign);
-      campaign = (await getCampaign(campaign.id))!;
+      const r = await safeCampaignPhase(campaign, 'Mission Planner', async () => {
+        await runMissionPhase(campaign);
+        campaign = (await getCampaign(campaign.id))!;
+      });
+      if (!r.ok) throw new Error(r.error || 'Mission failed');
       return campaign;
     },
     c => `Generated ${c.state.missions.length} missions`,
-  );
-  await runKeywordTraceStep(campaign);
+  ).catch(async () => {
+    campaign = (await getCampaign(campaign.id)) || campaign;
+    return campaign;
+  });
+
+  await runKeywordTraceStep(campaign).catch(() => null);
+
   await tracedStep(
     'Content Planner',
     async () => {
-      await runContentPhase(campaign);
-      campaign = (await getCampaign(campaign.id))!;
+      const r = await safeCampaignPhase(campaign, 'Content Planner', async () => {
+        await runContentPhase(campaign);
+        campaign = (await getCampaign(campaign.id))!;
+      });
+      if (!r.ok) throw new Error(r.error || 'Content failed');
       return campaign;
     },
     c => `Created ${c.state.content?.schedule?.length || c.state.metrics.contentSlots || 0} drafts`,
-  );
+  ).catch(async () => {
+    campaign = (await getCampaign(campaign.id)) || campaign;
+    return campaign;
+  });
+
   await tracedStep(
     'Decision',
     async () => {
-      await runLeadPhase(campaign);
-      campaign = (await getCampaign(campaign.id))!;
+      const r = await safeCampaignPhase(campaign, 'Lead Rank', async () => {
+        await runLeadPhase(campaign);
+        campaign = (await getCampaign(campaign.id))!;
+      });
+      if (!r.ok) throw new Error(r.error || 'Lead rank failed');
       return campaign;
     },
-    c => `Reviewed ${c.state.leads.length} leads`,
-  );
-  await runWaitingApproval(campaign);
+    c => `Ranked ${c.state.leads.length} existing findings (not Decision Center create)`,
+  ).catch(async () => {
+    campaign = (await getCampaign(campaign.id)) || campaign;
+    return campaign;
+  });
+
+  await runWaitingApproval(campaign).catch(async err => {
+    await safeCampaignPhase(campaign, 'Waiting Approval', async () => {
+      throw err instanceof Error ? err : new Error(String(err));
+    });
+  });
   campaign = (await getCampaign(campaign.id))!;
 
   if (traceId) {
     await startTraceStep(traceId, 'Waiting Approval', 'awaiting user');
     await finishTraceStep(traceId, 'Waiting Approval', {
       status: 'ok',
-      summary: 'Waiting user Approve / Reject',
+      summary: campaign.state.progress.blockedReason
+        ? `Waiting approval (partial): ${campaign.state.progress.blockedReason}`
+        : 'Waiting user Approve / Reject',
     });
   }
 
