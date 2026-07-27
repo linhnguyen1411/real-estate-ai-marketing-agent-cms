@@ -145,6 +145,20 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
   }, [load]);
 
   useEffect(() => {
+    if (!board) return;
+    const params = new URLSearchParams(window.location.search);
+    const findingId = params.get('findingId') || params.get('id');
+    if (!findingId) return;
+    for (const col of Object.values(board)) {
+      const hit = col.find(c => c.findingId === findingId || c.findingId.startsWith(findingId));
+      if (hit) {
+        setSelected(hit);
+        return;
+      }
+    }
+  }, [board]);
+
+  useEffect(() => {
     if (!selected) return;
     setOwnerDraft(selected.sales.owner || '');
     setCloseDraft(selected.sales.expectedCloseAt?.slice(0, 10) || '');

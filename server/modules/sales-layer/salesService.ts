@@ -206,6 +206,10 @@ export async function processSalesLayer(input: {
     pipelineStage,
     followUp,
     hasPhone: Boolean(finding.primaryPhone),
+    hasBudget: finding.budgetMin != null || finding.budgetMax != null || dealTy != null,
+    hasLocation: Boolean(finding.primaryLocation),
+    timelineUrgent:
+      acq?.timeline === 'buying_today' || acq?.timeline === 'within_7_days',
   });
 
   let stageHistory = existing?.stageHistory || [];
@@ -333,6 +337,111 @@ export function enqueueSalesLayer(findingId: string): void {
   void processSalesLayer({ findingId, notifyFollowUp: true }).catch(err => {
     console.warn('[sales-layer] process failed:', findingId, err);
   });
+}
+
+export type SalesActionKind =
+  | 'call'
+  | 'contact'
+  | 'assign'
+  | 'ignore'
+  | 'open'
+  | 'follow_up'
+  | 'source';
+
+/** Persist sales operator action onto Sales Layer timeline (and pipeline when relevant). */
+export async function recordSalesAction(input: {
+  findingId: string;
+  action: SalesActionKind;
+  actor?: string | null;
+  result?: string | null;
+  owner?: string | null;
+}): Promise<SalesLayerProfile | null> {
+  let profile = await processSalesLayer({ findingId: input.findingId, notifyFollowUp: false });
+  if (!profile) return null;
+
+  const finding = await prisma.agentFinding.findUnique({ where: { id: input.findingId } });
+  if (!finding) return null;
+
+  const actor = input.actor || 'telegram';
+  const labels: Record<SalesActionKind, string> = {
+    call: 'Call',
+    contact: 'Contact',
+    assign: 'Assign',
+    ignore: 'Ignore',
+    open: 'Open Lead',
+    follow_up: 'Follow-up',
+    source: 'Open Source',
+  };
+
+  profile.timeline = pushTimeline(
+    profile.timeline,
+    input.action,
+    labels[input.action],
+    input.result || null,
+    actor,
+  );
+
+  if (input.action === 'call' || input.action === 'contact') {
+    const from = profile.pipelineStage;
+    if (PIPELINE_RANK[from] < PIPELINE_RANK.contacted && from !== 'won' && from !== 'lost') {
+      profile.pipelineStage = 'contacted';
+      profile.journeyStage =
+        profile.journeyStage === 'closed_won' || profile.journeyStage === 'closed_lost'
+          ? profile.journeyStage
+          : 'contacted';
+      profile.stageHistory = pushHistory(
+        profile.stageHistory,
+        from,
+        'contacted',
+        input.action,
+        actor,
+      );
+      profile.probability = probabilityForStage('contacted', profile.probability);
+    }
+  }
+
+  if (input.action === 'assign') {
+    const from = profile.pipelineStage;
+    if (from !== 'won' && from !== 'lost') {
+      profile.pipelineStage = 'assigned';
+      profile.owner = input.owner || actor;
+      profile.stageHistory = pushHistory(profile.stageHistory, from, 'assigned', 'assign', actor);
+      profile.probability = probabilityForStage('assigned', profile.probability);
+    }
+  }
+
+  if (input.action === 'ignore') {
+    const from = profile.pipelineStage;
+    profile.pipelineStage = 'lost';
+    profile.journeyStage = 'closed_lost';
+    profile.stageHistory = pushHistory(profile.stageHistory, from, 'lost', 'ignore', actor);
+    profile.probability = 0;
+  }
+
+  profile.updatedAt = new Date().toISOString();
+
+  const extracted =
+    finding.extractedData && typeof finding.extractedData === 'object' && !Array.isArray(finding.extractedData)
+      ? { ...(finding.extractedData as Record<string, unknown>) }
+      : {};
+  writeSalesProfile(extracted, profile);
+
+  await prisma.agentFinding.update({
+    where: { id: finding.id },
+    data: {
+      extractedData: extracted as object,
+      ...(input.action === 'ignore'
+        ? {
+            status: 'dismissed',
+            dismissedAt: new Date(),
+            dismissedBy: actor,
+            dismissReason: 'sales_ignore',
+          }
+        : {}),
+    },
+  });
+
+  return profile;
 }
 
 export async function updateSalesPipelineStage(input: {

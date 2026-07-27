@@ -177,3 +177,11 @@ export function formatTy(n: number): string {
   if (n >= 100) return `${Math.round(n)} tỷ`;
   return `${Math.round(n * 10) / 10} tỷ`;
 }
+
+/** Normalize budget/price storage (tỷ or VND) → tỷ units. */
+export function normalizeTy(v: number | bigint | null | undefined): number | null {
+  if (v == null) return null;
+  const n = typeof v === 'bigint' ? Number(v) : v;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n > 1000 ? n / 1_000_000_000 : n;
+}

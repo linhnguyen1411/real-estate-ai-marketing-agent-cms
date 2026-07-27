@@ -13,6 +13,7 @@ export {
   aggregatePipelineValue,
   estimateDealTy,
   formatTy,
+  normalizeTy,
   probabilityForStage,
 } from './pipelineValue';
 export { applyLearningAdjustments } from './learningAdjust';
@@ -21,15 +22,31 @@ export {
   enqueueSalesLayer,
   updateSalesPipelineStage,
   recordSalesLearning,
+  recordSalesAction,
   listSalesPipeline,
   getSalesPipelineMetrics,
   formatSalesDailyBriefing,
   readSalesProfile,
   writeSalesProfile,
 } from './salesService';
+export type { SalesActionKind } from './salesService';
 export {
   formatSalesBuyerCard,
+  formatSalesActionCard,
   salesBuyerCardKeyboard,
+  salesActionCardKeyboard,
   maybeSendCoolingAlert,
+  buildLeadCenterUrl,
+  formatBudgetLabel,
+  formatAreaLabel,
+  formatSourceLabel,
+  buildActionableRecommendation,
 } from './telegramSalesCard';
+export {
+  classifyBuyerHeat,
+  resolveBuyerConfidencePct,
+  shouldSendBuyerAlert,
+  clampBuyerConfidence,
+} from './buyerHeat';
+export type { BuyerHeat, BuyerHeatInfo } from './buyerHeat';
 export { registerSalesLayerRoutes } from './api/salesRoutes';

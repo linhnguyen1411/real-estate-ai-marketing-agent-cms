@@ -278,7 +278,7 @@ export async function notifyFindingIfEligible(input: {
       }
     }
 
-    // H3 / H3.5 — prefer Sales Buyer Card, then Buyer Alert, else legacy lead format
+    // H2.2 — Sales Action Card (unified buyer alert)
     let text: string;
     let replyMarkup: ReturnType<typeof leadAlertKeyboard>;
     let openPostHint: string | null = null;
@@ -286,14 +286,17 @@ export async function notifyFindingIfEligible(input: {
       const {
         processLeadAcquisition,
         readAcquisitionProfile,
-        formatBuyerAlertText,
-        buyerAlertKeyboard,
       } = await import('../modules/lead-acquisition');
       const {
         processSalesLayer,
         readSalesProfile,
-        formatSalesBuyerCard,
-        salesBuyerCardKeyboard,
+        formatSalesActionCard,
+        salesActionCardKeyboard,
+        buildLeadCenterUrl,
+        formatAreaLabel,
+        formatSourceLabel,
+        resolveBuyerConfidencePct,
+        shouldSendBuyerAlert,
       } = await import('../modules/sales-layer');
 
       let acq = readAcquisitionProfile(finding.extractedData);
@@ -308,30 +311,51 @@ export async function notifyFindingIfEligible(input: {
         sales = await processSalesLayer({ findingId: finding.id, notifyFollowUp: false });
       }
 
-      if (sales && acq?.isBuyer) {
-        const confidencePct = Math.round((acq.intent.confidence || 0.5) * 100);
-        text = formatSalesBuyerCard({
-          profile: sales,
-          confidencePct,
-          campaignName: acq.campaignMatch.campaignName,
-          title: finding.title,
+      if (acq?.isBuyer) {
+        const confidencePct = resolveBuyerConfidencePct({
+          acquisitionFinalScore: acq.priority.finalScore,
+          intentConfidence: acq.intent.confidence,
         });
+
+        if (!shouldSendBuyerAlert(confidencePct) && !acq.isVip) {
+          console.info(
+            '[telegram] skip buyer_heat finding=%s score=%s',
+            finding.id,
+            confidencePct,
+          );
+          return { ok: false, skipped: true, reason: 'below_heat_threshold' };
+        }
+
         openPostHint = finding.scannedContent?.canonicalUrl || null;
-        replyMarkup = salesBuyerCardKeyboard({
+        text = formatSalesActionCard({
           findingId: finding.id,
-          openUrl: openPostHint,
-        });
-      } else if (acq?.isBuyer) {
-        text = formatBuyerAlertText({
-          profile: acq,
-          title: finding.title,
+          acquisition: acq,
+          sales,
+          confidencePct,
+          actorName: finding.personName,
+          propertyType: finding.propertyType,
+          location: finding.primaryLocation,
           budgetMin: finding.budgetMin,
           budgetMax: finding.budgetMax,
+          areaLabel: formatAreaLabel(finding.extractedData),
+          timeline: acq.timeline,
+          campaignName: acq.campaignMatch.campaignName,
+          sourceLabel: formatSourceLabel({
+            sourceName: finding.source?.name,
+            sourceType: finding.source?.type,
+          }),
+          sourceUrl: openPostHint,
+          title: finding.title,
+          needSummary: finding.needSummary,
+          summary: finding.summary,
+          hasPhone: Boolean(finding.primaryPhone),
+          whyReasons: acq.intent.reasons,
         });
-        openPostHint = finding.scannedContent?.canonicalUrl || null;
-        replyMarkup = buyerAlertKeyboard({
+        replyMarkup = salesActionCardKeyboard({
           findingId: finding.id,
-          openUrl: openPostHint,
+          sourceUrl: openPostHint,
+          leadCenterUrl: buildLeadCenterUrl(finding.id),
+          hasPhone: Boolean(finding.primaryPhone),
         });
       } else {
         const alert = formatLeadTelegramAlert(finding, resolved, {
@@ -415,12 +439,14 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
-    // Refresh Open URL on keyboard after verify; keep Sales/Buyer Alert buttons when already set
-    if (text.includes('👤 Buyer') || text.startsWith('═══════════════════')) {
-      const { salesBuyerCardKeyboard } = await import('../modules/sales-layer');
-      replyMarkup = salesBuyerCardKeyboard({
+    // Refresh Open URL on keyboard after verify; keep Sales Action Card buttons when already set
+    if (text.includes('🎯 BUYER LEAD') || text.includes('👤 Buyer') || text.startsWith('═══════════════════')) {
+      const { salesActionCardKeyboard, buildLeadCenterUrl } = await import('../modules/sales-layer');
+      replyMarkup = salesActionCardKeyboard({
         findingId: finding.id,
-        openUrl: openPost || openGroup,
+        sourceUrl: openPost || openGroup,
+        leadCenterUrl: buildLeadCenterUrl(finding.id),
+        hasPhone: Boolean(finding.primaryPhone),
       });
     } else if (text.startsWith('🔥 Buyer Alert')) {
       const { buyerAlertKeyboard } = await import('../modules/lead-acquisition');

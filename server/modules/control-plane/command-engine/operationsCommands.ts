@@ -28,6 +28,10 @@ import {
   opsLeadAssign,
   opsLeadCrm,
   opsLeadHistory,
+  opsLeadCall,
+  opsLeadContact,
+  opsLeadOpen,
+  opsLeadSource,
   opsRefreshRuntime,
   opsGetFleet,
   opsGetFleetAgent,
@@ -512,13 +516,30 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'lead',
-    description: 'Lead alert actions (skip / mission / retry / assign / crm / history)',
-    usage: '/lead skip|mission|retry|assign|crm|history <findingId>',
+    description: 'Lead alert actions (skip / mission / retry / assign / crm / history / call / contact / open / source)',
+    usage: '/lead skip|mission|retry|assign|crm|history|call|contact|open|source <findingId>',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const id = args[1];
-      if (!id || !['skip', 'mission', 'retry', 'assign', 'crm', 'history'].includes(action)) {
-        return fail('lead', 'Usage: /lead skip|mission|retry|assign|crm|history <findingId>');
+      if (
+        !id ||
+        ![
+          'skip',
+          'mission',
+          'retry',
+          'assign',
+          'crm',
+          'history',
+          'call',
+          'contact',
+          'open',
+          'source',
+        ].includes(action)
+      ) {
+        return fail(
+          'lead',
+          'Usage: /lead skip|mission|retry|assign|crm|history|call|contact|open|source <findingId>',
+        );
       }
       if (action === 'skip') {
         const r = await opsLeadSkip(id, ctx.triggeredBy);
@@ -538,6 +559,22 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       }
       if (action === 'history') {
         const r = await opsLeadHistory(id);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'call') {
+        const r = await opsLeadCall(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'contact') {
+        const r = await opsLeadContact(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'open') {
+        const r = await opsLeadOpen(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'source') {
+        const r = await opsLeadSource(id, ctx.triggeredBy);
         return ok('lead', r.lines, r);
       }
       const r = await opsLeadRetryNotify(id);
@@ -601,7 +638,7 @@ export function operationsHelpLines(): string[] {
     '/browser [profiles|release|recover|restart|refresh]',
     '/runtime · /health',
     '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
-    '/lead skip|mission|retry|assign|crm|history <id>',
+    '/lead skip|mission|retry|assign|crm|history|call|contact|open|source <id>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

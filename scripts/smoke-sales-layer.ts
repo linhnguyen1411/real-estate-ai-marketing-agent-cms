@@ -61,6 +61,7 @@ const recUrgent = recommendSalesAction({
   pipelineStage: 'negotiating',
   followUp: follow,
   hasPhone: true,
+  hasBudget: true,
 });
 assert(recUrgent.code === 'call_now', `expected call_now got ${recUrgent.code}`);
 
@@ -69,6 +70,8 @@ const recQuote = recommendSalesAction({
   journeyStage: 'researching',
   pipelineStage: 'qualified',
   followUp: { needsFollowUp: false, coolingHours: 1, reason: null, suggestion: null },
+  hasBudget: true,
+  hasLocation: true,
 });
 assert(recQuote.code === 'send_quote', `expected send_quote got ${recQuote.code}`);
 
@@ -101,9 +104,10 @@ const card = formatSalesBuyerCard({
   campaignName: 'Mai Đăng Chơn',
   title: 'Buyer MDC',
 });
-assert(card.includes('👤 Buyer'), 'buyer card');
+assert(card.includes('🎯 BUYER LEAD') || card.includes('👤 Buyer'), 'buyer card');
 assert(card.includes('Mai Đăng Chơn'), 'campaign');
-assert(card.includes('Gọi ngay'), 'suggestion');
+assert(card.includes('BUYER CONFIDENCE') || card.includes('Gọi ngay'), 'suggestion/confidence');
+assert(card.includes('🔥 HOT') || card.includes('97'), 'hot/score');
 
 const metrics = aggregatePipelineValue([
   {

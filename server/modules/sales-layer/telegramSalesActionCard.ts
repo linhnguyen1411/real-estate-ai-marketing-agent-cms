@@ -1,0 +1,419 @@
+/**
+ * Telegram Sales Action Card — WHO / WHAT / WHERE / BUDGET / WHEN / WHY / NEXT.
+ * Hide empty fields. No technical dump. No fake URLs.
+ */
+
+import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
+import type { BuyingTimeline, LeadAcquisitionProfile } from '../lead-acquisition/types';
+import type { SalesLayerProfile, SalesRecommendation } from './types';
+import { classifyBuyerHeat, resolveBuyerConfidencePct } from './buyerHeat';
+import { formatTy, normalizeTy } from './pipelineValue';
+
+const TIMELINE_LABEL: Record<BuyingTimeline | string, string> = {
+  buying_today: 'Trong hôm nay',
+  within_7_days: 'Trong 7 ngày',
+  within_30_days: 'Trong 30 ngày',
+  researching: 'Đang tìm hiểu',
+  long_term: 'Dài hạn',
+  unknown: '',
+};
+
+function truncId(id: string, max = 28): string {
+  return id.length <= max ? id : id.slice(0, max);
+}
+
+export function formatBudgetLabel(
+  budgetMin?: number | bigint | null,
+  budgetMax?: number | bigint | null,
+  expectedDealTy?: number | null,
+): string | null {
+  const bMin = normalizeTy(budgetMin);
+  const bMax = normalizeTy(budgetMax);
+  if (bMin != null || bMax != null) {
+    if (bMin != null && bMax != null && Math.abs(bMin - bMax) < 0.05) {
+      return `~${formatTy(bMin)}`;
+    }
+    const parts = [bMin, bMax].filter((v): v is number => v != null).map(v => formatTy(v));
+    return parts.length ? parts.join('–') : null;
+  }
+  if (expectedDealTy != null && Number.isFinite(expectedDealTy)) {
+    return `~${formatTy(expectedDealTy)}`;
+  }
+  return null;
+}
+
+export function formatAreaLabel(extractedData: unknown): string | null {
+  if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
+    return null;
+  }
+  const root = extractedData as Record<string, unknown>;
+  const area =
+    (root.area as Record<string, unknown> | undefined) ||
+    ((root.analysis as Record<string, unknown> | undefined)?.area as
+      | Record<string, unknown>
+      | undefined);
+  if (!area || typeof area !== 'object') return null;
+  const min =
+    typeof area.areaMinM2 === 'number'
+      ? area.areaMinM2
+      : typeof area.areaMin === 'number'
+        ? area.areaMin
+        : null;
+  const max =
+    typeof area.areaMaxM2 === 'number'
+      ? area.areaMaxM2
+      : typeof area.areaMax === 'number'
+        ? area.areaMax
+        : null;
+  if (min == null && max == null) return null;
+  if (min != null && max != null && min !== max) return `${min}–${max} m²`;
+  return `${min ?? max} m²`;
+}
+
+export function formatSourceLabel(input: {
+  sourceName?: string | null;
+  sourceType?: string | null;
+}): string | null {
+  const name = (input.sourceName || '').trim();
+  const type = (input.sourceType || '').trim().toLowerCase();
+  if (name && type) {
+    if (type.includes('facebook') || type.includes('group')) return `Facebook · ${name}`;
+    if (type.includes('web')) return `Website · ${name}`;
+    return `${name}`;
+  }
+  if (name) return name;
+  if (type.includes('facebook')) return 'Facebook Group';
+  if (type.includes('web')) return 'Website';
+  return type || null;
+}
+
+export function buildLeadCenterUrl(findingId: string): string | null {
+  const raw =
+    process.env.PUBLIC_SITE_URL ||
+    process.env.VITE_PUBLIC_SITE_URL ||
+    process.env.AGENT_SYNC_VPS_URL ||
+    '';
+  const base = String(raw).trim().replace(/\/$/, '');
+  if (!base || !/^https?:\/\//i.test(base)) return null;
+  return `${base}/admin/agents/lead-center?findingId=${encodeURIComponent(findingId)}`;
+}
+
+/** Concrete sales copy from real fields — never bare "Assign Sales". */
+export function buildActionableRecommendation(input: {
+  recommendation: SalesRecommendation;
+  propertyType?: string | null;
+  location?: string | null;
+  budgetLabel?: string | null;
+  timelineLabel?: string | null;
+  hasPhone?: boolean;
+  heatScore?: number;
+}): string {
+  const need = [
+    input.propertyType ? `mua ${input.propertyType}` : null,
+    input.location || null,
+    input.budgetLabel ? `ngân sách ${input.budgetLabel}` : null,
+    input.timelineLabel ? `timeline ${input.timelineLabel}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const code = input.recommendation.code;
+  let head = input.recommendation.label;
+  if (code === 'call_now') {
+    head = input.hasPhone ? 'Gọi ngay' : 'Inbox ngay';
+  } else if (code === 'send_quote') {
+    head = 'Gửi 3 sản phẩm phù hợp';
+  } else if (code === 'reply_comment') {
+    head = 'Trả lời comment / hỏi thêm nhu cầu';
+  } else if (code === 'follow_up') {
+    head = 'Follow-up trong 24h';
+  } else if (code === 'remarket') {
+    head = 'Đưa vào remarketing';
+  } else if (code === 'assign') {
+    head = input.hasPhone ? 'Gọi và giao sales xử lý' : 'Giao sales — hỏi lại ngân sách';
+  } else if (code === 'monitor') {
+    head =
+      (input.heatScore ?? 50) < 40
+        ? 'Chưa nên liên hệ — tín hiệu chưa đủ mạnh'
+        : 'Theo dõi thêm tín hiệu';
+  }
+
+  if (need) return `${head} — khách ${need}.`;
+  if (input.recommendation.reason) return `${head} — ${input.recommendation.reason}`;
+  return head;
+}
+
+export function summarizeSignal(input: {
+  title?: string | null;
+  needSummary?: string | null;
+  summary?: string | null;
+  reasons?: string[];
+}): string | null {
+  const raw =
+    (input.needSummary && String(input.needSummary).trim()) ||
+    (input.title && String(input.title).trim()) ||
+    (input.summary && String(input.summary).trim()) ||
+    (input.reasons?.length ? input.reasons.slice(0, 2).join('; ') : '');
+  if (!raw) return null;
+  const oneLine = raw.replace(/\s+/g, ' ').trim();
+  return oneLine.length > 140 ? `${oneLine.slice(0, 137)}…` : oneLine;
+}
+
+function humanizePropertyType(raw?: string | null): string | null {
+  if (!raw) return null;
+  const t = String(raw).trim().toLowerCase();
+  if (!t || t === 'unknown') return null;
+  const map: Record<string, string> = {
+    land: 'đất nền',
+    dat: 'đất nền',
+    'dat nen': 'đất nền',
+    house: 'nhà phố',
+    'nha pho': 'nhà phố',
+    apartment: 'căn hộ',
+    'can ho': 'căn hộ',
+    villa: 'biệt thự',
+    shophouse: 'shophouse',
+    hotel: 'khách sạn',
+    rental: 'cho thuê',
+    home_buyer: 'nhà ở',
+    first_home: 'nhà ở',
+    upgrader: 'nhà ở',
+    investor: 'bất động sản đầu tư',
+    business: 'mặt bằng KD',
+    developer: 'dự án',
+  };
+  if (map[t]) return map[t];
+  return String(raw).replace(/_/g, ' ').trim();
+}
+
+function mapAcquisitionAction(acq?: LeadAcquisitionProfile | null): SalesRecommendation {
+  const action = acq?.action?.action;
+  const reason = acq?.action?.reason || 'Buyer candidate';
+  if (action === 'call' || action === 'inbox') {
+    return {
+      code: 'call_now',
+      label: action === 'call' ? 'Gọi ngay' : 'Inbox ngay',
+      reason,
+      urgency: 'urgent',
+    };
+  }
+  if (action === 'comment') {
+    return { code: 'reply_comment', label: 'Trả lời comment / nurture', reason, urgency: 'soon' };
+  }
+  if (action === 'ignore') {
+    return {
+      code: 'monitor',
+      label: 'Chưa nên liên hệ — tín hiệu chưa đủ mạnh',
+      reason,
+      urgency: 'low',
+    };
+  }
+  if (action === 'monitor') {
+    return { code: 'monitor', label: 'Theo dõi thêm tín hiệu', reason, urgency: 'low' };
+  }
+  if (action === 'crm') {
+    return { code: 'follow_up', label: 'Follow-up trong 24h', reason, urgency: 'soon' };
+  }
+  return {
+    code: 'assign',
+    label: 'Giao sales — hỏi lại ngân sách',
+    reason,
+    urgency: 'normal',
+  };
+}
+
+export type SalesActionCardInput = {
+  findingId: string;
+  actorName?: string | null;
+  propertyType?: string | null;
+  location?: string | null;
+  budgetMin?: number | bigint | null;
+  budgetMax?: number | bigint | null;
+  areaLabel?: string | null;
+  timeline?: BuyingTimeline | string | null;
+  campaignName?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  title?: string | null;
+  needSummary?: string | null;
+  summary?: string | null;
+  whyReasons?: string[];
+  hasPhone?: boolean;
+  acquisition?: LeadAcquisitionProfile | null;
+  sales?: SalesLayerProfile | null;
+  /** Override confidence when already computed */
+  confidencePct?: number | null;
+};
+
+export function formatSalesActionCard(input: SalesActionCardInput): string {
+  const confidencePct = resolveBuyerConfidencePct({
+    salesConfidencePct: input.confidencePct ?? null,
+    acquisitionFinalScore: input.acquisition?.priority.finalScore ?? null,
+    intentConfidence: input.acquisition?.intent.confidence ?? null,
+  });
+  const heat = classifyBuyerHeat(confidencePct);
+  const budgetLabel = formatBudgetLabel(
+    input.budgetMin,
+    input.budgetMax,
+    input.sales?.expectedDealTy ?? null,
+  );
+  const timelineKey = input.timeline || input.acquisition?.timeline || null;
+  const timelineLabel =
+    timelineKey && TIMELINE_LABEL[timelineKey] !== undefined
+      ? TIMELINE_LABEL[timelineKey]
+      : timelineKey && timelineKey !== 'unknown'
+        ? String(timelineKey)
+        : null;
+
+  const propertyType =
+    input.propertyType ||
+    input.acquisition?.campaignMatch.propertyHint ||
+    input.acquisition?.persona.persona ||
+    null;
+  const propertyDisplay = humanizePropertyType(propertyType);
+  const location = input.location || null;
+  const campaignName = input.campaignName || input.acquisition?.campaignMatch.campaignName || null;
+  const sourceLabel = input.sourceLabel || null;
+  const actor =
+    (input.actorName && String(input.actorName).trim()) ||
+    (input.sales?.owner && String(input.sales.owner).trim()) ||
+    'Buyer chưa rõ tên';
+
+  const recommendation: SalesRecommendation = input.sales?.recommendation
+    ? input.sales.recommendation
+    : mapAcquisitionAction(input.acquisition);
+
+  const aiLine = buildActionableRecommendation({
+    recommendation,
+    propertyType: propertyDisplay,
+    location,
+    budgetLabel,
+    timelineLabel,
+    hasPhone: input.hasPhone,
+    heatScore: confidencePct,
+  });
+
+  const whyBits = [
+    ...(input.whyReasons || []),
+    ...(input.acquisition?.intent.reasons || []).slice(0, 2),
+    ...(input.acquisition?.intent.matchedPatterns || []).slice(0, 1),
+  ]
+    .map(s => String(s).trim())
+    .filter(Boolean);
+  const whyLine = whyBits.length ? whyBits.slice(0, 2).join(' · ') : null;
+
+  const signal = summarizeSignal({
+    title: input.title,
+    needSummary: input.needSummary,
+    summary: input.summary,
+    reasons: whyBits,
+  });
+
+  const lines: string[] = [
+    '🎯 BUYER LEAD',
+    '',
+    actor,
+    `${heat.emoji} ${heat.label}`.trim(),
+    '',
+    '────────────────',
+  ];
+
+  if (propertyDisplay) {
+    lines.push('', '🏠 Nhu cầu', `Khách đang tìm mua: ${propertyDisplay}`);
+  }
+  if (location) {
+    lines.push('', '📍 Khu vực', location);
+  }
+  if (budgetLabel) {
+    lines.push('', '💰 Ngân sách', budgetLabel);
+  }
+  if (input.areaLabel) {
+    lines.push('', '📐 Diện tích', input.areaLabel);
+  }
+  if (timelineLabel) {
+    lines.push('', '⏱ Timeline', timelineLabel);
+  }
+
+  lines.push('', '────────────────', '', '📊 BUYER CONFIDENCE', `${confidencePct}/100`);
+  if (campaignName) {
+    lines.push('', 'Campaign:', campaignName);
+  }
+  if (sourceLabel) {
+    lines.push('', 'Source:', sourceLabel);
+  }
+  if (whyLine) {
+    lines.push('', `Vì sao: ${whyLine}`);
+  }
+
+  lines.push('', '────────────────', '', '🤖 AI RECOMMENDATION', aiLine);
+
+  if (signal) {
+    lines.push('', '────────────────', '', '📝 SIGNAL', `"${signal}"`);
+  }
+
+  return lines.join('\n');
+}
+
+export function salesActionCardKeyboard(input: {
+  findingId: string;
+  sourceUrl?: string | null;
+  leadCenterUrl?: string | null;
+  hasPhone?: boolean;
+}): InlineKeyboard {
+  const id = truncId(input.findingId);
+  const rows: InlineKeyboard['inline_keyboard'] = [];
+
+  rows.push([
+    { text: '📞 Call', callback_data: `l:k:${id}` },
+    { text: '💬 Contact', callback_data: `l:t:${id}` },
+  ]);
+
+  const mid: InlineKeyboard['inline_keyboard'][number] = [];
+  if (input.leadCenterUrl && /^https:\/\//i.test(input.leadCenterUrl)) {
+    mid.push({ text: '📋 Open Lead', url: input.leadCenterUrl });
+  } else {
+    mid.push({ text: '📋 Open Lead', callback_data: `l:n:${id}` });
+  }
+  if (input.sourceUrl && /^https:\/\//i.test(input.sourceUrl)) {
+    mid.push({ text: '🔎 Source', url: input.sourceUrl });
+  } else {
+    mid.push({ text: '🔎 Source', callback_data: `l:u:${id}` });
+  }
+  rows.push(mid);
+
+  rows.push([
+    { text: '👤 Assign', callback_data: `l:a:${id}` },
+    { text: '📈 History', callback_data: `l:h:${id}` },
+  ]);
+  rows.push([{ text: '❌ Ignore', callback_data: `l:s:${id}` }]);
+
+  return { inline_keyboard: rows };
+}
+
+/** @deprecated Use formatSalesActionCard — kept for cooling brief header */
+export function formatSalesBuyerCard(input: {
+  profile: SalesLayerProfile;
+  confidencePct: number;
+  campaignName?: string | null;
+  title?: string | null;
+}): string {
+  return formatSalesActionCard({
+    findingId: input.profile.findingId,
+    sales: input.profile,
+    confidencePct: input.confidencePct,
+    campaignName: input.campaignName,
+    title: input.title,
+  });
+}
+
+/** @deprecated Use salesActionCardKeyboard */
+export function salesBuyerCardKeyboard(input: {
+  findingId: string;
+  openUrl?: string | null;
+}): InlineKeyboard {
+  return salesActionCardKeyboard({
+    findingId: input.findingId,
+    sourceUrl: input.openUrl,
+    leadCenterUrl: buildLeadCenterUrl(input.findingId),
+  });
+}

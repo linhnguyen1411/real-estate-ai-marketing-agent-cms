@@ -248,8 +248,12 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'm') return `/lead mission ${id}`;
     if (action === 'a') return `/lead assign ${id}`;
     if (action === 'c') return `/lead crm ${id}`;
-    if (action === 'o') return `/lead retry ${id}`;
+    if (action === 'o') return `/lead open ${id}`;
+    if (action === 'n') return `/lead open ${id}`;
     if (action === 'h') return `/lead history ${id}`;
+    if (action === 'k') return `/lead call ${id}`;
+    if (action === 't') return `/lead contact ${id}`;
+    if (action === 'u') return `/lead source ${id}`;
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;

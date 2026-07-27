@@ -628,15 +628,24 @@ export async function opsReport(
 
 /** Soft lead ops — Control Plane only (Telegram never touches DB). */
 export async function opsLeadSkip(findingId: string, triggeredBy: string) {
-  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
-  if (!finding) throw new Error(`Finding not found: ${findingId}`);
-  await prisma.agentFinding.update({
-    where: { id: findingId },
-    data: { status: 'dismissed' },
+  const { recordSalesAction } = await import('../sales-layer');
+  await recordSalesAction({
+    findingId,
+    action: 'ignore',
+    actor: triggeredBy,
+    result: 'dismissed_via_telegram',
+  }).catch(async () => {
+    const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
+    if (!finding) throw new Error(`Finding not found: ${findingId}`);
+    await prisma.agentFinding.update({
+      where: { id: findingId },
+      data: { status: 'dismissed' },
+    });
   });
+  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
   await emitRuntimeEvent({
     type: 'OPS_REQUEST',
-    companyId: finding.companyId,
+    companyId: finding?.companyId ?? null,
     entityType: 'finding',
     entityId: findingId,
     payload: { action: 'lead_skip', triggeredBy, requestedAt: new Date().toISOString() },
@@ -673,6 +682,7 @@ export async function opsLeadAssign(findingId: string, triggeredBy: string) {
   const { updateLeadPipelineStage, processLeadAcquisition } = await import(
     '../lead-acquisition'
   );
+  const { recordSalesAction } = await import('../sales-layer');
   await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
   const profile = await updateLeadPipelineStage({
     findingId,
@@ -680,6 +690,13 @@ export async function opsLeadAssign(findingId: string, triggeredBy: string) {
     actor: triggeredBy,
   });
   if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  await recordSalesAction({
+    findingId,
+    action: 'assign',
+    actor: triggeredBy,
+    owner: triggeredBy,
+    result: 'assigned',
+  }).catch(() => null);
   return { findingId, stage: 'assigned' as const, profile };
 }
 
@@ -688,6 +705,7 @@ export async function opsLeadCrm(findingId: string, triggeredBy: string) {
   const { updateLeadPipelineStage, processLeadAcquisition } = await import(
     '../lead-acquisition'
   );
+  const { recordSalesAction } = await import('../sales-layer');
   await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
   const profile = await updateLeadPipelineStage({
     findingId,
@@ -695,7 +713,128 @@ export async function opsLeadCrm(findingId: string, triggeredBy: string) {
     actor: triggeredBy,
   });
   if (!profile) throw new Error(`Finding not found: ${findingId}`);
+  await recordSalesAction({
+    findingId,
+    action: 'contact',
+    actor: triggeredBy,
+    result: 'crm_flag',
+  }).catch(() => null);
   return { findingId, stage: 'interested' as const, profile };
+}
+
+/** Sales Action Card — Call */
+export async function opsLeadCall(findingId: string, triggeredBy: string) {
+  const { recordSalesAction } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id: findingId },
+    select: { id: true, primaryPhone: true, personName: true },
+  });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  const profile = await recordSalesAction({
+    findingId,
+    action: 'call',
+    actor: triggeredBy,
+    result: finding.primaryPhone ? `phone:${finding.primaryPhone}` : 'no_phone',
+  });
+  const lines = [
+    `📞 Call · ${finding.personName || findingId.slice(0, 10)}`,
+    finding.primaryPhone ? `Phone · ${finding.primaryPhone}` : 'Chưa có SĐT — inbox/source',
+    profile ? `Pipeline · ${profile.pipelineStage}` : '',
+  ].filter(Boolean);
+  return { findingId, profile, lines, phone: finding.primaryPhone };
+}
+
+/** Sales Action Card — Contact / inbox */
+export async function opsLeadContact(findingId: string, triggeredBy: string) {
+  const { recordSalesAction } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id: findingId },
+    select: {
+      id: true,
+      primaryPhone: true,
+      personName: true,
+      scannedContent: { select: { canonicalUrl: true } },
+    },
+  });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  const profile = await recordSalesAction({
+    findingId,
+    action: 'contact',
+    actor: triggeredBy,
+    result: finding.scannedContent?.canonicalUrl || 'contact',
+  });
+  const lines = [
+    `💬 Contact · ${finding.personName || findingId.slice(0, 10)}`,
+    finding.primaryPhone ? `Phone · ${finding.primaryPhone}` : null,
+    finding.scannedContent?.canonicalUrl
+      ? `Source · ${finding.scannedContent.canonicalUrl}`
+      : 'Không có permalink — mở Lead Center',
+    profile ? `Pipeline · ${profile.pipelineStage}` : null,
+  ].filter(Boolean) as string[];
+  return { findingId, profile, lines };
+}
+
+/** Open Lead Center deep link / metadata */
+export async function opsLeadOpen(findingId: string, triggeredBy: string) {
+  const { recordSalesAction, buildLeadCenterUrl } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  await recordSalesAction({
+    findingId,
+    action: 'open',
+    actor: triggeredBy,
+    result: 'open_lead_center',
+  }).catch(() => null);
+  const url = buildLeadCenterUrl(findingId);
+  const lines = [
+    `📋 Open Lead · ${finding.personName || finding.title.slice(0, 40)}`,
+    url || 'Lead Center URL chưa cấu hình (PUBLIC_SITE_URL)',
+    `findingId · ${findingId}`,
+  ];
+  return { findingId, url, lines };
+}
+
+/** Source metadata when no URL button */
+export async function opsLeadSource(findingId: string, triggeredBy: string) {
+  const { recordSalesAction } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id: findingId },
+    select: {
+      id: true,
+      title: true,
+      scannedContent: { select: { canonicalUrl: true } },
+      source: { select: { name: true, type: true } },
+      extractedData: true,
+    },
+  });
+  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  const url = finding.scannedContent?.canonicalUrl || null;
+  await recordSalesAction({
+    findingId,
+    action: 'source',
+    actor: triggeredBy,
+    result: url || finding.source?.name || 'no_url',
+  }).catch(() => null);
+
+  const ed =
+    finding.extractedData && typeof finding.extractedData === 'object' && !Array.isArray(finding.extractedData)
+      ? (finding.extractedData as Record<string, unknown>).source
+      : null;
+  const sourceMeta =
+    ed && typeof ed === 'object' && !Array.isArray(ed)
+      ? (ed as Record<string, unknown>)
+      : {};
+
+  const lines = [
+    `🔎 Source · ${finding.source?.name || finding.source?.type || 'unknown'}`,
+    finding.source?.type ? `Type · ${finding.source.type}` : null,
+    url ? `URL · ${url}` : 'Không có permalink / URL gốc',
+    typeof sourceMeta.groupUrl === 'string' ? `Group · ${sourceMeta.groupUrl}` : null,
+    typeof sourceMeta.postId === 'string' ? `PostId · ${sourceMeta.postId}` : null,
+    finding.title ? `Title · ${finding.title.slice(0, 80)}` : null,
+  ].filter(Boolean) as string[];
+
+  return { findingId, url, lines };
 }
 
 /** H3.5 — Buyer journey / timeline history */
