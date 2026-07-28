@@ -26,6 +26,7 @@ import {
   opsLeadCreateMission,
   opsLeadRetryNotify,
   opsLeadAssign,
+  opsLeadAssignOwner,
   opsLeadCrm,
   opsLeadHistory,
   opsLeadCall,
@@ -516,8 +517,8 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'lead',
-    description: 'Lead alert actions (skip / mission / retry / assign / crm / history / call / contact / open / source)',
-    usage: '/lead skip|mission|retry|assign|crm|history|call|contact|open|source <findingId>',
+    description: 'Lead alert actions (skip / mission / retry / assign / owner / crm / history / call / contact / open / source)',
+    usage: '/lead skip|mission|retry|assign|owner|crm|history|call|contact|open|source <findingId> [ownerId]',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const id = args[1];
@@ -528,6 +529,7 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
           'mission',
           'retry',
           'assign',
+          'owner',
           'crm',
           'history',
           'call',
@@ -538,12 +540,18 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       ) {
         return fail(
           'lead',
-          'Usage: /lead skip|mission|retry|assign|crm|history|call|contact|open|source <findingId>',
+          'Usage: /lead skip|mission|retry|assign|owner|crm|history|call|contact|open|source <findingId> [ownerId]',
         );
       }
       if (action === 'skip') {
         const r = await opsLeadSkip(id, ctx.triggeredBy);
-        return ok('lead', [`Lead skipped ${r.findingId}`], r);
+        return ok(
+          'lead',
+          r.idempotent
+            ? ['🚫 Lead đã được bỏ qua trước đó.']
+            : ['🚫 Đã bỏ qua lead.'],
+          r,
+        );
       }
       if (action === 'mission') {
         const r = await opsLeadCreateMission(id, ctx.triggeredBy);
@@ -551,7 +559,12 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       }
       if (action === 'assign') {
         const r = await opsLeadAssign(id, ctx.triggeredBy);
-        return ok('lead', [`Lead assigned ${r.findingId}`], r);
+        return ok('lead', r.lines, r, r.replyMarkup);
+      }
+      if (action === 'owner') {
+        const ownerId = args[2] || 'self';
+        const r = await opsLeadAssignOwner(id, ownerId, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
       }
       if (action === 'crm') {
         const r = await opsLeadCrm(id, ctx.triggeredBy);

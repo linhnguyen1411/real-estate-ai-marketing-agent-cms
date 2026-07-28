@@ -187,15 +187,17 @@ ok('E/F tenant ok', resolveLeadAlertRole({ intent: 'renter' }) === 'tenant');
     sourceUrl: 'https://www.facebook.com/groups/1/posts/2',
     leadCenterUrl: 'https://example.com/admin/agents/lead-center?findingId=' + fid,
     hasPhone: true,
+    phone: '0905111222',
   });
   const flat = kb.inline_keyboard.flat();
-  const id = fid.slice(0, 28);
+  const id = fid.slice(0, 48);
   ok('K call id', flat.some(b => b.callback_data === `l:k:${id}`));
   ok('K contact id', flat.some(b => b.callback_data === `l:t:${id}`));
   ok('K assign id', flat.some(b => b.callback_data === `l:a:${id}`));
   ok('K history id', flat.some(b => b.callback_data === `l:h:${id}`));
   ok('K ignore id', flat.some(b => b.callback_data === `l:s:${id}`));
   ok('K call maps', callbackDataToCommand(`l:k:${id}`) === `/lead call ${id}`);
+  ok('K contact maps', callbackDataToCommand(`l:t:${id}`) === `/lead contact ${id}`);
 }
 
 // L source permalink

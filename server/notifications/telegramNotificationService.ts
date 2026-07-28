@@ -265,7 +265,7 @@ export async function notifyFindingIfEligible(input: {
       salesActionCardKeyboard,
       buildLeadCenterUrl,
       formatAreaLabel,
-      formatSourceLabel,
+      resolveSourceProvenance,
       resolveBuyerConfidencePct,
       shouldSendBuyerAlert,
       resolveLeadAlertRole,
@@ -328,12 +328,21 @@ export async function notifyFindingIfEligible(input: {
     }
 
     const openPostHint = finding.scannedContent?.canonicalUrl || null;
+
+    const roleResolved = role || 'buyer';
+    const sourceProv = resolveSourceProvenance({
+      extractedData: finding.extractedData,
+      agentSourceName: finding.source?.name,
+      agentSourceType: finding.source?.type,
+      canonicalUrl: openPostHint,
+    });
+
     const text = formatSalesActionCard({
       findingId: finding.id,
       acquisition: acq,
       sales,
       confidencePct,
-      role: role || 'buyer',
+      role: roleResolved,
       classification: finding.classification,
       actorName: finding.personName,
       propertyType: finding.propertyType,
@@ -342,12 +351,10 @@ export async function notifyFindingIfEligible(input: {
       budgetMax: finding.budgetMax,
       areaLabel: formatAreaLabel(finding.extractedData),
       timeline: acq?.timeline,
-      campaignName: acq?.campaignMatch.campaignName,
-      sourceLabel: formatSourceLabel({
-        sourceName: finding.source?.name,
-        sourceType: finding.source?.type,
-      }),
-      sourceUrl: openPostHint,
+      extractedData: finding.extractedData,
+      agentSourceName: finding.source?.name,
+      agentSourceType: finding.source?.type,
+      sourceUrl: sourceProv.url || openPostHint,
       title: finding.title,
       needSummary: finding.needSummary,
       summary: finding.summary,
@@ -356,11 +363,13 @@ export async function notifyFindingIfEligible(input: {
       whyReasons: acq?.intent.reasons,
     });
 
+    const sourceUrlFinal = sourceProv.url || openPostHint;
     let replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,
-      sourceUrl: openPostHint,
+      sourceUrl: sourceUrlFinal,
       leadCenterUrl: buildLeadCenterUrl(finding.id),
       hasPhone: Boolean(finding.primaryPhone),
+      phone: finding.primaryPhone,
     });
 
     const sourceEd =
@@ -372,12 +381,12 @@ export async function notifyFindingIfEligible(input: {
             | undefined)
         : undefined;
     const links = normalizeSocialLinks({
-      postUrl: openPostHint,
+      postUrl: sourceUrlFinal,
       groupUrl:
         typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null,
       postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
       groupId: typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null,
-      canonicalUrl: openPostHint,
+      canonicalUrl: sourceUrlFinal,
     });
 
     const hasLinkCandidates = Boolean(links.postUrl || links.groupUrl || links.rawPostUrl);
@@ -409,9 +418,10 @@ export async function notifyFindingIfEligible(input: {
 
     replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,
-      sourceUrl: openPost || openGroup,
+      sourceUrl: sourceProv.url || openPost || openGroup,
       leadCenterUrl: buildLeadCenterUrl(finding.id),
       hasPhone: Boolean(finding.primaryPhone),
+      phone: finding.primaryPhone,
     });
 
     await upsertDeliveryLog({

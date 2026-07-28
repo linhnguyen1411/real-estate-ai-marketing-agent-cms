@@ -254,6 +254,13 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'k') return `/lead call ${id}`;
     if (action === 't') return `/lead contact ${id}`;
     if (action === 'u') return `/lead source ${id}`;
+    // Assign owner pick: l:w:{findingId}:{ownerId}
+    if (action === 'w') {
+      const [findingPart, ...ownerParts] = id.split(':');
+      const ownerPart = ownerParts.join(':') || 'self';
+      if (!findingPart) return null;
+      return `/lead owner ${findingPart} ${ownerPart}`;
+    }
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;

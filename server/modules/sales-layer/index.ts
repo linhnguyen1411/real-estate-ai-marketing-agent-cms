@@ -35,15 +35,21 @@ export {
   formatSalesActionCard,
   salesBuyerCardKeyboard,
   salesActionCardKeyboard,
+  assignOwnerKeyboard,
   maybeSendCoolingAlert,
   buildLeadCenterUrl,
   formatBudgetLabel,
   formatAreaLabel,
   formatSourceLabel,
   buildActionableRecommendation,
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  resolveSourceProvenance,
+  toTelUri,
+  stripInternalPollution,
 } from './telegramSalesCard';
 export { resolveLeadAlertRole } from './telegramSalesActionCard';
-export type { LeadAlertRole } from './telegramSalesActionCard';
+export type { LeadAlertRole, SalesActionCardViewModel } from './telegramSalesActionCard';
 export {
   classifyBuyerHeat,
   resolveBuyerConfidencePct,

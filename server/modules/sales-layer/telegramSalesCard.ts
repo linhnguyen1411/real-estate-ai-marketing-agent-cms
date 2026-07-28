@@ -18,13 +18,21 @@ export {
   formatSalesBuyerCard,
   salesActionCardKeyboard,
   salesBuyerCardKeyboard,
+  assignOwnerKeyboard,
   buildLeadCenterUrl,
   formatBudgetLabel,
   formatAreaLabel,
   formatSourceLabel,
   buildActionableRecommendation,
   summarizeSignal,
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  resolveSourceProvenance,
+  toTelUri,
+  stripInternalPollution,
+  truncFindingIdForCallback,
 } from './telegramSalesActionCard';
+export type { LeadAlertRole, SalesActionCardViewModel } from './telegramSalesActionCard';
 
 export async function maybeSendCoolingAlert(input: {
   findingId: string;

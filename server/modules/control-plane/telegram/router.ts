@@ -204,9 +204,14 @@ export async function routeTelegramUpdate(
     await deps.replyPort.answerCallback?.({
       botToken: deps.config.botToken,
       callbackQueryId: inbound.callbackQueryId,
-      text: mapped ? '…' : 'Unknown',
+      text: mapped ? 'OK' : 'Không hỗ trợ nút này',
     });
     if (!mapped) {
+      await deps.replyPort.reply({
+        botToken: deps.config.botToken,
+        chatId: inbound.chatId,
+        text: 'Không thể xử lý nút này. Thử Open Lead hoặc /help.',
+      });
       return { handled: true, ok: false, reason: 'unknown_callback' };
     }
     commandText = mapped;

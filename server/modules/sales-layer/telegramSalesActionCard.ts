@@ -1,6 +1,7 @@
 /**
- * Canonical Telegram Sales Action Card (H2.4.4).
+ * Canonical Telegram Sales Action Card (H2.4.4 / H2.4.5).
  * ONE layout for buyer / tenant / investor. Hide empty fields. No dual Score metrics.
+ * Need/Source from SalesActionCardViewModel — never campaign/mission pollution.
  */
 
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
@@ -8,8 +9,26 @@ import type { BuyingTimeline, BuyerIntentLabel, LeadAcquisitionProfile } from '.
 import type { SalesLayerProfile, SalesRecommendation } from './types';
 import { classifyBuyerHeat, resolveBuyerConfidencePct } from './buyerHeat';
 import { formatTy, normalizeTy } from './pipelineValue';
+import {
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  formatDisplayPhone,
+  resolveSourceProvenance,
+  stripInternalPollution,
+  toTelUri,
+  type LeadAlertRole,
+  type SalesActionCardViewModel,
+} from './salesActionCardViewModel';
 
-export type LeadAlertRole = 'buyer' | 'tenant' | 'investor';
+export type { LeadAlertRole, SalesActionCardViewModel };
+export {
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  formatDisplayPhone,
+  resolveSourceProvenance,
+  stripInternalPollution,
+  toTelUri,
+} from './salesActionCardViewModel';
 
 const TIMELINE_LABEL: Record<BuyingTimeline | string, string> = {
   buying_today: 'Trong hôm nay',
@@ -26,7 +45,8 @@ const ROLE_LABEL: Record<LeadAlertRole, string> = {
   investor: 'Nhà đầu tư',
 };
 
-function truncId(id: string, max = 28): string {
+/** Telegram callback_data ≤64 bytes — cuid (~25) fits with l:x: prefix. */
+export function truncFindingIdForCallback(id: string, max = 48): string {
   return id.length <= max ? id : id.slice(0, max);
 }
 
@@ -65,7 +85,6 @@ export function formatBudgetLabel(
   const unit = role === 'tenant' ? 'triệu/tháng' : null;
 
   if (role === 'tenant') {
-    // Rent budgets often stored as VND absolute (e.g. 12_000_000)
     const rawMin = budgetMin != null ? Number(budgetMin) : null;
     const rawMax = budgetMax != null ? Number(budgetMax) : null;
     const toTrieu = (n: number) => (n >= 1000 ? Math.round(n / 1_000_000) : n);
@@ -124,21 +143,19 @@ export function formatAreaLabel(extractedData: unknown): string | null {
   return `${min ?? max} m²`;
 }
 
+/** @deprecated Prefer resolveSourceProvenance → label */
 export function formatSourceLabel(input: {
   sourceName?: string | null;
   sourceType?: string | null;
+  extractedData?: unknown;
+  canonicalUrl?: string | null;
 }): string | null {
-  const name = (input.sourceName || '').trim();
-  const type = (input.sourceType || '').trim().toLowerCase();
-  if (name && type) {
-    if (type.includes('facebook') || type.includes('group')) return `Group: ${name}`;
-    if (type.includes('web')) return `Website: ${name}`;
-    return name;
-  }
-  if (name) return name;
-  if (type.includes('facebook')) return 'Facebook Group';
-  if (type.includes('web')) return 'Website';
-  return type || null;
+  return resolveSourceProvenance({
+    extractedData: input.extractedData,
+    agentSourceName: input.sourceName,
+    agentSourceType: input.sourceType,
+    canonicalUrl: input.canonicalUrl,
+  }).label;
 }
 
 export function buildLeadCenterUrl(findingId: string): string | null {
@@ -152,7 +169,6 @@ export function buildLeadCenterUrl(findingId: string): string | null {
   return `${base}/admin/agents/lead-center?findingId=${encodeURIComponent(findingId)}`;
 }
 
-/** Concrete sales copy from real fields — never bare "Assign Sales". */
 export function buildActionableRecommendation(input: {
   recommendation: SalesRecommendation;
   propertyType?: string | null;
@@ -203,20 +219,25 @@ export function buildActionableRecommendation(input: {
   return head;
 }
 
+/** @deprecated Prefer buildLeadNeed */
 export function summarizeSignal(input: {
   title?: string | null;
   needSummary?: string | null;
   summary?: string | null;
   reasons?: string[];
+  role?: LeadAlertRole;
+  propertyType?: string | null;
+  location?: string | null;
 }): string | null {
-  const raw =
-    (input.needSummary && String(input.needSummary).trim()) ||
-    (input.title && String(input.title).trim()) ||
-    (input.summary && String(input.summary).trim()) ||
-    (input.reasons?.length ? input.reasons.slice(0, 2).join('; ') : '');
-  if (!raw) return null;
-  const oneLine = raw.replace(/\s+/g, ' ').trim();
-  return oneLine.length > 140 ? `${oneLine.slice(0, 137)}…` : oneLine;
+  return buildLeadNeed({
+    role: input.role || 'buyer',
+    title: input.title,
+    needSummary: input.needSummary,
+    summary: input.summary,
+    propertyType: input.propertyType,
+    location: input.location,
+    intentReasons: input.reasons,
+  });
 }
 
 function humanizePropertyType(raw?: string | null): string | null {
@@ -302,20 +323,17 @@ export type SalesActionCardInput = {
   phone?: string | null;
   acquisition?: LeadAcquisitionProfile | null;
   sales?: SalesLayerProfile | null;
-  /** Override confidence when already computed */
   confidencePct?: number | null;
-  /** Explicit role; otherwise inferred from acquisition/classification */
   role?: LeadAlertRole | null;
   classification?: string | null;
+  extractedData?: unknown;
+  agentSourceName?: string | null;
+  agentSourceType?: string | null;
+  /** Pre-built view model (preferred) */
+  viewModel?: SalesActionCardViewModel | null;
 };
 
 export function formatSalesActionCard(input: SalesActionCardInput): string {
-  const confidencePct = resolveBuyerConfidencePct({
-    salesConfidencePct: input.confidencePct ?? null,
-    acquisitionFinalScore: input.acquisition?.priority.finalScore ?? null,
-    intentConfidence: input.acquisition?.intent.confidence ?? null,
-  });
-  const heat = classifyBuyerHeat(confidencePct);
   const role =
     input.role ||
     resolveLeadAlertRole({
@@ -326,86 +344,111 @@ export function formatSalesActionCard(input: SalesActionCardInput): string {
     }) ||
     'buyer';
 
-  const budgetLabel = formatBudgetLabel(
-    input.budgetMin,
-    input.budgetMax,
-    input.sales?.expectedDealTy ?? null,
-    role,
-  );
-  const timelineKey = input.timeline || input.acquisition?.timeline || null;
-  const timelineLabel =
-    timelineKey && TIMELINE_LABEL[timelineKey] !== undefined
-      ? TIMELINE_LABEL[timelineKey]
-      : timelineKey && timelineKey !== 'unknown'
-        ? String(timelineKey)
-        : null;
-
   const propertyType =
     input.propertyType ||
     input.acquisition?.campaignMatch.propertyHint ||
     (input.acquisition?.persona.persona !== 'unknown' ? input.acquisition?.persona.persona : null) ||
     null;
   const propertyDisplay = humanizePropertyType(propertyType);
-  const location = (input.location && String(input.location).trim()) || null;
-  const sourceLabel = (input.sourceLabel && String(input.sourceLabel).trim()) || null;
-  const phone =
-    (input.phone && String(input.phone).trim()) ||
-    null;
+
+  const budgetLabel = formatBudgetLabel(
+    input.budgetMin,
+    input.budgetMax,
+    input.sales?.expectedDealTy ?? null,
+    role,
+  );
 
   const recommendation: SalesRecommendation = input.sales?.recommendation
     ? input.sales.recommendation
     : mapAcquisitionAction(input.acquisition);
 
+  const timelineKey = input.timeline || input.acquisition?.timeline || null;
+  const timelineLbl =
+    timelineKey && TIMELINE_LABEL[timelineKey] !== undefined
+      ? TIMELINE_LABEL[timelineKey]
+      : timelineKey && timelineKey !== 'unknown'
+        ? String(timelineKey)
+        : null;
+
+  const confidencePct = resolveBuyerConfidencePct({
+    salesConfidencePct: input.confidencePct ?? null,
+    acquisitionFinalScore: input.acquisition?.priority.finalScore ?? null,
+    intentConfidence: input.acquisition?.intent.confidence ?? null,
+  });
+
   const nextAction = buildActionableRecommendation({
     recommendation,
     propertyType: propertyDisplay,
-    location,
+    location: input.location,
     budgetLabel,
-    timelineLabel,
-    hasPhone: input.hasPhone || Boolean(phone),
+    timelineLabel: timelineLbl,
+    hasPhone: input.hasPhone || Boolean(input.phone),
     heatScore: confidencePct,
     role,
   });
 
-  const need = summarizeSignal({
-    title: input.title,
-    needSummary: input.needSummary,
-    summary: input.summary,
-    reasons: [
-      ...(input.whyReasons || []),
-      ...(input.acquisition?.intent.reasons || []).slice(0, 2),
-    ],
-  });
+  const vm =
+    input.viewModel ||
+    buildSalesActionCardViewModel({
+      findingId: input.findingId,
+      role,
+      confidencePct,
+      acquisition: input.acquisition,
+      sales: input.sales,
+      propertyType: propertyDisplay,
+      location: input.location,
+      budgetLabel,
+      timeline: input.timeline,
+      title: input.title,
+      needSummary: input.needSummary,
+      summary: input.summary,
+      phone: input.phone,
+      extractedData: input.extractedData,
+      agentSourceName: input.agentSourceName,
+      agentSourceType: input.agentSourceType,
+      canonicalUrl: input.sourceUrl,
+      nextAction,
+      intentReasons: input.whyReasons,
+      classification: input.classification,
+    });
 
+  // Prefer explicit sourceLabel only when not polluted; else VM provenance
+  const sourceLabel =
+    (input.sourceLabel &&
+    !/h2\.|unify-lead-alert/i.test(input.sourceLabel) &&
+    stripInternalPollution(input.sourceLabel)) ||
+    vm.sourceLabel;
+
+  const heat = vm.heat.emoji ? vm.heat : classifyBuyerHeat(vm.confidence);
   const lines: string[] = [
     '🎯 LEAD ALERT',
     '═══════════════════',
     '',
     `${heat.emoji} ${heat.label}`.trim(),
     '',
-    `👤 ${ROLE_LABEL[role]}`,
+    `👤 ${ROLE_LABEL[vm.role]}`,
   ];
 
-  const actor = (input.actorName && String(input.actorName).trim()) || null;
+  const actor = (input.actorName && stripInternalPollution(input.actorName)) || null;
   if (actor) lines.push(`🗣 ${actor}`);
 
-  if (location) lines.push(`📍 ${location}`);
-  if (budgetLabel) lines.push(`💰 ${budgetLabel}`);
-  if (propertyDisplay) lines.push(`🏠 ${propertyDisplay}`);
-  if (timelineLabel) lines.push(`⏱ ${timelineLabel}`);
+  if (vm.location) lines.push(`📍 ${vm.location}`);
+  if (vm.budget) lines.push(`💰 ${vm.budget}`);
+  if (vm.propertyType) lines.push(`🏠 ${vm.propertyType}`);
+  if (vm.timeline) lines.push(`⏱ ${vm.timeline}`);
 
-  if (need) {
-    lines.push('', '📌 Need', need);
+  if (vm.leadNeed) {
+    lines.push('', '📌 Need', vm.leadNeed);
   }
-  if (phone) {
-    lines.push('', '📞 Phone', phone);
+  if (vm.phone) {
+    lines.push('', '📞 Phone', vm.phone);
   }
   if (sourceLabel) {
     lines.push('', '📂 Source', sourceLabel);
   }
 
-  lines.push('', `🎯 BUYER CONFIDENCE: ${confidencePct}%`);
-  lines.push('', '💡 NEXT ACTION', nextAction);
+  lines.push('', `🎯 BUYER CONFIDENCE: ${vm.confidence}%`);
+  lines.push('', '💡 NEXT ACTION', vm.nextAction || nextAction);
   lines.push('', '═══════════════════');
 
   return lines.join('\n');
@@ -416,10 +459,13 @@ export function salesActionCardKeyboard(input: {
   sourceUrl?: string | null;
   leadCenterUrl?: string | null;
   hasPhone?: boolean;
+  phone?: string | null;
 }): InlineKeyboard {
-  const id = truncId(input.findingId);
+  const id = truncFindingIdForCallback(input.findingId);
   const rows: InlineKeyboard['inline_keyboard'] = [];
 
+  // Telegram Bot API rejects tel: URLs on inline buttons ("Wrong port number").
+  // Call always uses callback → opsLeadCall returns phone + tel URI in confirmation.
   rows.push([
     { text: '📞 Call', callback_data: `l:k:${id}` },
     { text: '💬 Contact', callback_data: `l:t:${id}` },
@@ -439,11 +485,30 @@ export function salesActionCardKeyboard(input: {
   rows.push(mid);
 
   rows.push([
-    { text: '👨‍💼 Assign', callback_data: `l:a:${id}` },
-    { text: '🕘 History', callback_data: `l:h:${id}` },
+    { text: '👥 Assign', callback_data: `l:a:${id}` },
+    { text: '📜 History', callback_data: `l:h:${id}` },
   ]);
   rows.push([{ text: '🚫 Ignore', callback_data: `l:s:${id}` }]);
 
+  return { inline_keyboard: rows };
+}
+
+/** Owner picker after Assign click */
+export function assignOwnerKeyboard(input: {
+  findingId: string;
+  owners: Array<{ id: string; label: string }>;
+}): InlineKeyboard {
+  const fid = truncFindingIdForCallback(input.findingId, 28);
+  const rows: InlineKeyboard['inline_keyboard'] = [];
+  for (const owner of input.owners.slice(0, 8)) {
+    const oid = truncFindingIdForCallback(owner.id, 28);
+    const data = `l:w:${fid}:${oid}`;
+    if (data.length > 64) continue;
+    rows.push([{ text: `👤 ${owner.label.slice(0, 40)}`, callback_data: data }]);
+  }
+  if (!rows.length) {
+    rows.push([{ text: '👤 Self', callback_data: `l:w:${fid}:self` }]);
+  }
   return { inline_keyboard: rows };
 }
 
