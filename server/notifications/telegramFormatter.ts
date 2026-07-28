@@ -1,10 +1,10 @@
 /**
- * Telegram formatters — all outbound notification text + keyboards (H0.3.6).
- * No JSON dumps. AI summary → recommendation → actions.
+ * Telegram formatters — all outbound notification text + keyboards (H0.3.6 / H2.4.4).
+ * NEW_LEAD single cards → canonical Sales Action Card only.
+ * Batch digests remain a separate multi-lead summary format.
  */
 
 import type { ResolvedLeadIntelligence } from '../../shared/agent-domain';
-import { formatResolvedBudget } from '../../shared/agent-domain';
 import { normalizeSocialLinks } from '../modules/link-normalization';
 import type { InlineKeyboard } from '../modules/control-plane/inlineKeyboard';
 import {
@@ -13,6 +13,10 @@ import {
   opsActionKeyboard,
   publishJobKeyboard,
 } from '../modules/control-plane/inlineKeyboard';
+import {
+  formatSalesActionCard,
+  resolveLeadAlertRole,
+} from '../modules/sales-layer/telegramSalesActionCard';
 import type { NotificationChannel, NotificationEventType, NotificationPayload } from './notificationTypes';
 import { CHANNEL_LABELS } from './notificationTypes';
 
@@ -35,18 +39,10 @@ type FindingLike = {
   primaryLocation?: string | null;
   needSummary?: string | null;
   propertyType?: string | null;
+  budgetMin?: number | bigint | null;
+  budgetMax?: number | bigint | null;
+  personName?: string | null;
 };
-
-function classificationLabel(value: string | null | undefined): string {
-  const v = String(value || '').toLowerCase();
-  if (v === 'buyer') return 'Người mua';
-  if (v === 'renter') return 'Người thuê';
-  if (v === 'investor') return 'Nhà đầu tư';
-  if (v === 'broker_demand' || v === 'broker') return 'Môi giới cầu';
-  if (v === 'seller') return 'Người bán';
-  if (v === 'landlord') return 'Cho thuê';
-  return value || 'Lead';
-}
 
 function propertyTypeDisplay(
   resolved: ResolvedLeadIntelligence | null | undefined,
@@ -86,6 +82,10 @@ export function formatFindingTelegramMessage(
   return formatLeadTelegramAlert(finding, resolved, options).text;
 }
 
+/**
+ * Legacy entry → canonical Sales Action Card (H2.4.4).
+ * Kept so historical callers / tests still resolve to ONE card layout.
+ */
 export function formatLeadTelegramAlert(
   finding: FindingLike,
   resolved: ResolvedLeadIntelligence | null | undefined,
@@ -94,50 +94,49 @@ export function formatLeadTelegramAlert(
   const includePhone = options.includePhone !== false;
   const includeBudget = options.includeBudget !== false;
   const includeLocation = options.includeLocation !== false;
-  const includeLink = options.includeLink !== false;
 
   const score = resolved?.finalScore ?? finding.finalScore ?? finding.score ?? 0;
   const classification = resolved?.classification ?? finding.classification;
-  const location =
-    resolved?.location.primary ||
-    finding.primaryLocation ||
-    [resolved?.location.district, resolved?.location.city].filter(Boolean).join(', ');
+  const location = includeLocation
+    ? resolved?.location.primary ||
+      finding.primaryLocation ||
+      [resolved?.location.district, resolved?.location.city].filter(Boolean).join(', ') ||
+      null
+    : null;
   const propertyLabel = propertyTypeDisplay(resolved, finding);
   const groupName = resolved?.source.groupName || resolved?.source.sourceName;
+  const phone = includePhone
+    ? resolved?.primaryPhone || finding.primaryPhone || null
+    : null;
+  const role =
+    resolveLeadAlertRole({ classification, intent: classification }) ||
+    (classification === 'renter'
+      ? 'tenant'
+      : classification === 'investor'
+        ? 'investor'
+        : 'buyer');
 
-  const lines: string[] = [`${CHANNEL_LABELS.LEAD}`, `Lead mới (${score}/100)`, ''];
-
-  if (classification) lines.push(`👤 ${classificationLabel(classification)}`);
-  if (includeLocation && location) lines.push(`📍 ${location}`);
-  if (propertyLabel) lines.push(`🏷 ${propertyLabel}`);
-  if (groupName) {
-    lines.push(`📂 Group:`);
-    lines.push(String(groupName).slice(0, 200));
-  }
-
-  const need =
-    resolved?.demand.needSummary ||
-    finding.needSummary ||
-    resolved?.summary ||
-    finding.summary ||
-    finding.title;
-  if (need) {
-    lines.push('');
-    lines.push(String(need).slice(0, 300));
-  }
-
-  if (includeBudget) {
-    const budget = formatResolvedBudget(
-      resolved?.demand.buyerBudgetMin ?? null,
-      resolved?.demand.buyerBudgetMax ?? null,
-    );
-    if (budget && budget !== 'Chưa xác định') lines.push(`Ngân sách: ${budget}`);
-  }
-
-  if (includePhone) {
-    const phone = resolved?.primaryPhone || finding.primaryPhone;
-    if (phone) lines.push(`SĐT: ${phone}`);
-  }
+  const text = formatSalesActionCard({
+    findingId: finding.id || resolved?.findingId || 'legacy',
+    confidencePct: Number(score) || 0,
+    role,
+    classification,
+    actorName: finding.personName || null,
+    propertyType: propertyLabel || finding.propertyType,
+    location,
+    budgetMin: includeBudget
+      ? (resolved?.demand.buyerBudgetMin ?? finding.budgetMin ?? null)
+      : null,
+    budgetMax: includeBudget
+      ? (resolved?.demand.buyerBudgetMax ?? finding.budgetMax ?? null)
+      : null,
+    sourceLabel: groupName ? `Group: ${String(groupName).slice(0, 200)}` : null,
+    title: finding.title,
+    needSummary: resolved?.demand.needSummary || finding.needSummary,
+    summary: finding.summary,
+    hasPhone: Boolean(phone),
+    phone,
+  });
 
   const sourceEd =
     resolved && typeof resolved === 'object'
@@ -151,17 +150,8 @@ export function formatLeadTelegramAlert(
     postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
   });
 
-  if (includeLink) {
-    const findingId = finding.id || resolved?.findingId;
-    const base = (options.siteBaseUrl || process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '');
-    if (base && findingId) {
-      lines.push('');
-      lines.push(`CRM: ${base}/admin/agents/findings`);
-    }
-  }
-
   return {
-    text: lines.filter((l, i, arr) => !(l === '' && arr[i - 1] === '')).join('\n').trim(),
+    text,
     postUrl: links.postUrl,
     groupUrl: links.groupUrl,
     canonicalUrl: links.canonicalUrl,
@@ -171,7 +161,7 @@ export function formatLeadTelegramAlert(
   };
 }
 
-/** Batch many leads into one concise message */
+/** Batch many leads into one concise message (digest — not a Sales Action Card). */
 export function formatBatchedLeadSummary(
   items: Array<{ id: string; score?: number; summary?: string }>,
 ): string {
@@ -281,8 +271,15 @@ export function formatRoutedNotification(
     if (payload.batchCount && payload.batchCount > 1) {
       return formatBatchedLeadSummary(payload.batchItems || []);
     }
+    // H2.4.4 — prefer preformatted canonical Sales Action Card in payload.summary
+    if (payload.summary && String(payload.summary).includes('🎯 LEAD ALERT')) {
+      return String(payload.summary).slice(0, 4000);
+    }
     if (payload.summary) lines.push(String(payload.summary).slice(0, 500));
-    if (payload.score != null) lines.push(`Score: ${payload.score}/100`);
+    // Legacy fallback only when no canonical card text (old callers)
+    if (payload.score != null && !String(payload.summary || '').includes('BUYER CONFIDENCE')) {
+      lines.push(`Score: ${payload.score}/100`);
+    }
   }
 
   if (payload.extraLines?.length) {

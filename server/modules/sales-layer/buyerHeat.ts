@@ -49,7 +49,7 @@ export function classifyBuyerHeat(score: number): BuyerHeatInfo {
     return { heat: 'warm', score: s, label: 'WARM', emoji: '🟡', shouldAlert: true };
   }
   if (s >= 40) {
-    return { heat: 'cold', score: s, label: 'COLD', emoji: '⚪', shouldAlert: true };
+    return { heat: 'cold', score: s, label: 'COLD', emoji: '🔵', shouldAlert: true };
   }
   return { heat: 'skip', score: s, label: 'SKIP', emoji: '', shouldAlert: false };
 }

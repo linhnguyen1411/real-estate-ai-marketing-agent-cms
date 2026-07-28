@@ -58,11 +58,14 @@ async function main() {
     null,
     { includePhone: false, includeLink: false },
   );
-  assert.match(lead.text, /Lead mới \(88\/100\)/);
-  assert.match(lead.text, /🎯 Lead Alerts/);
+  assert.match(lead.text, /🎯 LEAD ALERT/);
+  assert.match(lead.text, /BUYER CONFIDENCE: 88%/);
+  assert.match(lead.text, /Người mua/);
+  assert.doesNotMatch(lead.text, /Lead mới \(\d+\/100\)/);
   await notification.send({
     type: 'lead_found',
     payload: { findingId: 'f1', score: 88, summary: lead.text },
+    text: lead.text,
     immediate: true,
   });
   assert.equal(delivered, 1);

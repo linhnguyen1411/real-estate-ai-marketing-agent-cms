@@ -1,23 +1,15 @@
 /**
- * Telegram Buyer Alert V2 — Sales Action Card.
- * One card per lead; hide empty fields; gate by shared buyer heat.
+ * Telegram Lead Alert — thin façade.
+ * H2.4.4: ALL NEW_LEAD alerts go through notifyFindingIfEligible (canonical card).
+ * Do not send Telegram from this module directly.
  */
 
-import { sendNotification } from '../../notifications/notificationRouter';
 import type { LeadAcquisitionProfile } from './types';
-import { prisma } from '../../prisma';
 import {
   buildLeadCenterUrl,
-  formatAreaLabel,
   formatSalesActionCard,
-  formatSourceLabel,
   salesActionCardKeyboard,
 } from '../sales-layer/telegramSalesActionCard';
-import {
-  resolveBuyerConfidencePct,
-  shouldSendBuyerAlert,
-} from '../sales-layer/buyerHeat';
-import { readSalesProfile } from '../sales-layer/salesService';
 
 export function buyerAlertKeyboard(input: {
   findingId: string;
@@ -30,7 +22,7 @@ export function buyerAlertKeyboard(input: {
   });
 }
 
-/** @deprecated Prefer formatSalesActionCard — kept for smoke/compat */
+/** @deprecated Prefer formatSalesActionCard via notifyFindingIfEligible */
 export function formatBuyerAlertText(input: {
   profile: LeadAcquisitionProfile;
   title?: string | null;
@@ -44,6 +36,7 @@ export function formatBuyerAlertText(input: {
   summary?: string | null;
   areaLabel?: string | null;
   hasPhone?: boolean;
+  phone?: string | null;
 }): string {
   return formatSalesActionCard({
     findingId: input.profile.findingId,
@@ -61,103 +54,34 @@ export function formatBuyerAlertText(input: {
     needSummary: input.needSummary,
     summary: input.summary,
     hasPhone: input.hasPhone,
+    phone: input.phone,
     whyReasons: input.profile.intent.reasons,
   });
 }
 
+/**
+ * Emit NEW_LEAD Telegram via the single canonical producer.
+ * Idempotent: shares event key with notifyFindingIfEligible.
+ */
 export async function maybeSendBuyerAlert(input: {
   findingId: string;
   profile: LeadAcquisitionProfile;
-}): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
-  const finding = await prisma.agentFinding.findUnique({
-    where: { id: input.findingId },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      needSummary: true,
-      personName: true,
-      primaryPhone: true,
-      primaryLocation: true,
-      propertyType: true,
-      budgetMin: true,
-      budgetMax: true,
-      companyId: true,
-      extractedData: true,
-      scannedContent: { select: { canonicalUrl: true } },
-      source: { select: { name: true, type: true } },
-    },
-  });
-  if (!finding) return { ok: false, skipped: true, reason: 'missing' };
-  if (!input.profile.isBuyer) return { ok: false, skipped: true, reason: 'not_buyer' };
-
-  const sales = readSalesProfile(finding.extractedData);
-  const confidencePct = resolveBuyerConfidencePct({
-    salesConfidencePct: sales
-      ? Math.round(
-          (input.profile.intent.confidence ?? 0.4) * 100 +
-            (sales.signals?.length || 0) * 2,
-        )
-      : null,
-    acquisitionFinalScore: input.profile.priority.finalScore,
-    intentConfidence: input.profile.intent.confidence,
-  });
-
-  if (!shouldSendBuyerAlert(confidencePct)) {
-    return { ok: false, skipped: true, reason: 'below_heat_threshold' };
+}): Promise<{ ok: boolean; skipped?: boolean; reason?: string; messageId?: string | null }> {
+  if (!input.profile.isBuyer && input.profile.intent.intent !== 'renter') {
+    return { ok: false, skipped: true, reason: 'not_demand_lead' };
   }
-
-  const sourceUrl = finding.scannedContent?.canonicalUrl || null;
-  const text = formatSalesActionCard({
-    findingId: finding.id,
-    acquisition: input.profile,
-    sales,
-    confidencePct,
-    actorName: finding.personName,
-    propertyType: finding.propertyType,
-    location: finding.primaryLocation,
-    budgetMin: finding.budgetMin,
-    budgetMax: finding.budgetMax,
-    areaLabel: formatAreaLabel(finding.extractedData),
-    timeline: input.profile.timeline,
-    campaignName: input.profile.campaignMatch.campaignName,
-    sourceLabel: formatSourceLabel({
-      sourceName: finding.source?.name,
-      sourceType: finding.source?.type,
-    }),
-    sourceUrl,
-    title: finding.title,
-    needSummary: finding.needSummary,
-    summary: finding.summary,
-    hasPhone: Boolean(finding.primaryPhone),
-    whyReasons: input.profile.intent.reasons,
+  const { notifyFindingIfEligible } = await import(
+    '../../notifications/telegramNotificationService'
+  );
+  const result = await notifyFindingIfEligible({
+    findingId: input.findingId,
+    force: false,
   });
-
-  const replyMarkup = salesActionCardKeyboard({
-    findingId: finding.id,
-    sourceUrl,
-    leadCenterUrl: buildLeadCenterUrl(finding.id),
-    hasPhone: Boolean(finding.primaryPhone),
-  });
-
-  const send = await sendNotification({
-    type: 'lead_found',
-    immediate: true,
-    skipDedup: false,
-    dedupeKey: `buyer_alert:${finding.id}`,
-    text,
-    replyMarkup,
-    payload: {
-      findingId: finding.id,
-      entityId: finding.id,
-      score: confidencePct,
-      summary: text,
-      title: 'Buyer Lead',
-      postUrl: sourceUrl,
-    },
-  });
-
-  return send.ok
-    ? { ok: true }
-    : { ok: false, reason: send.error || 'send_failed' };
+  if (result.ok) return { ok: true, messageId: result.messageId };
+  return {
+    ok: false,
+    skipped: result.skipped,
+    reason: result.reason || result.error || 'send_failed',
+    messageId: result.messageId,
+  };
 }

@@ -1,13 +1,15 @@
 /**
- * Telegram Sales Action Card — WHO / WHAT / WHERE / BUDGET / WHEN / WHY / NEXT.
- * Hide empty fields. No technical dump. No fake URLs.
+ * Canonical Telegram Sales Action Card (H2.4.4).
+ * ONE layout for buyer / tenant / investor. Hide empty fields. No dual Score metrics.
  */
 
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
-import type { BuyingTimeline, LeadAcquisitionProfile } from '../lead-acquisition/types';
+import type { BuyingTimeline, BuyerIntentLabel, LeadAcquisitionProfile } from '../lead-acquisition/types';
 import type { SalesLayerProfile, SalesRecommendation } from './types';
 import { classifyBuyerHeat, resolveBuyerConfidencePct } from './buyerHeat';
 import { formatTy, normalizeTy } from './pipelineValue';
+
+export type LeadAlertRole = 'buyer' | 'tenant' | 'investor';
 
 const TIMELINE_LABEL: Record<BuyingTimeline | string, string> = {
   buying_today: 'Trong hôm nay',
@@ -18,17 +20,69 @@ const TIMELINE_LABEL: Record<BuyingTimeline | string, string> = {
   unknown: '',
 };
 
+const ROLE_LABEL: Record<LeadAlertRole, string> = {
+  buyer: 'Người mua',
+  tenant: 'Người thuê',
+  investor: 'Nhà đầu tư',
+};
+
 function truncId(id: string, max = 28): string {
   return id.length <= max ? id : id.slice(0, max);
+}
+
+export function resolveLeadAlertRole(input: {
+  intent?: BuyerIntentLabel | string | null;
+  classification?: string | null;
+  persona?: string | null;
+  isBuyer?: boolean | null;
+}): LeadAlertRole | null {
+  const intent = String(input.intent || '').toLowerCase();
+  const classification = String(input.classification || '').toLowerCase();
+  const persona = String(input.persona || '').toLowerCase();
+  const blob = `${intent} ${classification} ${persona}`;
+
+  if (/\brenter\b|\brental\b|thuê/.test(blob) && !/cho\s*thuê|landlord/.test(blob)) {
+    return 'tenant';
+  }
+  if (/\binvestor\b|đầu\s*tư/.test(blob)) return 'investor';
+  if (
+    input.isBuyer ||
+    /\bbuyer\b|ready_buyer|warm_lead|potential_buyer|research_phase|demand/.test(blob)
+  ) {
+    return 'buyer';
+  }
+  return null;
 }
 
 export function formatBudgetLabel(
   budgetMin?: number | bigint | null,
   budgetMax?: number | bigint | null,
   expectedDealTy?: number | null,
+  role?: LeadAlertRole | null,
 ): string | null {
   const bMin = normalizeTy(budgetMin);
   const bMax = normalizeTy(budgetMax);
+  const unit = role === 'tenant' ? 'triệu/tháng' : null;
+
+  if (role === 'tenant') {
+    // Rent budgets often stored as VND absolute (e.g. 12_000_000)
+    const rawMin = budgetMin != null ? Number(budgetMin) : null;
+    const rawMax = budgetMax != null ? Number(budgetMax) : null;
+    const toTrieu = (n: number) => (n >= 1000 ? Math.round(n / 1_000_000) : n);
+    if (rawMin != null || rawMax != null) {
+      if (rawMin != null && rawMax != null && rawMin === rawMax) {
+        return `≤ ${toTrieu(rawMax)} ${unit}`;
+      }
+      if (rawMax != null && (rawMin == null || rawMin === 0)) {
+        return `≤ ${toTrieu(rawMax)} ${unit}`;
+      }
+      const parts = [rawMin, rawMax]
+        .filter((v): v is number => v != null)
+        .map(v => `${toTrieu(v)}`);
+      return parts.length ? `${parts.join('–')} ${unit}` : null;
+    }
+  }
+
   if (bMin != null || bMax != null) {
     if (bMin != null && bMax != null && Math.abs(bMin - bMax) < 0.05) {
       return `~${formatTy(bMin)}`;
@@ -77,9 +131,9 @@ export function formatSourceLabel(input: {
   const name = (input.sourceName || '').trim();
   const type = (input.sourceType || '').trim().toLowerCase();
   if (name && type) {
-    if (type.includes('facebook') || type.includes('group')) return `Facebook · ${name}`;
-    if (type.includes('web')) return `Website · ${name}`;
-    return `${name}`;
+    if (type.includes('facebook') || type.includes('group')) return `Group: ${name}`;
+    if (type.includes('web')) return `Website: ${name}`;
+    return name;
   }
   if (name) return name;
   if (type.includes('facebook')) return 'Facebook Group';
@@ -107,11 +161,17 @@ export function buildActionableRecommendation(input: {
   timelineLabel?: string | null;
   hasPhone?: boolean;
   heatScore?: number;
+  role?: LeadAlertRole | null;
 }): string {
+  const verb = input.role === 'tenant' ? 'thuê' : input.role === 'investor' ? 'đầu tư' : 'mua';
   const need = [
-    input.propertyType ? `mua ${input.propertyType}` : null,
+    input.propertyType ? `${verb} ${input.propertyType}` : null,
     input.location || null,
-    input.budgetLabel ? `ngân sách ${input.budgetLabel}` : null,
+    input.budgetLabel
+      ? input.role === 'tenant'
+        ? `giá ${input.budgetLabel}`
+        : `ngân sách ${input.budgetLabel}`
+      : null,
     input.timelineLabel ? `timeline ${input.timelineLabel}` : null,
   ]
     .filter(Boolean)
@@ -138,7 +198,7 @@ export function buildActionableRecommendation(input: {
         : 'Theo dõi thêm tín hiệu';
   }
 
-  if (need) return `${head} — khách ${need}.`;
+  if (need) return `${head} — khách đang cần ${need}.`;
   if (input.recommendation.reason) return `${head} — ${input.recommendation.reason}`;
   return head;
 }
@@ -174,7 +234,7 @@ function humanizePropertyType(raw?: string | null): string | null {
     villa: 'biệt thự',
     shophouse: 'shophouse',
     hotel: 'khách sạn',
-    rental: 'cho thuê',
+    rental: 'nhà thuê',
     home_buyer: 'nhà ở',
     first_home: 'nhà ở',
     upgrader: 'nhà ở',
@@ -188,7 +248,7 @@ function humanizePropertyType(raw?: string | null): string | null {
 
 function mapAcquisitionAction(acq?: LeadAcquisitionProfile | null): SalesRecommendation {
   const action = acq?.action?.action;
-  const reason = acq?.action?.reason || 'Buyer candidate';
+  const reason = acq?.action?.reason || 'Lead candidate';
   if (action === 'call' || action === 'inbox') {
     return {
       code: 'call_now',
@@ -239,10 +299,14 @@ export type SalesActionCardInput = {
   summary?: string | null;
   whyReasons?: string[];
   hasPhone?: boolean;
+  phone?: string | null;
   acquisition?: LeadAcquisitionProfile | null;
   sales?: SalesLayerProfile | null;
   /** Override confidence when already computed */
   confidencePct?: number | null;
+  /** Explicit role; otherwise inferred from acquisition/classification */
+  role?: LeadAlertRole | null;
+  classification?: string | null;
 };
 
 export function formatSalesActionCard(input: SalesActionCardInput): string {
@@ -252,10 +316,21 @@ export function formatSalesActionCard(input: SalesActionCardInput): string {
     intentConfidence: input.acquisition?.intent.confidence ?? null,
   });
   const heat = classifyBuyerHeat(confidencePct);
+  const role =
+    input.role ||
+    resolveLeadAlertRole({
+      intent: input.acquisition?.intent.intent,
+      classification: input.classification,
+      persona: input.acquisition?.persona.persona,
+      isBuyer: input.acquisition?.isBuyer,
+    }) ||
+    'buyer';
+
   const budgetLabel = formatBudgetLabel(
     input.budgetMin,
     input.budgetMax,
     input.sales?.expectedDealTy ?? null,
+    role,
   );
   const timelineKey = input.timeline || input.acquisition?.timeline || null;
   const timelineLabel =
@@ -268,88 +343,70 @@ export function formatSalesActionCard(input: SalesActionCardInput): string {
   const propertyType =
     input.propertyType ||
     input.acquisition?.campaignMatch.propertyHint ||
-    input.acquisition?.persona.persona ||
+    (input.acquisition?.persona.persona !== 'unknown' ? input.acquisition?.persona.persona : null) ||
     null;
   const propertyDisplay = humanizePropertyType(propertyType);
-  const location = input.location || null;
-  const campaignName = input.campaignName || input.acquisition?.campaignMatch.campaignName || null;
-  const sourceLabel = input.sourceLabel || null;
-  const actor =
-    (input.actorName && String(input.actorName).trim()) ||
-    (input.sales?.owner && String(input.sales.owner).trim()) ||
-    'Buyer chưa rõ tên';
+  const location = (input.location && String(input.location).trim()) || null;
+  const sourceLabel = (input.sourceLabel && String(input.sourceLabel).trim()) || null;
+  const phone =
+    (input.phone && String(input.phone).trim()) ||
+    null;
 
   const recommendation: SalesRecommendation = input.sales?.recommendation
     ? input.sales.recommendation
     : mapAcquisitionAction(input.acquisition);
 
-  const aiLine = buildActionableRecommendation({
+  const nextAction = buildActionableRecommendation({
     recommendation,
     propertyType: propertyDisplay,
     location,
     budgetLabel,
     timelineLabel,
-    hasPhone: input.hasPhone,
+    hasPhone: input.hasPhone || Boolean(phone),
     heatScore: confidencePct,
+    role,
   });
 
-  const whyBits = [
-    ...(input.whyReasons || []),
-    ...(input.acquisition?.intent.reasons || []).slice(0, 2),
-    ...(input.acquisition?.intent.matchedPatterns || []).slice(0, 1),
-  ]
-    .map(s => String(s).trim())
-    .filter(Boolean);
-  const whyLine = whyBits.length ? whyBits.slice(0, 2).join(' · ') : null;
-
-  const signal = summarizeSignal({
+  const need = summarizeSignal({
     title: input.title,
     needSummary: input.needSummary,
     summary: input.summary,
-    reasons: whyBits,
+    reasons: [
+      ...(input.whyReasons || []),
+      ...(input.acquisition?.intent.reasons || []).slice(0, 2),
+    ],
   });
 
   const lines: string[] = [
-    '🎯 BUYER LEAD',
+    '🎯 LEAD ALERT',
+    '═══════════════════',
     '',
-    actor,
     `${heat.emoji} ${heat.label}`.trim(),
     '',
-    '────────────────',
+    `👤 ${ROLE_LABEL[role]}`,
   ];
 
-  if (propertyDisplay) {
-    lines.push('', '🏠 Nhu cầu', `Khách đang tìm mua: ${propertyDisplay}`);
-  }
-  if (location) {
-    lines.push('', '📍 Khu vực', location);
-  }
-  if (budgetLabel) {
-    lines.push('', '💰 Ngân sách', budgetLabel);
-  }
-  if (input.areaLabel) {
-    lines.push('', '📐 Diện tích', input.areaLabel);
-  }
-  if (timelineLabel) {
-    lines.push('', '⏱ Timeline', timelineLabel);
-  }
+  const actor = (input.actorName && String(input.actorName).trim()) || null;
+  if (actor) lines.push(`🗣 ${actor}`);
 
-  lines.push('', '────────────────', '', '📊 BUYER CONFIDENCE', `${confidencePct}/100`);
-  if (campaignName) {
-    lines.push('', 'Campaign:', campaignName);
+  if (location) lines.push(`📍 ${location}`);
+  if (budgetLabel) lines.push(`💰 ${budgetLabel}`);
+  if (propertyDisplay) lines.push(`🏠 ${propertyDisplay}`);
+  if (timelineLabel) lines.push(`⏱ ${timelineLabel}`);
+
+  if (need) {
+    lines.push('', '📌 Need', need);
+  }
+  if (phone) {
+    lines.push('', '📞 Phone', phone);
   }
   if (sourceLabel) {
-    lines.push('', 'Source:', sourceLabel);
-  }
-  if (whyLine) {
-    lines.push('', `Vì sao: ${whyLine}`);
+    lines.push('', '📂 Source', sourceLabel);
   }
 
-  lines.push('', '────────────────', '', '🤖 AI RECOMMENDATION', aiLine);
-
-  if (signal) {
-    lines.push('', '────────────────', '', '📝 SIGNAL', `"${signal}"`);
-  }
+  lines.push('', `🎯 BUYER CONFIDENCE: ${confidencePct}%`);
+  lines.push('', '💡 NEXT ACTION', nextAction);
+  lines.push('', '═══════════════════');
 
   return lines.join('\n');
 }
@@ -370,27 +427,27 @@ export function salesActionCardKeyboard(input: {
 
   const mid: InlineKeyboard['inline_keyboard'][number] = [];
   if (input.leadCenterUrl && /^https:\/\//i.test(input.leadCenterUrl)) {
-    mid.push({ text: '📋 Open Lead', url: input.leadCenterUrl });
+    mid.push({ text: '👤 Open Lead', url: input.leadCenterUrl });
   } else {
-    mid.push({ text: '📋 Open Lead', callback_data: `l:n:${id}` });
+    mid.push({ text: '👤 Open Lead', callback_data: `l:n:${id}` });
   }
   if (input.sourceUrl && /^https:\/\//i.test(input.sourceUrl)) {
-    mid.push({ text: '🔎 Source', url: input.sourceUrl });
+    mid.push({ text: '🔗 Source', url: input.sourceUrl });
   } else {
-    mid.push({ text: '🔎 Source', callback_data: `l:u:${id}` });
+    mid.push({ text: '🔗 Source', callback_data: `l:u:${id}` });
   }
   rows.push(mid);
 
   rows.push([
-    { text: '👤 Assign', callback_data: `l:a:${id}` },
-    { text: '📈 History', callback_data: `l:h:${id}` },
+    { text: '👨‍💼 Assign', callback_data: `l:a:${id}` },
+    { text: '🕘 History', callback_data: `l:h:${id}` },
   ]);
-  rows.push([{ text: '❌ Ignore', callback_data: `l:s:${id}` }]);
+  rows.push([{ text: '🚫 Ignore', callback_data: `l:s:${id}` }]);
 
   return { inline_keyboard: rows };
 }
 
-/** @deprecated Use formatSalesActionCard — kept for cooling brief header */
+/** @deprecated Use formatSalesActionCard */
 export function formatSalesBuyerCard(input: {
   profile: SalesLayerProfile;
   confidencePct: number;

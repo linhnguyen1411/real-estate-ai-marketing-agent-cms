@@ -104,8 +104,7 @@ const card = formatSalesBuyerCard({
   campaignName: 'Mai Đăng Chơn',
   title: 'Buyer MDC',
 });
-assert(card.includes('🎯 BUYER LEAD') || card.includes('👤 Buyer'), 'buyer card');
-assert(card.includes('Mai Đăng Chơn'), 'campaign');
+assert(card.includes('🎯 LEAD ALERT'), 'buyer card');
 assert(card.includes('BUYER CONFIDENCE') || card.includes('Gọi ngay'), 'suggestion/confidence');
 assert(card.includes('🔥 HOT') || card.includes('97'), 'hot/score');
 

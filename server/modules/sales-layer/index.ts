@@ -42,6 +42,8 @@ export {
   formatSourceLabel,
   buildActionableRecommendation,
 } from './telegramSalesCard';
+export { resolveLeadAlertRole } from './telegramSalesActionCard';
+export type { LeadAlertRole } from './telegramSalesActionCard';
 export {
   classifyBuyerHeat,
   resolveBuyerConfidencePct,

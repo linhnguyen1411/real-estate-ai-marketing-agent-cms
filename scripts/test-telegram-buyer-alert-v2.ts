@@ -1,5 +1,5 @@
 /**
- * H2.2 — Telegram Buyer Alert / Sales Action Card tests (no live Telegram required).
+ * H2.2 / H2.4.4 — Telegram canonical Sales Action Card tests (no live Telegram required).
  * Run: npx tsx scripts/test-telegram-buyer-alert-v2.ts
  */
 
@@ -20,6 +20,7 @@ import { recommendSalesAction } from '../server/modules/sales-layer/salesRecomme
 import { callbackDataToCommand } from '../server/modules/control-plane/inlineKeyboard';
 import type { LeadAcquisitionProfile } from '../server/modules/lead-acquisition/types';
 import type { SalesLayerProfile } from '../server/modules/sales-layer/types';
+import { leadAlertEventKey } from '../server/notifications/telegramNotificationService';
 
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(msg);
@@ -110,18 +111,18 @@ const baseSales = (over: Partial<SalesLayerProfile> = {}): SalesLayerProfile => 
     sourceLabel: 'Facebook · Group NHS',
     title: 'Cần mua đất Ngũ Hành Sơn ngân sách 5 tỷ hôm nay',
     hasPhone: true,
+    phone: '0905111222',
   });
-  assert(card.includes('🎯 BUYER LEAD'), '1 header');
+  assert(card.includes('🎯 LEAD ALERT'), '1 header');
   assert(card.includes('Anh Minh'), '1 name');
   assert(card.includes('🔥 HOT'), '1 hot');
-  assert(card.includes('BUYER CONFIDENCE'), '1 confidence label');
-  assert(card.includes('88/100'), '1 score');
+  assert(card.includes('BUYER CONFIDENCE: 88%'), '1 confidence');
+  assert(card.includes('Người mua'), '1 role');
   assertNot(card.includes('LEAD SCORE'), '1 no dual score');
+  assertNot(card.includes('Score 88/100'), '1 no score/100');
   assert(card.includes('Ngũ Hành Sơn'), '1 location');
-  assert(card.includes('Mai Đăng Chơn'), '1 campaign');
-  assert(card.includes('🤖 AI RECOMMENDATION'), '1 ai');
-  assert(card.includes('📝 SIGNAL'), '1 signal');
-  assertNot(card.includes('\n—\n'), '1 no dash blanks');
+  assert(card.includes('NEXT ACTION'), '1 next action');
+  assert(card.includes('📌 Need'), '1 need');
   console.log('OK 1 full buyer');
 }
 
@@ -141,7 +142,7 @@ const baseSales = (over: Partial<SalesLayerProfile> = {}): SalesLayerProfile => 
     campaignName: 'Hòa Xuân',
   });
   assert(card.includes('🟡 WARM'), '2 warm');
-  assertNot(card.includes('💰 Ngân sách'), '2 hide budget');
+  assertNot(card.includes('💰'), '2 hide budget');
   assert(card.includes('Hòa Xuân'), '2 location');
   console.log('OK 2 missing budget');
 }
@@ -156,12 +157,12 @@ const baseSales = (over: Partial<SalesLayerProfile> = {}): SalesLayerProfile => 
     budgetMin: 3,
     budgetMax: 4,
   });
-  assertNot(card.includes('📍 Khu vực'), '3 hide location');
-  assert(card.includes('💰 Ngân sách'), '3 budget shown');
+  assertNot(card.includes('📍'), '3 hide location');
+  assert(card.includes('💰'), '3 budget shown');
   console.log('OK 3 missing location');
 }
 
-// 4. Missing campaign
+// 4. Missing campaign — still OK (campaign not a required card field)
 {
   const card = formatSalesActionCard({
     findingId: 'f4',
@@ -178,8 +179,8 @@ const baseSales = (over: Partial<SalesLayerProfile> = {}): SalesLayerProfile => 
     confidencePct: 65,
     location: 'Đà Nẵng',
   });
+  assert(card.includes('🎯 LEAD ALERT'), '4 header');
   assertNot(/Campaign:\s*$/m.test(card), '4 no blank campaign');
-  assertNot(card.includes('Campaign:'), '4 hide campaign section');
   console.log('OK 4 missing campaign');
 }
 
@@ -187,6 +188,7 @@ const baseSales = (over: Partial<SalesLayerProfile> = {}): SalesLayerProfile => 
 assert(classifyBuyerHeat(85).label === 'HOT', '5 hot');
 assert(classifyBuyerHeat(70).label === 'WARM', '6 warm');
 assert(classifyBuyerHeat(45).label === 'COLD', '7 cold');
+assert(classifyBuyerHeat(45).emoji === '🔵', '7 cold emoji');
 assert(classifyBuyerHeat(30).shouldAlert === false, '7 skip <40');
 assert(shouldSendBuyerAlert(40) === true, '7 cold alerts');
 assert(shouldSendBuyerAlert(39) === false, '7 skip');
@@ -228,8 +230,8 @@ console.log('OK 5-7 heat');
   console.log('OK 9 spam/low');
 }
 
-// 10 duplicate dedupe key shape (document)
-assert(`buyer_alert:finding-h22-full`.startsWith('buyer_alert:'), '10 dedupe key');
+// 10 durable NEW_LEAD dedupe key
+assert(leadAlertEventKey('finding-h22-full') === 'finding:finding-h22-full:telegram:new', '10 dedupe');
 console.log('OK 10 dedupe key');
 
 // 11–13 keyboard + callbacks
@@ -300,4 +302,4 @@ assert(resolveBuyerConfidencePct({ intentConfidence: 0.5 }) === 50, 'resolve int
   console.log('OK ask budget when missing');
 }
 
-console.log('\nPASS H2.2 Telegram Buyer Alert V2');
+console.log('\nPASS H2.2/H2.4.4 Telegram Buyer Alert V2');
