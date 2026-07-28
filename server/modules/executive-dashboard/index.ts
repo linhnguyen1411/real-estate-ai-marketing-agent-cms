@@ -24,7 +24,12 @@ export type {
   AttentionItem,
   QuickAction,
 } from './kpiTypes';
-export { buildExecutiveSnapshot, formatExecutiveDashboardLines } from './executiveService';
+export {
+  buildExecutiveSnapshot,
+  formatExecutiveDashboardLines,
+  listExecutiveDrilldown,
+} from './executiveService';
 export { buildExecutiveKpiDashboard } from './kpiService';
 export { evaluateSourceQuality } from './sourceQualityService';
+export { buildIntegrityBlock, scanSnapshotFakeMarkers, sourceAggregate } from './executiveIntegrityService';
 export { registerExecutiveDashboardRoutes } from './api/executiveRoutes';

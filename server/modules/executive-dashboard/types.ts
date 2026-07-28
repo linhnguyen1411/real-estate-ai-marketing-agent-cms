@@ -182,6 +182,30 @@ export type ExecutiveAction = {
   reason: string | null;
 };
 
+export type IntegrityCheck = {
+  name:
+    | 'buyers_today'
+    | 'qualified_today'
+    | 'urgent_buyers'
+    | 'pipeline_value'
+    | 'expected_revenue'
+    | 'source_leads'
+    | 'source_buyers'
+    | 'source_qualified'
+    | 'source_investors'
+    | 'source_status';
+  expected: number;
+  actual: number;
+  status: 'OK' | 'MISMATCH';
+};
+
+export type IntegrityBlock = {
+  status: 'OK' | 'MISMATCH';
+  checks: IntegrityCheck[];
+  mismatchCount: number;
+  generatedAt: string;
+};
+
 export type ExecutiveSnapshot = {
   version: 'executive_command_center_v2';
   generatedAt: string;
@@ -203,4 +227,5 @@ export type ExecutiveSnapshot = {
     available: ExecutiveAction[];
     unavailable: ExecutiveAction[];
   };
+  integrity: IntegrityBlock;
 };

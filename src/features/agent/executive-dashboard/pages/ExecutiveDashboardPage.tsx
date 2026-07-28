@@ -83,6 +83,12 @@ type Snapshot = {
     available: Array<{ id: string; label: string; href: string }>;
     unavailable: Array<{ id: string; label: string; reason: string | null }>;
   };
+  integrity: {
+    status: 'OK' | 'MISMATCH';
+    mismatchCount: number;
+    generatedAt: string;
+    checks: Array<{ name: string; expected: number; actual: number; status: 'OK' | 'MISMATCH' }>;
+  };
 };
 
 function stateBadge(s: RuntimeState): string {
@@ -201,6 +207,7 @@ export default function ExecutiveDashboardPage() {
       />
 
       <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Executive Summary</h3>
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-slate-100">AI SALES EMPLOYEE</p>
           <span className={`rounded border px-2 py-1 text-xs ${stateBadge(snap.ai.status)}`}>
@@ -216,12 +223,36 @@ export default function ExecutiveDashboardPage() {
         </p>
       </section>
 
+      {snap.integrity.status === 'MISMATCH' ? (
+        <section className="rounded-2xl border border-rose-700/60 bg-rose-950/20 p-4">
+          <p className="text-sm font-semibold text-rose-300">⚠ DATA MISMATCH</p>
+          <p className="text-xs text-rose-200">
+            Executive snapshot is inconsistent with source data.
+          </p>
+          <p className="mt-1 text-[11px] text-rose-200">
+            Checked at {fmtTime(snap.integrity.generatedAt)} · mismatches {snap.integrity.mismatchCount}
+          </p>
+          <div className="mt-2 space-y-1">
+            {snap.integrity.checks
+              .filter(c => c.status === 'MISMATCH')
+              .map(c => (
+                <p key={c.name} className="text-[11px] text-rose-200">
+                  {c.name}: expected {c.expected} / actual {c.actual}
+                </p>
+              ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Business Snapshot</h3>
       <section className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
         <Kpi label="BUYERS TODAY" value={snap.sales.buyersToday} href={snap.sales.links.buyersToday} />
         <Kpi label="QUALIFIED" value={snap.sales.qualifiedToday} href={snap.sales.links.qualifiedToday} />
         <Kpi label="URGENT BUYERS" value={snap.sales.urgentBuyers} href={snap.sales.links.urgentBuyers} tone="warn" />
         <Kpi label="PIPELINE" value={`${snap.sales.pipelineValue} tỷ`} href={snap.sales.links.pipeline} />
         <Kpi label="EXPECTED REVENUE" value={`${snap.sales.expectedRevenue} tỷ`} href={snap.sales.links.expectedRevenue} />
+      </section>
       </section>
 
       <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
@@ -390,6 +421,17 @@ export default function ExecutiveDashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent Scans</h3>
+        <div className="mt-2 space-y-2">
+          {snap.scanSchedule.slice(0, 8).map(r => (
+            <div key={`recent-${r.sourceId}`} className="rounded border border-slate-800 bg-slate-900/40 p-2 text-xs text-slate-300">
+              {r.sourceName} · {r.status.toUpperCase()} · leads {r.leads24h}
+            </div>
+          ))}
         </div>
       </section>
 

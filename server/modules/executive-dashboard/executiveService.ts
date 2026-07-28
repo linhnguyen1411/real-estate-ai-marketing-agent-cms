@@ -4,6 +4,7 @@
 
 import { prisma } from '../../prisma';
 import { evaluateSourceQuality } from './sourceQualityService';
+import { buildIntegrityBlock, scanSnapshotFakeMarkers, sourceAggregate } from './executiveIntegrityService';
 import type {
   AttentionItem,
   ComponentHealth,
@@ -15,8 +16,12 @@ import type {
   ScanState,
   SourcePerformanceRow,
 } from './types';
+import { aggregatePipelineValue } from '../sales-layer/pipelineValue';
+import { readAcquisitionProfile } from '../lead-acquisition';
+import { readSalesProfile, resolveSourceProvenance } from '../sales-layer';
 
 const STALE_AFTER_SECONDS = 120;
+const SALES_BATCH = 1000;
 
 function toIso(d: Date | null | undefined): string | null {
   return d ? d.toISOString() : null;
@@ -150,17 +155,77 @@ async function buildRecentBuyers(limit = 10): Promise<RecentBuyerRow[]> {
   return buyers;
 }
 
+type SalesFactRow = {
+  id: string;
+  sourceId: string | null;
+  sourceName: string | null;
+  sourceType: string | null;
+  createdAt: Date;
+  status: string;
+  budgetMin: bigint | null;
+  budgetMax: bigint | null;
+  askingPrice: bigint | null;
+  extractedData: unknown;
+};
+
+async function loadAllSalesFacts(): Promise<SalesFactRow[]> {
+  const out: SalesFactRow[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const rows = await prisma.agentFinding.findMany({
+      where: { type: 'lead_signal', status: { notIn: ['duplicate'] } },
+      orderBy: { id: 'asc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: SALES_BATCH,
+      select: {
+        id: true,
+        sourceId: true,
+        createdAt: true,
+        status: true,
+        budgetMin: true,
+        budgetMax: true,
+        askingPrice: true,
+        extractedData: true,
+        source: { select: { name: true, type: true } },
+      },
+    });
+    if (!rows.length) break;
+    for (const row of rows) {
+      out.push({
+        id: row.id,
+        sourceId: row.sourceId,
+        sourceName: row.source?.name || null,
+        sourceType: row.source?.type || null,
+        createdAt: row.createdAt,
+        status: row.status,
+        budgetMin: row.budgetMin,
+        budgetMax: row.budgetMax,
+        askingPrice: row.askingPrice,
+        extractedData: row.extractedData,
+      });
+    }
+    cursor = rows[rows.length - 1]?.id || null;
+    if (rows.length < SALES_BATCH) break;
+  }
+  return out;
+}
+
 export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
   const generatedAt = new Date();
   const todayStart = new Date(generatedAt);
   todayStart.setHours(0, 0, 0, 0);
   const last24h = new Date(Date.now() - 24 * 3600_000);
 
-  const [opsSnap, runtimeSnap, salesMetrics, urgentBundle, browserSessions, sources, sourceJobs, sourceCounts] =
+  const [
+    runtimeSnap,
+    browserSessions,
+    sources,
+    sourceJobs,
+    sourceCounts,
+    allSalesFacts,
+    sourceProvenanceRows,
+  ] =
     await Promise.all([
-      import('../control-plane/operationsService')
-        .then(m => m.opsGetOperationsMetrics({ refresh: false, reason: 'dashboard' }))
-        .catch(() => null),
       import('../../agent/runtimeObservability')
         .then(m =>
           m.buildAutomationRuntimeSnapshot({
@@ -170,12 +235,6 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
             role: 'owner',
           }),
         )
-        .catch(() => null),
-      import('../sales-layer')
-        .then(m => m.getSalesPipelineMetrics({ sinceHours: 24 * 30 }))
-        .catch(() => null),
-      import('../sales-layer')
-        .then(m => m.getUrgentBuyersBundle({ sinceHours: 24 * 30, page: 0, limit: 200 }))
         .catch(() => null),
       prisma.browserSession.findMany({
         select: { id: true, status: true, lastHeartbeatAt: true, lastError: true, updatedAt: true },
@@ -215,6 +274,18 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
         by: ['sourceId', 'status', 'classification'],
         where: { type: 'lead_signal' },
         _count: { _all: true },
+      }),
+      loadAllSalesFacts(),
+      prisma.agentFinding.findMany({
+        where: { type: 'lead_signal' },
+        orderBy: { createdAt: 'desc' },
+        take: 3000,
+        select: {
+          sourceId: true,
+          extractedData: true,
+          source: { select: { name: true, type: true } },
+          scannedContent: { select: { canonicalUrl: true } },
+        },
       }),
     ]);
 
@@ -334,9 +405,22 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
     jobsBySource.set(job.sourceId, arr);
   }
 
+  const provenanceBySource = new Map<string, { label: string | null; url: string | null }>();
+  for (const row of sourceProvenanceRows) {
+    if (!row.sourceId || provenanceBySource.has(row.sourceId)) continue;
+    const prov = resolveSourceProvenance({
+      extractedData: row.extractedData,
+      agentSourceName: row.source?.name || null,
+      agentSourceType: row.source?.type || null,
+      canonicalUrl: row.scannedContent?.canonicalUrl || null,
+    });
+    provenanceBySource.set(row.sourceId, { label: prov.label, url: prov.url });
+  }
+
   const sourcePerformance: SourcePerformanceRow[] = [];
   const scanSchedule: ScanScheduleRow[] = [];
   for (const source of sources) {
+    const prov = provenanceBySource.get(source.id);
     const jobs = (jobsBySource.get(source.id) || []).sort(
       (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
     );
@@ -409,9 +493,9 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
 
     sourcePerformance.push({
       sourceId: source.id,
-      sourceName: source.name,
+      sourceName: prov?.label || source.name,
       sourceType: source.type,
-      sourceUrl: source.url,
+      sourceUrl: prov?.url || source.url,
       status: source.status,
       priority: source.priority,
       qualityScore: quality.qualityScore,
@@ -502,11 +586,54 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
   });
 
   const recentBuyers = await buildRecentBuyers(10);
-  const buyersToday = recentBuyers.filter(b => Date.parse(b.createdAt) >= todayStart.getTime()).length;
-  const qualifiedToday = salesMetrics?.qualified || 0;
-  const urgentBuyers = urgentBundle?.total || salesMetrics?.urgentBuyers || 0;
-  const pipelineValue = salesMetrics?.pipelineValueTy || 0;
-  const expectedRevenue = salesMetrics?.expectedRevenueTy || 0;
+  const salesRows = allSalesFacts
+    .map(row => {
+      const acq = readAcquisitionProfile(row.extractedData);
+      const sales = readSalesProfile(row.extractedData);
+      if (!acq?.isBuyer || !sales) return null;
+      return {
+        id: row.id,
+        sourceId: row.sourceId,
+        sourceName: row.sourceName,
+        sourceType: row.sourceType,
+        createdAt: row.createdAt,
+        profile: sales,
+        acq,
+        budgetMin: row.budgetMin,
+        budgetMax: row.budgetMax,
+        askingPrice: row.askingPrice,
+      };
+    })
+    .filter((v): v is NonNullable<typeof v> => Boolean(v));
+
+  const buyersToday = salesRows.filter(r => r.createdAt >= todayStart).length;
+  const qualifiedStages = new Set([
+    'qualified',
+    'assigned',
+    'contacted',
+    'appointment',
+    'negotiating',
+    'won',
+  ]);
+  const qualifiedToday = salesRows.filter(
+    r => r.createdAt >= todayStart && qualifiedStages.has(r.profile.pipelineStage),
+  ).length;
+  const urgentBuyers = salesRows.filter(
+    r => String(r.profile.recommendation?.urgency || '') === 'urgent',
+  ).length;
+  const salesAgg = aggregatePipelineValue(
+    salesRows.map(r => ({
+      profile: r.profile,
+      budgetMin: r.budgetMin,
+      budgetMax: r.budgetMax,
+      askingPrice: r.askingPrice,
+      sourceId: r.sourceId,
+      sourceName: r.sourceName,
+      createdAt: r.createdAt,
+    })),
+  );
+  const pipelineValue = salesAgg.pipelineValueTy;
+  const expectedRevenue = salesAgg.expectedRevenueTy;
 
   const sourcesSummary = {
     total: sources.length,
@@ -631,7 +758,65 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
 
   const freshnessAgeSeconds = Math.max(0, Math.floor((Date.now() - generatedAt.getTime()) / 1000));
 
-  return {
+  const actualBySource = salesRows.reduce(
+    (acc, row) => {
+      const key = row.sourceId || '__unknown__';
+      const cur = acc.get(key) || { leads: 0, buyers: 0, qualified: 0, investors: 0 };
+      cur.leads += 1;
+      if (row.acq.isBuyer) cur.buyers += 1;
+      if (qualifiedStages.has(row.profile.pipelineStage)) cur.qualified += 1;
+      if (row.acq.persona.persona === 'investor') cur.investors += 1;
+      acc.set(key, cur);
+      return acc;
+    },
+    new Map<string, { leads: number; buyers: number; qualified: number; investors: number }>(),
+  );
+  const sourceKpiAgg = sourceAggregate(sourcePerformance);
+  const sourceActualAgg = [...actualBySource.values()].reduce(
+    (acc, row) => {
+      acc.leads += row.leads;
+      acc.buyers += row.buyers;
+      acc.qualified += row.qualified;
+      acc.investors += row.investors;
+      return acc;
+    },
+    { leads: 0, buyers: 0, qualified: 0, investors: 0 },
+  );
+
+  const sourceStatusActual = scanSchedule.filter(s =>
+    ['running', 'queued', 'queued_too_long', 'failed', 'offline', 'paused', 'stale', 'overdue'].includes(s.status),
+  ).length;
+  const sourceStatusKpi =
+    sourcesSummary.running +
+    sourcesSummary.queued +
+    sourcesSummary.failed +
+    sourcesSummary.offline +
+    sourcesSummary.paused;
+
+  const integrity = buildIntegrityBlock({
+    buyersTodayKpi: buyersToday,
+    buyersTodayActual: buyersToday,
+    qualifiedTodayKpi: qualifiedToday,
+    qualifiedTodayActual: qualifiedToday,
+    urgentKpi: urgentBuyers,
+    urgentActual: urgentBuyers,
+    pipelineKpi: Math.round(pipelineValue * 10) / 10,
+    pipelineActual: Math.round(salesAgg.pipelineValueTy * 10) / 10,
+    expectedRevenueKpi: Math.round(expectedRevenue * 10) / 10,
+    expectedRevenueActual: Math.round(salesAgg.expectedRevenueTy * 10) / 10,
+    sourceLeadsKpi: sourceKpiAgg.leads,
+    sourceLeadsActual: sourceActualAgg.leads,
+    sourceBuyersKpi: sourceKpiAgg.buyers,
+    sourceBuyersActual: sourceActualAgg.buyers,
+    sourceQualifiedKpi: sourceKpiAgg.qualified,
+    sourceQualifiedActual: sourceActualAgg.qualified,
+    sourceInvestorsKpi: sourceKpiAgg.investors,
+    sourceInvestorsActual: sourceActualAgg.investors,
+    sourceStatusKpi,
+    sourceStatusActual,
+  });
+
+  const draftSnapshot: ExecutiveSnapshot = {
     version: 'executive_command_center_v2',
     generatedAt: generatedAt.toISOString(),
     freshness: {
@@ -670,7 +855,77 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
       available: actionsAll.filter(a => a.available),
       unavailable: actionsAll.filter(a => !a.available),
     },
+    integrity,
   };
+  const markerHits = scanSnapshotFakeMarkers(draftSnapshot);
+  if (markerHits.length > 0) {
+    draftSnapshot.integrity.status = 'MISMATCH';
+    draftSnapshot.integrity.mismatchCount += 1;
+    draftSnapshot.attention.unshift({
+      severity: 'critical',
+      title: 'Forbidden marker detected',
+      detail: markerHits[0]!,
+      actionLabel: null,
+      actionHref: null,
+    });
+  }
+  if (draftSnapshot.integrity.status === 'MISMATCH') {
+    draftSnapshot.attention.unshift({
+      severity: 'critical',
+      title: 'DATA MISMATCH',
+      detail: 'Executive snapshot is inconsistent with source data.',
+      actionLabel: 'Review Lead Center',
+      actionHref: '/admin/agents/lead-center',
+    });
+  }
+  return draftSnapshot;
+}
+
+export async function listExecutiveDrilldown(input: {
+  kind: 'buyers' | 'qualified' | 'urgent' | 'investor' | 'tenant';
+  page?: number;
+  limit?: number;
+}) {
+  const page = Math.max(0, input.page || 0);
+  const limit = Math.min(200, Math.max(10, input.limit || 50));
+  const rows = await loadAllSalesFacts();
+  const filtered = rows
+    .map(row => {
+      const acq = readAcquisitionProfile(row.extractedData);
+      const sales = readSalesProfile(row.extractedData);
+      if (!acq?.isBuyer || !sales) return null;
+      return { row, acq, sales };
+    })
+    .filter((v): v is NonNullable<typeof v> => Boolean(v))
+    .filter(v => {
+      if (input.kind === 'buyers') return true;
+      if (input.kind === 'qualified') {
+        return ['qualified', 'assigned', 'contacted', 'appointment', 'negotiating', 'won'].includes(
+          v.sales.pipelineStage,
+        );
+      }
+      if (input.kind === 'urgent') return v.sales.recommendation.urgency === 'urgent';
+      if (input.kind === 'investor') return v.acq.persona.persona === 'investor';
+      if (input.kind === 'tenant') return v.acq.persona.persona === 'rental';
+      return false;
+    });
+
+  const total = filtered.length;
+  const items = filtered
+    .sort((a, b) => b.row.createdAt.getTime() - a.row.createdAt.getTime())
+    .slice(page * limit, page * limit + limit)
+    .map(v => ({
+      findingId: v.row.id,
+      title: v.row.id,
+      sourceId: v.row.sourceId,
+      sourceName: v.row.sourceName,
+      createdAt: v.row.createdAt.toISOString(),
+      urgency: v.sales.recommendation.urgency,
+      pipelineStage: v.sales.pipelineStage,
+      persona: v.acq.persona.persona,
+      openLink: `/admin/agents/lead-center?findingId=${encodeURIComponent(v.row.id)}`,
+    }));
+  return { total, page, limit, items };
 }
 
 export function formatExecutiveDashboardLines(snap: ExecutiveSnapshot): string[] {

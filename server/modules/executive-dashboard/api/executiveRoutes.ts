@@ -3,7 +3,11 @@
  */
 
 import type { Express, Request, Response } from 'express';
-import { buildExecutiveSnapshot, formatExecutiveDashboardLines } from '../executiveService';
+import {
+  buildExecutiveSnapshot,
+  formatExecutiveDashboardLines,
+  listExecutiveDrilldown,
+} from '../executiveService';
 import { prisma } from '../../../prisma';
 
 function sendError(res: Response, status: number, message: string) {
@@ -78,6 +82,39 @@ export function registerExecutiveDashboardRoutes(app: Express): void {
       res.json({ status: 'success', data });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Source history failed');
+    }
+  });
+
+  app.get('/api/executive/buyers', async (req: Request, res: Response) => {
+    try {
+      const page = Number(req.query.page || 0);
+      const limit = Number(req.query.limit || 50);
+      const data = await listExecutiveDrilldown({ kind: 'buyers', page, limit });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Executive buyers failed');
+    }
+  });
+
+  app.get('/api/executive/qualified', async (req: Request, res: Response) => {
+    try {
+      const page = Number(req.query.page || 0);
+      const limit = Number(req.query.limit || 50);
+      const data = await listExecutiveDrilldown({ kind: 'qualified', page, limit });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Executive qualified failed');
+    }
+  });
+
+  app.get('/api/executive/urgent-buyers', async (req: Request, res: Response) => {
+    try {
+      const page = Number(req.query.page || 0);
+      const limit = Number(req.query.limit || 50);
+      const data = await listExecutiveDrilldown({ kind: 'urgent', page, limit });
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Executive urgent failed');
     }
   });
 }
