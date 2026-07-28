@@ -4,10 +4,14 @@
  */
 
 export type {
-  ExecutiveTask,
-  ExecutiveAttention,
-  ExecutiveCampaignCard,
-  ExecutiveFunnel,
+  FreshnessBlock,
+  RuntimeHealth,
+  SalesSnapshot,
+  SourcesSummary,
+  SourcePerformanceRow,
+  ScanScheduleRow,
+  AttentionItem as ExecutiveAttentionItem,
+  ExecutiveAction,
   ExecutiveSnapshot,
 } from './types';
 export type {
@@ -22,4 +26,5 @@ export type {
 } from './kpiTypes';
 export { buildExecutiveSnapshot, formatExecutiveDashboardLines } from './executiveService';
 export { buildExecutiveKpiDashboard } from './kpiService';
+export { evaluateSourceQuality } from './sourceQualityService';
 export { registerExecutiveDashboardRoutes } from './api/executiveRoutes';

@@ -4,6 +4,7 @@
 
 import type { Express, Request, Response } from 'express';
 import { buildExecutiveSnapshot, formatExecutiveDashboardLines } from '../executiveService';
+import { prisma } from '../../../prisma';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -27,6 +28,56 @@ export function registerExecutiveDashboardRoutes(app: Express): void {
       });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Briefing failed');
+    }
+  });
+
+  app.get('/api/executive/sources/:id/performance', async (req: Request, res: Response) => {
+    try {
+      const snap = await buildExecutiveSnapshot();
+      const row = snap.sourcePerformance.find(s => s.sourceId === req.params.id);
+      if (!row) return sendError(res, 404, 'Source not found in executive snapshot');
+      res.json({ status: 'success', data: row });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Source performance failed');
+    }
+  });
+
+  app.get('/api/executive/sources/:id/history', async (req: Request, res: Response) => {
+    try {
+      const sourceId = String(req.params.id || '').trim();
+      const limit = Math.min(200, Math.max(10, Number(req.query.limit || 50)));
+      const jobs = await prisma.agentJob.findMany({
+        where: {
+          sourceId,
+          type: { in: ['scan_source', 'source_scan'] },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          startedAt: true,
+          finishedAt: true,
+          updatedAt: true,
+          errorMessage: true,
+        },
+      });
+      const data = jobs.map(j => ({
+        jobId: j.id,
+        status: j.status,
+        startedAt: j.startedAt ? j.startedAt.toISOString() : null,
+        finishedAt: j.finishedAt ? j.finishedAt.toISOString() : null,
+        updatedAt: j.updatedAt.toISOString(),
+        durationMs:
+          j.startedAt && (j.finishedAt || j.updatedAt)
+            ? (j.finishedAt || j.updatedAt).getTime() - j.startedAt.getTime()
+            : null,
+        error: j.errorMessage || null,
+      }));
+      res.json({ status: 'success', data });
+    } catch (error: unknown) {
+      sendError(res, 500, error instanceof Error ? error.message : 'Source history failed');
     }
   });
 }
