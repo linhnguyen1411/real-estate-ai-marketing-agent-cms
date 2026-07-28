@@ -96,7 +96,7 @@ async function main() {
 
   const companyId = await resolveCompanyId();
   const permalink =
-    'https://www.facebook.com/groups/h244buyer/posts/1785201214344';
+    'https://www.facebook.com/groups/214748364712345/posts/1785201214344';
   const groupName = 'HỘI MUA BÁN NHÀ VÀ ĐẤT ĐÀ NẴNG';
   const campaignLabel = 'h2.4.4-unify-lead-alert buyer';
 
@@ -105,7 +105,7 @@ async function main() {
       companyId,
       name: `${MARKER} ${campaignLabel}`,
       type: 'facebook_group',
-      url: 'https://www.facebook.com/groups/h244buyer',
+      url: 'https://www.facebook.com/groups/214748364712345',
       status: 'active',
     },
   });

@@ -100,7 +100,7 @@ async function createFinding(input: {
     data: {
       companyId: input.companyId,
       sourceId: src.id,
-      canonicalUrl: `https://www.facebook.com/groups/h246${input.suffix}/posts/${Date.now()}`,
+      canonicalUrl: `https://www.facebook.com/groups/2147483647${input.suffix === 'buyer' ? '12345' : input.suffix === 'tenant' ? '23456' : '34567'}/posts/${Date.now()}`,
       contentText: input.text,
       contentHash: createHash('sha256')
         .update(`${MARKER}:${input.suffix}:${Date.now()}`)

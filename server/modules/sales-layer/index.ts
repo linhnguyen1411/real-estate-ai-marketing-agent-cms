@@ -45,6 +45,10 @@ export {
   buildLeadNeed,
   buildSalesActionCardViewModel,
   resolveSourceProvenance,
+  resolveLeadSource,
+  validateSourceProvenance,
+  isTrustedContentUrl,
+  looksLikeConfigSourceName,
   toTelUri,
   stripInternalPollution,
 } from './telegramSalesCard';

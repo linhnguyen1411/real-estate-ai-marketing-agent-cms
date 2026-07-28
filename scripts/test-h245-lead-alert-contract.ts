@@ -17,7 +17,7 @@ import { callbackDataToCommand } from '../server/modules/control-plane/inlineKey
 const FIXTURE = {
   campaign: 'h2.4.4-unify-lead-alert buyer',
   groupName: 'HỘI MUA BÁN NHÀ VÀ ĐẤT ĐÀ NẴNG',
-  permalink: 'https://www.facebook.com/groups/h244buyer/posts/1785201214344',
+  permalink: 'https://www.facebook.com/groups/214748364712345/posts/1785201214344',
   phone: '0905111001',
   location: 'Ngũ Hành Sơn',
   propertyType: 'đất nền',

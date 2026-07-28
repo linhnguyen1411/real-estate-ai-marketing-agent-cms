@@ -269,6 +269,7 @@ export async function notifyFindingIfEligible(input: {
       resolveBuyerConfidencePct,
       shouldSendBuyerAlert,
       resolveLeadAlertRole,
+      isTrustedContentUrl,
     } = await import('../modules/sales-layer');
 
     let acq = readAcquisitionProfile(finding.extractedData);
@@ -330,12 +331,14 @@ export async function notifyFindingIfEligible(input: {
     const openPostHint = finding.scannedContent?.canonicalUrl || null;
 
     const roleResolved = role || 'buyer';
+    // H2.4.7 — content provenance only; never re-apply unvalidated AgentSource / fabricated URL
     const sourceProv = resolveSourceProvenance({
       extractedData: finding.extractedData,
       agentSourceName: finding.source?.name,
       agentSourceType: finding.source?.type,
       canonicalUrl: openPostHint,
     });
+    const sourceUrlFinal = sourceProv.url; // fail closed — no openPostHint bypass
 
     const text = formatSalesActionCard({
       findingId: finding.id,
@@ -354,7 +357,7 @@ export async function notifyFindingIfEligible(input: {
       extractedData: finding.extractedData,
       agentSourceName: finding.source?.name,
       agentSourceType: finding.source?.type,
-      sourceUrl: sourceProv.url || openPostHint,
+      sourceUrl: sourceUrlFinal,
       title: finding.title,
       needSummary: finding.needSummary,
       summary: finding.summary,
@@ -363,7 +366,6 @@ export async function notifyFindingIfEligible(input: {
       whyReasons: acq?.intent.reasons,
     });
 
-    const sourceUrlFinal = sourceProv.url || openPostHint;
     let replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,
       sourceUrl: sourceUrlFinal,
@@ -416,9 +418,18 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
+    // Re-validate after link normalizer — never attach untrusted URL to Source button
+    const keyboardSourceUrl =
+      [openPost, openGroup, sourceUrlFinal].find(u =>
+        isTrustedContentUrl(u, {
+          agentSourceName: finding.source?.name,
+          platform: sourceProv.platform,
+        }),
+      ) || null;
+
     replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,
-      sourceUrl: sourceProv.url || openPost || openGroup,
+      sourceUrl: keyboardSourceUrl,
       leadCenterUrl: buildLeadCenterUrl(finding.id),
       hasPhone: Boolean(finding.primaryPhone),
       phone: finding.primaryPhone,

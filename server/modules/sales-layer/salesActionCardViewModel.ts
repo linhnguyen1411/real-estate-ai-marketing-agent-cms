@@ -11,7 +11,14 @@ export type LeadAlertRole = 'buyer' | 'tenant' | 'investor';
 
 /** Internal / campaign markers that must never appear on Sales card copy. */
 const POLLUTION_RE =
-  /\b(?:h\d+(?:\.\d+)*[-_][\w-]+|unify-lead-alert|finding[_-]?id|lead[_-]?id|mission[_-]?id|task[_-]?id|trace[_-]?id|campaign[_-]?id|cms\w{20,}|tmp[-_]|probe[-_]|test[-_]campaign)\b/gi;
+  /\b(?:h\d+(?:\.\d+)*[-_][\w-]+|unify-lead-alert|finding[_-]?id|lead[_-]?id|mission[_-]?id|task[_-]?id|trace[_-]?id|campaign[_-]?id|cms\w{20,}|tmp[-_]|probe[-_]|test[-_]campaign|product[-_]?v?\d+|prodv\d+|h2\.4\.\d+)\b/gi;
+
+/** Config / test source slugs — never use as content provenance. */
+const CONFIG_SOURCE_NAME_RE =
+  /(?:^|[\s/_-])(?:prodv\d+|product[-_]?v?\d+(?:[-_][\w]+)?|h\d+(?:\.\d+)+[-_][\w-]+|unify-lead-alert|tmp[-_]|probe[-_]|test[-_](?:campaign|source|group)?|deploy[-_]?smoke|h246|h247)(?:$|[\s/_-])/i;
+
+const FORBIDDEN_URL_SEGMENT_RE =
+  /(?:^|\/)(?:prodv\d+|product[-_]?v?\d+|h2\.4\.\d+|h24[4-7][a-z0-9_-]*|unify-lead-alert|tmp[-_]|probe[-_]|test[-_](?:campaign|source|group)|deploy[-_]?smoke)(?:\/|$)/i;
 
 export type SalesActionCardViewModel = {
   findingId: string;
@@ -51,13 +58,26 @@ export function looksLikeInternalLabel(value: string | null | undefined): boolea
   const v = String(value).trim();
   if (!v) return false;
   return (
-    /\b(?:h\d+(?:\.\d+)*[-_][\w-]+|unify-lead-alert|finding[_-]?id|lead[_-]?id|mission[_-]?id|task[_-]?id|trace[_-]?id|campaign[_-]?id|cms\w{20,}|tmp[-_]|probe[-_]|test[-_]campaign)\b/i.test(
+    /\b(?:h\d+(?:\.\d+)*[-_][\w-]+|unify-lead-alert|finding[_-]?id|lead[_-]?id|mission[_-]?id|task[_-]?id|trace[_-]?id|campaign[_-]?id|cms\w{20,}|tmp[-_]|probe[-_]|test[-_]campaign|product[-_]?v?\d+|prodv\d+)\b/i.test(
       v,
     ) ||
     /\bh\d+\.\d+/i.test(v) ||
     /unify-lead-alert/i.test(v) ||
+    CONFIG_SOURCE_NAME_RE.test(v) ||
     /^test\b/i.test(v)
   );
+}
+
+/** AgentSource.name / campaign slug used as scanner config — not content provenance. */
+export function looksLikeConfigSourceName(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = String(value).trim();
+  if (!v) return false;
+  if (looksLikeInternalLabel(v)) return true;
+  if (CONFIG_SOURCE_NAME_RE.test(v)) return true;
+  // ASCII slug without spaces (e.g. prodv100, fb-nhs-scan) — config, not display group title
+  if (/^[a-z0-9][a-z0-9_-]{1,48}$/i.test(v) && !/\s/.test(v)) return true;
+  return false;
 }
 
 /** VN phone → tel:+84… ; keep leading 0 semantics via +84 strip. */
@@ -94,13 +114,19 @@ type SourceMeta = {
   url: string | null;
 };
 
-function readExtractedSource(extractedData: unknown): {
+type ExtractedSourceFields = {
   groupName?: string;
+  pageName?: string;
   groupUrl?: string;
   postUrl?: string;
+  permalink?: string;
+  url?: string;
+  canonicalUrl?: string;
   platform?: string;
   sourceName?: string;
-} {
+};
+
+function readExtractedSource(extractedData: unknown): ExtractedSourceFields {
   if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
     return {};
   }
@@ -109,61 +135,215 @@ function readExtractedSource(extractedData: unknown): {
     root.source && typeof root.source === 'object' && !Array.isArray(root.source)
       ? (root.source as Record<string, unknown>)
       : {};
+  const str = (k: string) => (typeof src[k] === 'string' ? (src[k] as string) : undefined);
   return {
-    groupName: typeof src.groupName === 'string' ? src.groupName : undefined,
-    groupUrl: typeof src.groupUrl === 'string' ? src.groupUrl : undefined,
-    postUrl: typeof src.postUrl === 'string' ? src.postUrl : undefined,
-    platform: typeof src.platform === 'string' ? src.platform : undefined,
-    sourceName: typeof src.sourceName === 'string' ? src.sourceName : undefined,
+    groupName: str('groupName'),
+    pageName: str('pageName'),
+    groupUrl: str('groupUrl'),
+    postUrl: str('postUrl'),
+    permalink: str('permalink'),
+    url: str('url'),
+    canonicalUrl: str('canonicalUrl'),
+    platform: str('platform'),
+    sourceName: str('sourceName'),
   };
 }
 
+function isHttpsUrl(raw: string | null | undefined): raw is string {
+  return Boolean(raw && /^https:\/\//i.test(String(raw).trim()));
+}
+
+function normalizeHttpUrl(raw: string): string {
+  return String(raw).trim().split('#')[0]!.replace(/\/$/, '');
+}
+
 /**
- * Source = where the lead was discovered (post/group), NOT campaign.
+ * Reject fabricated / test / config URLs. Fail closed → null.
  */
-export function resolveSourceProvenance(input: {
-  extractedData?: unknown;
-  agentSourceName?: string | null;
-  agentSourceType?: string | null;
-  canonicalUrl?: string | null;
-}): SourceMeta & { label: string | null } {
-  const ed = readExtractedSource(input.extractedData);
-  const agentName = (input.agentSourceName || '').trim();
-  const agentType = (input.agentSourceType || '').trim().toLowerCase();
-
-  const nameCandidate =
-    ed.groupName ||
-    ed.sourceName ||
-    (!looksLikeInternalLabel(agentName) ? agentName : null) ||
-    null;
-
-  const name = nameCandidate ? stripInternalPollution(nameCandidate) : null;
-
-  let platform: string | null = ed.platform || null;
-  if (!platform) {
-    if (agentType.includes('facebook') || agentType.includes('group')) platform = 'Facebook';
-    else if (agentType.includes('web')) platform = 'Website';
-    else if (agentType) platform = agentType;
-    else if (name) platform = 'Facebook';
+export function isTrustedContentUrl(
+  url: string | null | undefined,
+  opts?: { agentSourceName?: string | null; platform?: string | null },
+): boolean {
+  if (!isHttpsUrl(url)) return false;
+  const u = normalizeHttpUrl(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return false;
   }
+  const host = parsed.hostname.toLowerCase();
+  const path = `${parsed.pathname}${parsed.search}`.toLowerCase();
+  const full = u.toLowerCase();
+
+  if (FORBIDDEN_URL_SEGMENT_RE.test(path) || FORBIDDEN_URL_SEGMENT_RE.test(full)) return false;
+  if (/prodv\d+|product[-_]?v?\d+|unify-lead-alert|h2\.4\.\d+/i.test(full)) return false;
+
+  const agent = (opts?.agentSourceName || '').trim().toLowerCase();
+  if (agent && looksLikeConfigSourceName(agent)) {
+    // Config slug must not appear as a Facebook group/path segment
+    const slug = agent.replace(/\s+/g, '');
+    if (slug.length >= 3 && (path.includes(`/${slug}/`) || path.includes(`/${slug}`))) {
+      return false;
+    }
+  }
+
+  const platform = (opts?.platform || '').toLowerCase();
+  if (platform.includes('facebook') || /facebook\.com|fb\.com/i.test(host)) {
+    if (!/facebook\.com|fb\.com|fb\.watch/i.test(host)) return false;
+  }
+
+  return true;
+}
+
+export type SourceProvenanceResult = SourceMeta & {
+  label: string | null;
+  valid: boolean;
+  reason: string | null;
+};
+
+/**
+ * Validate resolved provenance before render / keyboard.
+ * Invalid URL → fail closed (url=null). Invalid name → drop name, keep platform.
+ */
+export function validateSourceProvenance(
+  meta: SourceMeta & { label?: string | null },
+  opts?: { agentSourceName?: string | null },
+): SourceProvenanceResult {
+  let platform = meta.platform;
+  let name = meta.name;
+  let url = meta.url;
+  let reason: string | null = null;
+
+  if (name && (looksLikeInternalLabel(name) || looksLikeConfigSourceName(name))) {
+    reason = 'config_source_name';
+    name = null;
+  }
+  if (name) {
+    name = stripInternalPollution(name);
+    if (name && looksLikeConfigSourceName(name)) {
+      reason = reason || 'config_source_name';
+      name = null;
+    }
+  }
+
+  if (url) {
+    if (!isTrustedContentUrl(url, { agentSourceName: opts?.agentSourceName, platform })) {
+      reason = reason || 'untrusted_source_url';
+      url = null;
+    }
+  }
+
   if (platform && /facebook/i.test(platform)) platform = 'Facebook';
-
-  let type: string | null = null;
-  if (agentType.includes('group') || ed.groupName) type = 'group_post';
-  else if (agentType) type = agentType;
-
-  const url =
-    (input.canonicalUrl && /^https:\/\//i.test(input.canonicalUrl) ? input.canonicalUrl : null) ||
-    (ed.postUrl && /^https:\/\//i.test(ed.postUrl) ? ed.postUrl : null) ||
-    null;
 
   let label: string | null = null;
   if (platform && name) label = `${platform} · ${name}`;
   else if (name) label = name;
   else if (platform) label = platform;
 
-  return { platform, type, name, url, label };
+  const valid = Boolean(label) && (url == null || isTrustedContentUrl(url, { platform }));
+  return {
+    platform,
+    type: meta.type,
+    name,
+    url,
+    label,
+    valid,
+    reason,
+  };
 }
+
+/**
+ * Canonical lead content provenance resolver (H2.4.7).
+ * Uses content provenance (B), never scanner/campaign config (A) as Source.
+ *
+ * URL priority:
+ * 1. extracted permalink / postUrl
+ * 2. scannedContent.canonicalUrl
+ * 3. extracted canonicalUrl / url
+ *
+ * Name priority:
+ * 1. groupName / pageName from content metadata
+ * 2. never AgentSource.name when config-like
+ */
+export function resolveSourceProvenance(input: {
+  extractedData?: unknown;
+  agentSourceName?: string | null;
+  agentSourceType?: string | null;
+  canonicalUrl?: string | null;
+}): SourceProvenanceResult {
+  const ed = readExtractedSource(input.extractedData);
+  const agentName = (input.agentSourceName || '').trim();
+  const agentType = (input.agentSourceType || '').trim().toLowerCase();
+
+  let platform: string | null = ed.platform || null;
+  if (!platform) {
+    if (agentType.includes('facebook') || agentType.includes('group')) platform = 'Facebook';
+    else if (agentType.includes('web')) platform = 'Website';
+    else if (agentType) platform = agentType;
+  }
+  if (platform && /facebook/i.test(platform)) platform = 'Facebook';
+
+  // Content display name — never config AgentSource.name / extracted sourceName echo of config
+  const contentNameRaw =
+    ed.groupName ||
+    ed.pageName ||
+    null;
+  let name: string | null = null;
+  if (contentNameRaw && !looksLikeConfigSourceName(contentNameRaw)) {
+    name = stripInternalPollution(contentNameRaw);
+  }
+  // Fallback: human AgentSource title (real group title configured as name) — never slug/config
+  if (!name && agentName && !looksLikeConfigSourceName(agentName)) {
+    name = stripInternalPollution(agentName);
+  }
+  // Do NOT use ed.sourceName when it mirrors AgentSource config
+  if (
+    !name &&
+    ed.sourceName &&
+    !looksLikeConfigSourceName(ed.sourceName) &&
+    ed.sourceName !== agentName
+  ) {
+    name = stripInternalPollution(ed.sourceName);
+  }
+
+  if (!platform && name) platform = 'Facebook';
+
+  let type: string | null = null;
+  if (agentType.includes('group') || ed.groupName) type = 'group_post';
+  else if (agentType) type = agentType;
+
+  const urlCandidates = [
+    ed.permalink,
+    ed.postUrl,
+    input.canonicalUrl,
+    ed.canonicalUrl,
+    ed.url,
+  ];
+
+  let url: string | null = null;
+  for (const candidate of urlCandidates) {
+    if (!isHttpsUrl(candidate)) continue;
+    const normalized = normalizeHttpUrl(candidate);
+    if (
+      isTrustedContentUrl(normalized, {
+        agentSourceName: agentName || ed.sourceName,
+        platform,
+      })
+    ) {
+      url = normalized;
+      break;
+    }
+  }
+
+  return validateSourceProvenance(
+    { platform, type, name, url },
+    { agentSourceName: agentName },
+  );
+}
+
+/** Alias — single canonical resolver (no V2). */
+export const resolveLeadSource = resolveSourceProvenance;
 
 const TIMELINE_LABEL: Record<string, string> = {
   buying_today: 'Trong hôm nay',
@@ -327,6 +507,7 @@ export function buildSalesActionCardViewModel(input: {
 export function assertCardHasNoInternalLeakage(cardText: string): string[] {
   const leaks: string[] = [];
   if (/h2\.4\.4-unify-lead-alert/i.test(cardText)) leaks.push('campaign_marker');
+  if (/prodv\d+|product[-_]?v?\d+/i.test(cardText)) leaks.push('test_source_slug');
   if (/findingId|leadId|missionId|taskId|traceId/i.test(cardText)) leaks.push('id_token');
   if (/\bmission\b|\btask\b|\btrace\b/i.test(cardText) && /id[=:]/i.test(cardText)) {
     leaks.push('internal_id');

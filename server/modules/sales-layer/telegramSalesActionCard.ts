@@ -26,6 +26,10 @@ export {
   buildSalesActionCardViewModel,
   formatDisplayPhone,
   resolveSourceProvenance,
+  resolveLeadSource,
+  validateSourceProvenance,
+  isTrustedContentUrl,
+  looksLikeConfigSourceName,
   stripInternalPollution,
   toTelUri,
 } from './salesActionCardViewModel';
@@ -477,10 +481,9 @@ export function salesActionCardKeyboard(input: {
   } else {
     mid.push({ text: '👤 Open Lead', callback_data: `l:n:${id}` });
   }
+  // H2.4.7 — Source button only when trusted content permalink exists (never fabricate)
   if (input.sourceUrl && /^https:\/\//i.test(input.sourceUrl)) {
     mid.push({ text: '🔗 Source', url: input.sourceUrl });
-  } else {
-    mid.push({ text: '🔗 Source', callback_data: `l:u:${id}` });
   }
   rows.push(mid);
 

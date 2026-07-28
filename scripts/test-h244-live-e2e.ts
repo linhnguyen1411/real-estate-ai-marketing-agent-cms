@@ -73,7 +73,7 @@ async function createTestFinding(input: {
       companyId: input.companyId,
       name: `${MARKER} ${input.suffix}`,
       type: 'facebook_group',
-      url: `https://www.facebook.com/groups/h244${input.suffix}`,
+      url: `https://www.facebook.com/groups/2147483647${input.suffix === 'buyer' ? '1' : '2'}`,
       status: 'active',
     },
   });
@@ -81,7 +81,7 @@ async function createTestFinding(input: {
     data: {
       companyId: input.companyId,
       sourceId: src.id,
-      canonicalUrl: `https://www.facebook.com/groups/h244${input.suffix}/posts/${Date.now()}`,
+      canonicalUrl: `https://www.facebook.com/groups/2147483647${input.suffix === 'buyer' ? '1' : '2'}/posts/${Date.now()}`,
       contentText: input.text,
       contentHash: createHash('sha256')
         .update(`${MARKER}:${input.suffix}:${Date.now()}`)
@@ -114,7 +114,7 @@ async function createTestFinding(input: {
         marker: MARKER,
         source: {
           groupName: 'HỘI MUA BÁN NHÀ VÀ ĐẤT ĐÀ NẴNG',
-          groupUrl: `https://www.facebook.com/groups/h244${input.suffix}`,
+          groupUrl: `https://www.facebook.com/groups/2147483647${input.suffix === 'buyer' ? '1' : '2'}`,
         },
       },
     },
