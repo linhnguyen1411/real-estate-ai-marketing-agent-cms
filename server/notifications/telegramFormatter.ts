@@ -129,10 +129,22 @@ export function formatLeadTelegramAlert(
     propertyType: propertyLabel || finding.propertyType,
     location,
     budgetMin: includeBudget
-      ? (resolved?.demand.buyerBudgetMin ?? finding.budgetMin ?? null)
+      ? (() => {
+          const raw = resolved?.demand.buyerBudgetMin ?? finding.budgetMin ?? null;
+          if (raw == null) return null;
+          if (typeof raw === 'bigint') return raw;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : null;
+        })()
       : null,
     budgetMax: includeBudget
-      ? (resolved?.demand.buyerBudgetMax ?? finding.budgetMax ?? null)
+      ? (() => {
+          const raw = resolved?.demand.buyerBudgetMax ?? finding.budgetMax ?? null;
+          if (raw == null) return null;
+          if (typeof raw === 'bigint') return raw;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : null;
+        })()
       : null,
     sourceLabel: groupName ? `Group: ${String(groupName).slice(0, 200)}` : null,
     title: finding.title,
