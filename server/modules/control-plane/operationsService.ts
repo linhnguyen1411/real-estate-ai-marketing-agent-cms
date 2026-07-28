@@ -966,10 +966,16 @@ export async function opsLeadOpen(findingId: string, triggeredBy: string) {
   return { findingId: id, url, lines };
 }
 
-/** Source metadata when no URL button */
+/** Source metadata + openable permalink button when available */
 export async function opsLeadSource(findingId: string, triggeredBy: string) {
   const id = await resolveFindingId(findingId);
-  const { recordSalesAction, resolveSourceProvenance } = await import('../sales-layer');
+  const {
+    recordSalesAction,
+    resolveSourceProvenance,
+    isTrustedContentUrl,
+  } = await import('../sales-layer');
+  const { isSolidFacebookPermalink, isDegradedFacebookUrl, toMobileFriendlyFacebookUrl } =
+    await import('../link-normalization');
   const finding = await prisma.agentFinding.findUnique({
     where: { id },
     select: {
@@ -987,18 +993,39 @@ export async function opsLeadSource(findingId: string, triggeredBy: string) {
     agentSourceType: finding.source?.type,
     canonicalUrl: finding.scannedContent?.canonicalUrl || null,
   });
+
+  const candidates = [prov.url, finding.scannedContent?.canonicalUrl];
+  const openUrl =
+    candidates
+      .map(u => (u ? toMobileFriendlyFacebookUrl(u) || u : null))
+      .find(
+        u =>
+          u &&
+          !isDegradedFacebookUrl(u) &&
+          isSolidFacebookPermalink(u) &&
+          isTrustedContentUrl(u, {
+            agentSourceName: finding.source?.name,
+            platform: prov.platform,
+          }),
+      ) || null;
+
   await recordSalesAction({
     findingId: id,
     action: 'source',
     actor: triggeredBy,
-    result: prov.url || prov.name || 'no_url',
+    result: openUrl || prov.url || prov.name || 'no_url',
   }).catch(() => null);
 
   const lines = [
     `🔗 Source · ${prov.label || 'Không rõ nguồn'}`,
-    prov.url ? `URL · ${prov.url}` : '🔗 Không có permalink nguồn.',
+    openUrl ? `URL · ${openUrl}` : '🔗 Không có permalink bài viết nguồn.',
   ];
-  return { findingId: id, url: prov.url, lines };
+
+  const replyMarkup = openUrl
+    ? { inline_keyboard: [[{ text: '🔗 Mở bài gốc', url: openUrl }]] }
+    : undefined;
+
+  return { findingId: id, url: openUrl, lines, replyMarkup };
 }
 
 /** H3.5 — Buyer journey / timeline history */

@@ -588,7 +588,7 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       }
       if (action === 'source') {
         const r = await opsLeadSource(id, ctx.triggeredBy);
-        return ok('lead', r.lines, r);
+        return ok('lead', r.lines, r, r.replyMarkup);
       }
       const r = await opsLeadRetryNotify(id);
       if (!r.ok) {

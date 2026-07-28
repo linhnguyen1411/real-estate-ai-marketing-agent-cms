@@ -73,7 +73,9 @@ export function formatMoney(value: string | number | null | undefined): string {
 
 export function hasOriginalPostUrl(url?: string | null): boolean {
   if (!url) return false;
-  return /\/posts\/\d+/.test(url) && !url.includes('#gql-');
+  if (url.includes('#gql-')) return false;
+  // Numeric and pfbid Facebook post permalinks
+  return /\/posts\/(?:pfbid[\w]+|\d+)/i.test(url) || /\/permalink\/\d+/i.test(url);
 }
 
 export function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {

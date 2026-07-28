@@ -2,7 +2,13 @@ import { Prisma } from '@prisma/client';
 import { getSettings } from '../dbHelper';
 import { prisma } from '../prisma';
 import type { AppSettings } from '../../src/types';
-import { normalizeSocialLinks, verifySocialLinks } from '../modules/link-normalization';
+import {
+  isDegradedFacebookUrl,
+  isSolidFacebookPermalink,
+  normalizeSocialLinks,
+  toMobileFriendlyFacebookUrl,
+  verifySocialLinks,
+} from '../modules/link-normalization';
 import { notification } from './notificationRouter';
 
 const EVENT_KEY_PREFIX = 'finding:';
@@ -399,16 +405,23 @@ export async function notifyFindingIfEligible(input: {
     if (hasLinkCandidates) {
       const verified = await verifySocialLinks(links, { skipVerify });
       if (!verified.verified && !skipVerify) {
-        console.info(
-          '[telegram] skip link_unverified finding=%s err=%s',
-          finding.id,
-          verified.verify?.error || 'verify_failed',
-        );
-        return { ok: false, skipped: true, reason: 'link_unverified' };
+        // Soft-allow solid Facebook permalinks even when bot HTTP check fails
+        if (!isSolidFacebookPermalink(links.postUrl) && !isSolidFacebookPermalink(sourceUrlFinal)) {
+          console.info(
+            '[telegram] skip link_unverified finding=%s err=%s',
+            finding.id,
+            verified.verify?.error || 'verify_failed',
+          );
+          return { ok: false, skipped: true, reason: 'link_unverified' };
+        }
       }
-      if (verified.openUrl) {
-        if (links.postUrl && verified.openUrl === links.postUrl) openPost = verified.openUrl;
-        else if (!links.postUrl || verified.openUrl === links.groupUrl) {
+      // Prefer solid original permalink; never adopt login-wall finalUrl
+      if (links.postUrl && isSolidFacebookPermalink(links.postUrl)) {
+        openPost = toMobileFriendlyFacebookUrl(links.postUrl) || links.postUrl;
+      } else if (verified.openUrl && !isDegradedFacebookUrl(verified.openUrl)) {
+        if (links.postUrl && verified.openUrl === links.postUrl) {
+          openPost = verified.openUrl;
+        } else if (!links.postUrl || verified.openUrl === links.groupUrl) {
           openPost = null;
           openGroup = verified.openUrl;
         } else {
@@ -418,18 +431,28 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
-    // Re-validate after link normalizer — never attach untrusted URL to Source button
-    const keyboardSourceUrl =
-      [openPost, openGroup, sourceUrlFinal].find(u =>
-        isTrustedContentUrl(u, {
-          agentSourceName: finding.source?.name,
-          platform: sourceProv.platform,
-        }),
-      ) || null;
+    const pickSourceButtonUrl = (...candidates: Array<string | null | undefined>): string | null => {
+      const mobile = candidates
+        .map(u => (u ? toMobileFriendlyFacebookUrl(u) || u : null))
+        .filter((u): u is string => Boolean(u) && !isDegradedFacebookUrl(u));
+      // Source must be a solid post permalink — never group-home / login wall
+      return (
+        mobile.find(
+          u =>
+            isSolidFacebookPermalink(u) &&
+            isTrustedContentUrl(u, {
+              agentSourceName: finding.source?.name,
+              platform: sourceProv.platform,
+            }),
+        ) || null
+      );
+    };
+
+    const sourceButtonUrl = pickSourceButtonUrl(openPost, sourceUrlFinal, links.rawPostUrl);
 
     replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,
-      sourceUrl: keyboardSourceUrl,
+      sourceUrl: sourceButtonUrl,
       leadCenterUrl: buildLeadCenterUrl(finding.id),
       hasPhone: Boolean(finding.primaryPhone),
       phone: finding.primaryPhone,

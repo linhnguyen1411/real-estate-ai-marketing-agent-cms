@@ -159,6 +159,8 @@ function normalizeHttpUrl(raw: string): string {
 
 /**
  * Reject fabricated / test / config URLs. Fail closed → null.
+ * Solid Facebook post permalinks are never rejected solely because AgentSource.name
+ * matches a path segment (real sources are often named after the group).
  */
 export function isTrustedContentUrl(
   url: string | null | undefined,
@@ -178,10 +180,16 @@ export function isTrustedContentUrl(
 
   if (FORBIDDEN_URL_SEGMENT_RE.test(path) || FORBIDDEN_URL_SEGMENT_RE.test(full)) return false;
   if (/prodv\d+|product[-_]?v?\d+|unify-lead-alert|h2\.4\.\d+/i.test(full)) return false;
+  if (/\/login|\/checkpoint|\/recover\//i.test(path)) return false;
+
+  const solidPost =
+    /\/posts\/(?:pfbid[\w]+|\d+)/i.test(path) ||
+    /\/permalink\/\d+/i.test(path) ||
+    /story_fbid=\d+/i.test(full);
 
   const agent = (opts?.agentSourceName || '').trim().toLowerCase();
-  if (agent && looksLikeConfigSourceName(agent)) {
-    // Config slug must not appear as a Facebook group/path segment
+  // Only block agent-slug collision for non-permalink URLs (e.g. fabricated group home)
+  if (!solidPost && agent && looksLikeConfigSourceName(agent)) {
     const slug = agent.replace(/\s+/g, '');
     if (slug.length >= 3 && (path.includes(`/${slug}/`) || path.includes(`/${slug}`))) {
       return false;
