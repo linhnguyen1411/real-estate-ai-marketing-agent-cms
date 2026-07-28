@@ -44,6 +44,41 @@ const REJECT_PATH_MARKERS = [
   '/watch/',
 ];
 
+/** Login walls / checkpoints — never use as Telegram Source button. */
+export function isDegradedFacebookUrl(raw: string | null | undefined): boolean {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return true;
+  if (isEphemeralUrl(raw)) return true;
+  if (REJECT_PATH_MARKERS.some(m => s.includes(m))) return true;
+  if (/facebook\.com\/+login/i.test(s)) return true;
+  return false;
+}
+
+/**
+ * Real content permalink shape (post/photo/reel) — safe to send to Telegram as-is.
+ * Prefer this over HTTP follow finalUrl (often login redirect).
+ */
+export function isSolidFacebookPermalink(raw: string | null | undefined): boolean {
+  const s = String(raw || '').trim();
+  if (!s || !/^https:\/\//i.test(s)) return false;
+  if (isDegradedFacebookUrl(s)) return false;
+  try {
+    const u = new URL(unwrapFacebookRedirect(s));
+    const host = u.hostname.toLowerCase();
+    if (!/facebook\.com|fb\.com|fb\.watch/i.test(host)) return false;
+    const path = u.pathname.toLowerCase();
+    const q = u.search.toLowerCase();
+    if (/\/posts\/(?:pfbid[\w]+|\d+)/i.test(path)) return true;
+    if (/\/permalink\/\d+/i.test(path)) return true;
+    if (/story_fbid=\d+/i.test(q) || /multi_permalinks=\d+/i.test(q)) return true;
+    if (/\/photos\//i.test(path) && /\d{8,}/.test(path)) return true;
+    if (/\/reel\/|\/videos\/\d+/i.test(path)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function isHttpUrl(raw: string): boolean {
   try {
     const u = new URL(raw);

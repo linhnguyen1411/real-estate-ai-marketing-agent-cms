@@ -58,7 +58,12 @@ export type CopilotControlPlanePort = {
   resumeMission(nameOrId: string): Promise<{ ok: boolean; message: string }>;
   report(kind: ControlPlaneReportKind): Promise<Record<string, unknown>>;
   buildInsights(): Promise<CopilotInsightBundle>;
-  buildSummary(slot: 'morning' | 'noon' | 'evening'): Promise<{ text: string; lines: string[] }>;
+  buildSummary(slot: 'morning' | 'noon' | 'evening'): Promise<{
+    text: string;
+    lines: string[];
+    replyMarkup?: import('../inlineKeyboard').InlineKeyboard;
+    urgentBuyers?: number;
+  }>;
   /** F4 */
   detectIncidents(): Promise<OpsSignalBundle>;
   listBrowsers(): Promise<CopilotBrowserRow[]>;

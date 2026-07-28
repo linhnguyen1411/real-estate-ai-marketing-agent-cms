@@ -62,8 +62,11 @@ function recomputeSaving(m: DecisionMetrics): number {
 async function loadState(): Promise<StoredState> {
   const row = await prisma.appSetting.findUnique({ where: { key: SETTING_KEY } }).catch(() => null);
   const data = (row?.data || {}) as Partial<StoredState>;
-  return {
-    rules: Array.isArray(data.rules) && data.rules.length ? data.rules : [...DEFAULT_DECISION_RULES],
+  const storedRules =
+    Array.isArray(data.rules) && data.rules.length ? data.rules : [...DEFAULT_DECISION_RULES];
+  const { rules, added } = mergeDefaultRules(storedRules, DEFAULT_DECISION_RULES);
+  const state: StoredState = {
+    rules,
     campaignMap:
       Array.isArray(data.campaignMap) && data.campaignMap.length
         ? data.campaignMap
@@ -72,6 +75,31 @@ async function loadState(): Promise<StoredState> {
     cache: Array.isArray(data.cache) ? data.cache.slice(-500) : [],
     recent: Array.isArray(data.recent) ? data.recent.slice(0, 200) : [],
   };
+  // Persist additive defaults once so Admin library stays complete without overwrite.
+  if (added > 0 && Array.isArray(data.rules) && data.rules.length) {
+    await saveState(state).catch(() => undefined);
+  }
+  return state;
+}
+
+/** Add missing default rule IDs only — never overwrite admin-edited rules. */
+export function mergeDefaultRules(
+  stored: DecisionRule[],
+  defaults: DecisionRule[],
+): { rules: DecisionRule[]; added: number } {
+  const byId = new Map<string, DecisionRule>();
+  for (const rule of stored) {
+    if (rule?.id) byId.set(rule.id, rule);
+  }
+  let added = 0;
+  for (const rule of defaults) {
+    if (!byId.has(rule.id)) {
+      byId.set(rule.id, rule);
+      added += 1;
+    }
+  }
+  const rules = [...byId.values()].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+  return { rules, added };
 }
 
 async function saveState(state: StoredState): Promise<void> {
@@ -89,7 +117,11 @@ export async function listDecisionRules(): Promise<DecisionRule[]> {
   try {
     const { getCompiledDecisionRules } = await import('../knowledge-base');
     const compiled = await getCompiledDecisionRules();
-    if (compiled.length) return compiled;
+    if (compiled.length) {
+      // Additive merge: proven default keywords (H2.4.3) must not be dropped when KB lags.
+      const { rules } = mergeDefaultRules(compiled, DEFAULT_DECISION_RULES);
+      return rules.sort((a, b) => a.priority - b.priority || a.keyword.localeCompare(b.keyword));
+    }
   } catch (err) {
     console.warn('[decision-center] KB compile failed, using stored rules:', err);
   }

@@ -627,97 +627,443 @@ export async function opsReport(
 }
 
 /** Soft lead ops — Control Plane only (Telegram never touches DB). */
+
+/** Resolve full finding id from exact id or unique prefix (callback trunc). */
+export async function resolveFindingId(idOrPrefix: string): Promise<string> {
+  const raw = String(idOrPrefix || '').trim();
+  if (!raw) throw new Error('Missing finding id');
+  const exact = await prisma.agentFinding.findUnique({
+    where: { id: raw },
+    select: { id: true },
+  });
+  if (exact) return exact.id;
+  if (raw.length < 8) throw new Error(`Finding not found: ${raw}`);
+  const matches = await prisma.agentFinding.findMany({
+    where: { id: { startsWith: raw } },
+    select: { id: true },
+    take: 2,
+  });
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) throw new Error(`Ambiguous finding id prefix: ${raw}`);
+  throw new Error(`Finding not found: ${raw}`);
+}
+
+async function listAssignableOwners(companyId: string | null | undefined) {
+  const users = await prisma.user.findMany({
+    where: {
+      ...(companyId ? { companyId } : {}),
+      role: { in: ['company', 'owner', 'admin', 'sales', 'agent'] },
+    },
+    select: { id: true, email: true, data: true, role: true },
+    take: 12,
+    orderBy: { createdAt: 'asc' },
+  });
+  return users.map(u => {
+    const data =
+      u.data && typeof u.data === 'object' && !Array.isArray(u.data)
+        ? (u.data as Record<string, unknown>)
+        : {};
+    const name =
+      (typeof data.name === 'string' && data.name) ||
+      (typeof data.fullName === 'string' && data.fullName) ||
+      u.email.split('@')[0] ||
+      u.id.slice(0, 8);
+    return { id: u.id, label: String(name).slice(0, 40) };
+  });
+}
+
 export async function opsLeadSkip(findingId: string, triggeredBy: string) {
-  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
-  if (!finding) throw new Error(`Finding not found: ${findingId}`);
-  await prisma.agentFinding.update({
-    where: { id: findingId },
-    data: { status: 'dismissed' },
+  const id = await resolveFindingId(findingId);
+  const existing = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: { id: true, status: true, companyId: true },
+  });
+  if (!existing) throw new Error(`Finding not found: ${id}`);
+  if (existing.status === 'dismissed') {
+    return { findingId: id, status: 'dismissed' as const, idempotent: true };
+  }
+
+  const { recordSalesAction } = await import('../sales-layer');
+  await recordSalesAction({
+    findingId: id,
+    action: 'ignore',
+    actor: triggeredBy,
+    result: 'dismissed_via_telegram',
+  }).catch(async () => {
+    await prisma.agentFinding.update({
+      where: { id },
+      data: {
+        status: 'dismissed',
+        dismissedAt: new Date(),
+        dismissedBy: triggeredBy,
+        dismissReason: 'sales_ignore',
+      },
+    });
   });
   await emitRuntimeEvent({
     type: 'OPS_REQUEST',
-    companyId: finding.companyId,
+    companyId: existing.companyId ?? null,
     entityType: 'finding',
-    entityId: findingId,
+    entityId: id,
     payload: { action: 'lead_skip', triggeredBy, requestedAt: new Date().toISOString() },
   });
-  return { findingId, status: 'dismissed' as const };
+  return { findingId: id, status: 'dismissed' as const, idempotent: false };
 }
 
 export async function opsLeadCreateMission(findingId: string, triggeredBy: string) {
-  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
-  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  const id = await resolveFindingId(findingId);
+  const finding = await prisma.agentFinding.findUnique({ where: { id } });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
   await emitRuntimeEvent({
     type: 'OPS_REQUEST',
     companyId: finding.companyId,
     entityType: 'finding',
-    entityId: findingId,
+    entityId: id,
     payload: {
       action: 'lead_create_mission',
       triggeredBy,
       requestedAt: new Date().toISOString(),
     },
   });
-  return { findingId, requested: true as const };
+  return { findingId: id, requested: true as const };
 }
 
 export async function opsLeadRetryNotify(findingId: string) {
+  const id = await resolveFindingId(findingId);
   const { notifyFindingIfEligible } = await import(
     '../../notifications/telegramNotificationService'
   );
-  return notifyFindingIfEligible({ findingId, force: true });
+  return notifyFindingIfEligible({ findingId: id, force: true });
 }
 
-/** H3 — Assign buyer to sales pipeline */
+/** Assign — show owner picker (does not auto-assign to telegram user). */
 export async function opsLeadAssign(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: { id: true, companyId: true, personName: true, title: true },
+  });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+
+  const { assignOwnerKeyboard } = await import('../sales-layer');
+  let owners = await listAssignableOwners(finding.companyId);
+  if (!owners.length) {
+    owners = [{ id: 'self', label: triggeredBy.slice(0, 40) || 'Self' }];
+  }
+  const lines = [
+    '👥 ASSIGN',
+    `Lead · ${finding.personName || finding.title.slice(0, 40)}`,
+    'Chọn sales owner:',
+  ];
+  return {
+    findingId: id,
+    lines,
+    replyMarkup: assignOwnerKeyboard({ findingId: id, owners }),
+    owners,
+  };
+}
+
+/** Persist owner after picker selection. */
+export async function opsLeadAssignOwner(
+  findingId: string,
+  ownerId: string,
+  triggeredBy: string,
+) {
+  const id = await resolveFindingId(findingId);
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: { id: true, companyId: true },
+  });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+
+  let ownerLabel = ownerId;
+  if (ownerId !== 'self') {
+    const owner = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: ownerId }, { id: { startsWith: ownerId } }],
+        ...(finding.companyId ? { companyId: finding.companyId } : {}),
+      },
+      select: { id: true, email: true, data: true },
+    });
+    if (owner) {
+      const data =
+        owner.data && typeof owner.data === 'object' && !Array.isArray(owner.data)
+          ? (owner.data as Record<string, unknown>)
+          : {};
+      ownerLabel =
+        (typeof data.name === 'string' && data.name) ||
+        owner.email.split('@')[0] ||
+        owner.id;
+      ownerId = owner.id;
+    }
+  } else {
+    ownerLabel = triggeredBy;
+    ownerId = triggeredBy;
+  }
+
   const { updateLeadPipelineStage, processLeadAcquisition } = await import(
     '../lead-acquisition'
   );
-  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
-  const profile = await updateLeadPipelineStage({
-    findingId,
+  const { recordSalesAction, readSalesProfile } = await import('../sales-layer');
+  await processLeadAcquisition({ findingId: id, notifyTelegram: false }).catch(() => null);
+
+  const before = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: { extractedData: true },
+  });
+  const existing = before ? readSalesProfile(before.extractedData) : null;
+  if (existing?.owner === ownerLabel || existing?.owner === ownerId) {
+    return {
+      findingId: id,
+      owner: existing.owner,
+      lines: [`👥 Lead đã giao cho ${existing.owner}.`, '(idempotent)'],
+      idempotent: true,
+    };
+  }
+
+  await updateLeadPipelineStage({
+    findingId: id,
     stage: 'assigned',
     actor: triggeredBy,
+  }).catch(() => null);
+
+  await recordSalesAction({
+    findingId: id,
+    action: 'assign',
+    actor: triggeredBy,
+    owner: ownerLabel,
+    result: `assigned:${ownerId}`,
   });
-  if (!profile) throw new Error(`Finding not found: ${findingId}`);
-  return { findingId, stage: 'assigned' as const, profile };
+
+  return {
+    findingId: id,
+    owner: ownerLabel,
+    lines: [`👥 Đã giao lead cho ${ownerLabel}.`],
+    idempotent: false,
+  };
 }
 
 /** H3 — Mark for CRM */
 export async function opsLeadCrm(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
   const { updateLeadPipelineStage, processLeadAcquisition } = await import(
     '../lead-acquisition'
   );
-  await processLeadAcquisition({ findingId, notifyTelegram: false }).catch(() => null);
+  const { recordSalesAction } = await import('../sales-layer');
+  await processLeadAcquisition({ findingId: id, notifyTelegram: false }).catch(() => null);
   const profile = await updateLeadPipelineStage({
-    findingId,
+    findingId: id,
     stage: 'interested',
     actor: triggeredBy,
   });
-  if (!profile) throw new Error(`Finding not found: ${findingId}`);
-  return { findingId, stage: 'interested' as const, profile };
+  if (!profile) throw new Error(`Finding not found: ${id}`);
+  await recordSalesAction({
+    findingId: id,
+    action: 'contact',
+    actor: triggeredBy,
+    result: 'crm_flag',
+  }).catch(() => null);
+  return { findingId: id, stage: 'interested' as const, profile };
+}
+
+/** Sales Action Card — Call (callback fallback when no tel: URL). */
+export async function opsLeadCall(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
+  const { recordSalesAction, toTelUri } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: { id: true, primaryPhone: true, personName: true },
+  });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+  if (!finding.primaryPhone) {
+    return {
+      findingId: id,
+      profile: null,
+      phone: null,
+      lines: ['📞 Không có số điện thoại của lead.'],
+    };
+  }
+  const profile = await recordSalesAction({
+    findingId: id,
+    action: 'call',
+    actor: triggeredBy,
+    result: `phone:${finding.primaryPhone}`,
+  });
+  const tel = toTelUri(finding.primaryPhone);
+  const lines = [
+    `📞 Call · ${finding.personName || id.slice(0, 10)}`,
+    `Phone · ${finding.primaryPhone}`,
+    tel ? `Mở máy gọi: ${tel}` : null,
+    profile ? `Pipeline · ${profile.pipelineStage}` : null,
+  ].filter(Boolean) as string[];
+  return { findingId: id, profile, lines, phone: finding.primaryPhone, telUri: tel };
+}
+
+/** Sales Action Card — Contact / inbox */
+export async function opsLeadContact(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
+  const { recordSalesAction, readSalesProfile } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      primaryPhone: true,
+      personName: true,
+      extractedData: true,
+      scannedContent: { select: { canonicalUrl: true } },
+    },
+  });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+
+  const existing = readSalesProfile(finding.extractedData);
+  const last = existing?.timeline?.[existing.timeline.length - 1];
+  if (last?.kind === 'contact' && last.actor === triggeredBy) {
+    const ageMs = Date.now() - Date.parse(last.at);
+    if (Number.isFinite(ageMs) && ageMs < 60_000) {
+      return {
+        findingId: id,
+        profile: existing,
+        lines: ['💬 Đã ghi nhận: Contact lead.', '(idempotent — vừa contact)'],
+        idempotent: true,
+      };
+    }
+  }
+
+  const profile = await recordSalesAction({
+    findingId: id,
+    action: 'contact',
+    actor: triggeredBy,
+    result: finding.scannedContent?.canonicalUrl || 'contact_initiated',
+  });
+  const lines = [
+    '💬 Đã ghi nhận: Contact lead.',
+    finding.primaryPhone ? `Phone · ${finding.primaryPhone}` : null,
+    finding.scannedContent?.canonicalUrl
+      ? `Source · ${finding.scannedContent.canonicalUrl}`
+      : null,
+    profile ? `Pipeline · ${profile.pipelineStage}` : null,
+  ].filter(Boolean) as string[];
+  return { findingId: id, profile, lines, idempotent: false };
+}
+
+/** Open Lead Center deep link / metadata */
+export async function opsLeadOpen(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
+  const { recordSalesAction, buildLeadCenterUrl } = await import('../sales-layer');
+  const finding = await prisma.agentFinding.findUnique({ where: { id } });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+  await recordSalesAction({
+    findingId: id,
+    action: 'open',
+    actor: triggeredBy,
+    result: 'open_lead_center',
+  }).catch(() => null);
+  const url = buildLeadCenterUrl(id);
+  const lines = [
+    `👤 Open Lead · ${finding.personName || finding.title.slice(0, 40)}`,
+    url || 'Lead Center URL chưa cấu hình (PUBLIC_SITE_URL)',
+  ];
+  return { findingId: id, url, lines };
+}
+
+/** Source metadata + openable permalink button when available */
+export async function opsLeadSource(findingId: string, triggeredBy: string) {
+  const id = await resolveFindingId(findingId);
+  const {
+    recordSalesAction,
+    resolveSourceProvenance,
+    isTrustedContentUrl,
+  } = await import('../sales-layer');
+  const { isSolidFacebookPermalink, isDegradedFacebookUrl, toMobileFriendlyFacebookUrl } =
+    await import('../link-normalization');
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      title: true,
+      scannedContent: { select: { canonicalUrl: true } },
+      source: { select: { name: true, type: true } },
+      extractedData: true,
+    },
+  });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
+  const prov = resolveSourceProvenance({
+    extractedData: finding.extractedData,
+    agentSourceName: finding.source?.name,
+    agentSourceType: finding.source?.type,
+    canonicalUrl: finding.scannedContent?.canonicalUrl || null,
+  });
+
+  const candidates = [prov.url, finding.scannedContent?.canonicalUrl];
+  const openUrl =
+    candidates
+      .map(u => (u ? toMobileFriendlyFacebookUrl(u) || u : null))
+      .find(
+        u =>
+          u &&
+          !isDegradedFacebookUrl(u) &&
+          isSolidFacebookPermalink(u) &&
+          isTrustedContentUrl(u, {
+            agentSourceName: finding.source?.name,
+            platform: prov.platform,
+          }),
+      ) || null;
+
+  await recordSalesAction({
+    findingId: id,
+    action: 'source',
+    actor: triggeredBy,
+    result: openUrl || prov.url || prov.name || 'no_url',
+  }).catch(() => null);
+
+  const lines = [
+    `🔗 Source · ${prov.label || 'Không rõ nguồn'}`,
+    openUrl ? `URL · ${openUrl}` : '🔗 Không có permalink bài viết nguồn.',
+  ];
+
+  const replyMarkup = openUrl
+    ? { inline_keyboard: [[{ text: '🔗 Mở bài gốc', url: openUrl }]] }
+    : undefined;
+
+  return { findingId: id, url: openUrl, lines, replyMarkup };
 }
 
 /** H3.5 — Buyer journey / timeline history */
 export async function opsLeadHistory(findingId: string) {
+  const id = await resolveFindingId(findingId);
   const { processSalesLayer, readSalesProfile } = await import('../sales-layer');
-  const finding = await prisma.agentFinding.findUnique({ where: { id: findingId } });
-  if (!finding) throw new Error(`Finding not found: ${findingId}`);
+  const finding = await prisma.agentFinding.findUnique({ where: { id } });
+  if (!finding) throw new Error(`Finding not found: ${id}`);
   let profile = readSalesProfile(finding.extractedData);
   if (!profile) {
-    profile = await processSalesLayer({ findingId, notifyFollowUp: false });
+    profile = await processSalesLayer({ findingId: id, notifyFollowUp: false });
   }
-  if (!profile) throw new Error(`No sales profile: ${findingId}`);
-  const lines = [
-    `Buyer ${findingId}`,
-    `Journey · ${profile.journeyStage}`,
-    `Pipeline · ${profile.pipelineStage}`,
-    `Owner · ${profile.owner || '—'}`,
-    `Probability · ${Math.round(profile.probability * 100)}%`,
-    `Expected · ${profile.expectedDealTy ?? '—'} tỷ`,
-    '',
-    'Timeline',
-    ...profile.timeline.slice(-8).map(e => `• ${e.at.slice(0, 10)} · ${e.label}`),
+  if (!profile) {
+    return {
+      findingId: id,
+      profile: null,
+      lines: ['📜 Chưa có lịch sử sales.'],
+    };
+  }
+  const stagePath = [
+    ...new Set([
+      ...profile.stageHistory.map(h => h.to),
+      profile.pipelineStage,
+    ]),
   ];
-  return { findingId, profile, lines };
+  const lines = [
+    '📜 HISTORY',
+    stagePath.length ? stagePath.join(' → ') : `Pipeline · ${profile.pipelineStage}`,
+    `Journey · ${profile.journeyStage}`,
+    `Owner · ${profile.owner || '—'}`,
+    '',
+  ];
+  if (!profile.timeline.length) {
+    lines.push('📜 Chưa có lịch sử sales.');
+  } else {
+    lines.push(
+      ...profile.timeline.slice(-8).map(e => `• ${e.at.slice(0, 10)} · ${e.label}`),
+    );
+  }
+  return { findingId: id, profile, lines };
 }

@@ -216,6 +216,15 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'timeline') return 'Hôm nay AI đang làm gì';
     return 'AI sales employee';
   }
+  // H2.4.9 — Sales urgent drill-down: s:u:list | s:u:p:N | s:o:{findingId}
+  if (parts[0] === 's') {
+    if (parts[1] === 'u' && parts[2] === 'list') return '/sales urgent';
+    if (parts[1] === 'u' && parts[2] === 'p' && parts[3] != null) {
+      return `/sales urgent ${parts[3]}`;
+    }
+    if (parts[1] === 'o' && parts[2]) return `/sales card ${parts.slice(2).join(':')}`;
+    return null;
+  }
   if (parts.length < 3) return null;
   const [scope, action, ...rest] = parts;
   const id = rest.join(':');
@@ -248,8 +257,19 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'm') return `/lead mission ${id}`;
     if (action === 'a') return `/lead assign ${id}`;
     if (action === 'c') return `/lead crm ${id}`;
-    if (action === 'o') return `/lead retry ${id}`;
+    if (action === 'o') return `/lead open ${id}`;
+    if (action === 'n') return `/lead open ${id}`;
     if (action === 'h') return `/lead history ${id}`;
+    if (action === 'k') return `/lead call ${id}`;
+    if (action === 't') return `/lead contact ${id}`;
+    if (action === 'u') return `/lead source ${id}`;
+    // Assign owner pick: l:w:{findingId}:{ownerId}
+    if (action === 'w') {
+      const [findingPart, ...ownerParts] = id.split(':');
+      const ownerPart = ownerParts.join(':') || 'self';
+      if (!findingPart) return null;
+      return `/lead owner ${findingPart} ${ownerPart}`;
+    }
   }
   if (scope === 'a') {
     if (action === 'a') return `/approval approve ${id}`;

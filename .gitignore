@@ -97,4 +97,6 @@ docs/
 !docs/adr/**
 !docs/evolution/
 !docs/evolution/**
+!docs/release/
+!docs/release/**
 /runtime/

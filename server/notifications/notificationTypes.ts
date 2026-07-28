@@ -97,11 +97,26 @@ export const EVENT_CHANNEL_MAP: Record<NotificationEventType, NotificationChanne
 
 export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
   OPS: '🤖 AI Ops',
-  LEAD: '🎯 Lead Alerts',
+  /** Channel catalog label — NEVER used as single-lead card header. */
+  LEAD: '🎯 LEAD',
   PUBLISH: '📢 Publishing',
   REPORT: '📊 Daily Reports',
   CRITICAL: '🚨 Critical Alerts',
 };
+
+/** Multi-lead digest header (NEW_LEAD_DIGEST) — not a Sales Action Card. */
+export const LEAD_DIGEST_HEADER = '🎯 Lead Digest';
+
+/** Canonical single-lead card must include this marker. */
+export const CANONICAL_LEAD_ALERT_MARKER = '🎯 LEAD ALERT';
+
+/** Forbidden legacy single-lead markers (H2.4.6). */
+export const LEGACY_LEAD_ALERT_MARKERS = [
+  '🎯 Lead Alerts',
+  'Expected Deal',
+  'AI Suggestion',
+  'Score:',
+] as const;
 
 export function resolveChannelForEvent(type: NotificationEventType): NotificationChannel | null {
   return EVENT_CHANNEL_MAP[type] ?? null;

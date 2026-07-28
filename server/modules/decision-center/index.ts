@@ -5,6 +5,7 @@
  * Publisher / Campaign Runtime / Task Orchestrator / Sales Layer.
  */
 
+export { DEFAULT_DECISION_RULES, DEFAULT_CAMPAIGN_MAP } from './defaultRules';
 export * from './types';
 export { normalizeLeadText, hashNormalizedText } from './normalize';
 export {
@@ -20,6 +21,7 @@ export {
   evaluateTextDecision,
   markDecisionAiUsed,
   readDecisionProfile,
+  applyActorPriorToDecision,
   buildDecisionSnapshot,
   formatDecisionReport,
   getDecisionReportText,
@@ -34,5 +36,6 @@ export {
   getDecisionMetrics,
   getRecentDecisions,
   getCampaignMap,
+  mergeDefaultRules,
 } from './store';
 export { registerDecisionCenterRoutes } from './api/decisionCenterRoutes';

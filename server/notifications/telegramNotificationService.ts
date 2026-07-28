@@ -1,15 +1,23 @@
 import { Prisma } from '@prisma/client';
 import { getSettings } from '../dbHelper';
 import { prisma } from '../prisma';
-import { resolveLeadIntelligence } from '../../shared/agent-domain';
 import type { AppSettings } from '../../src/types';
-import { formatLeadTelegramAlert } from './telegramFormatter';
-import { normalizeSocialLinks, verifySocialLinks } from '../modules/link-normalization';
-import { leadAlertKeyboard } from '../modules/control-plane/inlineKeyboard';
+import {
+  isDegradedFacebookUrl,
+  isSolidFacebookPermalink,
+  normalizeSocialLinks,
+  toMobileFriendlyFacebookUrl,
+  verifySocialLinks,
+} from '../modules/link-normalization';
 import { notification } from './notificationRouter';
 
 const EVENT_KEY_PREFIX = 'finding:';
 const EVENT_KEY_SUFFIX = ':telegram:new';
+
+/** Durable NEW_LEAD idempotency key — shared by all producers. */
+export function leadAlertEventKey(findingId: string): string {
+  return `${EVENT_KEY_PREFIX}${findingId}${EVENT_KEY_SUFFIX}`;
+}
 
 export type TelegramSendResult = {
   ok: boolean;
@@ -20,7 +28,7 @@ export type TelegramSendResult = {
 };
 
 function telegramEventKey(findingId: string): string {
-  return `${EVENT_KEY_PREFIX}${findingId}${EVENT_KEY_SUFFIX}`;
+  return leadAlertEventKey(findingId);
 }
 
 export function maskTelegramToken(token: string | null | undefined): string {
@@ -66,16 +74,6 @@ export function isInQuietHours(
   if (startMin === endMin) return false;
   if (startMin < endMin) return cur >= startMin && cur < endMin;
   return cur >= startMin || cur < endMin;
-}
-
-function normalizeClassifications(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map(v => String(v).trim().toLowerCase()).filter(Boolean);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    return value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
-  }
-  return ['buyer', 'renter', 'investor'];
 }
 
 export async function sendTelegramMessage(input: {
@@ -196,12 +194,13 @@ async function upsertDeliveryLog(input: {
 
 /**
  * Notify Telegram for a finding if settings + eligibility allow.
+ * H2.4.4 — SINGLE producer for NEW_LEAD → canonical Sales Action Card only.
  * Never throws to callers — logs and marks failed on send errors.
  */
 export async function notifyFindingIfEligible(input: {
   findingId: string;
   settings?: AppSettings;
-  /** Manual approve: bypass classification + minScore (and env gate if CMS telegram_enabled). */
+  /** Manual approve: bypass classification + heat gate (not credentials). */
   force?: boolean;
 }): Promise<TelegramSendResult> {
   try {
@@ -232,143 +231,154 @@ export async function notifyFindingIfEligible(input: {
       return { ok: false, skipped: true, reason: 'duplicate' };
     }
 
+    const classificationNorm = String(finding.classification || '').trim().toLowerCase();
+    if (
+      !input.force &&
+      (classificationNorm === 'spam' ||
+        classificationNorm === 'seller' ||
+        classificationNorm === 'broker' ||
+        classificationNorm === 'noise')
+    ) {
+      console.info(
+        'lead_alert: findingId=%s event=NEW_LEAD status=skipped reason=blocked_class class=%s',
+        finding.id,
+        classificationNorm,
+      );
+      return { ok: false, skipped: true, reason: 'blocked_class' };
+    }
+
+    // Durable idempotency for NEW_LEAD (one card per finding)
     const eventKey = telegramEventKey(finding.id);
     const existing = await prisma.telegramDeliveryLog.findFirst({
       where: { companyId: finding.companyId, eventKey },
     });
     if (existing && (existing.status === 'sent' || existing.status === 'queued')) {
+      console.info(
+        'lead_alert: findingId=%s event=NEW_LEAD status=deduplicated',
+        finding.id,
+      );
       return { ok: false, skipped: true, reason: 'already_sent', messageId: existing.telegramMsgId };
     }
 
-    const resolved = resolveLeadIntelligence(finding as unknown as Record<string, unknown>);
-    const minScore = Number(settings.telegram_min_score ?? 70);
-    const score = resolved.finalScore ?? finding.finalScore ?? finding.score ?? 0;
-    if (!input.force && Number.isFinite(minScore) && score < minScore) {
-      console.info(
-        '[telegram] skip below_min_score finding=%s score=%s min=%s',
-        finding.id,
-        score,
-        minScore,
-      );
-      return { ok: false, skipped: true, reason: 'below_min_score' };
+    const {
+      processLeadAcquisition,
+      readAcquisitionProfile,
+    } = await import('../modules/lead-acquisition');
+    const {
+      processSalesLayer,
+      readSalesProfile,
+      formatSalesActionCard,
+      salesActionCardKeyboard,
+      buildLeadCenterUrl,
+      formatAreaLabel,
+      resolveSourceProvenance,
+      resolveBuyerConfidencePct,
+      shouldSendBuyerAlert,
+      resolveLeadAlertRole,
+      isTrustedContentUrl,
+    } = await import('../modules/sales-layer');
+
+    let acq = readAcquisitionProfile(finding.extractedData);
+    if (!acq) {
+      acq = await processLeadAcquisition({
+        findingId: finding.id,
+        notifyTelegram: false,
+      });
     }
 
-    const allowed = normalizeClassifications(settings.telegram_classifications);
-    const classification = String(resolved.classification || finding.classification || '').toLowerCase();
-    if (
-      !input.force &&
-      allowed.length &&
-      classification &&
-      !allowed.includes(classification)
-    ) {
+    const role = resolveLeadAlertRole({
+      intent: acq?.intent.intent,
+      classification: finding.classification,
+      persona: acq?.persona.persona,
+      isBuyer: acq?.isBuyer,
+    });
+
+    // Seller / broker / spam / non-demand → no Lead Alert (unless manual force with role)
+    if (!input.force && !role) {
       console.info(
-        '[telegram] skip classification finding=%s class=%s allowed=%s',
+        'lead_alert: findingId=%s event=NEW_LEAD status=skipped reason=not_demand_lead class=%s',
         finding.id,
-        classification,
-        allowed.join(','),
+        finding.classification,
       );
-      return { ok: false, skipped: true, reason: 'classification' };
+      return { ok: false, skipped: true, reason: 'not_demand_lead' };
+    }
+
+    let sales = readSalesProfile(finding.extractedData);
+    if (!sales && (acq?.isBuyer || role === 'tenant' || role === 'investor')) {
+      sales = await processSalesLayer({ findingId: finding.id, notifyFollowUp: false }).catch(
+        () => null,
+      );
+    }
+
+    const confidencePct = resolveBuyerConfidencePct({
+      salesConfidencePct: null,
+      acquisitionFinalScore:
+        acq?.priority.finalScore ?? finding.finalScore ?? finding.score ?? null,
+      intentConfidence: acq?.intent.confidence ?? null,
+    });
+
+    if (!input.force && !shouldSendBuyerAlert(confidencePct) && !acq?.isVip) {
+      console.info(
+        'lead_alert: findingId=%s event=NEW_LEAD status=skipped reason=below_threshold confidence=%s',
+        finding.id,
+        confidencePct,
+      );
+      return { ok: false, skipped: true, reason: 'below_heat_threshold' };
     }
 
     if (!input.force && settings.telegram_only_with_phone) {
-      const phone = resolved.primaryPhone || finding.primaryPhone;
+      const phone = finding.primaryPhone;
       if (!phone) {
         console.info('[telegram] skip no_phone finding=%s', finding.id);
         return { ok: false, skipped: true, reason: 'no_phone' };
       }
     }
 
-    // H3 / H3.5 — prefer Sales Buyer Card, then Buyer Alert, else legacy lead format
-    let text: string;
-    let replyMarkup: ReturnType<typeof leadAlertKeyboard>;
-    let openPostHint: string | null = null;
-    try {
-      const {
-        processLeadAcquisition,
-        readAcquisitionProfile,
-        formatBuyerAlertText,
-        buyerAlertKeyboard,
-      } = await import('../modules/lead-acquisition');
-      const {
-        processSalesLayer,
-        readSalesProfile,
-        formatSalesBuyerCard,
-        salesBuyerCardKeyboard,
-      } = await import('../modules/sales-layer');
+    const openPostHint = finding.scannedContent?.canonicalUrl || null;
 
-      let acq = readAcquisitionProfile(finding.extractedData);
-      if (!acq) {
-        acq = await processLeadAcquisition({
-          findingId: finding.id,
-          notifyTelegram: false,
-        });
-      }
-      let sales = readSalesProfile(finding.extractedData);
-      if (!sales && acq?.isBuyer) {
-        sales = await processSalesLayer({ findingId: finding.id, notifyFollowUp: false });
-      }
+    const roleResolved = role || 'buyer';
+    // H2.4.7 — content provenance only; never re-apply unvalidated AgentSource / fabricated URL
+    const sourceProv = resolveSourceProvenance({
+      extractedData: finding.extractedData,
+      agentSourceName: finding.source?.name,
+      agentSourceType: finding.source?.type,
+      canonicalUrl: openPostHint,
+    });
+    const sourceUrlFinal = sourceProv.url; // fail closed — no openPostHint bypass
 
-      if (sales && acq?.isBuyer) {
-        const confidencePct = Math.round((acq.intent.confidence || 0.5) * 100);
-        text = formatSalesBuyerCard({
-          profile: sales,
-          confidencePct,
-          campaignName: acq.campaignMatch.campaignName,
-          title: finding.title,
-        });
-        openPostHint = finding.scannedContent?.canonicalUrl || null;
-        replyMarkup = salesBuyerCardKeyboard({
-          findingId: finding.id,
-          openUrl: openPostHint,
-        });
-      } else if (acq?.isBuyer) {
-        text = formatBuyerAlertText({
-          profile: acq,
-          title: finding.title,
-          budgetMin: finding.budgetMin,
-          budgetMax: finding.budgetMax,
-        });
-        openPostHint = finding.scannedContent?.canonicalUrl || null;
-        replyMarkup = buyerAlertKeyboard({
-          findingId: finding.id,
-          openUrl: openPostHint,
-        });
-      } else {
-        const alert = formatLeadTelegramAlert(finding, resolved, {
-          includePhone: settings.telegram_include_phone !== false,
-          includeBudget: settings.telegram_include_budget !== false,
-          includeLocation: settings.telegram_include_location !== false,
-          includeLink: settings.telegram_include_link !== false,
-          siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
-        });
-        text = alert.text;
-        openPostHint = alert.postUrl;
-        replyMarkup = leadAlertKeyboard({
-          findingId: finding.id,
-          postUrl: alert.postUrl,
-          groupUrl: alert.groupUrl,
-        });
-      }
-    } catch (acqErr) {
-      console.warn(
-        '[telegram] acquisition format fallback:',
-        acqErr instanceof Error ? acqErr.message : acqErr,
-      );
-      const alert = formatLeadTelegramAlert(finding, resolved, {
-        includePhone: settings.telegram_include_phone !== false,
-        includeBudget: settings.telegram_include_budget !== false,
-        includeLocation: settings.telegram_include_location !== false,
-        includeLink: settings.telegram_include_link !== false,
-        siteBaseUrl: process.env.PUBLIC_SITE_URL || settings.agent_sync_vps_url,
-      });
-      text = alert.text;
-      openPostHint = alert.postUrl;
-      replyMarkup = leadAlertKeyboard({
-        findingId: finding.id,
-        postUrl: alert.postUrl,
-        groupUrl: alert.groupUrl,
-      });
-    }
+    const text = formatSalesActionCard({
+      findingId: finding.id,
+      acquisition: acq,
+      sales,
+      confidencePct,
+      role: roleResolved,
+      classification: finding.classification,
+      actorName: finding.personName,
+      propertyType: finding.propertyType,
+      location: finding.primaryLocation,
+      budgetMin: finding.budgetMin,
+      budgetMax: finding.budgetMax,
+      areaLabel: formatAreaLabel(finding.extractedData),
+      timeline: acq?.timeline,
+      extractedData: finding.extractedData,
+      agentSourceName: finding.source?.name,
+      agentSourceType: finding.source?.type,
+      sourceUrl: sourceUrlFinal,
+      title: finding.title,
+      needSummary: finding.needSummary,
+      summary: finding.summary,
+      hasPhone: Boolean(finding.primaryPhone),
+      phone: finding.primaryPhone,
+      whyReasons: acq?.intent.reasons,
+    });
+
+    let replyMarkup = salesActionCardKeyboard({
+      findingId: finding.id,
+      sourceUrl: sourceUrlFinal,
+      leadCenterUrl: buildLeadCenterUrl(finding.id),
+      hasPhone: Boolean(finding.primaryPhone),
+      phone: finding.primaryPhone,
+    });
 
     const sourceEd =
       finding.extractedData &&
@@ -379,12 +389,12 @@ export async function notifyFindingIfEligible(input: {
             | undefined)
         : undefined;
     const links = normalizeSocialLinks({
-      postUrl: openPostHint || resolved.source.canonicalUrl,
+      postUrl: sourceUrlFinal,
       groupUrl:
         typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null,
       postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
       groupId: typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null,
-      canonicalUrl: resolved.source.canonicalUrl,
+      canonicalUrl: sourceUrlFinal,
     });
 
     const hasLinkCandidates = Boolean(links.postUrl || links.groupUrl || links.rawPostUrl);
@@ -395,17 +405,23 @@ export async function notifyFindingIfEligible(input: {
     if (hasLinkCandidates) {
       const verified = await verifySocialLinks(links, { skipVerify });
       if (!verified.verified && !skipVerify) {
-        console.info(
-          '[telegram] skip link_unverified finding=%s err=%s',
-          finding.id,
-          verified.verify?.error || 'verify_failed',
-        );
-        return { ok: false, skipped: true, reason: 'link_unverified' };
+        // Soft-allow solid Facebook permalinks even when bot HTTP check fails
+        if (!isSolidFacebookPermalink(links.postUrl) && !isSolidFacebookPermalink(sourceUrlFinal)) {
+          console.info(
+            '[telegram] skip link_unverified finding=%s err=%s',
+            finding.id,
+            verified.verify?.error || 'verify_failed',
+          );
+          return { ok: false, skipped: true, reason: 'link_unverified' };
+        }
       }
-      // Prefer verified open URL; fallback group already applied inside verifySocialLinks
-      if (verified.openUrl) {
-        if (links.postUrl && verified.openUrl === links.postUrl) openPost = verified.openUrl;
-        else if (!links.postUrl || verified.openUrl === links.groupUrl) {
+      // Prefer solid original permalink; never adopt login-wall finalUrl
+      if (links.postUrl && isSolidFacebookPermalink(links.postUrl)) {
+        openPost = toMobileFriendlyFacebookUrl(links.postUrl) || links.postUrl;
+      } else if (verified.openUrl && !isDegradedFacebookUrl(verified.openUrl)) {
+        if (links.postUrl && verified.openUrl === links.postUrl) {
+          openPost = verified.openUrl;
+        } else if (!links.postUrl || verified.openUrl === links.groupUrl) {
           openPost = null;
           openGroup = verified.openUrl;
         } else {
@@ -415,26 +431,32 @@ export async function notifyFindingIfEligible(input: {
       openGroup = openGroup || links.groupUrl;
     }
 
-    // Refresh Open URL on keyboard after verify; keep Sales/Buyer Alert buttons when already set
-    if (text.includes('👤 Buyer') || text.startsWith('═══════════════════')) {
-      const { salesBuyerCardKeyboard } = await import('../modules/sales-layer');
-      replyMarkup = salesBuyerCardKeyboard({
-        findingId: finding.id,
-        openUrl: openPost || openGroup,
-      });
-    } else if (text.startsWith('🔥 Buyer Alert')) {
-      const { buyerAlertKeyboard } = await import('../modules/lead-acquisition');
-      replyMarkup = buyerAlertKeyboard({
-        findingId: finding.id,
-        openUrl: openPost || openGroup,
-      });
-    } else {
-      replyMarkup = leadAlertKeyboard({
-        findingId: finding.id,
-        postUrl: openPost,
-        groupUrl: openGroup,
-      });
-    }
+    const pickSourceButtonUrl = (...candidates: Array<string | null | undefined>): string | null => {
+      const mobile = candidates
+        .map(u => (u ? toMobileFriendlyFacebookUrl(u) || u : null))
+        .filter((u): u is string => Boolean(u) && !isDegradedFacebookUrl(u));
+      // Source must be a solid post permalink — never group-home / login wall
+      return (
+        mobile.find(
+          u =>
+            isSolidFacebookPermalink(u) &&
+            isTrustedContentUrl(u, {
+              agentSourceName: finding.source?.name,
+              platform: sourceProv.platform,
+            }),
+        ) || null
+      );
+    };
+
+    const sourceButtonUrl = pickSourceButtonUrl(openPost, sourceUrlFinal, links.rawPostUrl);
+
+    replyMarkup = salesActionCardKeyboard({
+      findingId: finding.id,
+      sourceUrl: sourceButtonUrl,
+      leadCenterUrl: buildLeadCenterUrl(finding.id),
+      hasPhone: Boolean(finding.primaryPhone),
+      phone: finding.primaryPhone,
+    });
 
     await upsertDeliveryLog({
       companyId: finding.companyId,
@@ -446,17 +468,20 @@ export async function notifyFindingIfEligible(input: {
       payloadPreview: text,
     });
 
+    const heat = confidencePct >= 80 ? 'HOT' : confidencePct >= 60 ? 'WARM' : 'COLD';
     const send = await notification.send({
       type: 'lead_found',
       payload: {
         findingId: finding.id,
         entityId: finding.id,
-        score,
+        score: confidencePct,
         summary: text,
         postUrl: openPost,
         groupUrl: openGroup,
+        title: 'Lead Alert',
       },
       replyMarkup,
+      text,
       dedupeKey: eventKey,
       settings,
       immediate: true,
@@ -472,7 +497,12 @@ export async function notifyFindingIfEligible(input: {
         lastError: send.error || 'send_failed',
         payloadPreview: text,
       });
-      console.warn('[telegram] send failed:', send.error);
+      console.warn(
+        'lead_alert: findingId=%s event=NEW_LEAD confidence=%s heat=%s channel=LEAD status=failed',
+        finding.id,
+        confidencePct,
+        heat,
+      );
       return { ok: false, error: send.error };
     }
 
@@ -487,6 +517,13 @@ export async function notifyFindingIfEligible(input: {
       payloadPreview: text,
       sentAt: new Date(),
     });
+
+    console.info(
+      'lead_alert: findingId=%s event=NEW_LEAD confidence=%s heat=%s channel=LEAD status=sent',
+      finding.id,
+      confidencePct,
+      heat,
+    );
 
     return { ok: true, messageId: send.messageId || null };
   } catch (error) {

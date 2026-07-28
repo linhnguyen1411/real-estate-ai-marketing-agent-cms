@@ -17,6 +17,7 @@ export {
 } from './operationalMemory';
 export {
   createAndRunCampaign,
+  findReusableActiveCampaign,
   getCampaign,
   listCampaigns,
   listCampaignsKanban,

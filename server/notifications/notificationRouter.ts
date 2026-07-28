@@ -20,7 +20,20 @@ import type {
 import {
   resolveChannelForEvent,
   CHANNEL_LABELS,
+  CANONICAL_LEAD_ALERT_MARKER,
+  LEGACY_LEAD_ALERT_MARKERS,
 } from './notificationTypes';
+
+/** True when text is a valid single-lead Sales Action Card. */
+export function isCanonicalLeadAlertText(text: string | null | undefined): boolean {
+  const t = String(text || '');
+  if (!t.includes(CANONICAL_LEAD_ALERT_MARKER)) return false;
+  if (!t.includes('BUYER CONFIDENCE')) return false;
+  for (const marker of LEGACY_LEAD_ALERT_MARKERS) {
+    if (t.includes(marker)) return false;
+  }
+  return true;
+}
 
 export type NotificationSendInput = {
   type: NotificationEventType;
@@ -291,7 +304,39 @@ export async function sendNotification(input: NotificationSendInput): Promise<Te
       return { ok: false, skipped: true, reason: `missing_chat_${channel.toLowerCase()}` };
     }
 
-    const text = input.text || formatRoutedNotification(channel, input.type, payload);
+    // H2.4.6 — single-lead NEW_LEAD / lead_ai_insight MUST be canonical card.
+    // lead_score (FOLLOW_UP/cooling) may prefix canonical body; still requires LEAD ALERT marker.
+    const isSingleLeadEvent =
+      channel === 'LEAD' &&
+      (input.type === 'lead_found' ||
+        input.type === 'lead_ai_insight' ||
+        input.type === 'lead_score') &&
+      !(payload.batchCount && payload.batchCount > 1);
+
+    let text = input.text || formatRoutedNotification(channel, input.type, payload);
+
+    if (isSingleLeadEvent) {
+      if (!isCanonicalLeadAlertText(text) && !isCanonicalLeadAlertText(payload.summary)) {
+        console.warn(
+          'lead_alert: event=%s status=skipped reason=missing_canonical_card findingId=%s',
+          input.type,
+          payload.findingId || payload.entityId || '—',
+        );
+        return { ok: false, skipped: true, reason: 'missing_canonical_lead_card' };
+      }
+      // Prefer explicit text; else use summary already validated by formatter
+      if (!input.text && isCanonicalLeadAlertText(payload.summary)) {
+        text = String(payload.summary).slice(0, 4000);
+      }
+      if (!isCanonicalLeadAlertText(text)) {
+        return { ok: false, skipped: true, reason: 'missing_canonical_lead_card' };
+      }
+    }
+
+    if (!String(text || '').trim()) {
+      return { ok: false, skipped: true, reason: 'empty_text' };
+    }
+
     const replyMarkup = input.replyMarkup || keyboardForChannel(channel, input.type, payload);
 
     return await deliver({

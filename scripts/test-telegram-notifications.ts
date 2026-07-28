@@ -41,10 +41,12 @@ function ok(name: string, cond: boolean) {
     includeLink: false,
   });
 
-  ok('message has score structure', /^Lead mới \(\d+\/100\)/m.test(msg));
-  ok('message has classification line', msg.includes('👤') || msg.includes('Loại:'));
+  ok('canonical lead alert header', msg.includes('🎯 LEAD ALERT'));
+  ok('buyer confidence metric', /BUYER CONFIDENCE:\s*\d+%/.test(msg));
+  ok('message has role line', msg.includes('👤'));
   ok('message includes phone when enabled', msg.includes('0905111222'));
   ok('message includes need/summary', msg.includes('Mua đất') || msg.includes('Khách mua'));
+  ok('no legacy Lead mới score line', !/Lead mới \(\d+\/100\)/.test(msg));
 }
 
 {

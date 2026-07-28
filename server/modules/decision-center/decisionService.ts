@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '../../prisma';
-import { evaluateLeadDecision } from './engines';
+import { decideOutcome, evaluateLeadDecision } from './engines';
 import {
   getCachedDecision,
   getCampaignMap,
@@ -15,13 +15,54 @@ import {
   recordAiReviewed,
   recordDecisionMetrics,
 } from './store';
-import type { DecisionCenterSnapshot, LeadDecisionResult } from './types';
+import type {
+  DecisionCenterSnapshot,
+  DecisionIntent,
+  LeadDecisionResult,
+} from './types';
 
 export function readDecisionProfile(extractedData: unknown): LeadDecisionResult | null {
   if (!extractedData || typeof extractedData !== 'object') return null;
   const d = (extractedData as Record<string, unknown>).decisionCenter;
   if (!d || typeof d !== 'object') return null;
   return d as LeadDecisionResult;
+}
+
+function mapFindingActorToIntent(
+  actorRole: string | null | undefined,
+  classification: string | null | undefined,
+): DecisionIntent | null {
+  const blob = `${actorRole || ''} ${classification || ''}`.toLowerCase();
+  if (/\bbroker\b|môi giới/.test(blob)) return 'broker';
+  if (/\bseller\b|supply|listing/.test(blob)) return 'seller';
+  if (/\bbuyer\b|demand/.test(blob)) return 'buyer';
+  if (/\brent\b|rental/.test(blob)) return 'rent';
+  if (/\bspam\b/.test(blob)) return 'spam';
+  return null;
+}
+
+/**
+ * When Decision keywords miss but Scanner already classified actor,
+ * apply actor prior so broker/seller are not left as unknown_insufficient_evidence.
+ */
+export function applyActorPriorToDecision(
+  result: LeadDecisionResult,
+  actorRole: string | null | undefined,
+  classification: string | null | undefined,
+): LeadDecisionResult {
+  if (result.intent !== 'unknown' || result.matchedRules.length > 0) return result;
+  const prior = mapFindingActorToIntent(actorRole, classification);
+  if (!prior) return result;
+  const outcome = decideOutcome({ ruleScore: result.ruleScore, intent: prior });
+  return {
+    ...result,
+    intent: prior,
+    intentConfidence: Math.max(result.intentConfidence, 0.55),
+    decision: outcome.decision,
+    aiAllowed: outcome.aiAllowed,
+    reason: `actor_prior_${prior}:${outcome.reason}`,
+    reasons: [`actor_prior:${prior}`, outcome.reason, ...result.reasons].slice(0, 12),
+  };
 }
 
 export async function evaluateTextDecision(text: string): Promise<LeadDecisionResult> {
@@ -68,7 +109,10 @@ export async function evaluateTextDecision(text: string): Promise<LeadDecisionRe
  * Run decision for a finding. Returns whether AI enrichment is allowed.
  * Does not call AI itself — AI Gate only.
  */
-export async function processFindingDecision(findingId: string): Promise<{
+export async function processFindingDecision(
+  findingId: string,
+  options?: { force?: boolean },
+): Promise<{
   result: LeadDecisionResult;
   allowAi: boolean;
 }> {
@@ -85,7 +129,7 @@ export async function processFindingDecision(findingId: string): Promise<{
   }
 
   const existing = readDecisionProfile(finding.extractedData);
-  if (existing?.version === 'h36_decision_v1' && existing.decision) {
+  if (!options?.force && existing?.version === 'h36_decision_v1' && existing.decision) {
     // Reuse stored decision unless AI path still pending
     return { result: existing, allowAi: existing.aiAllowed && !existing.aiUsed };
   }
@@ -94,7 +138,22 @@ export async function processFindingDecision(findingId: string): Promise<{
     .filter(Boolean)
     .join('\n');
 
-  const result = await evaluateTextDecision(text);
+  // Force path bypasses decision cache so rule-library updates take effect.
+  let evaluated: LeadDecisionResult;
+  if (options?.force) {
+    const rules = await listDecisionRules();
+    const campaignMap = await getCampaignMap();
+    evaluated = evaluateLeadDecision({ text, rules, campaignMap });
+    await putCachedDecision(evaluated).catch(() => undefined);
+  } else {
+    evaluated = await evaluateTextDecision(text);
+  }
+
+  const result = applyActorPriorToDecision(
+    evaluated,
+    finding.actorRole,
+    finding.classification,
+  );
 
   const extracted =
     finding.extractedData && typeof finding.extractedData === 'object'
@@ -107,6 +166,7 @@ export async function processFindingDecision(findingId: string): Promise<{
     `decision:${result.decision}`,
     `ruleScore:${result.ruleScore}`,
     `intent:${result.intent}`,
+    `reason:${result.reason}`,
   ].slice(0, 16);
 
   let status = finding.status;
@@ -123,8 +183,16 @@ export async function processFindingDecision(findingId: string): Promise<{
     patch.status = status;
     patch.scoreStatus = scoreStatus;
     patch.finalScore = Math.min(finding.finalScore ?? 0, result.ruleScore);
+    patch.dismissedAt = new Date();
+    patch.dismissedBy = 'decision-engine';
+    patch.intent = result.intent;
+    patch.actorRole =
+      result.intent === 'broker'
+        ? 'broker'
+        : result.intent === 'seller'
+          ? 'seller'
+          : finding.actorRole;
   } else if (result.decision === 'qualified_candidate') {
-    // Qualified without AI — mark enriched via rules
     status = 'enriched';
     scoreStatus = 'enriched';
     patch.status = status;
@@ -141,16 +209,30 @@ export async function processFindingDecision(findingId: string): Promise<{
           : result.intent === 'broker'
             ? 'broker'
             : finding.actorRole;
+    patch.dismissedAt = null;
+    patch.dismissedBy = null;
     if (result.campaign) {
       patch.primaryLocation = result.campaign.campaignName;
     }
   } else if (result.decision === 'manual_review') {
-    patch.status = finding.status === 'enriching' ? 'raw' : finding.status;
+    // Re-open dismissed unknowns for manual queue (UNKNOWN ≠ auto-spam)
+    patch.status =
+      finding.status === 'dismissed' ||
+      finding.status === 'enriching' ||
+      finding.status === 'duplicate' ||
+      finding.status === 'new'
+        ? 'raw'
+        : finding.status;
     patch.scoreStatus = 'raw';
     patch.finalScore = Math.max(finding.finalScore ?? 0, result.ruleScore);
+    patch.intent = result.intent;
+    patch.dismissedAt = null;
+    patch.dismissedBy = null;
   } else if (result.decision === 'ai_review') {
-    // Leave for AI enrichment path
     patch.finalScore = Math.max(finding.finalScore ?? 0, result.ruleScore);
+    patch.intent = result.intent;
+    patch.dismissedAt = null;
+    patch.dismissedBy = null;
   }
 
   await prisma.agentFinding.update({
@@ -176,7 +258,6 @@ export async function processFindingDecision(findingId: string): Promise<{
     at: result.at,
   });
 
-  // Knowledge Analytics — measure rule effectiveness (no AI)
   try {
     const { listConcepts, recordRuleDecisionEvent } = await import('../knowledge-base');
     const concepts = await listConcepts();
@@ -203,13 +284,13 @@ export async function processFindingDecision(findingId: string): Promise<{
       missionId: finding.missionId || finding.mission?.id || null,
       missionLabel: finding.mission?.name || null,
       missionKeyword: finding.mission?.name || result.campaign?.campaignName || null,
-      hadUnknown: false,
+      hadUnknown: result.intent === 'unknown',
     });
   } catch (err) {
     console.warn('[decision-center] rule analytics failed:', err);
   }
 
-  return { result, allowAi: result.aiAllowed };
+  return { result, allowAi: result.aiAllowed && !result.aiUsed };
 }
 
 /** Mark that AI was used for an ai_review finding */

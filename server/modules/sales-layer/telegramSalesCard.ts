@@ -1,81 +1,42 @@
 /**
- * Telegram Sales cards — Buyer Card + cooling alert (no text dump).
+ * Telegram Sales cards — cooling alert + re-exports of Sales Action Card.
  */
 
 import { sendNotification } from '../../notifications/notificationRouter';
-import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
 import type { SalesLayerProfile } from './types';
-import { formatTy } from './pipelineValue';
 import { prisma } from '../../prisma';
+import {
+  buildLeadCenterUrl,
+  formatSalesActionCard,
+  formatSalesBuyerCard,
+  salesActionCardKeyboard,
+  salesBuyerCardKeyboard,
+} from './telegramSalesActionCard';
 
-function truncId(id: string, max = 28): string {
-  return id.length <= max ? id : id.slice(0, max);
-}
-
-export function salesBuyerCardKeyboard(input: {
-  findingId: string;
-  openUrl?: string | null;
-}): InlineKeyboard {
-  const id = truncId(input.findingId);
-  const rows: InlineKeyboard['inline_keyboard'] = [];
-  if (input.openUrl && /^https:\/\//i.test(input.openUrl)) {
-    rows.push([{ text: 'Call', url: input.openUrl }]);
-  } else {
-    rows.push([{ text: 'Call', callback_data: `l:r:${id}` }]);
-  }
-  rows.push([
-    { text: 'Assign', callback_data: `l:a:${id}` },
-    { text: 'CRM', callback_data: `l:c:${id}` },
-  ]);
-  rows.push([
-    { text: 'History', callback_data: `l:h:${id}` },
-    { text: 'Ignore', callback_data: `l:s:${id}` },
-  ]);
-  return { inline_keyboard: rows };
-}
-
-export function formatSalesBuyerCard(input: {
-  profile: SalesLayerProfile;
-  confidencePct: number;
-  campaignName?: string | null;
-  title?: string | null;
-}): string {
-  const p = input.profile;
-  const days =
-    p.timeline.length >= 2
-      ? Math.max(
-          1,
-          Math.round(
-            (new Date(p.updatedAt).getTime() - new Date(p.timeline[0].at).getTime()) / 86_400_000,
-          ),
-        )
-      : 1;
-
-  return [
-    '═══════════════════',
-    '👤 Buyer',
-    `${input.confidencePct}%`,
-    '',
-    `Campaign`,
-    input.campaignName || '—',
-    '',
-    `Journey`,
-    p.journeyStage,
-    '',
-    `Timeline`,
-    `${days} ngày`,
-    '',
-    `Expected Deal`,
-    p.expectedDealTy != null ? formatTy(p.expectedDealTy) : '—',
-    '',
-    `AI Suggestion`,
-    p.recommendation.label,
-    input.title ? `\n${String(input.title).slice(0, 80)}` : '',
-    '═══════════════════',
-  ]
-    .filter(line => line !== undefined)
-    .join('\n');
-}
+export {
+  formatSalesActionCard,
+  formatSalesBuyerCard,
+  salesActionCardKeyboard,
+  salesBuyerCardKeyboard,
+  assignOwnerKeyboard,
+  buildLeadCenterUrl,
+  formatBudgetLabel,
+  formatAreaLabel,
+  formatSourceLabel,
+  buildActionableRecommendation,
+  summarizeSignal,
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  resolveSourceProvenance,
+  resolveLeadSource,
+  validateSourceProvenance,
+  isTrustedContentUrl,
+  looksLikeConfigSourceName,
+  toTelUri,
+  stripInternalPollution,
+  truncFindingIdForCallback,
+} from './telegramSalesActionCard';
+export type { LeadAlertRole, SalesActionCardViewModel } from './telegramSalesActionCard';
 
 export async function maybeSendCoolingAlert(input: {
   findingId: string;
@@ -84,23 +45,51 @@ export async function maybeSendCoolingAlert(input: {
 }): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
   const finding = await prisma.agentFinding.findUnique({
     where: { id: input.findingId },
-    select: { id: true, title: true, scannedContent: { select: { canonicalUrl: true } } },
+    select: {
+      id: true,
+      title: true,
+      personName: true,
+      primaryPhone: true,
+      primaryLocation: true,
+      propertyType: true,
+      budgetMin: true,
+      budgetMax: true,
+      needSummary: true,
+      summary: true,
+      extractedData: true,
+      scannedContent: { select: { canonicalUrl: true } },
+      source: { select: { name: true, type: true } },
+    },
   });
   if (!finding) return { ok: false, skipped: true, reason: 'missing' };
   if (!input.profile.followUp.needsFollowUp) {
     return { ok: false, skipped: true, reason: 'not_cooling' };
   }
 
+  const sourceUrl = finding.scannedContent?.canonicalUrl || null;
+  const body = formatSalesActionCard({
+    findingId: finding.id,
+    actorName: finding.personName,
+    propertyType: finding.propertyType,
+    location: finding.primaryLocation,
+    budgetMin: finding.budgetMin,
+    budgetMax: finding.budgetMax,
+    title: finding.title,
+    needSummary: finding.needSummary,
+    summary: finding.summary,
+    sales: input.profile,
+    confidencePct: input.confidencePct,
+    hasPhone: Boolean(finding.primaryPhone),
+    sourceUrl,
+    sourceLabel: finding.source?.name || finding.source?.type || null,
+  });
+
   const text = [
     '⚠ Buyer đang nguội.',
     input.profile.followUp.reason || '',
     input.profile.followUp.suggestion || 'Nên follow-up.',
     '',
-    formatSalesBuyerCard({
-      profile: input.profile,
-      confidencePct: input.confidencePct,
-      title: finding.title,
-    }),
+    body,
   ]
     .filter(Boolean)
     .join('\n');
@@ -110,9 +99,11 @@ export async function maybeSendCoolingAlert(input: {
     immediate: true,
     dedupeKey: `buyer_cool:${finding.id}:${Math.floor(input.profile.followUp.coolingHours / 24)}`,
     text,
-    replyMarkup: salesBuyerCardKeyboard({
+    replyMarkup: salesActionCardKeyboard({
       findingId: finding.id,
-      openUrl: finding.scannedContent?.canonicalUrl,
+      sourceUrl,
+      leadCenterUrl: buildLeadCenterUrl(finding.id),
+      hasPhone: Boolean(finding.primaryPhone),
     }),
     payload: {
       findingId: finding.id,

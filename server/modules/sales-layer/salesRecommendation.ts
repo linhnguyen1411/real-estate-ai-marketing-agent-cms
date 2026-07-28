@@ -1,5 +1,5 @@
 /**
- * Sales Recommendation — actionable next step (not just score).
+ * Sales Recommendation — actionable next step from real sales context.
  */
 
 import type {
@@ -15,6 +15,9 @@ export function recommendSalesAction(input: {
   pipelineStage: SalesPipelineStage;
   followUp: FollowUpFlag;
   hasPhone?: boolean;
+  hasBudget?: boolean;
+  hasLocation?: boolean;
+  timelineUrgent?: boolean;
 }): SalesRecommendation {
   if (input.pipelineStage === 'won' || input.journeyStage === 'closed_won') {
     return {
@@ -27,17 +30,31 @@ export function recommendSalesAction(input: {
   if (input.pipelineStage === 'lost' || input.journeyStage === 'closed_lost') {
     return {
       code: 'remarket',
-      label: 'Remarketing nhẹ',
+      label: 'Đưa vào remarketing',
       reason: 'Closed Lost — nuôi lại dài hạn',
       urgency: 'low',
     };
   }
 
-  if (input.confidencePct >= 90 || input.journeyStage === 'negotiating' || input.pipelineStage === 'negotiating') {
+  if (input.confidencePct < 40) {
+    return {
+      code: 'monitor',
+      label: 'Chưa nên liên hệ — tín hiệu chưa đủ mạnh',
+      reason: `Buyer confidence ${input.confidencePct}%`,
+      urgency: 'low',
+    };
+  }
+
+  if (
+    input.confidencePct >= 80 ||
+    input.journeyStage === 'negotiating' ||
+    input.pipelineStage === 'negotiating' ||
+    input.timelineUrgent
+  ) {
     return {
       code: 'call_now',
-      label: 'Gọi ngay hôm nay',
-      reason: `Buyer ${input.confidencePct}% · Journey ${input.journeyStage}`,
+      label: input.hasPhone ? 'Gọi ngay' : 'Inbox ngay',
+      reason: `Buyer ${input.confidencePct}% · ${input.journeyStage}`,
       urgency: 'urgent',
     };
   }
@@ -45,18 +62,18 @@ export function recommendSalesAction(input: {
   if (input.followUp.needsFollowUp && /nguội|im lặng/i.test(input.followUp.reason || '')) {
     return {
       code: 'remarket',
-      label: 'Đã nguội — nên remarketing',
+      label: 'Đưa vào remarketing',
       reason: input.followUp.reason || 'Cooling',
       urgency: 'soon',
     };
   }
 
-  if (input.followUp.suggestion?.includes('gọi') || (input.hasPhone && input.confidencePct >= 75)) {
+  if (!input.hasBudget) {
     return {
-      code: 'call_now',
-      label: 'Nên gọi ngay',
-      reason: input.followUp.reason || 'Đủ tín hiệu gọi',
-      urgency: 'urgent',
+      code: 'reply_comment',
+      label: 'Hỏi lại ngân sách',
+      reason: 'Thiếu ngân sách — cần clarify trước khi báo giá',
+      urgency: 'soon',
     };
   }
 
@@ -67,9 +84,20 @@ export function recommendSalesAction(input: {
   ) {
     return {
       code: 'send_quote',
-      label: 'Chưa nên gọi — gửi báo giá',
-      reason: 'Đang research/so sánh',
+      label: 'Gửi 3 sản phẩm phù hợp',
+      reason: input.hasLocation
+        ? 'Đủ khu vực — gửi listing match'
+        : 'Đang research/so sánh',
       urgency: 'normal',
+    };
+  }
+
+  if (input.followUp.suggestion?.includes('gọi') || (input.hasPhone && input.confidencePct >= 70)) {
+    return {
+      code: 'call_now',
+      label: input.hasPhone ? 'Gọi ngay' : 'Inbox ngay',
+      reason: input.followUp.reason || 'Đủ tín hiệu liên hệ',
+      urgency: 'urgent',
     };
   }
 
@@ -82,27 +110,27 @@ export function recommendSalesAction(input: {
     };
   }
 
-  if (input.pipelineStage === 'detected' || input.pipelineStage === 'qualified') {
-    return {
-      code: 'assign',
-      label: 'Assign Sales',
-      reason: 'Đưa vào pipeline xử lý',
-      urgency: 'normal',
-    };
-  }
-
   if (input.followUp.needsFollowUp) {
     return {
       code: 'follow_up',
-      label: input.followUp.suggestion || 'Follow-up',
+      label: 'Follow-up trong 24h',
       reason: input.followUp.reason || 'Cần theo dõi',
       urgency: 'soon',
     };
   }
 
+  if (input.pipelineStage === 'detected' || input.pipelineStage === 'qualified') {
+    return {
+      code: 'assign',
+      label: input.hasPhone ? 'Gọi và giao sales' : 'Giao sales — hỏi ngân sách',
+      reason: 'Qualified buyer — đưa vào pipeline',
+      urgency: 'normal',
+    };
+  }
+
   return {
     code: 'monitor',
-    label: 'Monitor',
+    label: 'Theo dõi thêm tín hiệu',
     reason: 'Tiếp tục theo dõi hành trình',
     urgency: 'low',
   };

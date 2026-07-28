@@ -204,16 +204,22 @@ export async function routeTelegramUpdate(
     await deps.replyPort.answerCallback?.({
       botToken: deps.config.botToken,
       callbackQueryId: inbound.callbackQueryId,
-      text: mapped ? '…' : 'Unknown',
+      text: mapped ? 'OK' : 'Không hỗ trợ nút này',
     });
     if (!mapped) {
+      await deps.replyPort.reply({
+        botToken: deps.config.botToken,
+        chatId: inbound.chatId,
+        text: 'Không thể xử lý nút này. Thử Open Lead hoặc /help.',
+      });
       return { handled: true, ok: false, reason: 'unknown_callback' };
     }
     commandText = mapped;
-    // Approval / incident / AI employee go through Copilot
+    // Approval / incident / AI employee (incl. Approve|Reject|View|Complete campaign) → Copilot
     if (
       mapped.startsWith('/approval') ||
       mapped.startsWith('/incident') ||
+      /^(approve|reject|view|complete)\s+campaign\b/i.test(mapped) ||
       /^(research|content plan|đề xuất mission|de xuat mission|lead nổi bật|lead noi bat|lập campaign|lap campaign|hôm nay ai|hom nay ai|thiếu bài|thieu bai|ai sales)/i.test(
         mapped,
       )

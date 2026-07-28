@@ -91,7 +91,8 @@ function stageTone(stage: string | null): string {
 
 function hasOriginalPostUrl(url?: string | null): boolean {
   if (!url) return false;
-  return /\/posts\/\d+/.test(url) && !url.includes('#gql-');
+  if (url.includes('#gql-')) return false;
+  return /\/posts\/(?:pfbid[\w]+|\d+)/i.test(url) || /\/permalink\/\d+/i.test(url);
 }
 
 export default function ScannedContentPage({ userRole }: Props) {

@@ -437,12 +437,24 @@ export function formatDailyBriefingLines(input: {
     const lines = [
       `📈 Sales Briefing · ${input.slotLabel}`,
       '--------',
-      ...salesLines.slice(0, 12),
+      ...salesLines.slice(0, 16),
       '--------',
-      `Ops · ${verdict} · fleet ${ops.fleet.machinesOnline}`,
     ];
-    if (input.recommendations[0]) lines.push(`→ ${input.recommendations[0]}`);
-    return lines.slice(0, 18);
+    if (input.incidents.length) {
+      lines.push(`⚠️ OPS · ${verdict}`);
+      lines.push(
+        input.recommendations[0] ||
+          input.incidents
+            .slice(0, 1)
+            .map(i => i.title)
+            .join(' · ') ||
+          'Cần kiểm tra Operations',
+      );
+    } else {
+      lines.push(`Ops · ${verdict} · fleet ${ops.fleet.machinesOnline}`);
+      if (input.recommendations[0]) lines.push(`→ ${input.recommendations[0]}`);
+    }
+    return lines.slice(0, 24);
   }
 
   const lines = [

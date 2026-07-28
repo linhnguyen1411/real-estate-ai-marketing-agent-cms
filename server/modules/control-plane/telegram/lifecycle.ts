@@ -87,7 +87,7 @@ export async function startTelegramControlPlane(options?: {
         useLlmInsights: process.env.TELEGRAM_COPILOT_LLM === '1',
       }),
     notifier: {
-      async send(text) {
+      async send(text, opts) {
         if (!cfg.botToken) return;
         const hour = new Date().getHours();
         const type =
@@ -96,6 +96,8 @@ export async function startTelegramControlPlane(options?: {
         await notification.send({
           type,
           payload: { summary: text },
+          text,
+          replyMarkup: opts?.replyMarkup,
           immediate: true,
           skipDedup: true,
         });

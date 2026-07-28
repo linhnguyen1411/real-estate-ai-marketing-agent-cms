@@ -150,14 +150,17 @@ export async function processLeadAcquisition(input: {
     },
   });
 
-  if (input.notifyTelegram && (vip || (buyer && profile.priority.finalScore >= 70))) {
-    void maybeSendBuyerAlert({ findingId: finding.id, profile }).catch(err => {
-      console.warn('[lead-acquisition] buyer alert failed:', err);
-    });
+  if (input.notifyTelegram && (vip || buyer || intent.intent === 'renter' || intent.intent === 'investor')) {
+    const { shouldSendBuyerAlert } = await import('../sales-layer/buyerHeat');
+    if (shouldSendBuyerAlert(profile.priority.finalScore) || vip) {
+      void maybeSendBuyerAlert({ findingId: finding.id, profile }).catch(err => {
+        console.warn('[lead-acquisition] buyer alert failed:', err);
+      });
+    }
   }
 
-  // H3.5 — Buyer Journey + Sales Pipeline (Sales Layer)
-  if (buyer) {
+  // H3.5 — Buyer Journey + Sales Pipeline (Sales Layer) for demand-side leads
+  if (buyer || intent.intent === 'renter' || intent.intent === 'investor') {
     void import('../sales-layer')
       .then(m => m.enqueueSalesLayer(finding.id))
       .catch(err => console.warn('[lead-acquisition] sales-layer enqueue failed:', err));

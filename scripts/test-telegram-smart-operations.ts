@@ -115,12 +115,13 @@ async function main() {
     } as never,
     { includePhone: false, includeBudget: false, includeLink: false },
   );
-  assert.match(alert.text, /Lead mới \(75\/100\)/);
+  assert.match(alert.text, /🎯 LEAD ALERT/);
+  assert.match(alert.text, /BUYER CONFIDENCE: 75%/);
   assert.match(alert.text, /👤 Người mua/);
   assert.match(alert.text, /📍 Hòa Xuân/);
-  assert.match(alert.text, /🏷 Nhà phố/);
-  assert.match(alert.text, /📂 Group:/);
+  assert.match(alert.text, /Nhà phố/);
   assert.match(alert.text, /MUA BÁN BDS ĐÀ NẴNG/);
+  assert.doesNotMatch(alert.text, /Lead mới \(\d+\/100\)/);
   assert.ok(alert.postUrl || alert.canonicalUrl);
   console.log('PASS Lead Alert');
 

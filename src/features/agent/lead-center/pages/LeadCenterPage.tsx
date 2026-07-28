@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AgentPanelEmpty, AgentPanelError, AgentPanelLoader } from '../../shared/AgentPlatformUi';
 
 type SalesProfile = {
@@ -145,6 +145,35 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
   }, [load]);
 
   useEffect(() => {
+    if (!board) return;
+    const params = new URLSearchParams(window.location.search);
+    const findingId = params.get('findingId') || params.get('id');
+    if (!findingId) return;
+    for (const col of Object.values(board)) {
+      const hit = col.find(c => c.findingId === findingId || c.findingId.startsWith(findingId));
+      if (hit) {
+        setSelected(hit);
+        return;
+      }
+    }
+  }, [board]);
+
+  const urgentOnly =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('urgent') === 'true';
+
+  const visibleBoard = useMemo(() => {
+    if (!board || !urgentOnly) return board;
+    const next = { ...board };
+    for (const key of Object.keys(next) as Array<keyof typeof next>) {
+      next[key] = (next[key] || []).filter(
+        c => String(c.sales?.recommendation?.urgency || '') === 'urgent',
+      );
+    }
+    return next;
+  }, [board, urgentOnly]);
+
+  useEffect(() => {
     if (!selected) return;
     setOwnerDraft(selected.sales.owner || '');
     setCloseDraft(selected.sales.expectedCloseAt?.slice(0, 10) || '');
@@ -203,7 +232,8 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
   if (error) return <AgentPanelError message={error} onRetry={() => void load()} />;
   if (!board || !metrics) return <AgentPanelLoader label="Đang tải Lead Center…" />;
 
-  const total = Object.values(board).reduce((n, arr) => n + (arr?.length || 0), 0);
+  const displayBoard = visibleBoard || board;
+  const total = Object.values(displayBoard || {}).reduce((n, arr) => n + (arr?.length || 0), 0);
 
   return (
     <div className="space-y-3">
@@ -222,6 +252,12 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
           Refresh
         </button>
       </div>
+
+      {urgentOnly && (
+        <p className="text-xs text-amber-300">
+          Filter · Urgent Buyers only ({metrics.urgentBuyers} in snapshot)
+        </p>
+      )}
 
       {message && <p className="text-xs text-emerald-400">{message}</p>}
 
@@ -251,7 +287,7 @@ export default function LeadCenterPage({ canManage }: { canManage: boolean }) {
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {COLUMNS.map(col => {
-            const items = board[col.id] || [];
+                const items = (displayBoard && displayBoard[col.id]) || [];
             return (
               <div
                 key={col.id}

@@ -26,8 +26,13 @@ import {
   opsLeadCreateMission,
   opsLeadRetryNotify,
   opsLeadAssign,
+  opsLeadAssignOwner,
   opsLeadCrm,
   opsLeadHistory,
+  opsLeadCall,
+  opsLeadContact,
+  opsLeadOpen,
+  opsLeadSource,
   opsRefreshRuntime,
   opsGetFleet,
   opsGetFleetAgent,
@@ -512,17 +517,41 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
 
   registry.register({
     name: 'lead',
-    description: 'Lead alert actions (skip / mission / retry / assign / crm / history)',
-    usage: '/lead skip|mission|retry|assign|crm|history <findingId>',
+    description: 'Lead alert actions (skip / mission / retry / assign / owner / crm / history / call / contact / open / source)',
+    usage: '/lead skip|mission|retry|assign|owner|crm|history|call|contact|open|source <findingId> [ownerId]',
     handler: async (args, ctx) => {
       const action = (args[0] || '').toLowerCase();
       const id = args[1];
-      if (!id || !['skip', 'mission', 'retry', 'assign', 'crm', 'history'].includes(action)) {
-        return fail('lead', 'Usage: /lead skip|mission|retry|assign|crm|history <findingId>');
+      if (
+        !id ||
+        ![
+          'skip',
+          'mission',
+          'retry',
+          'assign',
+          'owner',
+          'crm',
+          'history',
+          'call',
+          'contact',
+          'open',
+          'source',
+        ].includes(action)
+      ) {
+        return fail(
+          'lead',
+          'Usage: /lead skip|mission|retry|assign|owner|crm|history|call|contact|open|source <findingId> [ownerId]',
+        );
       }
       if (action === 'skip') {
         const r = await opsLeadSkip(id, ctx.triggeredBy);
-        return ok('lead', [`Lead skipped ${r.findingId}`], r);
+        return ok(
+          'lead',
+          r.idempotent
+            ? ['🚫 Lead đã được bỏ qua trước đó.']
+            : ['🚫 Đã bỏ qua lead.'],
+          r,
+        );
       }
       if (action === 'mission') {
         const r = await opsLeadCreateMission(id, ctx.triggeredBy);
@@ -530,7 +559,12 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       }
       if (action === 'assign') {
         const r = await opsLeadAssign(id, ctx.triggeredBy);
-        return ok('lead', [`Lead assigned ${r.findingId}`], r);
+        return ok('lead', r.lines, r, r.replyMarkup);
+      }
+      if (action === 'owner') {
+        const ownerId = args[2] || 'self';
+        const r = await opsLeadAssignOwner(id, ownerId, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
       }
       if (action === 'crm') {
         const r = await opsLeadCrm(id, ctx.triggeredBy);
@@ -539,6 +573,22 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       if (action === 'history') {
         const r = await opsLeadHistory(id);
         return ok('lead', r.lines, r);
+      }
+      if (action === 'call') {
+        const r = await opsLeadCall(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'contact') {
+        const r = await opsLeadContact(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'open') {
+        const r = await opsLeadOpen(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r);
+      }
+      if (action === 'source') {
+        const r = await opsLeadSource(id, ctx.triggeredBy);
+        return ok('lead', r.lines, r, r.replyMarkup);
       }
       const r = await opsLeadRetryNotify(id);
       if (!r.ok) {
@@ -585,6 +635,62 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       );
     },
   });
+
+  // H2.4.9 — Urgent Buyers drill-down
+  registry.register({
+    name: 'sales',
+    description: 'Sales Pipeline · Urgent Buyers',
+    usage: '/sales urgent [page] | /sales card <findingId>',
+    handler: async (args, ctx) => {
+      const sub = (args[0] || '').toLowerCase();
+      if (sub === 'urgent' || sub === 'buyers') {
+        const page = Math.max(0, Number(args[1] || 0) || 0);
+        const {
+          getUrgentBuyersBundle,
+          formatUrgentBuyersListText,
+          urgentBuyersListKeyboard,
+        } = await import('../../sales-layer');
+        const bundle = await getUrgentBuyersBundle({
+          companyId: ctx.companyId,
+          sinceHours: 720,
+          page,
+        });
+        if (bundle.total !== bundle.metrics.urgentBuyers) {
+          console.warn(
+            '[sales] urgent count mismatch list=%s metrics=%s',
+            bundle.total,
+            bundle.metrics.urgentBuyers,
+          );
+        }
+        const text = formatUrgentBuyersListText({
+          total: bundle.total,
+          items: bundle.items,
+          page: bundle.page,
+        });
+        const kb =
+          bundle.total > 0
+            ? urgentBuyersListKeyboard({
+                items: bundle.items,
+                total: bundle.total,
+                page: bundle.page,
+              })
+            : undefined;
+        return ok('sales', text.split('\n'), bundle, kb);
+      }
+      if (sub === 'card' || sub === 'open') {
+        const id = args[1];
+        if (!id) return fail('sales', 'Usage: /sales card <findingId>');
+        const r = await opsLeadRetryNotify(id);
+        if (!r.ok) {
+          return fail('sales', r.reason || r.error || 'Không mở được Sales Action Card');
+        }
+        return ok('sales', [`🎯 Đã mở Sales Action Card · ${id.slice(0, 12)}`], {
+          messageId: r.messageId,
+        });
+      }
+      return fail('sales', 'Usage: /sales urgent [page] | /sales card <findingId>');
+    },
+  });
 }
 
 /** Used by help listing from operations surface */
@@ -601,7 +707,8 @@ export function operationsHelpLines(): string[] {
     '/browser [profiles|release|recover|restart|refresh]',
     '/runtime · /health',
     '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
-    '/lead skip|mission|retry|assign|crm|history <id>',
+    '/lead skip|mission|retry|assign|crm|history|call|contact|open|source <id>',
+    '/sales urgent [page] | /sales card <findingId>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

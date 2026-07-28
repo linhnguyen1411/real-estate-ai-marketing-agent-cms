@@ -13,6 +13,7 @@ export {
   aggregatePipelineValue,
   estimateDealTy,
   formatTy,
+  normalizeTy,
   probabilityForStage,
 } from './pipelineValue';
 export { applyLearningAdjustments } from './learningAdjust';
@@ -21,15 +22,56 @@ export {
   enqueueSalesLayer,
   updateSalesPipelineStage,
   recordSalesLearning,
+  recordSalesAction,
   listSalesPipeline,
   getSalesPipelineMetrics,
   formatSalesDailyBriefing,
   readSalesProfile,
   writeSalesProfile,
+  getUrgentBuyersBundle,
+  listUrgentBuyers,
+  loadPipelineSalesRows,
 } from './salesService';
+export type { SalesActionKind } from './salesService';
+export {
+  formatUrgentBuyersListText,
+  urgentBuyersListKeyboard,
+  dailyBriefingSalesKeyboard,
+  selectUrgentBuyers,
+  toUrgentBuyerSummary,
+  isUrgentSalesProfile,
+  URGENT_BUYERS_PAGE_SIZE,
+} from './urgentBuyers';
+export type { UrgentBuyerSummary, PipelineSalesRow } from './urgentBuyers';
 export {
   formatSalesBuyerCard,
+  formatSalesActionCard,
   salesBuyerCardKeyboard,
+  salesActionCardKeyboard,
+  assignOwnerKeyboard,
   maybeSendCoolingAlert,
+  buildLeadCenterUrl,
+  formatBudgetLabel,
+  formatAreaLabel,
+  formatSourceLabel,
+  buildActionableRecommendation,
+  buildLeadNeed,
+  buildSalesActionCardViewModel,
+  resolveSourceProvenance,
+  resolveLeadSource,
+  validateSourceProvenance,
+  isTrustedContentUrl,
+  looksLikeConfigSourceName,
+  toTelUri,
+  stripInternalPollution,
 } from './telegramSalesCard';
+export { resolveLeadAlertRole } from './telegramSalesActionCard';
+export type { LeadAlertRole, SalesActionCardViewModel } from './telegramSalesActionCard';
+export {
+  classifyBuyerHeat,
+  resolveBuyerConfidencePct,
+  shouldSendBuyerAlert,
+  clampBuyerConfidence,
+} from './buyerHeat';
+export type { BuyerHeat, BuyerHeatInfo } from './buyerHeat';
 export { registerSalesLayerRoutes } from './api/salesRoutes';

@@ -5,7 +5,7 @@ Five dedicated channels. Each maps to one env var and one Telegram group.
 | Channel | Label | Env var | Chat ID |
 |---------|-------|---------|---------|
 | **OPS** | 🤖 AI Ops | `TELEGRAM_OPS_CHAT_ID` | `-5348392375` |
-| **LEAD** | 🎯 Lead Alerts | `TELEGRAM_LEAD_CHAT_ID` | `-5592400378` |
+| **LEAD** | 🎯 LEAD | `TELEGRAM_LEAD_CHAT_ID` | `-5592400378` |
 | **PUBLISH** | 📢 Publishing | `TELEGRAM_PUBLISH_CHAT_ID` | `-5261113042` |
 | **REPORT** | 📊 Daily Reports | `TELEGRAM_REPORT_CHAT_ID` | `-5446190511` |
 | **CRITICAL** | 🚨 Critical Alerts | `TELEGRAM_CRITICAL_CHAT_ID` | `-5132560624` |
@@ -69,28 +69,41 @@ Five dedicated channels. Each maps to one env var and one Telegram group.
 | Channel | Actions |
 |---------|---------|
 | **OPS** | Dashboard, Runtime, Fleet, Health |
-| **LEAD** | Open Post, Open Group, CRM, Skip |
+| **LEAD** | Call, Contact, Open Lead, Source, Assign, History, Ignore |
 | **PUBLISH** | Retry, Cancel, Open Evidence |
 | **REPORT** | Dashboard, Runtime |
 | **CRITICAL** | Recover, Restart Browser, Restart Agent |
 
 Keyboards: `keyboardForChannel()` in `server/notifications/telegramFormatter.ts`.
 
-## Lead batching example
+## Single-lead NEW_LEAD (canonical only)
 
-20 `lead_found` events within 8 seconds → **one** message:
+`lead_found` single notifications use **Sales Action Card** only:
 
 ```
-🎯 Lead Alerts
-🎯 20 Lead mới
+🎯 LEAD ALERT
+…
+📌 Need
+📂 Source
+🎯 BUYER CONFIDENCE: N%
+💡 NEXT ACTION
+…
+```
 
-• f1 (88/100) — Cần đất…
-• f2 (75/100) — …
-… và 15 lead khác
+Producer: `notifyFindingIfEligible` → `formatSalesActionCard`.  
+If canonical card text is missing, delivery **fails closed** (`missing_canonical_lead_card`) — no Score / Lead Alerts fallback.
 
-Mở CRM để xem chi tiết.
+## Lead digest (batch)
+
+Multiple LEAD events within the batch window → **Lead Digest** (not a Sales Action Card):
+
+```
+🎯 Lead Digest
+🎯 N Lead mới
+• …
 ```
 
 ## Source of truth
 
-Event → channel map: `EVENT_CHANNEL_MAP` in `server/notifications/notificationTypes.ts`.
+Event → channel map: `EVENT_CHANNEL_MAP` in `server/notifications/notificationTypes.ts`.  
+Canonical markers: `CANONICAL_LEAD_ALERT_MARKER` / `LEGACY_LEAD_ALERT_MARKERS` in the same file.

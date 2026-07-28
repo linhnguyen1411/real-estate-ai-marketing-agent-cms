@@ -51,21 +51,36 @@ async function main() {
   assert.equal(chats.PUBLISH, '-5261113042');
   console.log('PASS Routing');
 
-  // Lead
+  // Lead — must use canonical card text (H2.4.6 fail-closed)
   setupMock();
   const lead = formatLeadTelegramAlert(
     { id: 'f1', finalScore: 88, classification: 'buyer', needSummary: 'Cần đất' },
     null,
     { includePhone: false, includeLink: false },
   );
-  assert.match(lead.text, /Lead mới \(88\/100\)/);
-  assert.match(lead.text, /🎯 Lead Alerts/);
+  assert.match(lead.text, /🎯 LEAD ALERT/);
+  assert.match(lead.text, /BUYER CONFIDENCE: 88%/);
+  assert.match(lead.text, /Người mua/);
+  assert.doesNotMatch(lead.text, /Lead Alerts|Lead mới \(\d+\/100\)|Expected Deal|AI Suggestion|Score:/);
   await notification.send({
     type: 'lead_found',
     payload: { findingId: 'f1', score: 88, summary: lead.text },
+    text: lead.text,
     immediate: true,
   });
   assert.equal(delivered, 1);
+
+  // Legacy / incomplete LEAD payload must NOT send
+  setupMock();
+  const blocked = await notification.send({
+    type: 'lead_found',
+    payload: { findingId: 'f-legacy', score: 100, summary: 'Buyer 40%' },
+    immediate: true,
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.skipped, true);
+  assert.equal(blocked.reason, 'missing_canonical_lead_card');
+  assert.equal(delivered, 0);
   console.log('PASS Lead');
 
   // Publish
@@ -152,17 +167,23 @@ async function main() {
   assert.ok(delivered <= 30);
   console.log('PASS Rate Limit');
 
-  // Batch leads
+  // Batch digest (multi) — separate from single NEW_LEAD
   setupMock();
   const batchText = formatBatchedLeadSummary([
     { id: 'f1', score: 80, summary: 'A' },
     { id: 'f2', score: 75, summary: 'B' },
   ]);
+  assert.match(batchText, /Lead Digest/);
   assert.match(batchText, /2 Lead mới/);
-  await notification.send({ type: 'lead_found', payload: { findingId: 'f1' }, immediate: true });
-  await notification.send({ type: 'lead_found', payload: { findingId: 'f2' }, immediate: true });
-  await notification.flushBatches();
-  assert.ok(delivered >= 1);
+  assert.doesNotMatch(batchText, /Lead Alerts|Expected Deal|AI Suggestion/);
+  // Single lead without canonical card → blocked
+  const bare = await notification.send({
+    type: 'lead_found',
+    payload: { findingId: 'f1' },
+    immediate: true,
+  });
+  assert.equal(bare.skipped, true);
+  assert.equal(delivered, 0);
   console.log('PASS Batch');
 
   // Runtime event mapping

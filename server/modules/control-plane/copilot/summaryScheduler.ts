@@ -34,13 +34,20 @@ export function resolveSummarySlot(date: Date, timeZone: string): SummarySlot | 
 export async function buildPeriodicSummary(
   port: CopilotControlPlanePort,
   slot: SummarySlot,
-): Promise<{ text: string; lines: string[] }> {
-  const fromPort = await port.buildSummary(slot);
-  return fromPort;
+): Promise<{
+  text: string;
+  lines: string[];
+  replyMarkup?: import('../inlineKeyboard').InlineKeyboard;
+  urgentBuyers?: number;
+}> {
+  return port.buildSummary(slot);
 }
 
 export type SummaryNotifier = {
-  send(text: string): Promise<void>;
+  send(
+    text: string,
+    opts?: { replyMarkup?: import('../inlineKeyboard').InlineKeyboard },
+  ): Promise<void>;
 };
 
 export function createSummaryScheduler(input: {
@@ -65,7 +72,7 @@ export function createSummaryScheduler(input: {
     const port = await input.portFactory();
     if (!port) return false;
     const summary = await buildPeriodicSummary(port, slot);
-    await input.notifier.send(summary.text);
+    await input.notifier.send(summary.text, { replyMarkup: summary.replyMarkup });
     sentKeys.add(dayKey);
     return true;
   };

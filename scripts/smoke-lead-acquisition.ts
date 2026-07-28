@@ -91,9 +91,16 @@ const card = formatBuyerAlertText({
   title: 'Buyer cần Mai Đăng Chơn',
   budgetMin: 12,
   budgetMax: 15,
+  personName: 'Anh Test',
+  location: 'Mai Đăng Chơn',
+  propertyType: 'đất nền',
+  hasPhone: true,
 });
-assert(card.includes('🔥 Buyer Alert'), 'buyer alert header');
-assert(card.includes('Mai Đăng Chơn'), 'campaign in alert');
-assert(card.includes('Gọi ngay'), 'suggestion in alert');
+assert(card.includes('🎯 LEAD ALERT'), 'buyer alert header');
+assert(card.includes('Mai Đăng Chơn') || card.includes('Người mua'), 'campaign or role in alert');
+assert(card.includes('BUYER CONFIDENCE'), 'confidence label');
+assert(card.includes('NEXT ACTION'), 'suggestion in alert');
+assert(!card.includes('LEAD SCORE'), 'no dual score');
+assert(!/Lead mới \(\d+\/100\)/.test(card), 'no legacy format');
 console.log('\n--- Buyer Alert sample ---\n' + card);
 console.log(`\nSmoke OK — ${passed}/${cases.length} intent cases + alert format`);

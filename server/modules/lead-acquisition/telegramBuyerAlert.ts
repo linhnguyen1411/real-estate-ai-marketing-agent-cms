@@ -1,140 +1,87 @@
 /**
- * Telegram Buyer Alert — rich card, not list dump.
- * Open / Assign / CRM / Ignore buttons.
+ * Telegram Lead Alert — thin façade.
+ * H2.4.4: ALL NEW_LEAD alerts go through notifyFindingIfEligible (canonical card).
+ * Do not send Telegram from this module directly.
  */
 
-import { sendNotification } from '../../notifications/notificationRouter';
-import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
 import type { LeadAcquisitionProfile } from './types';
-import { prisma } from '../../prisma';
-
-const TIMELINE_LABEL: Record<string, string> = {
-  buying_today: 'Buying today',
-  within_7_days: '<7 ngày',
-  within_30_days: '<30 ngày',
-  researching: 'Researching',
-  long_term: 'Long term',
-  unknown: 'Unknown',
-};
-
-function truncId(id: string, max = 28): string {
-  return id.length <= max ? id : id.slice(0, max);
-}
+import {
+  buildLeadCenterUrl,
+  formatSalesActionCard,
+  salesActionCardKeyboard,
+} from '../sales-layer/telegramSalesActionCard';
 
 export function buyerAlertKeyboard(input: {
   findingId: string;
   openUrl?: string | null;
-}): InlineKeyboard {
-  const id = truncId(input.findingId);
-  const rows: InlineKeyboard['inline_keyboard'] = [];
-  if (input.openUrl && /^https:\/\//i.test(input.openUrl)) {
-    rows.push([{ text: 'Open', url: input.openUrl }]);
-  } else {
-    rows.push([{ text: 'Open', callback_data: `l:o:${id}` }]);
-  }
-  rows.push([
-    { text: 'Assign', callback_data: `l:a:${id}` },
-    { text: 'CRM', callback_data: `l:c:${id}` },
-    { text: 'Ignore', callback_data: `l:s:${id}` },
-  ]);
-  return { inline_keyboard: rows };
+}) {
+  return salesActionCardKeyboard({
+    findingId: input.findingId,
+    sourceUrl: input.openUrl,
+    leadCenterUrl: buildLeadCenterUrl(input.findingId),
+  });
 }
 
+/** @deprecated Prefer formatSalesActionCard via notifyFindingIfEligible */
 export function formatBuyerAlertText(input: {
   profile: LeadAcquisitionProfile;
   title?: string | null;
   budgetMin?: number | bigint | null;
   budgetMax?: number | bigint | null;
+  personName?: string | null;
+  location?: string | null;
+  propertyType?: string | null;
+  sourceLabel?: string | null;
+  needSummary?: string | null;
+  summary?: string | null;
+  areaLabel?: string | null;
+  hasPhone?: boolean;
+  phone?: string | null;
 }): string {
-  const p = input.profile;
-  const conf = Math.round(p.intent.confidence * 100);
-  const toNum = (v: number | bigint | null | undefined): number | null => {
-    if (v == null) return null;
-    return typeof v === 'bigint' ? Number(v) : v;
-  };
-  const bMin = toNum(input.budgetMin);
-  const bMax = toNum(input.budgetMax);
-  const budget =
-    bMin != null || bMax != null
-      ? [bMin, bMax]
-          .filter(v => v != null)
-          .map(v => `${v} tỷ`)
-          .join('–')
-      : '—';
-  const reasons = [
-    ...p.intent.matchedPatterns.slice(0, 2).map(x => `Pattern: ${x}`),
-    ...p.intent.reasons.slice(0, 2),
-    p.campaignMatch.campaignName ? `Match campaign ${p.campaignMatch.campaignName}` : '',
-  ]
-    .filter(Boolean)
-    .slice(0, 3);
-
-  return [
-    '🔥 Buyer Alert',
-    '',
-    `Confidence  ${conf}%`,
-    `Campaign  ${p.campaignMatch.campaignName || '—'}`,
-    `Budget  ${budget}`,
-    `Timeline  ${TIMELINE_LABEL[p.timeline] || p.timeline}`,
-    `Persona  ${p.persona.persona}`,
-    `Score  ${p.priority.finalScore}${p.isVip ? ' · VIP' : ''}`,
-    '',
-    'Reason',
-    ...reasons.map(r => `• ${r}`),
-    ...(input.title ? [`• ${String(input.title).slice(0, 80)}`] : []),
-    '',
-    `AI Suggestion  ${p.action.label}`,
-    p.action.reason,
-  ].join('\n');
+  return formatSalesActionCard({
+    findingId: input.profile.findingId,
+    acquisition: input.profile,
+    actorName: input.personName,
+    propertyType: input.propertyType,
+    location: input.location,
+    budgetMin: input.budgetMin,
+    budgetMax: input.budgetMax,
+    areaLabel: input.areaLabel,
+    timeline: input.profile.timeline,
+    campaignName: input.profile.campaignMatch.campaignName,
+    sourceLabel: input.sourceLabel,
+    title: input.title,
+    needSummary: input.needSummary,
+    summary: input.summary,
+    hasPhone: input.hasPhone,
+    phone: input.phone,
+    whyReasons: input.profile.intent.reasons,
+  });
 }
 
+/**
+ * Emit NEW_LEAD Telegram via the single canonical producer.
+ * Idempotent: shares event key with notifyFindingIfEligible.
+ */
 export async function maybeSendBuyerAlert(input: {
   findingId: string;
   profile: LeadAcquisitionProfile;
-}): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
-  const finding = await prisma.agentFinding.findUnique({
-    where: { id: input.findingId },
-    select: {
-      id: true,
-      title: true,
-      budgetMin: true,
-      budgetMax: true,
-      companyId: true,
-      scannedContent: { select: { canonicalUrl: true } },
-      extractedData: true,
-    },
+}): Promise<{ ok: boolean; skipped?: boolean; reason?: string; messageId?: string | null }> {
+  if (!input.profile.isBuyer && input.profile.intent.intent !== 'renter') {
+    return { ok: false, skipped: true, reason: 'not_demand_lead' };
+  }
+  const { notifyFindingIfEligible } = await import(
+    '../../notifications/telegramNotificationService'
+  );
+  const result = await notifyFindingIfEligible({
+    findingId: input.findingId,
+    force: false,
   });
-  if (!finding) return { ok: false, skipped: true, reason: 'missing' };
-  if (!input.profile.isBuyer) return { ok: false, skipped: true, reason: 'not_buyer' };
-
-  const text = formatBuyerAlertText({
-    profile: input.profile,
-    title: finding.title,
-    budgetMin: finding.budgetMin,
-    budgetMax: finding.budgetMax,
-  });
-
-  const openUrl = finding.scannedContent?.canonicalUrl || null;
-  const replyMarkup = buyerAlertKeyboard({ findingId: finding.id, openUrl });
-
-  const send = await sendNotification({
-    type: 'lead_found',
-    immediate: true,
-    skipDedup: false,
-    dedupeKey: `buyer_alert:${finding.id}`,
-    text,
-    replyMarkup,
-    payload: {
-      findingId: finding.id,
-      entityId: finding.id,
-      score: input.profile.priority.finalScore,
-      summary: text,
-      title: 'Buyer Alert',
-      postUrl: openUrl,
-    },
-  });
-
-  return send.ok
-    ? { ok: true }
-    : { ok: false, reason: send.error || 'send_failed' };
+  if (result.ok) return { ok: true, messageId: result.messageId };
+  return {
+    ok: false,
+    skipped: result.skipped,
+    reason: result.reason || result.error || 'send_failed',
+    messageId: result.messageId,
+  };
 }

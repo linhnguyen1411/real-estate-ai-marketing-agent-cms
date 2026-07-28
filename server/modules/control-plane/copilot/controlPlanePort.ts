@@ -369,12 +369,18 @@ export function createControlPlanePort(input: {
       const recs = recommendAll(signals.incidents);
       const label = slot === 'morning' ? '08:00' : slot === 'noon' ? '12:00' : '18:00';
       let salesBriefing: string | null = null;
+      let urgentBuyers = 0;
+      let replyMarkup: import('../inlineKeyboard').InlineKeyboard | undefined;
       try {
-        const { getSalesPipelineMetrics, formatSalesDailyBriefing } = await import(
-          '../../sales-layer'
-        );
+        const {
+          getSalesPipelineMetrics,
+          formatSalesDailyBriefing,
+          dailyBriefingSalesKeyboard,
+        } = await import('../../sales-layer');
         const metrics = await getSalesPipelineMetrics({ sinceHours: 720 });
+        urgentBuyers = metrics.urgentBuyers;
         salesBriefing = formatSalesDailyBriefing(metrics);
+        replyMarkup = dailyBriefingSalesKeyboard(urgentBuyers);
       } catch {
         salesBriefing = null;
       }
@@ -387,7 +393,7 @@ export function createControlPlanePort(input: {
         recommendations: recs.map(r => r.summary),
         salesBriefing,
       });
-      return { text: lines.join('\n'), lines };
+      return { text: lines.join('\n'), lines, replyMarkup, urgentBuyers };
     },
   };
 

@@ -12,6 +12,8 @@ export type {
 export {
   normalizeSocialLinks,
   isEphemeralUrl,
+  isDegradedFacebookUrl,
+  isSolidFacebookPermalink,
   unwrapFacebookRedirect,
   toMobileFriendlyFacebookUrl,
   extractFacebookPostId,
