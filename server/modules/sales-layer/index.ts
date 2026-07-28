@@ -28,8 +28,21 @@ export {
   formatSalesDailyBriefing,
   readSalesProfile,
   writeSalesProfile,
+  getUrgentBuyersBundle,
+  listUrgentBuyers,
+  loadPipelineSalesRows,
 } from './salesService';
 export type { SalesActionKind } from './salesService';
+export {
+  formatUrgentBuyersListText,
+  urgentBuyersListKeyboard,
+  dailyBriefingSalesKeyboard,
+  selectUrgentBuyers,
+  toUrgentBuyerSummary,
+  isUrgentSalesProfile,
+  URGENT_BUYERS_PAGE_SIZE,
+} from './urgentBuyers';
+export type { UrgentBuyerSummary, PipelineSalesRow } from './urgentBuyers';
 export {
   formatSalesBuyerCard,
   formatSalesActionCard,

@@ -21,6 +21,13 @@ import {
 } from './pipelineValue';
 import { applyLearningAdjustments } from './learningAdjust';
 import { maybeSendCoolingAlert } from './telegramSalesCard';
+import {
+  selectUrgentBuyers,
+  type PipelineSalesRow,
+  type UrgentBuyerSummary,
+  URGENT_BUYERS_PAGE_SIZE,
+} from './urgentBuyers';
+import { resolveBuyerConfidencePct } from './buyerHeat';
 import type {
   BuyerJourneyStage,
   LeadTimelineEvent,
@@ -612,10 +619,10 @@ export async function listSalesPipeline(input?: {
   return board;
 }
 
-export async function getSalesPipelineMetrics(input?: {
+export async function loadPipelineSalesRows(input?: {
   companyId?: string | null;
   sinceHours?: number;
-}): Promise<PipelineValueMetrics> {
+}): Promise<PipelineSalesRow[]> {
   const since = new Date(Date.now() - (input?.sinceHours ?? 24 * 30) * 3600_000);
   const rows = await prisma.agentFinding.findMany({
     where: {
@@ -626,39 +633,131 @@ export async function getSalesPipelineMetrics(input?: {
     take: 2000,
     select: {
       id: true,
+      title: true,
+      personName: true,
+      propertyType: true,
+      primaryLocation: true,
+      classification: true,
       createdAt: true,
       budgetMin: true,
       budgetMax: true,
       askingPrice: true,
       sourceId: true,
       extractedData: true,
+      finalScore: true,
       source: { select: { id: true, name: true } },
     },
   });
 
-  const items: Parameters<typeof aggregatePipelineValue>[0] = [];
+  const items: PipelineSalesRow[] = [];
   for (const row of rows) {
     const sales = readSalesProfile(row.extractedData);
     if (!sales) continue;
     const acq = readAcquisitionProfile(row.extractedData);
+    const confidencePct = resolveBuyerConfidencePct({
+      salesConfidencePct: null,
+      acquisitionFinalScore: acq?.priority.finalScore ?? row.finalScore ?? null,
+      intentConfidence: acq?.intent.confidence ?? null,
+    });
     items.push({
-      profile: sales,
+      findingId: row.id,
+      personName: row.personName,
+      title: row.title,
+      propertyType: row.propertyType,
+      location: row.primaryLocation,
+      classification: row.classification,
       budgetMin: row.budgetMin,
       budgetMax: row.budgetMax,
       askingPrice: row.askingPrice,
-      campaignId: acq?.campaignMatch.campaignId,
-      campaignName: acq?.campaignMatch.campaignName,
+      confidencePct,
+      profile: sales,
+      campaignId: acq?.campaignMatch.campaignId || null,
+      campaignName: acq?.campaignMatch.campaignName || null,
       sourceId: row.sourceId,
-      sourceName: row.source?.name,
+      sourceName: row.source?.name || null,
       createdAt: row.createdAt,
+      closedAt: null,
+      intent: acq?.intent.intent || null,
+      persona: acq?.persona.persona || null,
+      isBuyer: acq?.isBuyer ?? null,
+      timeline: acq?.timeline || null,
     });
   }
-  return aggregatePipelineValue(items);
+  return items;
+}
+
+export async function getSalesPipelineMetrics(input?: {
+  companyId?: string | null;
+  sinceHours?: number;
+}): Promise<PipelineValueMetrics> {
+  const items = await loadPipelineSalesRows(input);
+  return aggregatePipelineValue(
+    items.map(row => ({
+      profile: row.profile,
+      budgetMin: row.budgetMin,
+      budgetMax: row.budgetMax,
+      askingPrice: row.askingPrice,
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      sourceId: row.sourceId,
+      sourceName: row.sourceName,
+      createdAt: row.createdAt,
+      closedAt: row.closedAt,
+    })),
+  );
+}
+
+/**
+ * Urgent list + metrics from ONE row load (count integrity).
+ */
+export async function getUrgentBuyersBundle(input?: {
+  companyId?: string | null;
+  sinceHours?: number;
+  page?: number;
+  limit?: number;
+}): Promise<{
+  metrics: PipelineValueMetrics;
+  total: number;
+  page: number;
+  items: UrgentBuyerSummary[];
+}> {
+  const rows = await loadPipelineSalesRows(input);
+  const metrics = aggregatePipelineValue(
+    rows.map(row => ({
+      profile: row.profile,
+      budgetMin: row.budgetMin,
+      budgetMax: row.budgetMax,
+      askingPrice: row.askingPrice,
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      sourceId: row.sourceId,
+      sourceName: row.sourceName,
+      createdAt: row.createdAt,
+      closedAt: row.closedAt,
+    })),
+  );
+  const page = Math.max(0, input?.page ?? 0);
+  const limit = input?.limit ?? URGENT_BUYERS_PAGE_SIZE;
+  const { total, items } = selectUrgentBuyers(rows, {
+    offset: page * limit,
+    limit,
+  });
+  return { metrics, total, page, items };
+}
+
+export async function listUrgentBuyers(input?: {
+  companyId?: string | null;
+  sinceHours?: number;
+  page?: number;
+  limit?: number;
+}): Promise<{ total: number; page: number; items: UrgentBuyerSummary[] }> {
+  const bundle = await getUrgentBuyersBundle(input);
+  return { total: bundle.total, page: bundle.page, items: bundle.items };
 }
 
 export function formatSalesDailyBriefing(metrics: PipelineValueMetrics): string {
-  return [
-    '📈 Sales Pipeline',
+  const lines = [
+    '📈 SALES PIPELINE',
     '',
     `Detected  ${metrics.detected}`,
     `Qualified  ${metrics.qualified}`,
@@ -669,6 +768,15 @@ export function formatSalesDailyBriefing(metrics: PipelineValueMetrics): string 
     `Expected Revenue  ${formatTy(metrics.expectedRevenueTy)}`,
     '',
     `Need Follow-up  ${metrics.needFollowUp}`,
-    `Urgent Buyers  ${metrics.urgentBuyers}`,
-  ].join('\n');
+  ];
+  if (metrics.urgentBuyers > 0) {
+    lines.push('');
+    lines.push(`🚨 URGENT BUYERS · ${metrics.urgentBuyers}`);
+    lines.push(`→ Có ${metrics.urgentBuyers} khách cần xử lý ngay`);
+  } else {
+    lines.push('');
+    lines.push('🚨 Urgent Buyers');
+    lines.push('Không có khách cần xử lý gấp.');
+  }
+  return lines.join('\n');
 }

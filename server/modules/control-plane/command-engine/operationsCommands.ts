@@ -635,6 +635,62 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
       );
     },
   });
+
+  // H2.4.9 — Urgent Buyers drill-down
+  registry.register({
+    name: 'sales',
+    description: 'Sales Pipeline · Urgent Buyers',
+    usage: '/sales urgent [page] | /sales card <findingId>',
+    handler: async (args, ctx) => {
+      const sub = (args[0] || '').toLowerCase();
+      if (sub === 'urgent' || sub === 'buyers') {
+        const page = Math.max(0, Number(args[1] || 0) || 0);
+        const {
+          getUrgentBuyersBundle,
+          formatUrgentBuyersListText,
+          urgentBuyersListKeyboard,
+        } = await import('../../sales-layer');
+        const bundle = await getUrgentBuyersBundle({
+          companyId: ctx.companyId,
+          sinceHours: 720,
+          page,
+        });
+        if (bundle.total !== bundle.metrics.urgentBuyers) {
+          console.warn(
+            '[sales] urgent count mismatch list=%s metrics=%s',
+            bundle.total,
+            bundle.metrics.urgentBuyers,
+          );
+        }
+        const text = formatUrgentBuyersListText({
+          total: bundle.total,
+          items: bundle.items,
+          page: bundle.page,
+        });
+        const kb =
+          bundle.total > 0
+            ? urgentBuyersListKeyboard({
+                items: bundle.items,
+                total: bundle.total,
+                page: bundle.page,
+              })
+            : undefined;
+        return ok('sales', text.split('\n'), bundle, kb);
+      }
+      if (sub === 'card' || sub === 'open') {
+        const id = args[1];
+        if (!id) return fail('sales', 'Usage: /sales card <findingId>');
+        const r = await opsLeadRetryNotify(id);
+        if (!r.ok) {
+          return fail('sales', r.reason || r.error || 'Không mở được Sales Action Card');
+        }
+        return ok('sales', [`🎯 Đã mở Sales Action Card · ${id.slice(0, 12)}`], {
+          messageId: r.messageId,
+        });
+      }
+      return fail('sales', 'Usage: /sales urgent [page] | /sales card <findingId>');
+    },
+  });
 }
 
 /** Used by help listing from operations surface */
@@ -652,6 +708,7 @@ export function operationsHelpLines(): string[] {
     '/runtime · /health',
     '/report today|week|fleet|runtime|publish|scan|failed|agent|browser',
     '/lead skip|mission|retry|assign|crm|history|call|contact|open|source <id>',
+    '/sales urgent [page] | /sales card <findingId>',
     '/retry <mission>|publish|scan|campaign',
   ];
 }

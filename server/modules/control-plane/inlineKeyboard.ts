@@ -216,6 +216,15 @@ export function callbackDataToCommand(data: string): string | null {
     if (action === 'timeline') return 'Hôm nay AI đang làm gì';
     return 'AI sales employee';
   }
+  // H2.4.9 — Sales urgent drill-down: s:u:list | s:u:p:N | s:o:{findingId}
+  if (parts[0] === 's') {
+    if (parts[1] === 'u' && parts[2] === 'list') return '/sales urgent';
+    if (parts[1] === 'u' && parts[2] === 'p' && parts[3] != null) {
+      return `/sales urgent ${parts[3]}`;
+    }
+    if (parts[1] === 'o' && parts[2]) return `/sales card ${parts.slice(2).join(':')}`;
+    return null;
+  }
   if (parts.length < 3) return null;
   const [scope, action, ...rest] = parts;
   const id = rest.join(':');
