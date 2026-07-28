@@ -18,7 +18,11 @@ import {
   resolveLeadAlertRole,
 } from '../modules/sales-layer/telegramSalesActionCard';
 import type { NotificationChannel, NotificationEventType, NotificationPayload } from './notificationTypes';
-import { CHANNEL_LABELS } from './notificationTypes';
+import {
+  CANONICAL_LEAD_ALERT_MARKER,
+  CHANNEL_LABELS,
+  LEAD_DIGEST_HEADER,
+} from './notificationTypes';
 
 export type TelegramFormatOptions = {
   includePhone?: boolean;
@@ -161,17 +165,19 @@ export function formatLeadTelegramAlert(
   };
 }
 
-/** Batch many leads into one concise message (digest — not a Sales Action Card). */
+/** Batch many leads into one concise message (NEW_LEAD_DIGEST — not a Sales Action Card). */
 export function formatBatchedLeadSummary(
   items: Array<{ id: string; score?: number; summary?: string }>,
 ): string {
   const n = items.length;
-  const lines = [CHANNEL_LABELS.LEAD, `🎯 ${n} Lead mới`, ''];
+  const lines = [LEAD_DIGEST_HEADER, `🎯 ${n} Lead mới`, ''];
   const top = items.slice(0, 5);
   for (const item of top) {
-    const score = item.score != null ? ` (${item.score}/100)` : '';
-    const snip = item.summary ? ` — ${String(item.summary).slice(0, 60)}` : '';
-    lines.push(`• ${item.id.slice(0, 12)}${score}${snip}`);
+    const conf = item.score != null ? ` (${item.score}%)` : '';
+    const snip = item.summary
+      ? ` — ${String(item.summary).replace(/\s+/g, ' ').slice(0, 60)}`
+      : '';
+    lines.push(`• ${item.id.slice(0, 12)}${conf}${snip}`);
   }
   if (n > 5) lines.push(`… và ${n - 5} lead khác`);
   lines.push('');
@@ -268,18 +274,17 @@ export function formatRoutedNotification(
       lines.push(`→ ${String(payload.recommendation).slice(0, 300)}`);
     }
   } else if (channel === 'LEAD') {
+    // NEW_LEAD_DIGEST (batched)
     if (payload.batchCount && payload.batchCount > 1) {
       return formatBatchedLeadSummary(payload.batchItems || []);
     }
-    // H2.4.4 — prefer preformatted canonical Sales Action Card in payload.summary
-    if (payload.summary && String(payload.summary).includes('🎯 LEAD ALERT')) {
-      return String(payload.summary).slice(0, 4000);
+    // Single NEW_LEAD: ONLY canonical Sales Action Card — fail closed otherwise.
+    const summary = payload.summary != null ? String(payload.summary) : '';
+    if (summary.includes(CANONICAL_LEAD_ALERT_MARKER)) {
+      return summary.slice(0, 4000);
     }
-    if (payload.summary) lines.push(String(payload.summary).slice(0, 500));
-    // Legacy fallback only when no canonical card text (old callers)
-    if (payload.score != null && !String(payload.summary || '').includes('BUYER CONFIDENCE')) {
-      lines.push(`Score: ${payload.score}/100`);
-    }
+    // Never invent 🎯 Lead Alerts / Score: N/100 / Expected Deal card.
+    return '';
   }
 
   if (payload.extraLines?.length) {
