@@ -16,6 +16,7 @@ import {
 } from './campaignRuntime';
 import { orchestratorProgress, listReadyTasks, taskDurationMs } from './taskOrchestrator';
 import type {
+  AssetIdentitySnapshot,
   CampaignBoard,
   CampaignLifecycleStatus,
   LivingCampaign,
@@ -36,6 +37,7 @@ export type CampaignWorkspace = {
   health: CampaignWorkspaceHealth;
   overview: {
     name: string;
+    asset: AssetIdentitySnapshot | null;
     goal: string;
     priority: string;
     status: CampaignLifecycleStatus;
@@ -183,7 +185,7 @@ export function deriveCampaignHealth(campaign: LivingCampaign): CampaignWorkspac
 export function buildAiThoughts(workspace: Omit<CampaignWorkspace, 'aiThoughts'>): string {
   const { campaign, buyers, research, health, sales, content, missions, acquisition } = workspace;
   const parts: string[] = [];
-  const hint = campaign.propertyHint || campaign.name;
+  const hint = campaign.state.asset?.name || campaign.propertyHint || campaign.name;
 
   if (acquisition && acquisition.status !== 'NOT_STARTED') {
     parts.push(
@@ -294,6 +296,7 @@ export async function getCampaignWorkspace(campaignId: string): Promise<Campaign
     health,
     overview: {
       name: campaign.name,
+      asset: campaign.state.asset,
       goal: campaign.goal,
       priority: campaign.priority,
       status: campaign.status,
@@ -401,6 +404,18 @@ export async function getCampaignWorkspace(campaignId: string): Promise<Campaign
 
 export function formatCampaignWorkspaceLines(ws: CampaignWorkspace): string[] {
   const h = ws.health.level.toUpperCase();
+  const acq = ws.acquisition || {
+    status: 'NOT_STARTED',
+    sources: 0,
+    postsScanned: 0,
+    candidates: 0,
+    qualified: 0,
+    hot: 0,
+    lastRunAt: null,
+    coverage: null,
+    errors: [],
+    nextAction: null,
+  };
   return [
     `Campaign Workspace — ${ws.overview.name}`,
     '────────────────────────────────',
@@ -411,7 +426,7 @@ export function formatCampaignWorkspaceLines(ws: CampaignWorkspace): string[] {
     '',
     `Research  ${ws.research ? '✓' : '○'}`,
     `Mission  ${ws.missions.length}`,
-    `Acquisition  ${ws.acquisition.status} · src ${ws.acquisition.sources} · cand ${ws.acquisition.candidates} · Q ${ws.acquisition.qualified} · HOT ${ws.acquisition.hot}`,
+    `Acquisition  ${acq.status} · src ${acq.sources} · cand ${acq.candidates} · Q ${acq.qualified} · HOT ${acq.hot}`,
     `Lead  ${ws.buyers.candidates} · VIP ${ws.buyers.vip}`,
     `Buyer  ${ws.buyers.converted} converted · ${ws.sales.negotiating} negotiating`,
     `Draft  ${ws.content.draft} · Approved ${ws.content.approved}`,

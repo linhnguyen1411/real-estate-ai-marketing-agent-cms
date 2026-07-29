@@ -12,6 +12,8 @@ import { proposeMissions } from './missionPlanner';
 import { rememberPlanningEvent } from './operationalMemory';
 import { buildCampaignRecommendations } from './recommendationEngine';
 import { buildMarketIntelligenceReport } from './researchAgent';
+import { matchAssetIdentity } from './asset/AssetMatcher';
+import { validateAssetIdentity } from './asset/AssetValidator';
 import {
   assertCanStart,
   completeTask,
@@ -179,6 +181,7 @@ function rowToLiving(row: {
       ? (row.state as CampaignState)
       : ({
           audience: [],
+          asset: null,
           budget: 'organic',
           health: 0,
           timeline: [],
@@ -197,6 +200,9 @@ function rowToLiving(row: {
         } satisfies CampaignState);
 
   if (!Array.isArray(state.orchestratorTasks)) state.orchestratorTasks = [];
+  if (!('asset' in state) || !state.asset || typeof state.asset !== 'object' || Array.isArray(state.asset)) {
+    state.asset = null;
+  }
   if (!state.orchestratorTasks.length && row.id) {
     state.orchestratorTasks = createCampaignTaskGraph({
       campaignId: row.id,
@@ -283,6 +289,7 @@ export function livingToBoard(c: LivingCampaign): CampaignBoard {
     audience: c.state.audience,
     budget: c.state.budget,
     priority: c.priority,
+    assetSnapshot: c.state.asset,
     propertyHint: c.propertyHint,
     planChecklist: c.state.planChecklist,
     tasks: c.state.tasks.map(t => `${t.status === 'done' ? '✓' : '○'} ${t.label}`),
@@ -635,6 +642,15 @@ export async function createAndRunCampaign(input: {
     async () => planCampaignBoard({ utterance: input.utterance, companyId: input.companyId }),
     b => `Goal ${b.goal} · Priority ${b.priority} · ${b.name}`,
   );
+  const matchedAsset = matchAssetIdentity({
+    utterance: input.utterance,
+    fallbackName: board.name,
+    fallbackHint: board.propertyHint,
+  });
+  const validatedAsset = validateAssetIdentity(matchedAsset);
+  board.assetSnapshot = validatedAsset;
+  board.name = validatedAsset.name;
+  board.propertyHint = validatedAsset.name;
 
   if (!input.forceNew) {
     const reusable = await findReusableActiveCampaign({
@@ -643,6 +659,7 @@ export async function createAndRunCampaign(input: {
       utterance: input.utterance,
     });
     if (reusable) {
+      reusable.state.asset = validatedAsset;
       reusable.utterance = input.utterance.slice(0, 2000);
       pushMemory(
         reusable.state,
@@ -689,6 +706,7 @@ export async function createAndRunCampaign(input: {
   }
 
   const initialState: CampaignState = {
+    asset: validatedAsset,
     audience: board.audience,
     budget: board.budget,
     health: board.health,
@@ -1119,7 +1137,7 @@ export function campaignRuntimeSummaryLines(c: LivingCampaign): string[] {
     `Status: ${c.status} · ${c.state.progress.percent}%`,
     `Goal: ${c.goal}`,
     `Priority: ${c.priority} · Owner: ${c.owner || '—'}`,
-    `Property: ${c.propertyHint}`,
+    `Asset: ${c.state.asset?.name || c.propertyHint}${c.state.asset?.type ? ` (${c.state.asset.type})` : ''}`,
     '',
     `Leads ${m.leadTotal} · VIP ${m.leadVip} · Contacted ${m.leadContacted} · Converted ${m.leadConverted}`,
     `Missions ${m.missionsProposed} · Content ${m.contentSlots} · Recs ${m.recommendationsOpen}`,

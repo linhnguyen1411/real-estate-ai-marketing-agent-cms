@@ -35,7 +35,7 @@ function ok(name: string, cond: unknown) {
   ok('audience non-empty', board.audience.length >= 1);
   ok('tasks include research giá', board.tasks.some(t => /research/i.test(t)));
   const card = campaignCard(board);
-  ok('campaign card lines', card.lines.some(l => /Campaign Card/.test(l)));
+  ok('campaign card lines', card.lines.some(l => /Campaign Workspace/.test(l)));
   ok('campaign keyboard', card.replyMarkup.inline_keyboard.length >= 1);
 }
 

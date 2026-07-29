@@ -5,6 +5,24 @@
 
 export type CampaignPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type CampaignBudgetMode = 'organic' | 'paid' | 'hybrid';
+export type AssetType =
+  | 'apartment'
+  | 'land'
+  | 'shophouse'
+  | 'warehouse'
+  | 'hotel'
+  | 'project'
+  | 'unknown';
+
+export type AssetIdentitySnapshot = {
+  id: string;
+  type: AssetType;
+  name: string;
+  project: string | null;
+  developer: string | null;
+  location: string | null;
+  stage: string | null;
+};
 
 /** Living campaign lifecycle (H2.1 Campaign Runtime) */
 export type CampaignLifecycleStatus =
@@ -123,6 +141,8 @@ export type CampaignLeadRecord = {
 };
 
 export type CampaignState = {
+  /** H2.5 S1: identity-only asset binding (no market/knowledge/stats cache). */
+  asset?: AssetIdentitySnapshot | null;
   audience: string[];
   budget: CampaignBudgetMode;
   health: number;
@@ -171,6 +191,7 @@ export type CampaignBoard = {
   audience: string[];
   budget: CampaignBudgetMode;
   priority: CampaignPriority;
+  assetSnapshot?: AssetIdentitySnapshot | null;
   propertyHint: string;
   planChecklist: Array<{ key: string; label: string; done: boolean }>;
   tasks: string[];

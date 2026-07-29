@@ -12,6 +12,8 @@ import {
   rejectCampaign,
 } from '../campaignRuntime';
 import { detectSalesMode, runSalesEmployee } from '../salesEmployee';
+import { matchAssetIdentity } from '../asset/AssetMatcher';
+import { AssetValidationError, validateAssetIdentity } from '../asset/AssetValidator';
 import {
   formatCampaignWorkspaceLines,
   getCampaignWorkspace,
@@ -25,6 +27,26 @@ function sendError(res: Response, status: number, message: string) {
 }
 
 export function registerPlanningRoutes(app: Express): void {
+  app.post('/api/planning/campaigns/resolve-asset', async (req: Request, res: Response) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const utterance = String(body.utterance || body.text || '').trim();
+      if (!utterance) return sendError(res, 400, 'utterance is required');
+      const matched = matchAssetIdentity({
+        utterance,
+        fallbackName: typeof body.fallbackName === 'string' ? body.fallbackName : null,
+        fallbackHint: typeof body.fallbackHint === 'string' ? body.fallbackHint : null,
+      });
+      const asset = validateAssetIdentity(matched);
+      res.json({ status: 'success', data: asset });
+    } catch (error: unknown) {
+      if (error instanceof AssetValidationError) {
+        return sendError(res, 422, error.prompt);
+      }
+      sendError(res, 500, error instanceof Error ? error.message : 'Asset match failed');
+    }
+  });
+
   app.post('/api/planning/ai-employee', async (req: Request, res: Response) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;

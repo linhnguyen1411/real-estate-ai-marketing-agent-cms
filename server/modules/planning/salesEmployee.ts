@@ -33,6 +33,7 @@ import {
   workStatusCard,
 } from './cards/telegramCards';
 import { getCampaignWorkspace } from './campaignWorkspace';
+import { AssetValidationError } from './asset/AssetValidator';
 import type { LivingCampaign } from './types';
 import type { SalesEmployeeResult } from './types';
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
@@ -365,34 +366,46 @@ export async function runSalesEmployee(input: {
     companyId: input.companyId,
   });
 
-  const living = await runWithTraceContext(trace.traceId, async () => {
-    await startTraceStep(trace.traceId, 'Intent Parser', 'parsing');
-    await finishTraceStep(trace.traceId, 'Intent Parser', {
-      status: 'ok',
-      summary: `Campaign request detected · ${input.utterance.slice(0, 80)}`,
-    });
-    await startTraceStep(trace.traceId, 'Copilot', 'routing');
-    await finishTraceStep(trace.traceId, 'Copilot', {
-      status: 'ok',
-      summary: 'Routed to Campaign Planner',
-    });
-    try {
-      const created = await createAndRunCampaign({
-        utterance: input.utterance,
-        companyId: input.companyId,
-      });
-      await startTraceStep(trace.traceId, 'Response Telegram', 'reply');
-      await finishTraceStep(trace.traceId, 'Response Telegram', {
+  let living: LivingCampaign;
+  try {
+    living = await runWithTraceContext(trace.traceId, async () => {
+      await startTraceStep(trace.traceId, 'Intent Parser', 'parsing');
+      await finishTraceStep(trace.traceId, 'Intent Parser', {
         status: 'ok',
-        summary: `Reply campaign ${created.name}`,
+        summary: `Campaign request detected · ${input.utterance.slice(0, 80)}`,
       });
-      await finishExecutionTrace(trace.traceId, 'waiting_approval');
-      return created;
-    } catch (error: unknown) {
-      await finishExecutionTrace(trace.traceId, 'failed');
-      throw error;
+      await startTraceStep(trace.traceId, 'Copilot', 'routing');
+      await finishTraceStep(trace.traceId, 'Copilot', {
+        status: 'ok',
+        summary: 'Routed to Campaign Planner',
+      });
+      try {
+        const created = await createAndRunCampaign({
+          utterance: input.utterance,
+          companyId: input.companyId,
+        });
+        await startTraceStep(trace.traceId, 'Response Telegram', 'reply');
+        await finishTraceStep(trace.traceId, 'Response Telegram', {
+          status: 'ok',
+          summary: `Reply campaign ${created.name}`,
+        });
+        await finishExecutionTrace(trace.traceId, 'waiting_approval');
+        return created;
+      } catch (error: unknown) {
+        await finishExecutionTrace(trace.traceId, 'failed');
+        throw error;
+      }
+    });
+  } catch (error: unknown) {
+    if (error instanceof AssetValidationError) {
+      return {
+        mode: 'campaign_board',
+        lines: ['Asset identity required.', error.prompt],
+        text: `Asset identity required.\n${error.prompt}`,
+      };
     }
-  });
+    throw error;
+  }
   const board = livingToBoard(living);
   const research = living.state.research!;
   const missions = living.state.missions;
@@ -415,5 +428,4 @@ export async function runSalesEmployee(input: {
     replyMarkup: card.replyMarkup,
   };
 }
-
 export { formatTimelineLines };
