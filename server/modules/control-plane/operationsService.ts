@@ -672,7 +672,11 @@ async function listAssignableOwners(companyId: string | null | undefined) {
   });
 }
 
-export async function opsLeadSkip(findingId: string, triggeredBy: string) {
+export async function opsLeadSkip(
+  findingId: string,
+  triggeredBy: string,
+  ignoreReason?: string,
+) {
   const id = await resolveFindingId(findingId);
   const existing = await prisma.agentFinding.findUnique({
     where: { id },
@@ -680,15 +684,16 @@ export async function opsLeadSkip(findingId: string, triggeredBy: string) {
   });
   if (!existing) throw new Error(`Finding not found: ${id}`);
   if (existing.status === 'dismissed') {
-    return { findingId: id, status: 'dismissed' as const, idempotent: true };
+    return { findingId: id, status: 'dismissed' as const, idempotent: true, spamRulesCreated: 0 };
   }
 
+  const reason = ignoreReason || 'spam';
   const { recordSalesAction } = await import('../sales-layer');
   await recordSalesAction({
     findingId: id,
     action: 'ignore',
     actor: triggeredBy,
-    result: 'dismissed_via_telegram',
+    result: `dismissed_via_telegram:${reason}`,
   }).catch(async () => {
     await prisma.agentFinding.update({
       where: { id },
@@ -696,18 +701,38 @@ export async function opsLeadSkip(findingId: string, triggeredBy: string) {
         status: 'dismissed',
         dismissedAt: new Date(),
         dismissedBy: triggeredBy,
-        dismissReason: 'sales_ignore',
+        dismissReason: reason,
       },
     });
   });
+
+  let spamRulesCreated = 0;
+  try {
+    const { learnFromIgnoredFinding } = await import('../sales-layer/ignoreLearnService');
+    const result = await learnFromIgnoredFinding({
+      findingId: id,
+      reason: reason as import('../sales-layer/ignoreLearnService').IgnoreReason,
+      actor: triggeredBy,
+    });
+    spamRulesCreated = result.rulesCreated;
+  } catch {
+    /* non-critical: learning failure should not block ignore */
+  }
+
   await emitRuntimeEvent({
     type: 'OPS_REQUEST',
     companyId: existing.companyId ?? null,
     entityType: 'finding',
     entityId: id,
-    payload: { action: 'lead_skip', triggeredBy, requestedAt: new Date().toISOString() },
+    payload: {
+      action: 'lead_skip',
+      triggeredBy,
+      ignoreReason: reason,
+      spamRulesCreated,
+      requestedAt: new Date().toISOString(),
+    },
   });
-  return { findingId: id, status: 'dismissed' as const, idempotent: false };
+  return { findingId: id, status: 'dismissed' as const, idempotent: false, spamRulesCreated };
 }
 
 export async function opsLeadCreateMission(findingId: string, triggeredBy: string) {

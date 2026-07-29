@@ -60,6 +60,10 @@ export type SalesSnapshot = {
   urgentBuyers: number;
   pipelineValue: number;
   expectedRevenue: number;
+  ignoredToday: number;
+  spamLearnedToday: number;
+  spamHitRate: number;
+  rejectedBeforeAi: number;
   links: {
     buyersToday: string;
     qualifiedToday: string;

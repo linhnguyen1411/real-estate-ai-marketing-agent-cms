@@ -574,7 +574,7 @@ export async function listSalesPipeline(input?: {
   const rows = await prisma.agentFinding.findMany({
     where: {
       ...(input?.companyId ? { companyId: input.companyId } : {}),
-      status: { notIn: ['duplicate'] },
+      status: { notIn: ['duplicate', 'dismissed'] },
     },
     orderBy: { updatedAt: 'desc' },
     take: Math.min(800, Math.max(50, (input?.limit ?? 200) * 3)),
@@ -628,7 +628,7 @@ export async function loadPipelineSalesRows(input?: {
     where: {
       ...(input?.companyId ? { companyId: input.companyId } : {}),
       updatedAt: { gte: since },
-      status: { notIn: ['duplicate'] },
+      status: { notIn: ['duplicate', 'dismissed'] },
     },
     take: 2000,
     select: {

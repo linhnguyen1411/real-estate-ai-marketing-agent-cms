@@ -544,14 +544,14 @@ export function registerOperationsCommands(registry: CommandRegistry): void {
         );
       }
       if (action === 'skip') {
-        const r = await opsLeadSkip(id, ctx.triggeredBy);
-        return ok(
-          'lead',
-          r.idempotent
-            ? ['🚫 Lead đã được bỏ qua trước đó.']
-            : ['🚫 Đã bỏ qua lead.'],
-          r,
-        );
+        const reason = args[2] || 'spam';
+        const r = await opsLeadSkip(id, ctx.triggeredBy, reason);
+        const lines = r.idempotent
+          ? ['🚫 Lead đã được bỏ qua trước đó.']
+          : r.spamRulesCreated
+            ? [`🚫 Đã bỏ qua lead. Spam rules learned: ${r.spamRulesCreated}`]
+            : ['🚫 Đã bỏ qua lead.'];
+        return ok('lead', lines, r);
       }
       if (action === 'mission') {
         const r = await opsLeadCreateMission(id, ctx.triggeredBy);

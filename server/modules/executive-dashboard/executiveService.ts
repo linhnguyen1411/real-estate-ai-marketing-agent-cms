@@ -173,7 +173,7 @@ async function loadAllSalesFacts(): Promise<SalesFactRow[]> {
   let cursor: string | null = null;
   while (true) {
     const rows = await prisma.agentFinding.findMany({
-      where: { type: 'lead_signal', status: { notIn: ['duplicate'] } },
+      where: { type: 'lead_signal', status: { notIn: ['duplicate', 'dismissed'] } },
       orderBy: { id: 'asc' },
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: SALES_BATCH,
@@ -621,6 +621,21 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
   const urgentBuyers = salesRows.filter(
     r => String(r.profile.recommendation?.urgency || '') === 'urgent',
   ).length;
+
+  const ignoredToday = await prisma.agentFinding.count({
+    where: { status: 'dismissed', dismissedAt: { gte: todayStart } },
+  });
+  const spamLearnedToday = await prisma.agentSpamRule.count({
+    where: { createdAt: { gte: todayStart }, metadata: { path: ['origin'], equals: 'ignore_learning' } },
+  });
+  const spamRulesTotal = await prisma.agentSpamRule.count({ where: { isActive: true, archivedAt: null } });
+  const spamDecisionCounts = await prisma.agentFinding.count({
+    where: { status: 'dismissed', dismissReason: { in: ['spam', 'sales_ignore'] } },
+  });
+  const totalFindings = await prisma.agentFinding.count();
+  const spamHitRate = totalFindings > 0 ? Math.round((spamDecisionCounts / totalFindings) * 1000) / 10 : 0;
+  const rejectedBeforeAi = spamRulesTotal;
+
   const salesAgg = aggregatePipelineValue(
     salesRows.map(r => ({
       profile: r.profile,
@@ -838,6 +853,10 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
       urgentBuyers,
       pipelineValue,
       expectedRevenue,
+      ignoredToday,
+      spamLearnedToday,
+      spamHitRate,
+      rejectedBeforeAi,
       links: {
         buyersToday: '/admin/agents/lead-center?classification=buyer',
         qualifiedToday: '/admin/agents/lead-center?quickFilter=processed',
