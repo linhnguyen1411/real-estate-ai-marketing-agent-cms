@@ -25,6 +25,8 @@ export function computeLeadPriority(input: {
   hasBudget?: boolean;
   areaHint?: string | null;
   text?: string;
+  /** Negative penalty from decision learning (H2.4.11) */
+  decisionPenalty?: number;
 }): PriorityBreakdown {
   const text = String(input.text || '').toLowerCase();
 
@@ -86,6 +88,8 @@ export function computeLeadPriority(input: {
       0.08 * engagement +
       0.08 * aiConfidence,
   );
+
+  if (input.decisionPenalty) finalScore = clamp(finalScore + input.decisionPenalty);
 
   if (isBuyerIntent(input.intent.intent) && finalScore < 45) finalScore = 45;
   if (input.intent.intent === 'ready_buyer' && finalScore < 70) finalScore = 70;

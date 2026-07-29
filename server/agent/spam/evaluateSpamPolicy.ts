@@ -151,6 +151,13 @@ function collectMatches(input: SpamEvaluateInput, now: Date): SpamMatch[] {
         }
         break;
       }
+      case 'near_duplicate_fingerprint': {
+        const fp = (rule.rawValue || rule.normalizedValue || '').trim();
+        if (fp && input.nearDuplicateFingerprint && fp === input.nearDuplicateFingerprint) {
+          matchedValue = fp;
+        }
+        break;
+      }
       case 'regex': {
         try {
           const re = new RegExp(rule.pattern || rule.rawValue, 'iu');

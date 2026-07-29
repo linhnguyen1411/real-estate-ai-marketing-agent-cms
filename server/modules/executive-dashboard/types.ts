@@ -64,6 +64,10 @@ export type SalesSnapshot = {
   spamLearnedToday: number;
   spamHitRate: number;
   rejectedBeforeAi: number;
+  pendingLearning: number;
+  decisionsLearnedToday: number;
+  learningPromoted: number;
+  falsePositivePrevented: number;
   links: {
     buyersToday: string;
     qualifiedToday: string;

@@ -74,6 +74,6 @@ export {
   clampBuyerConfidence,
 } from './buyerHeat';
 export type { BuyerHeat, BuyerHeatInfo } from './buyerHeat';
-export { learnFromIgnoredFinding } from './ignoreLearnService';
-export type { IgnoreReason } from './ignoreLearnService';
+export { learnFromIgnoredFinding, loadDecisionKnowledge, lookupDecisionPenalty, getDecisionLearningMetrics, decisionScorePenalty, shouldRejectLead, shouldSuppressTelegram } from './ignoreLearnService';
+export type { IgnoreReason, DecisionEntry, DecisionKnowledgeState } from './ignoreLearnService';
 export { registerSalesLayerRoutes } from './api/salesRoutes';

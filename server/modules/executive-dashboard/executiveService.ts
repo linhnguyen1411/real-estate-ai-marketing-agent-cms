@@ -636,6 +636,12 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
   const spamHitRate = totalFindings > 0 ? Math.round((spamDecisionCounts / totalFindings) * 1000) / 10 : 0;
   const rejectedBeforeAi = spamRulesTotal;
 
+  let decisionLearningMetrics = { pendingLearning: 0, decisionsLearnedToday: 0, promoted: 0, falsePositivePrevented: 0 };
+  try {
+    const { getDecisionLearningMetrics } = await import('../sales-layer/ignoreLearnService');
+    decisionLearningMetrics = await getDecisionLearningMetrics();
+  } catch { /* non-critical */ }
+
   const salesAgg = aggregatePipelineValue(
     salesRows.map(r => ({
       profile: r.profile,
@@ -857,6 +863,10 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
       spamLearnedToday,
       spamHitRate,
       rejectedBeforeAi,
+      pendingLearning: decisionLearningMetrics.pendingLearning,
+      decisionsLearnedToday: decisionLearningMetrics.decisionsLearnedToday,
+      learningPromoted: decisionLearningMetrics.promoted,
+      falsePositivePrevented: decisionLearningMetrics.falsePositivePrevented,
       links: {
         buyersToday: '/admin/agents/lead-center?classification=buyer',
         qualifiedToday: '/admin/agents/lead-center?quickFilter=processed',

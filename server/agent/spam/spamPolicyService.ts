@@ -31,6 +31,7 @@ export type EvaluateContentSpamInput = {
   canonicalUrl?: string | null;
   contentHash?: string | null;
   normalizedContentHash?: string | null;
+  nearDuplicateFingerprint?: string | null;
   phones?: Array<{ raw?: string; normalized?: string; e164?: string }>;
   urls?: string[];
   sourceId?: string | null;
@@ -50,6 +51,7 @@ const PRE_AI_TYPES = new Set([
   'canonical_url',
   'source',
   'content_hash',
+  'near_duplicate_fingerprint',
   'keyword_phrase',
   'domain',
   'keyword',
@@ -88,6 +90,7 @@ export async function evaluateContentSpam(input: EvaluateContentSpamInput): Prom
     canonicalUrl: input.canonicalUrl,
     contentHash: input.contentHash,
     normalizedContentHash: input.normalizedContentHash,
+    nearDuplicateFingerprint: input.nearDuplicateFingerprint,
     phones,
     urls: input.urls,
     sourceId: input.sourceId,

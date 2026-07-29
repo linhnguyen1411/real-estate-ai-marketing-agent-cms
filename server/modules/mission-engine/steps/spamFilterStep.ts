@@ -13,6 +13,7 @@ export const spamFilterStep: WorkflowStepHandler = {
       canonicalUrl: content.canonicalUrl,
       contentHash: content.contentHash,
       normalizedContentHash: content.normalizedContentHash,
+      nearDuplicateFingerprint: content.nearDuplicateFingerprint,
       sourceId: content.sourceId,
       companyId: content.companyId,
       tier: 'pre_ai',

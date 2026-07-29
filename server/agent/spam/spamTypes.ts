@@ -15,6 +15,7 @@ export type SpamRuleType =
   | 'canonical_url'
   | 'source'
   | 'content_hash'
+  | 'near_duplicate_fingerprint'
   | 'regex'
   | 'classification'
   | 'actor_role';
@@ -73,6 +74,7 @@ export interface SpamEvaluateInput {
   canonicalUrl?: string | null;
   contentHash?: string | null;
   normalizedContentHash?: string | null;
+  nearDuplicateFingerprint?: string | null;
   phones?: Array<{ raw?: string; normalized?: string; e164?: string }>;
   urls?: string[];
   sourceId?: string | null;

@@ -56,7 +56,7 @@ export async function processLeadAcquisition(input: {
   const finding = await prisma.agentFinding.findUnique({
     where: { id: input.findingId },
     include: {
-      scannedContent: { select: { contentText: true, companyId: true } },
+      scannedContent: { select: { contentText: true, companyId: true, canonicalUrl: true, contentHash: true, nearDuplicateFingerprint: true } },
       source: { select: { id: true, name: true } },
     },
   });
@@ -78,6 +78,19 @@ export async function processLeadAcquisition(input: {
   });
   const hasPhone = Boolean(finding.primaryPhone);
   const hasBudget = finding.budgetMin != null || finding.budgetMax != null;
+
+  let decisionPenalty = 0;
+  try {
+    const { loadDecisionKnowledge, lookupDecisionPenalty } = await import('../sales-layer/ignoreLearnService');
+    const state = await loadDecisionKnowledge();
+    const match = lookupDecisionPenalty(state, {
+      canonicalUrl: finding.scannedContent?.canonicalUrl,
+      contentHash: finding.scannedContent?.contentHash,
+      fingerprint: finding.scannedContent?.nearDuplicateFingerprint,
+    });
+    decisionPenalty = match.penalty;
+  } catch { /* non-critical */ }
+
   const priority = computeLeadPriority({
     intent,
     timeline,
@@ -88,6 +101,7 @@ export async function processLeadAcquisition(input: {
     hasBudget,
     areaHint: finding.primaryLocation,
     text,
+    decisionPenalty,
   });
   const action = suggestLeadAction({ intent, timeline, priority, hasPhone });
   const buyer = isBuyerIntent(intent.intent);
