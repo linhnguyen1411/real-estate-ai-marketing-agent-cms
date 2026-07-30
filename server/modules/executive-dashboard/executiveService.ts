@@ -283,8 +283,8 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
         select: {
           sourceId: true,
           extractedData: true,
-          source: { select: { name: true, type: true } },
-          scannedContent: { select: { canonicalUrl: true } },
+          source: { select: { name: true, type: true, url: true } },
+          scannedContent: { select: { canonicalUrl: true, externalId: true } },
         },
       }),
     ]);
@@ -413,6 +413,8 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
       agentSourceName: row.source?.name || null,
       agentSourceType: row.source?.type || null,
       canonicalUrl: row.scannedContent?.canonicalUrl || null,
+      externalId: row.scannedContent?.externalId || null,
+      agentSourceUrl: row.source?.url || null,
     });
     provenanceBySource.set(row.sourceId, { label: prov.label, url: prov.url });
   }
@@ -495,7 +497,7 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
       sourceId: source.id,
       sourceName: prov?.label || source.name,
       sourceType: source.type,
-      sourceUrl: prov?.url || source.url,
+      sourceUrl: prov?.url || null,
       status: source.status,
       priority: source.priority,
       qualityScore: quality.qualityScore,

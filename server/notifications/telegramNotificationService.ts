@@ -217,7 +217,7 @@ export async function notifyFindingIfEligible(input: {
     const finding = await prisma.agentFinding.findUnique({
       where: { id: input.findingId },
       include: {
-        source: { select: { id: true, name: true, type: true } },
+        source: { select: { id: true, name: true, type: true, url: true } },
         scannedContent: true,
       },
     });
@@ -337,12 +337,16 @@ export async function notifyFindingIfEligible(input: {
     const openPostHint = finding.scannedContent?.canonicalUrl || null;
 
     const roleResolved = role || 'buyer';
-    // H2.4.7 — content provenance only; never re-apply unvalidated AgentSource / fabricated URL
+    // H2.4.7 — content provenance only; SSOT canonicalize; never use AgentSource.url as post
     const sourceProv = resolveSourceProvenance({
       extractedData: finding.extractedData,
       agentSourceName: finding.source?.name,
       agentSourceType: finding.source?.type,
       canonicalUrl: openPostHint,
+      externalId: finding.scannedContent?.externalId || null,
+      agentSourceUrl: finding.source && 'url' in finding.source
+        ? (finding.source as { url?: string | null }).url
+        : null,
     });
     const sourceUrlFinal = sourceProv.url; // fail closed — no openPostHint bypass
 
@@ -391,10 +395,13 @@ export async function notifyFindingIfEligible(input: {
     const links = normalizeSocialLinks({
       postUrl: sourceUrlFinal,
       groupUrl:
-        typeof sourceEd?.groupUrl === 'string' ? sourceEd.groupUrl : null,
+        typeof sourceEd?.groupUrl === 'string'
+          ? sourceEd.groupUrl
+          : finding.source?.url || null,
       postId: typeof sourceEd?.postId === 'string' ? sourceEd.postId : null,
       groupId: typeof sourceEd?.groupId === 'string' ? sourceEd.groupId : null,
-      canonicalUrl: sourceUrlFinal,
+      canonicalUrl: sourceUrlFinal || openPostHint,
+      externalId: finding.scannedContent?.externalId || null,
     });
 
     const hasLinkCandidates = Boolean(links.postUrl || links.groupUrl || links.rawPostUrl);

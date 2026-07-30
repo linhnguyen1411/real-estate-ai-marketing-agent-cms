@@ -17,6 +17,7 @@ import {
   displayValue,
   formatMoney,
   hasOriginalPostUrl,
+  resolveOriginalPostHref,
   FieldRow,
   SectionBlock,
 } from './leadIntelligenceDisplay';
@@ -259,7 +260,7 @@ export default function FindingDetailDrawer({
               </div>
               {hasOriginalPostUrl(originalUrl) ? (
                 <a
-                  href={originalUrl!}
+                  href={resolveOriginalPostHref(originalUrl) || originalUrl!}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-xs font-bold text-rose-400 hover:underline"
@@ -357,7 +358,7 @@ export default function FindingDetailDrawer({
                 value={
                   originalUrl ? (
                     <a
-                      href={originalUrl}
+                      href={resolveOriginalPostHref(originalUrl) || originalUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="break-all text-rose-400 hover:underline"
@@ -389,7 +390,7 @@ export default function FindingDetailDrawer({
               </div>
               {hasOriginalPostUrl(originalUrl) && (
                 <a
-                  href={originalUrl!}
+                  href={resolveOriginalPostHref(originalUrl) || originalUrl!}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-xs font-bold text-rose-400 hover:underline"
@@ -535,7 +536,7 @@ export default function FindingDetailDrawer({
           </button>
           {hasOriginalPostUrl(originalUrl) && (
             <a
-              href={originalUrl!}
+              href={resolveOriginalPostHref(originalUrl) || originalUrl!}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"

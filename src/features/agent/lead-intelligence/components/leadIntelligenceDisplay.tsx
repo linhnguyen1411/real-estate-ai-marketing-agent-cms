@@ -71,11 +71,18 @@ export function formatMoney(value: string | number | null | undefined): string {
   }
 }
 
+import { isSolidFacebookPostUrl, canonicalizeFacebookPostUrl } from '@/shared/facebook-url';
+
 export function hasOriginalPostUrl(url?: string | null): boolean {
   if (!url) return false;
   if (url.includes('#gql-')) return false;
-  // Numeric and pfbid Facebook post permalinks
-  return /\/posts\/(?:pfbid[\w]+|\d+)/i.test(url) || /\/permalink\/\d+/i.test(url);
+  return isSolidFacebookPostUrl(url);
+}
+
+/** Openable href for Lead Center / drawers — SSOT canonicalize. */
+export function resolveOriginalPostHref(url?: string | null): string | null {
+  if (!url || url.includes('#gql-')) return null;
+  return canonicalizeFacebookPostUrl(url);
 }
 
 export function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {

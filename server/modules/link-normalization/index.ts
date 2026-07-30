@@ -20,6 +20,10 @@ export {
   extractFacebookGroupId,
   buildGroupUrl,
   buildPostPermalink,
+  canonicalizeFacebookPostUrl,
+  isSolidFacebookPostUrl,
+  resolveOpenableFacebookPostUrl,
+  parseFacebookContentUrl,
 } from './normalize';
 
 export {

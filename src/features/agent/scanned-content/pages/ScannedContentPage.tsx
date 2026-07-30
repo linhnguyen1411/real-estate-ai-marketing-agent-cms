@@ -89,10 +89,17 @@ function stageTone(stage: string | null): string {
   return 'bg-amber-900/30 text-amber-200';
 }
 
+import { isSolidFacebookPostUrl, canonicalizeFacebookPostUrl } from '@/shared/facebook-url';
+
 function hasOriginalPostUrl(url?: string | null): boolean {
   if (!url) return false;
   if (url.includes('#gql-')) return false;
-  return /\/posts\/(?:pfbid[\w]+|\d+)/i.test(url) || /\/permalink\/\d+/i.test(url);
+  return isSolidFacebookPostUrl(url);
+}
+
+function resolveOriginalPostHref(url?: string | null): string | null {
+  if (!url || url.includes('#gql-')) return null;
+  return canonicalizeFacebookPostUrl(url);
 }
 
 export default function ScannedContentPage({ userRole }: Props) {
@@ -557,7 +564,7 @@ export default function ScannedContentPage({ userRole }: Props) {
                   </button>
                   {hasOriginalPostUrl(item.canonicalUrl) ? (
                     <a
-                      href={item.canonicalUrl}
+                      href={resolveOriginalPostHref(item.canonicalUrl) || item.canonicalUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] text-rose-300 hover:bg-slate-900"

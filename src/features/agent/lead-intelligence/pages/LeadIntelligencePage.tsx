@@ -33,6 +33,7 @@ import {
   type DetailTab,
   intelligenceOf,
   hasOriginalPostUrl,
+  resolveOriginalPostHref,
   ActionBtn,
 } from '../components/leadIntelligenceDisplay';
 import MatchingPanel, { type MatchResultData } from '../matching/MatchingPanel';
@@ -807,7 +808,7 @@ export default function LeadIntelligencePage({ userRole }: Props) {
                         </ActionBtn>
                         {hasOriginalPostUrl(postUrl) ? (
                           <a
-                            href={postUrl!}
+                            href={resolveOriginalPostHref(postUrl) || postUrl!}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center justify-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-300 hover:bg-slate-900"
@@ -881,7 +882,7 @@ export default function LeadIntelligencePage({ userRole }: Props) {
                         </ActionBtn>
                         {hasOriginalPostUrl(postUrl) ? (
                           <a
-                            href={postUrl!}
+                            href={resolveOriginalPostHref(postUrl) || postUrl!}
                             target="_blank"
                             rel="noreferrer"
                             className="col-span-2 inline-flex items-center justify-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-300 hover:bg-slate-900"

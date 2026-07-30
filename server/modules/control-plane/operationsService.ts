@@ -1006,8 +1006,8 @@ export async function opsLeadSource(findingId: string, triggeredBy: string) {
     select: {
       id: true,
       title: true,
-      scannedContent: { select: { canonicalUrl: true } },
-      source: { select: { name: true, type: true } },
+      scannedContent: { select: { canonicalUrl: true, externalId: true } },
+      source: { select: { name: true, type: true, url: true } },
       extractedData: true,
     },
   });
@@ -1017,6 +1017,8 @@ export async function opsLeadSource(findingId: string, triggeredBy: string) {
     agentSourceName: finding.source?.name,
     agentSourceType: finding.source?.type,
     canonicalUrl: finding.scannedContent?.canonicalUrl || null,
+    externalId: finding.scannedContent?.externalId || null,
+    agentSourceUrl: finding.source?.url || null,
   });
 
   const candidates = [prov.url, finding.scannedContent?.canonicalUrl];

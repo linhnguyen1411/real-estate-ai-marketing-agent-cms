@@ -52,6 +52,23 @@ If verification fails for all candidates → Telegram **must not** send the aler
 
 ---
 
+## Canonical Facebook Post URL (SSOT)
+
+**Owner module:** `shared/facebook-url/`  
+**Re-exported by:** `server/modules/link-normalization`
+
+| Export | Role |
+|--------|------|
+| `canonicalizeFacebookPostUrl` | Parse → rebuild one openable post URL |
+| `resolveOpenableFacebookPostUrl` | Fallback chain: candidates → ids → externalId |
+| `isSolidFacebookPostUrl` | Gate for Open Source / Telegram Source |
+
+Storage SSOT remains `ScannedContent.canonicalUrl`. Display/open consumers must run through the helper above — never invent URLs and never open group-home as a post.
+
+Ids stay strings (never `Number()` — 17-digit Facebook ids exceed `MAX_SAFE_INTEGER`).
+
+---
+
 ## Adapters
 
 | Export | Role |
@@ -59,8 +76,9 @@ If verification fails for all candidates → Telegram **must not** send the aler
 | `normalizeSocialLinks` | Pure normalize + id extract |
 | `verifyOpenableUrl` | Single URL HTTP check |
 | `verifySocialLinks` | Post-first, group fallback |
-| `toMobileFriendlyFacebookUrl` | Host/path mobile-safe rewrite |
+| `toMobileFriendlyFacebookUrl` | Delegates to `canonicalizeFacebookPostUrl` |
 | `isEphemeralUrl` | Temporary URL gate |
+| `isSolidFacebookPermalink` | Alias gate over SSOT |
 
 Inject `fetchImpl` in tests — no live network required.
 

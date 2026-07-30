@@ -6,6 +6,11 @@
 import type { BuyingTimeline, BuyerIntentLabel, LeadAcquisitionProfile } from '../lead-acquisition/types';
 import type { SalesLayerProfile } from './types';
 import { classifyBuyerHeat, resolveBuyerConfidencePct, type BuyerHeatInfo } from './buyerHeat';
+import {
+  canonicalizeFacebookPostUrl,
+  isSolidFacebookPostUrl,
+  resolveOpenableFacebookPostUrl,
+} from '../../../shared/facebook-url';
 
 export type LeadAlertRole = 'buyer' | 'tenant' | 'investor';
 
@@ -124,6 +129,8 @@ type ExtractedSourceFields = {
   canonicalUrl?: string;
   platform?: string;
   sourceName?: string;
+  postId?: string;
+  groupId?: string;
 };
 
 function readExtractedSource(extractedData: unknown): ExtractedSourceFields {
@@ -146,6 +153,8 @@ function readExtractedSource(extractedData: unknown): ExtractedSourceFields {
     canonicalUrl: str('canonicalUrl'),
     platform: str('platform'),
     sourceName: str('sourceName'),
+    postId: str('postId'),
+    groupId: str('groupId'),
   };
 }
 
@@ -182,10 +191,7 @@ export function isTrustedContentUrl(
   if (/prodv\d+|product[-_]?v?\d+|unify-lead-alert|h2\.4\.\d+/i.test(full)) return false;
   if (/\/login|\/checkpoint|\/recover\//i.test(path)) return false;
 
-  const solidPost =
-    /\/posts\/(?:pfbid[\w]+|\d+)/i.test(path) ||
-    /\/permalink\/\d+/i.test(path) ||
-    /story_fbid=\d+/i.test(full);
+  const solidPost = isSolidFacebookPostUrl(u);
 
   const agent = (opts?.agentSourceName || '').trim().toLowerCase();
   // Only block agent-slug collision for non-permalink URLs (e.g. fabricated group home)
@@ -279,6 +285,10 @@ export function resolveSourceProvenance(input: {
   agentSourceName?: string | null;
   agentSourceType?: string | null;
   canonicalUrl?: string | null;
+  /** ScannedContent.externalId / GraphQL post id — fallback rebuild */
+  externalId?: string | null;
+  /** AgentSource.url (group feed) — used only for groupId extraction, never as post URL */
+  agentSourceUrl?: string | null;
 }): SourceProvenanceResult {
   const ed = readExtractedSource(input.extractedData);
   const agentName = (input.agentSourceName || '').trim();
@@ -321,26 +331,36 @@ export function resolveSourceProvenance(input: {
   if (agentType.includes('group') || ed.groupName) type = 'group_post';
   else if (agentType) type = agentType;
 
-  const urlCandidates = [
-    ed.permalink,
-    ed.postUrl,
-    input.canonicalUrl,
-    ed.canonicalUrl,
-    ed.url,
-  ];
+  // SSOT openable post URL — never invent; never return group-home as post
+  const openable = resolveOpenableFacebookPostUrl({
+    candidates: [ed.permalink, ed.postUrl, input.canonicalUrl, ed.canonicalUrl, ed.url],
+    postId: ed.postId,
+    groupId: ed.groupId,
+    groupUrl: ed.groupUrl || input.agentSourceUrl,
+    externalId: input.externalId,
+  });
 
   let url: string | null = null;
-  for (const candidate of urlCandidates) {
-    if (!isHttpsUrl(candidate)) continue;
-    const normalized = normalizeHttpUrl(candidate);
-    if (
-      isTrustedContentUrl(normalized, {
-        agentSourceName: agentName || ed.sourceName,
-        platform,
-      })
-    ) {
-      url = normalized;
-      break;
+  if (openable && isTrustedContentUrl(openable, {
+    agentSourceName: agentName || ed.sourceName,
+    platform,
+  })) {
+    url = openable;
+  } else {
+    // Legacy fallback: first trusted https candidate after canonicalize
+    for (const candidate of [ed.permalink, ed.postUrl, input.canonicalUrl, ed.canonicalUrl, ed.url]) {
+      if (!isHttpsUrl(candidate)) continue;
+      const normalized = canonicalizeFacebookPostUrl(candidate) || normalizeHttpUrl(candidate);
+      if (
+        isSolidFacebookPostUrl(normalized) &&
+        isTrustedContentUrl(normalized, {
+          agentSourceName: agentName || ed.sourceName,
+          platform,
+        })
+      ) {
+        url = normalized;
+        break;
+      }
     }
   }
 

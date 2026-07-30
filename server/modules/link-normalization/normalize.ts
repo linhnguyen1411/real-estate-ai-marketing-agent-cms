@@ -1,33 +1,25 @@
 /**
  * Link Normalization — strip tracking, unwrap Facebook redirects, extract ids.
+ * Facebook post URL SSOT: shared/facebook-url (parse → rebuild).
  * Never hardcodes destination-specific CMS routes; only host/path rules.
  */
 
+import {
+  canonicalizeFacebookPostUrl,
+  isSolidFacebookPostUrl,
+  parseFacebookContentUrl,
+  resolveOpenableFacebookPostUrl,
+  unwrapFacebookRedirect as unwrapShared,
+  asFacebookId,
+} from '../../../shared/facebook-url';
 import type { NormalizedSocialLinks } from './types';
 
-const TRACKING_PARAMS = new Set([
-  'fbclid',
-  'mibextid',
-  '__tn__',
-  '__cft__',
-  '__xts__',
-  'ref',
-  'refid',
-  'refsrc',
-  'ref_type',
-  'hc_ref',
-  'hc_location',
-  'sfnsn',
-  'rdid',
-  'share_url',
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_content',
-  'utm_term',
-  'eav',
-  'paipv',
-]);
+export {
+  canonicalizeFacebookPostUrl,
+  isSolidFacebookPostUrl,
+  resolveOpenableFacebookPostUrl,
+  parseFacebookContentUrl,
+} from '../../../shared/facebook-url';
 
 const EPHEMERAL_HOST_MARKERS = [
   'lm.facebook.com',
@@ -41,7 +33,6 @@ const REJECT_PATH_MARKERS = [
   '/recover',
   '/sharer',
   '/dialog/',
-  '/watch/',
 ];
 
 /** Login walls / checkpoints — never use as Telegram Source button. */
@@ -56,27 +47,13 @@ export function isDegradedFacebookUrl(raw: string | null | undefined): boolean {
 
 /**
  * Real content permalink shape (post/photo/reel) — safe to send to Telegram as-is.
- * Prefer this over HTTP follow finalUrl (often login redirect).
+ * Delegates to SSOT isSolidFacebookPostUrl.
  */
 export function isSolidFacebookPermalink(raw: string | null | undefined): boolean {
   const s = String(raw || '').trim();
   if (!s || !/^https:\/\//i.test(s)) return false;
   if (isDegradedFacebookUrl(s)) return false;
-  try {
-    const u = new URL(unwrapFacebookRedirect(s));
-    const host = u.hostname.toLowerCase();
-    if (!/facebook\.com|fb\.com|fb\.watch/i.test(host)) return false;
-    const path = u.pathname.toLowerCase();
-    const q = u.search.toLowerCase();
-    if (/\/posts\/(?:pfbid[\w]+|\d+)/i.test(path)) return true;
-    if (/\/permalink\/\d+/i.test(path)) return true;
-    if (/story_fbid=\d+/i.test(q) || /multi_permalinks=\d+/i.test(q)) return true;
-    if (/\/photos\//i.test(path) && /\d{8,}/.test(path)) return true;
-    if (/\/reel\/|\/videos\/\d+/i.test(path)) return true;
-    return false;
-  } catch {
-    return false;
-  }
+  return isSolidFacebookPostUrl(s);
 }
 
 function isHttpUrl(raw: string): boolean {
@@ -109,7 +86,6 @@ export function isEphemeralUrl(raw: string | null | undefined): boolean {
     const path = `${u.pathname}${u.search}`.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (EPHEMERAL_HOST_MARKERS.some(m => lower.includes(m))) {
-      // l.php / lm may wrap a real URL — not ephemeral if we can unwrap
       const uParam = u.searchParams.get('u');
       if (uParam) return false;
       return true;
@@ -121,108 +97,60 @@ export function isEphemeralUrl(raw: string | null | undefined): boolean {
   }
 }
 
-function stripTracking(url: URL): void {
-  for (const key of [...url.searchParams.keys()]) {
-    if (TRACKING_PARAMS.has(key.toLowerCase()) || key.startsWith('__')) {
-      url.searchParams.delete(key);
-    }
-  }
-}
-
 /** Unwrap Facebook redirect wrappers (l.php / lm.facebook.com). */
 export function unwrapFacebookRedirect(raw: string): string {
-  try {
-    const u = new URL(raw.trim());
-    const host = u.hostname.toLowerCase();
-    if (
-      host === 'l.facebook.com' ||
-      host === 'lm.facebook.com' ||
-      u.pathname.toLowerCase() === '/l.php'
-    ) {
-      const target = u.searchParams.get('u');
-      if (target) {
-        try {
-          return decodeURIComponent(target);
-        } catch {
-          return target;
-        }
-      }
-    }
-  } catch {
-    /* keep raw */
-  }
-  return raw.trim();
+  return unwrapShared(raw);
 }
 
 /**
  * Prefer www.facebook.com absolute https URLs (deep-link friendly).
- * Does not use window.location or JS navigation.
+ * Delegates Facebook content URLs to SSOT canonicalizeFacebookPostUrl.
  */
 export function toMobileFriendlyFacebookUrl(raw: string): string | null {
   if (isEphemeralUrl(raw)) return null;
-  let current = unwrapFacebookRedirect(raw);
+  const canonical = canonicalizeFacebookPostUrl(raw);
+  if (canonical) return canonical;
+
+  // Non-post Facebook URLs (group home) — cleaned host only, for group button
   try {
+    const current = unwrapFacebookRedirect(raw);
     const u = new URL(current);
     const host = u.hostname.toLowerCase().replace(/^m\./, 'www.');
-    if (host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.watch')) {
-      u.protocol = 'https:';
-      u.hostname = host.startsWith('www.') || !host.endsWith('facebook.com')
-        ? host.replace('fb.com', 'facebook.com')
-        : `www.${host}`;
-      if (u.hostname === 'facebook.com') u.hostname = 'www.facebook.com';
-      stripTracking(u);
-      u.hash = '';
-      // Keep story_fbid / id / multi_permalinks query keys only
-      const keep = new Set(['story_fbid', 'id', 'multi_permalinks', 'set']);
-      for (const key of [...u.searchParams.keys()]) {
-        if (!keep.has(key)) u.searchParams.delete(key);
-      }
-      let out = u.toString().replace(/\/$/, '');
-      // Normalize /groups/{id}/permalink/{post}/ → posts form when possible
-      return out;
+    if (!(host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.watch'))) {
+      return null;
     }
-    stripTracking(u);
-    u.hash = '';
     u.protocol = 'https:';
-    return u.toString().replace(/\/$/, '');
+    if (host === 'fb.com' || host === 'www.fb.com') u.hostname = 'www.facebook.com';
+    else if (host === 'facebook.com') u.hostname = 'www.facebook.com';
+    else u.hostname = host.startsWith('www.') ? host : `www.${host.replace(/^www\./, '')}`;
+    if (!u.hostname.includes('facebook.com')) u.hostname = 'www.facebook.com';
+    u.hash = '';
+    const pathNoSlash = u.pathname.replace(/\/+$/, '');
+    if (/^\/groups\/[^/]+$/i.test(pathNoSlash)) {
+      u.pathname = pathNoSlash;
+      u.search = '';
+      return u.toString();
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 export function extractFacebookPostId(url: string | null | undefined): string | null {
-  const s = String(url || '').trim();
-  if (!s) return null;
-  try {
-    const u = new URL(unwrapFacebookRedirect(s));
-    const story = u.searchParams.get('story_fbid') || u.searchParams.get('multi_permalinks');
-    if (story) return story.replace(/\D/g, '') || story;
-    const id = u.searchParams.get('fbid') || u.searchParams.get('id');
-    const path = u.pathname;
-    const posts = path.match(/\/posts\/(?:pfbid[\w]+|\d+)/i);
-    if (posts) return posts[0].split('/').pop() || null;
-    const permalink = path.match(/\/permalink\/(\d+)/i);
-    if (permalink) return permalink[1];
-    const photo = path.match(/\/photos\/(?:a\.\d+\/)?(\d+)/i);
-    if (photo) return photo[1];
-    if (id && /permalink|story\.php|photo\.php/i.test(path + u.search)) {
-      return id.replace(/\D/g, '') || id;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  const parts = parseFacebookContentUrl(url);
+  return asFacebookId(parts?.postId || parts?.mediaId) || null;
 }
 
 export function extractFacebookGroupId(url: string | null | undefined): string | null {
+  const parts = parseFacebookContentUrl(url);
+  if (parts?.groupId) return parts.groupId;
   const s = String(url || '').trim();
   if (!s) return null;
   try {
     const u = new URL(unwrapFacebookRedirect(s));
     const m = u.pathname.match(/\/groups\/([^/]+)/i);
-    if (!m) return null;
-    const slug = decodeURIComponent(m[1]);
-    return slug || null;
+    return m ? decodeURIComponent(m[1]) : null;
   } catch {
     return null;
   }
@@ -235,28 +163,20 @@ export function buildGroupUrl(groupId: string | null | undefined): string | null
   return `https://www.facebook.com/groups/${encodeURIComponent(id)}`;
 }
 
-/** Build stable post permalink when ids known. */
+/** Build stable post permalink when ids known — SSOT rebuild. */
 export function buildPostPermalink(input: {
   postId?: string | null;
   groupId?: string | null;
   postUrl?: string | null;
 }): string | null {
   if (input.postUrl) {
-    const mobile = toMobileFriendlyFacebookUrl(input.postUrl);
-    if (mobile) return mobile;
+    const canon = canonicalizeFacebookPostUrl(input.postUrl);
+    if (canon) return canon;
   }
-  const postId = String(input.postId || '').trim();
-  const groupId = String(input.groupId || '').trim();
-  if (postId && groupId) {
-    if (postId.startsWith('pfbid')) {
-      return `https://www.facebook.com/groups/${encodeURIComponent(groupId)}/posts/${postId}`;
-    }
-    return `https://www.facebook.com/groups/${encodeURIComponent(groupId)}/posts/${postId}`;
-  }
-  if (postId) {
-    return `https://www.facebook.com/permalink.php?story_fbid=${encodeURIComponent(postId)}`;
-  }
-  return null;
+  return resolveOpenableFacebookPostUrl({
+    postId: input.postId,
+    groupId: input.groupId,
+  });
 }
 
 export function normalizeSocialLinks(input: {
@@ -266,30 +186,34 @@ export function normalizeSocialLinks(input: {
   groupId?: string | null;
   canonicalUrl?: string | null;
   publishedUrl?: string | null;
+  externalId?: string | null;
 }): NormalizedSocialLinks {
   const rejected: string[] = [];
   const rawPost =
     String(input.postUrl || input.canonicalUrl || input.publishedUrl || '').trim() || null;
   const rawGroup = String(input.groupUrl || '').trim() || null;
 
-  let postUrl: string | null = null;
-  let groupUrl: string | null = null;
+  const postUrl = resolveOpenableFacebookPostUrl({
+    candidates: [input.postUrl, input.canonicalUrl, input.publishedUrl],
+    postId: input.postId,
+    groupId: input.groupId,
+    groupUrl: input.groupUrl,
+    externalId: input.externalId,
+  });
 
-  if (rawPost) {
-    postUrl = toMobileFriendlyFacebookUrl(rawPost);
-    if (!postUrl) rejected.push(rawPost);
-  }
+  if (rawPost && !postUrl) rejected.push(rawPost);
+
+  let groupUrl: string | null = null;
   if (rawGroup) {
-    groupUrl =
-      toMobileFriendlyFacebookUrl(rawGroup) ||
-      buildGroupUrl(extractFacebookGroupId(rawGroup));
+    groupUrl = buildGroupUrl(extractFacebookGroupId(rawGroup)) || toMobileFriendlyFacebookUrl(rawGroup);
     if (!groupUrl) rejected.push(rawGroup);
   }
 
   const postId =
-    String(input.postId || '').trim() ||
+    asFacebookId(input.postId) ||
     extractFacebookPostId(postUrl) ||
     extractFacebookPostId(rawPost) ||
+    asFacebookId(input.externalId) ||
     null;
   const groupId =
     String(input.groupId || '').trim() ||
@@ -299,14 +223,12 @@ export function normalizeSocialLinks(input: {
     extractFacebookGroupId(rawPost) ||
     null;
 
-  if (!postUrl && postId) {
-    postUrl = buildPostPermalink({ postId, groupId });
-  }
   if (!groupUrl && groupId) {
     groupUrl = buildGroupUrl(groupId);
   }
 
-  const canonicalUrl = postUrl || groupUrl || null;
+  // canonicalUrl for open-post = post only (never group-home as post SSOT)
+  const canonicalUrl = postUrl || null;
 
   return {
     rawPostUrl: rawPost,
