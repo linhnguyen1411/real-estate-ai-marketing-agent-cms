@@ -34,6 +34,7 @@ import {
 } from './cards/telegramCards';
 import { getCampaignWorkspace } from './campaignWorkspace';
 import { AssetValidationError } from './asset/AssetValidator';
+import { isCampaignPlanningUtterance } from './campaignIntent';
 import type { LivingCampaign } from './types';
 import type { SalesEmployeeResult } from './types';
 import type { InlineKeyboard } from '../control-plane/inlineKeyboard';
@@ -90,6 +91,8 @@ export function detectSalesMode(
   if (/^reject\s+campaign\b|từ chối campaign|tu choi campaign/.test(t)) return 'campaign_reject';
   if (/complete\s+campaign\b|đóng campaign|dong campaign/.test(t)) return 'campaign_approve';
   if (/view\s+campaign\b|mở campaign|mo campaign|open campaign/.test(t)) return 'campaign_board';
+  // H2.5 — campaign planning before mission/content/research branches
+  if (isCampaignPlanningUtterance(text)) return 'campaign_board';
   if (/hôm nay ai đang làm|hom nay ai dang lam|ai đang làm gì|ai dang lam gi|đang làm gì|dang lam gi/.test(t)) {
     return 'work_status';
   }
@@ -102,13 +105,6 @@ export function detectSalesMode(
   if (/content|lịch đăng|lich dang|threads|tiktok caption|seo bài/.test(t)) return 'content_plan';
   if (/đề xuất|de xuat|recommendation|thiếu bài|thieu bai|nên giảm|nen giam/.test(t)) {
     return 'recommendations';
-  }
-  if (
-    /bán mạnh|ban manh|campaign|chiến dịch|chien dich|cần bán|can ban|lập campaign|lap campaign|mai đăng chơn|mai dang chon/.test(
-      t,
-    )
-  ) {
-    return 'campaign_board';
   }
   if (/^\/?ai\b|sales employee|help ai|ai employee/.test(t)) return 'help';
   return 'help';
@@ -400,8 +396,8 @@ export async function runSalesEmployee(input: {
     if (error instanceof AssetValidationError) {
       return {
         mode: 'campaign_board',
-        lines: ['Asset identity required.', error.prompt],
-        text: `Asset identity required.\n${error.prompt}`,
+        lines: [error.prompt],
+        text: error.prompt,
       };
     }
     throw error;

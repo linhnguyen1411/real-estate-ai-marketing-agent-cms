@@ -54,6 +54,10 @@ export {
   detectSalesMode,
   type SalesEmployeeReply,
 } from './salesEmployee';
+export { isCampaignPlanningUtterance, CAMPAIGN_ASSET_CUE_RE } from './campaignIntent';
+export { matchAssetIdentity } from './asset/AssetMatcher';
+export { validateAssetIdentity, AssetValidationError } from './asset/AssetValidator';
+export type { AssetIdentity, AssetType } from './asset/AssetIdentity';
 export {
   campaignCard,
   researchCard,

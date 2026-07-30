@@ -4,6 +4,7 @@
  */
 
 import type { ClassifiedIntent, CopilotIntentName, CopilotSlots } from './types';
+import { isCampaignPlanningUtterance } from '../../planning/campaignIntent';
 
 type Rule = {
   name: CopilotIntentName;
@@ -81,6 +82,12 @@ const RULES: Rule[] = [
       ),
   },
   {
+    // H2.5 — Campaign Planning NLP (before marketing/mission/research hijacks)
+    name: 'ai_sales_campaign',
+    confidence: 0.97,
+    test: t => isCampaignPlanningUtterance(t),
+  },
+  {
     name: 'scanner_summary',
     confidence: 0.94,
     test: t =>
@@ -94,10 +101,11 @@ const RULES: Rule[] = [
     name: 'marketing_org_summary',
     confidence: 0.96,
     test: t =>
-      /hôm nay marketing|hom nay marketing|marketing thế nào|marketing the nao|marketing health|phòng marketing|marketing funnel|omnichannel/.test(
+      !isCampaignPlanningUtterance(t) &&
+      (/hôm nay marketing|hom nay marketing|marketing thế nào|marketing the nao|marketing health|phòng marketing|marketing funnel|omnichannel/.test(
         t,
       ) ||
-      (/marketing/.test(t) && /sao|thế nào|the nao|hôm nay|hom nay|tóm tắt|tom tat|health/.test(t)),
+        (/marketing/.test(t) && /sao|thế nào|the nao|hôm nay|hom nay|tóm tắt|tom tat|health/.test(t))),
   },
   {
     name: 'ai_status',
@@ -160,12 +168,13 @@ const RULES: Rule[] = [
     name: 'mission_summary',
     confidence: 0.95,
     test: t =>
-      /mission nào đang chạy|mission nao dang chay|nhiệm vụ nào|nhiem vu nao|mission đang chạy|mission dang chay/.test(
+      !isCampaignPlanningUtterance(t) &&
+      (/mission nào đang chạy|mission nao dang chay|nhiệm vụ nào|nhiem vu nao|mission đang chạy|mission dang chay/.test(
         t,
       ) ||
-      /mission thế|mission the|mission sao|mission\??$|nhiệm vụ/.test(t) ||
-      (/mission|nhiệm vụ|nhiem vu/.test(t) &&
-        /sao|thế nào|the nao|status|tóm tắt|tom tat|đang chạy|dang chay/.test(t)),
+        /mission thế|mission the|mission sao|mission\??$|nhiệm vụ/.test(t) ||
+        (/mission|nhiệm vụ|nhiem vu/.test(t) &&
+          /sao|thế nào|the nao|status|tóm tắt|tom tat|đang chạy|dang chay/.test(t))),
   },
   {
     name: 'browser_detail',
@@ -220,16 +229,8 @@ const RULES: Rule[] = [
     name: 'ai_sales_research',
     confidence: 0.97,
     test: t =>
+      !isCampaignPlanningUtterance(t) &&
       /market report|research|giá thị trường|gia thi truong|khảo sát thị trường|khao sat thi truong|market intelligence/.test(
-        t,
-      ),
-  },
-  {
-    name: 'ai_sales_campaign',
-    confidence: 0.96,
-    test: t =>
-      !/research|market report|giá thị trường|gia thi truong|khảo sát|khao sat/.test(t) &&
-      /bán mạnh|ban manh|lập campaign|lap campaign|chiến dịch|chien dich|cần bán|can ban|mai đăng chơn|mai dang chon|campaign board/.test(
         t,
       ),
   },
@@ -237,6 +238,7 @@ const RULES: Rule[] = [
     name: 'ai_sales_missions',
     confidence: 0.94,
     test: t =>
+      !isCampaignPlanningUtterance(t) &&
       /đề xuất mission|de xuat mission|mission planner|nhiệm vụ buyer|nhiem vu buyer|mission đề xuất/.test(
         t,
       ),
@@ -245,7 +247,11 @@ const RULES: Rule[] = [
     name: 'ai_sales_content',
     confidence: 0.94,
     test: t =>
-      /content plan|lịch đăng|lich dang|content planner|lịch content|lich content/.test(t),
+      !isCampaignPlanningUtterance(t) &&
+      (/content plan|lịch đăng|lich dang|content planner|lịch content|lich content/.test(t) ||
+        /(?:viết|viet|soạn|soan)\s+content(?:\s+cho\s+campaign\s+(?:này|nay))?|content\s+cho\s+campaign\s+(?:này|nay)/i.test(
+          t,
+        )),
   },
   {
     name: 'ai_sales_recommendations',
