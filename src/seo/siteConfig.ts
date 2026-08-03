@@ -6,7 +6,7 @@ export const SITE = {
   url: 'https://bdsdanang.site',
   locale: 'vi_VN',
   language: 'vi',
-  defaultTitle: 'BĐS Đà Nẵng | Estoria',
+  defaultTitle: 'BĐS Đà Nẵng 2026 | Sun Group & Nam Đà Nẵng | Estoria',
   /** Brand motto — footer only, not for SEO or header */
   tagline: 'Where assets tell their story',
   taglineVi: 'Nơi mỗi tài sản kể câu chuyện của mình',

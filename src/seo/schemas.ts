@@ -153,10 +153,19 @@ function propertyTypeSchema(property: Property) {
 export function buildPropertySchemas(property: Property, origin: string = SITE.url) {
   const slug = getPublicPropertySlug(property);
   const url = absoluteUrl(`/${encodeURIComponent(slug)}`, origin);
-  const image = property.gallery_images?.[0] || property.images;
-  const imageUrl = image?.startsWith('data:')
-    ? `${origin}/property-images/${encodeURIComponent(property.id)}/0.jpg`
-    : absoluteUrl(image, origin);
+  const imageValues = property.gallery_images?.length ? property.gallery_images : [property.images].filter(Boolean);
+  const imageUrls = imageValues
+    .map((image, index) => image?.startsWith('data:')
+      ? `${origin}/property-images/${encodeURIComponent(property.id)}/${index}.jpg`
+      : absoluteUrl(image, origin))
+    .filter(Boolean);
+  const geo = Number.isFinite(property.map_latitude) && Number.isFinite(property.map_longitude)
+    ? {
+        '@type': 'GeoCoordinates',
+        latitude: property.map_latitude,
+        longitude: property.map_longitude,
+      }
+    : undefined;
 
   const place = {
     '@context': 'https://schema.org',
@@ -168,28 +177,35 @@ export function buildPropertySchemas(property: Property, origin: string = SITE.u
       addressRegion: 'Đà Nẵng',
       addressCountry: 'VN',
     },
+    geo,
   };
 
   const residence = {
     '@context': 'https://schema.org',
     '@type': propertyTypeSchema(property),
+    '@id': `${url}#property`,
     name: property.title,
     description: property.rich_description || property.description,
     url,
-    image: imageUrl ? [imageUrl] : undefined,
+    image: imageUrls.length ? imageUrls : undefined,
     address: place.address,
+    geo,
     floorSize: { '@type': 'QuantitativeValue', value: property.area, unitCode: 'MTK' },
     numberOfRooms: property.bedrooms,
   };
 
   const product = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
+    '@type': ['Product', 'RealEstateListing'],
+    '@id': `${url}#listing`,
     name: property.title,
     description: property.rich_description || property.description,
-    image: imageUrl,
+    image: imageUrls.length ? imageUrls : undefined,
     url,
     category: property.type,
+    sku: property.id,
+    areaServed: { '@type': 'City', name: 'Đà Nẵng' },
+    itemOffered: { '@id': `${url}#property` },
     offers: {
       '@type': 'Offer',
       price: Math.round(property.price * 1_000_000_000),
@@ -201,6 +217,7 @@ export function buildPropertySchemas(property: Property, origin: string = SITE.u
       { '@type': 'PropertyValue', name: 'Vị trí', value: property.location },
       { '@type': 'PropertyValue', name: 'Diện tích', value: `${property.area} m²` },
       { '@type': 'PropertyValue', name: 'Pháp lý', value: property.legal_status },
+      { '@type': 'PropertyValue', name: 'Loại giao dịch', value: property.transaction_type || 'Bán' },
     ],
   };
 

@@ -74,6 +74,35 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.set('trust proxy', true);
+
+function canonicalRedirectTarget(req: Request) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return '';
+
+  const configuredOrigin = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  const shouldForceOrigin = /^https?:\/\//i.test(configuredOrigin);
+  const currentOrigin = `${req.protocol}://${req.get('host')}`;
+  const requestUrl = new URL(req.originalUrl || req.url || '/', currentOrigin);
+  const normalizedPath = requestUrl.pathname.length > 1
+    ? requestUrl.pathname.replace(/\/+$/, '')
+    : requestUrl.pathname;
+
+  const targetOrigin = shouldForceOrigin ? configuredOrigin : currentOrigin;
+  const needsOriginRedirect = shouldForceOrigin && currentOrigin.toLowerCase() !== configuredOrigin.toLowerCase();
+  const needsTrailingSlashRedirect = normalizedPath !== requestUrl.pathname;
+
+  if (!needsOriginRedirect && !needsTrailingSlashRedirect) return '';
+  return `${targetOrigin}${normalizedPath}${requestUrl.search}`;
+}
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const target = canonicalRedirectTarget(req);
+  if (target) {
+    res.redirect(301, target);
+    return;
+  }
+  next();
+});
+
 app.use(compression({ level: 6 }));
 app.use(cacheControlMiddleware);
 
@@ -2579,7 +2608,7 @@ function applyPropertyHashtagSeo(property: Property): Property {
     }
   };
 }
-const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
+const DEFAULT_SEO_TITLE = 'BĐS Đà Nẵng 2026 | Sun Group & Nam Đà Nẵng | Estoria';
 const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
 
 function getPublicOrigin(req: Request) {
@@ -2942,6 +2971,14 @@ app.get('/bds-da-nang/:propertySlug', (req: Request, res: Response) => {
   res.redirect(301, `/${encodeURIComponent(req.params.propertySlug)}`);
 });
 
+app.get('/bai-viet', (_req: Request, res: Response) => {
+  res.redirect(301, '/tin-tuc');
+});
+
+app.get('/bai-viet/:postSlug', (req: Request, res: Response) => {
+  res.redirect(301, `/tin-tuc/${encodeURIComponent(req.params.postSlug)}`);
+});
+
 app.get('/listings', (req: Request, res: Response) => {
   const propertyId = String(req.query.property || '').trim();
   if (propertyId) {
@@ -2961,6 +2998,9 @@ app.get('/robots.txt', (req: Request, res: Response) => {
     .send([
       'User-agent: *',
       'Allow: /',
+      'Allow: /du-an/',
+      'Allow: /tin-tuc/',
+      'Allow: /bai-viet/',
       'Disallow: /api/',
       'Disallow: /admin/',
       '',

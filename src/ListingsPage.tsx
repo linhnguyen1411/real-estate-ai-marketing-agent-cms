@@ -1,6 +1,5 @@
 import React, { FormEvent, useMemo, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import {
   Bot,
   Building2,
@@ -30,6 +29,7 @@ import { PropertyShareButton, PropertyShareCompactButton } from './components/Pr
 import LeadCaptureForm from './components/LeadCaptureForm';
 import { getPublicPropertySlug } from './utils/propertyShare';
 import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
+import { buildPropertySeoDescription, buildPropertySeoTitle, getPropertyImageAlt } from './utils/siteSeo';
 import SocialProof from './components/leadGen/SocialProof';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from './leadGen/analytics';
 import { getPropertyGalleryUrls, getPropertyThumbnailUrl } from './utils/propertyImage';
@@ -37,6 +37,13 @@ import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
 import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
 import TrustSignalsSection from './components/layout/TrustSignalsSection';
+import SeoHead from './components/seo/SeoHead';
+import {
+  buildDefaultPageSchemas,
+  buildPropertySchemas,
+  type BreadcrumbItem,
+} from './seo/schemas';
+import { getSiteOrigin } from './seo/siteConfig';
 import { compareProjectDisplayOrder, getPropertyProjectLabel, matchProjectName, sortProjectEntries } from './seo/propertyCatalog';
 import { sortByCreatedAtDesc } from './utils/propertySort';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
@@ -81,7 +88,7 @@ const facebookUrl = 'https://www.facebook.com/estoria.dn';
 const messengerUrl = 'https://m.me/estoria.dn';
 const phoneTel = '+84905777594';
 const phoneNumber = '0905 777 594';
-const heroImageUrl = '/hero-da-nang.jpg';
+const heroImageUrl = '/hero-da-nang.webp';
 const publicListingsPath = '/';
 const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
 const DEFAULT_SEO_KEYWORDS = [
@@ -91,7 +98,7 @@ const DEFAULT_SEO_KEYWORDS = [
   'shophouse kinh doanh đà nẵng',
   'giá đất đà nẵng 2026'
 ];
-const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
+const DEFAULT_SEO_TITLE = 'BĐS Đà Nẵng 2026 | Sun Group & Nam Đà Nẵng | Estoria';
 const DEFAULT_SEO_DESCRIPTION = 'Đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn — pháp lý rõ, hình ảnh thật, giỏ ký gửi cập nhật 2026.';
 const PRICE_RANGES = [
   { value: 'all', label: 'Tất cả mức giá' },
@@ -181,36 +188,6 @@ function findPropertyFromLocation(
   ) ?? null;
 }
 
-function toPlainText(value: string) {
-  return value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[#*_`[\]()]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function truncateText(value: string, maxLength = 155) {
-  const cleanValue = toPlainText(value);
-  return cleanValue.length > maxLength
-    ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
-    : cleanValue;
-}
-
-function limitSeoTitle(value: string) {
-  return value.length <= 60 ? value : `${value.slice(0, 57).trim()}...`;
-}
-
-function getPropertySeoTitle(property: Property) {
-  const type = String(property.type || '').toLowerCase();
-  if (type.includes('căn') || type.includes('can')) {
-    return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
-  }
-  if (type.includes('shophouse')) {
-    return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
-  }
-  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
-}
-
 async function readJsonResponse(response: Response) {
   const text = await response.text();
   if (!text.trim()) {
@@ -258,7 +235,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
       <div className={`relative shrink-0 overflow-hidden bg-slate-100 ${large ? 'aspect-square' : 'aspect-[4/3]'}`}>
         <img
           src={getImage(property)}
-          alt={property.title}
+          alt={getPropertyImageAlt(property)}
           width={800}
           height={large ? 800 : 600}
           loading={priorityLoad ? 'eager' : 'lazy'}
@@ -637,17 +614,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   }, [searchQuery, selectedAreaRange, selectedPriceRange, selectedTransactionType, selectedType, selectedProject]);
 
   const propertyTypes = Array.from(new Set(activeProperties.map(property => property.type)));
-  const siteOrigin = window.location.origin;
+  const siteOrigin = getSiteOrigin();
   const canonicalUrl = selectedProperty
     ? `${siteOrigin}${getPropertyPath(selectedProperty)}`
     : siteOrigin;
   const seoTitle = selectedProperty
-    ? limitSeoTitle(selectedProperty.ai_posts?.seo?.title || getPropertySeoTitle(selectedProperty))
+    ? selectedProperty.ai_posts?.seo?.title || buildPropertySeoTitle(selectedProperty)
     : DEFAULT_SEO_TITLE;
   const seoDescription = selectedProperty
-    ? selectedProperty.ai_posts?.seo?.meta_description || truncateText(
-        `${selectedProperty.title} tại ${selectedProperty.location}, diện tích ${selectedProperty.area} m2, giá ${formatPrice(selectedProperty.price)}, pháp lý ${selectedProperty.legal_status}. ${selectedProperty.rich_description || selectedProperty.description}`
-      )
+    ? selectedProperty.ai_posts?.seo?.meta_description || buildPropertySeoDescription(selectedProperty)
     : DEFAULT_SEO_DESCRIPTION;
   const seoKeywords = useMemo(() => {
     const keywords = selectedProperty
@@ -657,6 +632,16 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   }, [activeProperties, selectedProperty]);
   const seoImage = selectedProperty ? getImage(selectedProperty) : getImage(featuredProperties[0]);
 
+  const breadcrumbs = useMemo<BreadcrumbItem[]>(() => [
+    { name: 'Trang chủ', path: '/' },
+    ...(selectedProperty
+      ? [
+          { name: 'Bất động sản', path: '/bat-dong-san' },
+          { name: selectedProperty.title, path: getPropertyPath(selectedProperty) },
+        ]
+      : []),
+  ], [selectedProperty]);
+
   const structuredData = useMemo(() => {
     const itemList = activeProperties.slice(0, 50).map((property, index) => ({
       '@type': 'ListItem',
@@ -665,77 +650,61 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
       url: `${siteOrigin}${getPropertyPath(property)}`
     }));
     const schemas: Record<string, unknown>[] = [
-      {
-        '@context': 'https://schema.org',
-        '@type': 'RealEstateAgent',
-        name: 'Estoria',
-        url: siteOrigin,
-        telephone: '+84905777594',
-        areaServed: { '@type': 'City', name: 'Đà Nẵng' },
-        sameAs: [zaloUrl, facebookUrl]
-      },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'CollectionPage',
-        name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
-        description: seoDescription,
-        url: siteOrigin,
-        mainEntity: {
-          '@type': 'ItemList',
-          numberOfItems: activeProperties.length,
-          itemListElement: itemList
-        }
-      },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: [
-          {
-            '@type': 'Question',
-            name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ Estoria qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
-            }
-          },
-          {
-            '@type': 'Question',
-            name: 'Estoria có hỗ trợ lọc bất động sản theo ngân sách không?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
-            }
-          }
-        ]
-      }
+      ...buildDefaultPageSchemas(breadcrumbs, siteOrigin),
     ];
 
     if (selectedProperty) {
       schemas.push({
         '@context': 'https://schema.org',
-        '@type': 'Product',
+        '@type': 'WebPage',
         name: selectedProperty.title,
-        image: getPropertyGalleryUrls(selectedProperty),
         description: seoDescription,
-        category: selectedProperty.type,
         url: canonicalUrl,
-        offers: {
-          '@type': 'Offer',
-          url: canonicalUrl,
-          priceCurrency: 'VND',
-          price: Math.round(selectedProperty.price * 1_000_000_000),
-          availability: 'https://schema.org/InStock'
-        },
-        additionalProperty: [
-          { '@type': 'PropertyValue', name: 'Vị trí', value: selectedProperty.location },
-          { '@type': 'PropertyValue', name: 'Diện tích', value: `${selectedProperty.area} m2` },
-          { '@type': 'PropertyValue', name: 'Pháp lý', value: selectedProperty.legal_status }
-        ]
+        inLanguage: 'vi-VN',
       });
+      schemas.push(...buildPropertySchemas(selectedProperty, siteOrigin));
+    } else {
+      schemas.push(
+        {
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
+          description: seoDescription,
+          url: canonicalUrl,
+          inLanguage: 'vi-VN',
+          mainEntity: {
+            '@type': 'ItemList',
+            numberOfItems: activeProperties.length,
+            itemListElement: itemList
+          }
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: [
+            {
+              '@type': 'Question',
+              name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ Estoria qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
+              }
+            },
+            {
+              '@type': 'Question',
+              name: 'Estoria có hỗ trợ lọc bất động sản theo ngân sách không?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
+              }
+            }
+          ]
+        }
+      );
     }
 
     return schemas;
-  }, [activeProperties, canonicalUrl, selectedProperty, seoDescription, siteOrigin]);
+  }, [activeProperties, breadcrumbs, canonicalUrl, selectedProperty, seoDescription, siteOrigin]);
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -880,27 +849,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
 
   return (
     <div className="h-screen overflow-y-auto overflow-x-hidden bg-slate-50 text-slate-950 app-scroll">
-      <Helmet>
-        <html lang="vi" />
-        <title>{seoTitle}</title>
-        <meta name="description" content={seoDescription} />
-        <meta name="keywords" content={seoKeywords} />
-        <meta name="robots" content="index, follow, max-image-preview:large" />
-        <meta name="googlebot" content="index, follow, max-image-preview:large" />
-        <link rel="canonical" href={canonicalUrl} />
-        <meta property="og:locale" content="vi_VN" />
-        <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
-        <meta property="og:site_name" content="Estoria" />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:title" content={seoTitle} />
-        <meta property="og:description" content={seoDescription} />
-        <meta property="og:image" content={seoImage} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={seoTitle} />
-        <meta name="twitter:description" content={seoDescription} />
-        <meta name="twitter:image" content={seoImage} />
-        <script type="application/ld+json">{JSON.stringify(structuredData)}</script>
-      </Helmet>
+      <SeoHead
+        title={seoTitle}
+        description={seoDescription}
+        path={selectedProperty ? getPropertyPath(selectedProperty) : publicListingsPath}
+        keywords={seoKeywords.split(',').map(keyword => keyword.trim()).filter(Boolean)}
+        image={seoImage}
+        ogType={selectedProperty ? 'product' : 'website'}
+        schemas={structuredData}
+      />
 
       <header className="public-header">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
@@ -1290,7 +1247,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
 
       <PublicSiteFooter />
 
-      <div className={`pointer-events-none fixed right-3 top-1/2 z-[70] flex -translate-y-1/2 flex-col gap-2.5 lg:hidden ${selectedProperty ? 'hidden' : ''}`} style={{ paddingRight: 'env(safe-area-inset-right)' }}>
+      <div className={`pointer-events-none fixed bottom-24 right-3 z-[70] flex flex-col gap-2.5 lg:hidden ${selectedProperty ? 'hidden' : ''}`} style={{ paddingRight: 'env(safe-area-inset-right)' }}>
         <a
           href={`tel:${phoneTel}`}
           onClick={() => trackPhoneClick('listings_floating')}
@@ -1445,7 +1402,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             <div className="relative flex h-[62vh] max-h-[680px] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:h-auto">
               <img
                 src={getPropertyGalleryUrls(selectedProperty)[galleryIndex] || getImage(selectedProperty)}
-                alt={selectedProperty.title}
+                alt={getPropertyImageAlt(selectedProperty, galleryIndex)}
                 width={1280}
                 height={853}
                 decoding="async"
