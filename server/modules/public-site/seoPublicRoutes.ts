@@ -20,9 +20,15 @@ import { createDistStaticOptions } from '../../middleware/staticAssets';
 import { collectSiteSeoKeywords as buildSiteSeoKeywords, getPropertySeoKeywordsFromContent } from '../../../src/utils/hashtags';
 import { DEFAULT_SEO_KEYWORDS } from './seoKeywords';
 import { getPropertyPath, getPropertySlug, publicListingsPath } from './propertyPaths';
+import { resolveSeo } from '../../../src/seo/engine/resolveSeo';
+import { PageType } from '../../../src/seo/types/PageType';
+import { SITE } from '../../../src/seo/siteConfig';
+import { buildDescription } from '../../../src/seo/utils/buildDescription';
+import { resolveMeta } from '../../../src/seo/engine/resolveMeta';
 
 let viteDevServer: import('vite').ViteDevServer | null = null;
 
+/** Historical SSR home defaults — preserved via resolveSeo overrides (not SITE.default*). */
 export const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
 export const DEFAULT_SEO_DESCRIPTION = 'BĐS Sun Group Đà Nẵng, căn hộ cao cấp, shophouse và đất Nam Đà Nẵng có pháp lý rõ, hình ảnh thật, giá bán cập nhật 2026.';
 
@@ -61,14 +67,16 @@ export function truncateMeta(value: string, maxLength = 180) {
 }
 
 export function limitSeoTitle(value: string) {
-  return value.length <= 60 ? value : `${value.slice(0, 57).trim()}...`;
+  const trimmed = String(value || '').trim();
+  return trimmed.length <= 60 ? trimmed : `${trimmed.slice(0, 57).trim()}...`;
 }
 
 export function getServerPropertySeoTitle(property: Property) {
-  const type = String(property.type || '').toLowerCase();
-  if (type.includes('căn') || type.includes('can')) return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
-  if (type.includes('shophouse')) return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
-  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
+  // Historical helper ignored ai_posts.seo — formula only.
+  return resolveMeta({
+    pageType: PageType.PROPERTY,
+    entity: { title: property.title, type: property.type },
+  }).title;
 }
 
 export function absoluteUrl(value: string, origin: string) {
@@ -91,23 +99,38 @@ export function getPropertyPublicImageUrl(property: Property, origin: string, in
 }
 
 export function getPropertyShareMeta(property: Property, origin: string) {
-  const url = `${origin}${getPropertyPath(property)}`;
+  const path = getPropertyPath(property);
+  const slug = getPropertySlug(property);
   const image = getPropertyPublicImageUrl(property, origin);
-  const sellingPoints = (property.selling_points || []).filter(Boolean).slice(0, 4).join(' • ');
-  const baseDescription = [
-    `${property.title} tại ${property.location}`,
-    `${property.area} m2`,
-    `${property.price} tỷ`,
-    property.legal_status,
-    sellingPoints,
-    property.rich_description || property.description
-  ].filter(Boolean).join('. ');
-  const title = limitSeoTitle(property.ai_posts?.seo?.title || getServerPropertySeoTitle(property));
-  const description = property.ai_posts?.seo?.meta_description || truncateMeta(baseDescription);
   const keywordList = getPropertySeoKeywordsFromContent(property, DEFAULT_SEO_KEYWORDS);
-  const keywords = keywordList.join(', ');
 
-  return { title, description, image, url, keywords };
+  const resolved = resolveSeo({
+    route: path,
+    slug,
+    pageType: PageType.PROPERTY,
+    entity: property,
+    siteConfig: SITE,
+    origin,
+    overrides: {
+      image: image || `${origin}/logo.jpg`,
+      keywords: keywordList,
+      ogType: 'product',
+    },
+    descriptionMaxLength: 180,
+  });
+
+  const title = resolved?.title
+    || limitSeoTitle(property.ai_posts?.seo?.title || getServerPropertySeoTitle(property));
+  const description = resolved?.description
+    || buildDescription(property.ai_posts?.seo?.meta_description || '', { maxLength: 180 });
+
+  return {
+    title,
+    description,
+    image: image || `${origin}/logo.jpg`,
+    url: `${origin}${path}`,
+    keywords: keywordList.join(', '),
+  };
 }
 
 export function renderIndexWithMeta(
@@ -187,9 +210,24 @@ export function getIndexHtmlTemplate() {
 export function getDefaultShareMeta(origin: string) {
   const keywordList = buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
   const defaultImage = `${origin}/logo.jpg`;
+
+  const resolved = resolveSeo({
+    route: publicListingsPath || '/',
+    pageType: PageType.HOME,
+    siteConfig: SITE,
+    origin,
+    overrides: {
+      title: DEFAULT_SEO_TITLE,
+      description: DEFAULT_SEO_DESCRIPTION,
+      image: defaultImage,
+      keywords: keywordList,
+      ogType: 'website',
+    },
+  });
+
   return {
-    title: DEFAULT_SEO_TITLE,
-    description: DEFAULT_SEO_DESCRIPTION,
+    title: resolved?.title || DEFAULT_SEO_TITLE,
+    description: resolved?.description || DEFAULT_SEO_DESCRIPTION,
     image: defaultImage,
     url: `${origin}${publicListingsPath}`,
     keywords: keywordList.join(', '),
@@ -200,11 +238,28 @@ export function getDefaultShareMeta(origin: string) {
 export function getStaticPageShareMeta(origin: string, pathname: string) {
   const pageMeta = getPageMetaByPath(pathname);
   if (!pageMeta) return null;
-  const keywordList = pageMeta.keywords?.length ? pageMeta.keywords : buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
+
+  const keywordList = pageMeta.keywords?.length
+    ? pageMeta.keywords
+    : buildSiteSeoKeywords(getProperties(), DEFAULT_SEO_KEYWORDS);
   const defaultImage = `${origin}/logo.jpg`;
+
+  const resolved = resolveSeo({
+    route: pageMeta.path,
+    siteConfig: SITE,
+    origin,
+    overrides: {
+      title: pageMeta.title,
+      description: pageMeta.description,
+      image: defaultImage,
+      keywords: keywordList,
+      ogType: pageMeta.ogType || 'website',
+    },
+  });
+
   return {
-    title: pageMeta.title,
-    description: pageMeta.description,
+    title: resolved?.title || pageMeta.title,
+    description: resolved?.description || pageMeta.description,
     image: defaultImage,
     url: `${origin}${pageMeta.path}`,
     keywords: keywordList.join(', '),

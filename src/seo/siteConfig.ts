@@ -1,3 +1,6 @@
+import { buildTitle } from './utils/buildTitle';
+import { normalizeCanonical } from './utils/normalizeCanonical';
+
 /** Central SEO & business config — single source of truth for public site */
 export const SITE = {
   name: 'Estoria',
@@ -139,9 +142,7 @@ export function getSiteOrigin(fallback: string = SITE.url): string {
 
 export function absoluteUrl(path: string, origin: string = SITE.url): string {
   if (!path) return origin;
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = origin.replace(/\/+$/, '');
-  return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
+  return normalizeCanonical(path, origin);
 }
 
 /** Footer copyright line — includes brand motto */
@@ -150,7 +151,5 @@ export function getFooterBrandLine(separator: string = ' — '): string {
 }
 
 export function formatPageTitle(title: string): string {
-  const trimmed = title.trim();
-  if (/\|\s*Estoria\s*$/i.test(trimmed)) return trimmed;
-  return `${trimmed} | Estoria`;
+  return buildTitle(title, { appendBrand: true, brand: SITE.name });
 }
