@@ -2,6 +2,10 @@ import { SITE } from '../siteConfig';
 import { PageType } from '../types/PageType';
 import type { SeoMetadata } from '../types/SeoMetadata';
 import { getSeoRouteByPath, type SeoRouteDefinition } from '../registry/seoRouteRegistry';
+import { getSeoContentRecord } from '../data/seoContentRegistry';
+import { getBreadcrumbRecord } from '../data/breadcrumbRegistry';
+import { getKeywordClusterRecord } from '../data/keywordClusters';
+import { getFaqSetRecord } from '../data/faqRegistry';
 import { normalizePathname } from '../utils/normalizeCanonical';
 import { resolveMeta, type SeoEntityLike } from './resolveMeta';
 import { resolveCanonical } from './resolveCanonical';
@@ -51,6 +55,7 @@ export function resolveSeo(input: ResolveSeoInput): SeoMetadata | null {
   const route = normalizePathname(input.route || (input.slug ? `/${input.slug}` : '/'));
 
   const registryEntry = getSeoRouteByPath(route);
+  const content = getSeoContentRecord(route);
   const pageType = resolvePageType(input.pageType, registryEntry, input.entity);
 
   if (!registryEntry && pageType !== PageType.PROPERTY && pageType !== PageType.NOT_FOUND && !input.overrides?.title) {
@@ -78,8 +83,15 @@ export function resolveSeo(input: ResolveSeoInput): SeoMetadata | null {
   const canonical = resolveCanonical({ path: pathForCanonical, origin });
   const robots = resolveRobots({ noindex: input.noindex });
   const image = input.overrides?.image || `${origin}${site.ogImage.startsWith('/') ? site.ogImage : `/${site.ogImage}`}`;
-  const ogType = input.overrides?.ogType || registryEntry?.ogType || (pageType === PageType.PROPERTY ? 'product' : 'website');
-  const keywords = input.overrides?.keywords || (registryEntry?.keywords ? [...registryEntry.keywords] : undefined);
+  const ogType = input.overrides?.ogType || registryEntry?.ogType || content?.ogType || (pageType === PageType.PROPERTY ? 'product' : 'website');
+
+  const cluster = content?.keywordClusterId
+    ? getKeywordClusterRecord(content.keywordClusterId)
+    : undefined;
+  const keywords = input.overrides?.keywords
+    || (registryEntry?.keywords ? [...registryEntry.keywords] : undefined)
+    || (cluster ? [cluster.primaryKeyword, ...cluster.secondaryKeywords] : undefined)
+    || (content?.keywords ? [...content.keywords] : undefined);
 
   const openGraph = resolveOg({
     title: meta.title,
@@ -95,17 +107,29 @@ export function resolveSeo(input: ResolveSeoInput): SeoMetadata | null {
     image,
   });
 
+  const registryBreadcrumbs = !input.breadcrumbs && content?.breadcrumbId
+    ? getBreadcrumbRecord(content.breadcrumbId)?.items
+    : undefined;
+
   const breadcrumb = resolveBreadcrumb({
     route: pathForCanonical,
     pageType,
     leafName: pageType === PageType.PROPERTY ? input.entity?.title : undefined,
-    breadcrumbs: input.breadcrumbs,
+    breadcrumbs: input.breadcrumbs || registryBreadcrumbs,
   });
+
+  const schemaExtra: SeoMetadata['schema'] = [...(input.schemaExtra || [])];
+  if (content?.faqId) {
+    const faqSet = getFaqSetRecord(content.faqId);
+    if (faqSet?.items.some(item => item.schemaEligible !== false) && !schemaExtra.includes('FAQPage')) {
+      schemaExtra.push('FAQPage');
+    }
+  }
 
   const schema = resolveSchema({
     pageType,
     registryEntry: registryEntry,
-    extra: input.schemaExtra,
+    extra: schemaExtra,
   });
 
   return {
@@ -135,8 +159,8 @@ function resolvePageType(
 }
 
 function buildNotFound(origin: string, site: SiteConfigLike): SeoMetadata {
-  const title = 'Không tìm thấy trang';
-  const description = 'Trang bạn yêu cầu không tồn tại.';
+  const title = 'Không tìm thấy trang | Estoria';
+  const description = 'Trang bạn yêu cầu không tồn tại hoặc đã được gỡ khỏi BDSDanang.site.';
   const canonical = resolveCanonical({ path: '/', origin });
   const robots = resolveRobots({ noindex: true });
   const image = `${origin}${site.ogImage.startsWith('/') ? site.ogImage : `/${site.ogImage}`}`;

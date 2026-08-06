@@ -19,6 +19,8 @@ export function createDistStaticOptions() {
   const distPath = path.join(process.cwd(), 'dist');
   return {
     root: distPath,
+    // Critical: do not auto-serve index.html for `/` — public SSR (handlePublicIndex) must run first.
+    index: false,
     setHeaders: (res: Response, filePath: string) => {
       const relative = filePath.replace(distPath, '').replace(/\\/g, '/');
       if (relative === '/index.html') {

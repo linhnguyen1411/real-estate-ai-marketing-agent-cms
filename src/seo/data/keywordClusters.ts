@@ -1,0 +1,590 @@
+import { PageType } from '../types/PageType';
+import type { KeywordCluster } from '../types/KeywordCluster';
+
+/**
+ * Keyword clusters by investor search intent.
+ * Rule: exactly one primary keyword per cluster; one cluster per target page.
+ * Prefer price / cash flow / ROI / legal / location questions over project-brand navigational terms.
+ */
+export const KEYWORD_CLUSTERS: KeywordCluster[] = [
+  // —— Home & catalog hubs ——
+  {
+    id: 'kc-home-core',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'căn hộ và shophouse sun đà nẵng',
+    secondaryKeywords: [
+      'shophouse khối đế sun group',
+      'căn hộ sun group đà nẵng',
+      'bđs đầu tư nổi bật đà nẵng',
+      'giỏ hàng estoria đà nẵng',
+    ],
+    targetPageType: PageType.HOME,
+    relatedEntityIds: ['entity-sun-group', 'entity-shophouse-sun', 'entity-can-ho', 'entity-da-nang'],
+    targetSlug: '/',
+  },
+  {
+    id: 'kc-catalog-bds',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'danh sách bđs đà nẵng đầu tư',
+    secondaryKeywords: [
+      'bđs đà nẵng đang bán',
+      'giỏ hàng đầu tư đà nẵng',
+      'mua bán nhà đất đà nẵng 2026',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-da-nang'],
+    targetSlug: '/bat-dong-san',
+  },
+  {
+    id: 'kc-portfolio-hub',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'danh mục dự án bđs đà nẵng',
+    secondaryKeywords: [
+      'dự án sun group đà nẵng',
+      'quỹ hàng nam đà nẵng',
+      'so sánh dự án đà nẵng',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-sun-group', 'entity-nam-da-nang'],
+    targetSlug: '/du-an',
+  },
+  {
+    id: 'kc-can-ho-sun',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'căn hộ đầu tư đà nẵng',
+    secondaryKeywords: [
+      'căn hộ ven sông hàn giá',
+      'căn hộ sun group đang bán',
+      'thanh khoản căn hộ đà nẵng',
+      'bảng giá căn hộ đà nẵng 2026',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-sun-group', 'entity-sun-symphony', 'entity-can-ho'],
+    targetSlug: '/bat-dong-san/can-ho',
+  },
+  {
+    id: 'kc-dat-nen-nam',
+    intent: 'LOCAL',
+    primaryKeyword: 'đất nền đầu tư nam đà nẵng',
+    secondaryKeywords: [
+      'giá đất nền hòa xuân',
+      'đất nền mai đăng chơn sổ hồng',
+      'pháp lý đất nền nam đà nẵng',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-nam-da-nang', 'entity-dat-nen'],
+    targetSlug: '/bat-dong-san/dat-nen',
+  },
+  {
+    id: 'kc-nha-pho',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'nhà phố kinh doanh đà nẵng',
+    secondaryKeywords: [
+      'shophouse mặt tiền đà nẵng',
+      'nhà phố dòng tiền đà nẵng',
+      'tiềm năng thương mại nam đà nẵng',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-nha-pho', 'entity-nam-da-nang'],
+    targetSlug: '/bat-dong-san/nha-pho',
+  },
+
+  // —— Location / neighborhood analysis ——
+  {
+    id: 'kc-nam-da-nang',
+    intent: 'LOCAL',
+    primaryKeyword: 'phân tích bđs nam đà nẵng',
+    secondaryKeywords: [
+      'quy hoạch nam đà nẵng',
+      'xu hướng giá nam đà nẵng',
+      'khu vực đầu tư nam đà nẵng',
+    ],
+    targetPageType: PageType.LOCATION,
+    relatedEntityIds: ['entity-nam-da-nang'],
+    targetSlug: '/bat-dong-san/nam-da-nang',
+  },
+  {
+    id: 'kc-mai-dang-chon',
+    intent: 'LOCAL',
+    primaryKeyword: 'đất nền mai đăng chơn đầu tư',
+    secondaryKeywords: [
+      'giá đất mai đăng chơn',
+      'pháp lý mai đăng chơn',
+      'tiềm năng mai đăng chơn',
+    ],
+    targetPageType: PageType.LOCATION,
+    relatedEntityIds: ['entity-mai-dang-chon'],
+    targetSlug: '/bat-dong-san/mai-dang-chon',
+  },
+  {
+    id: 'kc-fpt-city',
+    intent: 'LOCAL',
+    primaryKeyword: 'bđs fpt city đà nẵng đầu tư',
+    secondaryKeywords: [
+      'giá đất fpt city',
+      'shophouse fpt city dòng tiền',
+      'quy hoạch phía tây đà nẵng',
+    ],
+    targetPageType: PageType.LOCATION,
+    relatedEntityIds: ['entity-fpt-city'],
+    targetSlug: '/bat-dong-san/fpt-city',
+  },
+  {
+    id: 'kc-hoa-xuan',
+    intent: 'LOCAL',
+    primaryKeyword: 'đất nền hòa xuân đầu tư',
+    secondaryKeywords: [
+      'giá đất hòa xuân',
+      'pháp lý hòa xuân',
+      'nhà phố hòa xuân',
+    ],
+    targetPageType: PageType.LOCATION,
+    relatedEntityIds: ['entity-hoa-xuan'],
+    targetSlug: '/bat-dong-san/hoa-xuan',
+  },
+  {
+    id: 'kc-review-areas',
+    intent: 'LOCAL',
+    primaryKeyword: 'review khu vực đầu tư đà nẵng',
+    secondaryKeywords: [
+      'so sánh khu vực đà nẵng',
+      'tiềm năng ven sông hàn',
+      'đánh giá nam đà nẵng',
+    ],
+    targetPageType: PageType.LOCATION,
+    relatedEntityIds: ['entity-da-nang', 'entity-nam-da-nang'],
+    targetSlug: '/review-khu-vuc',
+  },
+
+  // —— Project inventory vs project analysis (split to avoid cannibalization) ——
+  {
+    id: 'kc-sun-symphony-inventory',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'giá căn hộ sun symphony đang bán',
+    secondaryKeywords: [
+      'căn hộ sun symphony thứ cấp',
+      'giỏ hàng sun symphony',
+      'căn hộ ven sông hàn đang bán',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-symphony'],
+    targetSlug: '/bat-dong-san/sun-symphony',
+  },
+  {
+    id: 'kc-sun-cosmo-inventory',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'căn hộ sun cosmo đang bán',
+    secondaryKeywords: [
+      'giá sun cosmo đà nẵng',
+      'sun cosmo cho thuê',
+      'thanh khoản sun cosmo',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-cosmo'],
+    targetSlug: '/bat-dong-san/sun-cosmo',
+  },
+  {
+    id: 'kc-sun-ponte-inventory',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'shophouse sun ponte đang bán',
+    secondaryKeywords: [
+      'giá sun ponte đà nẵng',
+      'căn hộ sun ponte thứ cấp',
+      'dòng tiền sun ponte',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-ponte'],
+    targetSlug: '/bat-dong-san/sun-ponte',
+  },
+  {
+    id: 'kc-sun-symphony',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'phân tích đầu tư sun symphony',
+    secondaryKeywords: [
+      'roi sun symphony đà nẵng',
+      'tiến độ thi công sun symphony',
+      'pháp lý sun symphony',
+      'the sonata spana cora s-light',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-symphony', 'entity-the-sonata', 'entity-spana-tower'],
+    targetSlug: '/du-an/sun-symphony',
+  },
+  {
+    id: 'kc-sun-cosmo-project',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'roi căn hộ sun cosmo đà nẵng',
+    secondaryKeywords: [
+      'phân tích đầu tư sun cosmo',
+      'yield sun cosmo',
+      'chính sách thanh toán sun cosmo',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-cosmo'],
+    targetSlug: '/du-an/sun-cosmo',
+  },
+  {
+    id: 'kc-sun-ponte-project',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'tiềm năng thương mại sun ponte',
+    secondaryKeywords: [
+      'phân tích đầu tư sun ponte',
+      'shophouse sun ponte dòng tiền',
+      'vị trí sun ponte sông hàn',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-sun-ponte'],
+    targetSlug: '/du-an/sun-ponte',
+  },
+  {
+    id: 'kc-nam-da-nang-project',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'quỹ hàng bđs nam đà nẵng',
+    secondaryKeywords: [
+      'đất nhà kho xưởng nam đà nẵng',
+      'cơ hội đầu tư nam đà nẵng',
+      'tài sản đang giao dịch nam đà nẵng',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-nam-da-nang'],
+    targetSlug: '/du-an/nam-da-nang',
+  },
+  {
+    id: 'kc-bds-gia-dau-tu',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'bđs cắt lỗ đà nẵng',
+    secondaryKeywords: [
+      'bđs giá đầu tư đà nẵng',
+      'ngoại giao sun group',
+      'bđs ngộp đà nẵng',
+      'deal đầu tư đà nẵng',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-bds-noi-bat', 'entity-sun-group'],
+    targetSlug: '/du-an/bds-noi-bat',
+  },
+
+  // —— Financial / documents ——
+  {
+    id: 'kc-market-data',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'dữ liệu thị trường bđs nam đà nẵng',
+    secondaryKeywords: [
+      'bảng tin đầu tư nam đà nẵng',
+      'chỉ số giá nam đà nẵng',
+      'cơ hội đầu tư cập nhật 2026',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-nam-da-nang'],
+    targetSlug: '/nha-dau-tu',
+  },
+  {
+    id: 'kc-investor-docs',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'tài liệu phân tích đầu tư nam đà nẵng',
+    secondaryKeywords: [
+      'báo cáo thị trường nam đà nẵng',
+      'khung thẩm định bđs đà nẵng',
+      'checklist đầu tư nam đà nẵng',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-nam-da-nang'],
+    targetSlug: '/tai-lieu-dau-tu',
+  },
+
+  // —— Legal (site policies — informational, unique primaries) ——
+  {
+    id: 'kc-legal-privacy',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'chính sách bảo mật tư vấn bđs',
+    secondaryKeywords: ['bảo vệ dữ liệu khách hàng bđs', 'quyền riêng tư bdsdanang.site'],
+    targetPageType: PageType.LEGAL,
+    targetSlug: '/chinh-sach-bao-mat',
+  },
+  {
+    id: 'kc-legal-terms',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'điều khoản sử dụng tư vấn bđs',
+    secondaryKeywords: ['giới hạn tư vấn bđs đà nẵng', 'trách nhiệm nhà đầu tư'],
+    targetPageType: PageType.LEGAL,
+    targetSlug: '/dieu-khoan-su-dung',
+  },
+  {
+    id: 'kc-legal-cookie',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'chính sách cookie website bđs',
+    secondaryKeywords: ['cookie analytics bđs', 'quản lý theo dõi website'],
+    targetPageType: PageType.LEGAL,
+    targetSlug: '/chinh-sach-cookie',
+  },
+  {
+    id: 'kc-legal-disclaimer',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'miễn trừ trách nhiệm tư vấn bđs',
+    secondaryKeywords: ['thông tin bđs tham khảo', 'không cam kết lợi nhuận'],
+    targetPageType: PageType.LEGAL,
+    targetSlug: '/mien-tru-trach-nhiem',
+  },
+
+  // —— Article / landing (fix investor-guide cannibalization) ——
+  {
+    id: 'kc-investor-guide',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'hướng dẫn đầu tư bđs đà nẵng',
+    secondaryKeywords: [
+      'chiến lược đầu tư đà nẵng 2026',
+      'checklist mua bđs đà nẵng',
+      'rủi ro đầu tư đà nẵng',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-da-nang', 'entity-nam-da-nang'],
+    targetSlug: '/dau-tu-da-nang',
+  },
+  {
+    id: 'kc-knowledge-hub',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'kiến thức đầu tư bđs đà nẵng',
+    secondaryKeywords: [
+      'pháp lý đầu tư đà nẵng',
+      'dòng tiền bđs đà nẵng',
+      'chọn dự án đầu tư đà nẵng',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-da-nang'],
+    targetSlug: '/kien-thuc-dau-tu',
+  },
+  {
+    id: 'kc-hanoi-investor',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'nhà đầu tư hà nội mua bđs đà nẵng',
+    secondaryKeywords: [
+      'mua bđs đà nẵng từ xa',
+      'quy trình thẩm định từ hà nội',
+      'pháp lý giao dịch liên tỉnh',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-da-nang'],
+    targetSlug: '/nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang',
+  },
+  {
+    id: 'kc-invest-nam',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'roi đầu tư nam đà nẵng',
+    secondaryKeywords: [
+      'lợi nhuận đất nền nam đà nẵng',
+      'rủi ro đầu tư nam đà nẵng',
+      'quy hoạch và thanh khoản',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-nam-da-nang'],
+    targetSlug: '/dau-tu-nam-da-nang',
+  },
+  {
+    id: 'kc-invest-fpt',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'chiến lược đầu tư fpt city',
+    secondaryKeywords: [
+      'roi fpt city đà nẵng',
+      'timeline đầu tư fpt city',
+      'checklist nhà đầu tư fpt city',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-fpt-city'],
+    targetSlug: '/dau-tu-fpt-city',
+  },
+  {
+    id: 'kc-rental-yield',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'rental yield căn hộ đà nẵng',
+    secondaryKeywords: [
+      'dòng tiền cho thuê đà nẵng',
+      'căn hộ cho thuê đà nẵng',
+      'tính toán yield căn hộ',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-can-ho', 'entity-sun-group'],
+    targetSlug: '/can-ho-da-nang-cho-thue',
+  },
+  {
+    id: 'kc-can-ho-invest-landing',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'căn hộ sun group ven sông hàn đầu tư',
+    secondaryKeywords: [
+      'giá vào căn hộ sun group',
+      'thanh khoản thứ cấp ven sông hàn',
+      'so sánh symphony cosmo ponte',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-can-ho', 'entity-sun-group'],
+    targetSlug: '/can-ho-dau-tu-da-nang',
+  },
+  {
+    id: 'kc-dat-nen-landing',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'mua đất nền nam đà nẵng',
+    secondaryKeywords: [
+      'bản đồ giá đất nam đà nẵng',
+      'checklist mua đất an toàn',
+      'đất nền ven sông đà nẵng',
+    ],
+    targetPageType: PageType.ARTICLE,
+    relatedEntityIds: ['entity-dat-nen', 'entity-nam-da-nang'],
+    targetSlug: '/dat-nen-nam-da-nang',
+  },
+
+  // —— Shophouse Sun Đà Nẵng topic authority (hub + money pages) ——
+  {
+    id: 'kc-shophouse-sun-hub',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'shophouse sun đà nẵng',
+    secondaryKeywords: [
+      'shophouse khối đế sun group',
+      'shophouse sun symphony',
+      'đầu tư shophouse sun',
+      'giỏ hàng shophouse sun đà nẵng',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-group', 'entity-sun-symphony'],
+    targetSlug: '/shophouse-sun-da-nang',
+  },
+  {
+    id: 'kc-gia-shophouse-sun',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'giá shophouse sun symphony',
+    secondaryKeywords: [
+      'bảng giá shophouse sun đà nẵng',
+      'giá shophouse khối đế',
+      'shophouse sun giá thứ cấp',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-symphony'],
+    targetSlug: '/gia-shophouse-sun-da-nang',
+  },
+  {
+    id: 'kc-khoi-de-symphony',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'shophouse khối đế sun symphony',
+    secondaryKeywords: [
+      'khối đế sun symphony residence',
+      'vị trí shophouse symphony',
+      'thiết kế shophouse khối đế',
+    ],
+    targetPageType: PageType.PROJECT,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-symphony'],
+    targetSlug: '/shophouse-khoi-de-sun-symphony',
+  },
+  {
+    id: 'kc-dau-tu-shophouse',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'đầu tư shophouse sun đà nẵng',
+    secondaryKeywords: [
+      'roi shophouse sun',
+      'chiến lược đầu tư shophouse khối đế',
+      'rủi ro shophouse sun group',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-group'],
+    targetSlug: '/dau-tu-shophouse-sun-da-nang',
+  },
+  {
+    id: 'kc-dong-tien-shophouse',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'dòng tiền shophouse khối đế',
+    secondaryKeywords: [
+      'lợi nhuận shophouse sun',
+      'cash flow shophouse sun đà nẵng',
+      'tính dòng tiền shophouse',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-shophouse-sun'],
+    targetSlug: '/dong-tien-shophouse-sun',
+  },
+  {
+    id: 'kc-cho-thue-shophouse',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'cho thuê shophouse sun',
+    secondaryKeywords: [
+      'giá thuê shophouse sun đà nẵng',
+      'khách thuê shophouse khối đế',
+      'yield cho thuê shophouse sun',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-symphony'],
+    targetSlug: '/cho-thue-shophouse-sun',
+  },
+  {
+    id: 'kc-phap-ly-shophouse',
+    intent: 'INFORMATIONAL',
+    primaryKeyword: 'pháp lý shophouse sun đà nẵng',
+    secondaryKeywords: [
+      'sổ hồng shophouse sun',
+      'hợp đồng shophouse sun group',
+      'checklist pháp lý shophouse',
+    ],
+    targetPageType: PageType.LEGAL,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-group'],
+    targetSlug: '/phap-ly-shophouse-sun',
+  },
+  {
+    id: 'kc-tt-shophouse',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'chính sách thanh toán shophouse sun',
+    secondaryKeywords: [
+      'tiến độ thanh toán shophouse sun',
+      'vay ngân hàng shophouse sun',
+      'ngoại giao shophouse sun group',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-sun-group'],
+    targetSlug: '/chinh-sach-thanh-toan-shophouse-sun',
+  },
+  {
+    id: 'kc-bang-gia-can-ho-sun',
+    intent: 'TRANSACTIONAL',
+    primaryKeyword: 'bảng giá căn hộ sun đà nẵng',
+    secondaryKeywords: [
+      'giá căn hộ sun symphony',
+      'giá căn hộ sun cosmo',
+      'bảng giá sun group đà nẵng 2026',
+    ],
+    targetPageType: PageType.FINANCIAL,
+    relatedEntityIds: ['entity-can-ho', 'entity-sun-group'],
+    targetSlug: '/bang-gia-can-ho-sun-da-nang',
+  },
+  {
+    id: 'kc-can-ho-sun-group',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'căn hộ sun group đà nẵng đầu tư',
+    secondaryKeywords: [
+      'căn hộ sun symphony đầu tư',
+      'căn hộ ven sông hàn sun group',
+      'thanh khoản căn hộ sun đà nẵng',
+    ],
+    targetPageType: PageType.CATALOG,
+    relatedEntityIds: ['entity-can-ho', 'entity-sun-group', 'entity-sun-symphony'],
+    targetSlug: '/can-ho-sun-group-da-nang',
+  },
+  {
+    id: 'kc-so-sanh-shop-can',
+    intent: 'COMMERCIAL',
+    primaryKeyword: 'so sánh shophouse và căn hộ sun',
+    secondaryKeywords: [
+      'shophouse hay căn hộ sun',
+      'roi shophouse vs căn hộ',
+      'chọn sản phẩm sun group đà nẵng',
+    ],
+    targetPageType: PageType.COMPARISON,
+    relatedEntityIds: ['entity-shophouse-sun', 'entity-can-ho', 'entity-sun-group'],
+    targetSlug: '/so-sanh-shophouse-va-can-ho-sun',
+  },
+];
+
+const BY_ID = new Map(KEYWORD_CLUSTERS.map(c => [c.id, c]));
+
+export function getKeywordClusterRecord(id: string): KeywordCluster | undefined {
+  return BY_ID.get(id);
+}
+
+export function listKeywordClusterRecords(): readonly KeywordCluster[] {
+  return KEYWORD_CLUSTERS;
+}

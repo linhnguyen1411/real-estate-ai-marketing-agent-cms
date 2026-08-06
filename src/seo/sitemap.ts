@@ -1,6 +1,8 @@
 import { Property } from '../types';
 import { getPublicPropertySlug } from '../utils/propertyShare';
 import { LANDING_PAGES, PROJECT_PAGES, STATIC_PAGES } from './pageMeta';
+import { listPublishableSeoRoutes } from './publishing/registerSeoRoutes';
+import { PageType } from './types/PageType';
 
 export interface SitemapEntry {
   loc: string;
@@ -30,12 +32,15 @@ export function buildSitemapEntries(origin: string, properties: Property[]): {
     })),
   ];
 
+  const knownLocs = new Set(pages.map(entry => entry.loc));
+
   const projects: SitemapEntry[] = PROJECT_PAGES.map(p => ({
     loc: `${base}${p.path}`,
     changefreq: 'weekly' as const,
     priority: 0.85,
     lastmod: now,
   }));
+  for (const entry of projects) knownLocs.add(entry.loc);
 
   const landings: SitemapEntry[] = LANDING_PAGES.map(p => ({
     loc: `${base}${p.path}`,
@@ -43,6 +48,31 @@ export function buildSitemapEntries(origin: string, properties: Property[]): {
     priority: 0.9,
     lastmod: now,
   }));
+  for (const entry of landings) knownLocs.add(entry.loc);
+
+  // Dynamic SEO Publishing: any new publishable registry record appears in sitemap.
+  for (const route of listPublishableSeoRoutes()) {
+    if (route.slug === '/') continue;
+    const loc = `${base}${route.slug}`;
+    if (knownLocs.has(loc)) continue;
+
+    if (route.pageType === PageType.PROJECT) {
+      projects.push({
+        loc,
+        changefreq: 'weekly',
+        priority: 0.85,
+        lastmod: now,
+      });
+    } else {
+      pages.push({
+        loc,
+        changefreq: 'weekly',
+        priority: Math.min(1, Math.max(0.3, route.priority)),
+        lastmod: now,
+      });
+    }
+    knownLocs.add(loc);
+  }
 
   const propertyEntries: SitemapEntry[] = properties
     .filter(p => !['sold', 'hidden'].includes(p.sale_status || 'available'))

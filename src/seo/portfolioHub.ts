@@ -1,5 +1,7 @@
 /** Danh mục BĐS — 3 trụ cột trọng tâm của site */
 
+import { getFaqQaPairs } from './data/faqRegistry';
+
 export type PortfolioPillarId = 'sun-group' | 'nam-da-nang' | 'noi-bat';
 
 export interface PortfolioPillar {
@@ -53,12 +55,7 @@ export interface ProjectData {
   ctaHref?: string;
 }
 
-const SUN_FAQ_DEFAULT = [
-  {
-    question: 'Làm sao nhận bảng giá căn Sun Group đang mở bán?',
-    answer: 'Liên hệ hotline hoặc Zalo — chúng tôi gửi giỏ hàng ngoại giao và căn thứ cấp phù hợp ngân sách, kèm pháp lý sơ bộ.',
-  },
-];
+/** Dự án Sun Group (trang chi tiết) — FAQ từ SEO data layer */
 
 export const PROJECTS: Record<string, ProjectData> = {
   'sun-symphony': {
@@ -70,13 +67,7 @@ export const PROJECTS: Record<string, ProjectData> = {
       'Quần thể cao cấp Sun Group ven sông Hàn: Symphony, S Light, Spana, Cora, FourS — căn hộ view sông, shophouse và sản phẩm dòng tiền.',
     highlights: ['Ven sông Hàn', 'Symphony · S Light · Spana', 'Căn ngoại giao', 'Dòng tiền & tích sản'],
     productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Đất nền dự án'],
-    faqs: [
-      {
-        question: 'Sun Symphony khác các tòa S Light / Spana thế nào?',
-        answer: 'Mỗi tòa có vị trí, view và chính sách cho thuê khác nhau. Cần so sánh giá/m², phí quản lý và thanh khoản thứ cấp trước khi chọn.',
-      },
-      ...SUN_FAQ_DEFAULT,
-    ],
+    faqs: getFaqQaPairs('faq-sun-symphony'),
     ctaHref: '/bat-dong-san/can-ho',
   },
   'sun-cosmo': {
@@ -87,13 +78,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     summary: 'Căn hộ cao cấp Sun Group tại trung tâm — tiện ích đồng bộ, phù hợp ở và đầu tư cho thuê.',
     highlights: ['Sun Group', 'Trung tâm thành phố', 'Tiện ích cao cấp', 'Thanh khoản TT2'],
     productTypes: ['Căn hộ cao cấp', 'Shophouse'],
-    faqs: [
-      {
-        question: 'Sun Cosmo cho thuê có ổn không?',
-        answer: 'Tùy tầng, view và nội thất. Cần tính yield ròng sau phí quản lý và mùa thấp điểm du lịch.',
-      },
-      ...SUN_FAQ_DEFAULT,
-    ],
+    faqs: getFaqQaPairs('faq-sun-cosmo'),
     ctaHref: '/bat-dong-san/can-ho',
   },
   'sun-ponte': {
@@ -104,7 +89,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     summary: 'Dòng sản phẩm Sun Group ven sông — căn hộ và shophouse thương mại trong hệ sinh thái Sun tại Đà Nẵng.',
     highlights: ['Sông Hàn', 'Shophouse', 'Sun Group', 'Thương mại & ở'],
     productTypes: ['Căn hộ', 'Shophouse', 'Nhà phố thương mại'],
-    faqs: SUN_FAQ_DEFAULT,
+    faqs: getFaqQaPairs('faq-sun-ponte'),
     ctaHref: '/bat-dong-san/can-ho',
   },
   'nam-da-nang': {
@@ -116,16 +101,7 @@ export const PROJECTS: Record<string, ProjectData> = {
       'Phân khúc mũi nhọn của chúng tôi: đất nền, nhà phố, kho xưởng, căn hộ, khách sạn và tài sản đầu tư tập trung tại Nam Đà Nẵng — Mai Đăng Chơn, Hòa Xuân, Hòa Quý, Cẩm Lệ…',
     highlights: ['Đất nền & nhà phố', 'Kho xưởng', 'Khách sạn', 'Mai Đăng Chơn'],
     productTypes: ['Đất nền', 'Nhà ở', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
-    faqs: [
-      {
-        question: 'Nam Đà Nẵng nên ưu tiên loại hình nào?',
-        answer: 'Tùy vốn và mục tiêu: đất nền/nhà phố cho tích sản dài hạn; kho xưởng hoặc khách sạn cho dòng tiền thương mại. Nên thẩm định pháp lý từng lô.',
-      },
-      {
-        question: 'Mai Đăng Chơn thuộc phân khúc nào?',
-        answer: 'Mai Đăng Chơn nằm trong danh mục BĐS Nam Đà Nẵng — quỹ đất mặt tiền và nhà phố thương mại, không tách riêng như dự án Sun Group.',
-      },
-    ],
+    faqs: getFaqQaPairs('faq-nam-da-nang'),
     ctaHref: '/nam-da-nang',
   },
   'bds-noi-bat': {
@@ -137,16 +113,7 @@ export const PROJECTS: Record<string, ProjectData> = {
       'Các tài sản đáng chú ý được lọc theo pháp lý và tiềm năng — rải rác nhiều khu vực, không gói trong một dự án cố định. Cập nhật thường xuyên trên trang BĐS.',
     highlights: ['Đa khu vực', 'Deal đáng thẩm định', 'Giá & vị trí hấp dẫn', 'Cập nhật liên tục'],
     productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
-    faqs: [
-      {
-        question: 'BĐS nổi bật khác danh mục Sun Group / Nam Đà Nẵng thế nào?',
-        answer: 'Sun Group và Nam Đà Nẵng là hai trụ cột có định hướng rõ. BĐS nổi bật gom các deal đặc biệt — giá tốt, cắt lỗ, hoặc vị trí độc đáo — từ nhiều nơi, kể cả ngoài Nam Đà Nẵng.',
-      },
-      {
-        question: 'Làm sao xem danh sách BĐS nổi bật hiện tại?',
-        answer: 'Vào trang Bất động sản hoặc liên hệ Zalo để nhận danh sách cập nhật theo ngân sách và loại hình bạn quan tâm.',
-      },
-    ],
+    faqs: getFaqQaPairs('faq-bds-noi-bat'),
     ctaHref: '/bat-dong-san',
   },
 };

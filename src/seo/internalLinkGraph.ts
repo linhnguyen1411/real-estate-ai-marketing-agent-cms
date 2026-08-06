@@ -1,3 +1,7 @@
+/**
+ * Blog/topic cluster link helpers (legacy API).
+ * Page-level internal link graph lives in `data/internalLinks.ts` + `services/resolveInternalLinks`.
+ */
 export type ClusterKey = 'nha-dau-tu' | 'nam-da-nang' | 'fpt-city' | 'mai-dang-chon' | 'review-khu-vuc';
 
 export interface LinkItem {
