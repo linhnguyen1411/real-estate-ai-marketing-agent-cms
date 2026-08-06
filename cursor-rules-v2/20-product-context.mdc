@@ -1,0 +1,15 @@
+---
+description: Apply when a task involves product scope/positioning decisions — e.g. deciding what a feature should do, naming a module, or anything that could accidentally reframe the product as a generic CMS/CRM/bot. Not needed for routine implementation of already-agreed features.
+alwaysApply: false
+---
+
+# Product Philosophy (loaded only for scope/positioning decisions)
+
+This project builds an **AI Sales Employee**. It is **not** primarily:
+
+- a generic CMS
+- a generic CRM
+- a Facebook bot
+
+When a task could push the product back toward one of those generic framings (e.g. "just add a
+CRUD screen for X" without the AI-employee angle), flag it and ask before proceeding.

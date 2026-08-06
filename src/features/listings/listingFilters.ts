@@ -37,6 +37,10 @@ export interface ListingFacetDef {
   projectMatch?: string;
   /** Free-text keyword applied like q */
   keyword?: string;
+  /** Match if haystack contains ANY of these (investment / distress hubs) */
+  keywordAny?: string[];
+  /** Canonical SEO path when not under /bat-dong-san/:slug */
+  seoPath?: string;
 }
 
 export const LISTING_FACETS: ListingFacetDef[] = [
@@ -50,11 +54,47 @@ export const LISTING_FACETS: ListingFacetDef[] = [
   { slug: 'sun-cosmo', kind: 'project', label: 'Sun Cosmo', projectMatch: 'Sun Cosmo' },
   { slug: 'sun-ponte', kind: 'project', label: 'Sun Ponte', projectMatch: 'Sun Ponte' },
   { slug: 'hoa-xuan', kind: 'project', label: 'Hòa Xuân', projectMatch: 'Hòa Xuân' },
+  // SEO hubs (top-level keyword URLs)
+  {
+    slug: 'can-ho-sun-group-da-nang',
+    kind: 'keyword',
+    label: 'Căn hộ Sun Group Đà Nẵng',
+    typeIncludes: 'căn',
+    keyword: 'sun',
+    seoPath: '/can-ho-sun-group-da-nang',
+  },
+  {
+    slug: 'shophouse-sun-group-da-nang',
+    kind: 'keyword',
+    label: 'Shophouse Sun Group Đà Nẵng',
+    typeIncludes: 'shophouse',
+    keyword: 'sun',
+    seoPath: '/shophouse-sun-group-da-nang',
+  },
+  {
+    slug: 'bds-gia-dau-tu',
+    kind: 'keyword',
+    label: 'BĐS Giá Đầu Tư',
+    keywordAny: ['ngộp', 'cắt lỗ', 'ngoại giao', 'đầu tư', 'giá sập', 'sang nhượng'],
+    seoPath: '/bds-gia-dau-tu',
+  },
+  {
+    slug: 'bang-gia-sun-group',
+    kind: 'keyword',
+    label: 'Bảng giá Sun Group',
+    keyword: 'sun',
+    seoPath: '/bang-gia-sun-group',
+  },
 ];
 
 export const LISTING_FACET_BY_SLUG = Object.fromEntries(
   LISTING_FACETS.map(f => [f.slug, f]),
 ) as Record<string, ListingFacetDef>;
+
+/** Top-level SEO listing hubs → facet slug */
+export const SEO_LISTING_HUB_PATHS: Record<string, string> = Object.fromEntries(
+  LISTING_FACETS.filter(f => f.seoPath).map(f => [f.seoPath!, f.slug]),
+);
 
 /** Old top-level hubs → canonical nested paths */
 export const LEGACY_LISTING_REDIRECTS: Record<string, string> = {
@@ -158,6 +198,22 @@ export function getListingFacet(slug?: string | null): ListingFacetDef | null {
   return LISTING_FACET_BY_SLUG[slug.toLowerCase()] || null;
 }
 
+export function getListingFacetFromPath(pathname: string): ListingFacetDef | null {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  const hubSlug = SEO_LISTING_HUB_PATHS[normalized];
+  if (hubSlug) return getListingFacet(hubSlug);
+  const nested = normalized.match(/^\/bat-dong-san\/([^/]+)$/i);
+  if (nested) return getListingFacet(nested[1]);
+  return null;
+}
+
+export function getListingCategoryPath(facet?: ListingFacetDef | null, facetSlug?: string | null): string {
+  const resolved = facet || getListingFacet(facetSlug);
+  if (!resolved) return LISTING_CATALOG_ROOT;
+  if (resolved.seoPath) return resolved.seoPath;
+  return `${LISTING_CATALOG_ROOT}/${resolved.slug}`;
+}
+
 export function getTransactionType(property: Property): 'Cho thuê' | 'Bán' {
   return String(property.transaction_type || 'Bán').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán';
 }
@@ -215,6 +271,10 @@ export function applyListingFilters(
 
     if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
     if (facetKeyword && !haystack.includes(facetKeyword)) return false;
+    if (facet?.keywordAny?.length) {
+      const hit = facet.keywordAny.some(k => haystack.includes(k.toLowerCase()));
+      if (!hit) return false;
+    }
     if (district && !String(property.location).toLowerCase().includes(district)) return false;
     if (state.type !== 'all' && property.type !== state.type) return false;
     if (state.transaction !== 'all' && getTransactionType(property) !== state.transaction) return false;

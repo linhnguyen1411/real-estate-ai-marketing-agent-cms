@@ -38,6 +38,7 @@ export const STRONG_SUPPLY_PATTERNS: Array<[RegExp, string]> = [
   [/cho\s*thuê/i, 'cho thuê'],
   [/phòng\s*cho\s*thuê/i, 'phòng cho thuê'],
   [/giá\s*chỉ/i, 'giá chỉ'],
+  [/chỉ\s*[\d.,]+[\s]*t[yỷ]/i, 'chỉ X tỷ'],
   [/liên\s*hệ\s*xem\s*nhà/i, 'liên hệ xem nhà'],
   [/em\s*có\s*căn/i, 'em có căn'],
   [/em\s*có\s*lô/i, 'em có lô'],
@@ -47,6 +48,15 @@ export const STRONG_SUPPLY_PATTERNS: Array<[RegExp, string]> = [
   [/đang\s*khai\s*thác/i, 'đang khai thác'],
   [/dòng\s*tiền\s*sẵn/i, 'dòng tiền sẵn'],
   [/nhỉnh\s*[\d.,]+\s*t[yỷ]/i, 'nhỉnh X tỷ'],
+  [/sở\s*hữu\s*vĩnh\s*viễn/i, 'sở hữu vĩnh viễn'],
+  [/nắm\s*chủ/i, 'nắm chủ'],
+  [/chính\s*chủ(?!\s*cần\s*mua)/i, 'chính chủ'],
+  [/nhà\s*\d+\s*tầng/i, 'nhà X tầng'],
+  [/mặt\s*tiền/i, 'mặt tiền'],
+  [/kiệt\s*(nhựa|\d)/i, 'kiệt'],
+  [/lô\s*đất/i, 'lô đất'],
+  [/\d+\s*phòng\s*ngủ/i, 'X phòng ngủ'],
+  [/căn\s*hộ\s*\/\s*chung\s*cư/i, 'căn hộ/chung cư'],
   [/dãy\s*trọ/i, 'dãy trọ'],
   [/\bdt\s*[\d.,]+\s*m/i, 'dt Xm²'],
   [/ngang\s*[\d.,]+\s*m/i, 'ngang Xm'],
@@ -55,7 +65,7 @@ export const STRONG_SUPPLY_PATTERNS: Array<[RegExp, string]> = [
   [/xem\s*đất/i, 'xem đất'],
   [/xem\s*nhà/i, 'xem nhà'],
   [/hotline/i, 'hotline'],
-  [/diện\s*tích\s*[:\-]?\s*\d/i, 'diện tích'],
+  [/diện\s*tích/i, 'diện tích'],
   [/hướng\s*(đông|tây|nam|bắc)/i, 'hướng'],
   [/đường\s*\d+m/i, 'đường Xm'],
   [/lề\s*\d+m/i, 'lề Xm'],
@@ -64,6 +74,9 @@ export const STRONG_SUPPLY_PATTERNS: Array<[RegExp, string]> = [
   [/phòng\s*trọ/i, 'phòng trọ'],
   [/dãy\s*trọ/i, 'dãy trọ'],
   [/giá\s*[:：]?\s*\d+[\.,]?\d*\s*tr/i, 'giá Xtr'],
+  // Asking-price lead (“4,X TỶ - NHÀ…”, “1.8 tỷ — Sở hữu…”) without buyer verbs
+  [/(?:^|[|\n\-–—])\s*[\d.,]+[\s]*t[yỷ]/i, 'giá X tỷ đầu dòng'],
+  [/[\d.,]+\s*t[yỷ]\s*[-–—]/i, 'X tỷ —'],
 ];
 
 export const STRONG_DEMAND_PATTERNS: Array<[RegExp, string]> = [

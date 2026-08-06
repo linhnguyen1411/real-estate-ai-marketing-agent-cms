@@ -1,0 +1,32 @@
+---
+description: Apply this rule when the task is a new feature, refactor, or bugfix that touches more than one file/module — i.e. anything beyond a trivial one-line/style/text fix. Do NOT apply for small isolated edits.
+alwaysApply: false
+---
+
+# Architecture Gate (loaded only for real feature/refactor/bugfix work)
+
+If this task is a trivial, single-file, obviously-scoped edit (copy text, CSS tweak, one-line
+bugfix with an obvious cause) — **skip this rule entirely** and just make the change.
+
+Otherwise, before writing code:
+
+## 1. Read the quick-reference, not the full constitution
+Read `docs/engineering/CONSTITUTION-QUICKREF.md` (short). Only open the full
+`docs/engineering/ENGINEERING_CONSTITUTION.md` or a specific `docs/adr/ADR-*.md` if the
+quickref itself tells you this task touches that exact decision.
+
+## 2. Architecture Audit
+Audit → Reuse → Design → Implement. Do not jump straight to code — check whether an existing
+module/service already does this before adding a new one.
+
+## 3. Impact Analysis
+Before implementing, write a short table:
+
+| Affected modules | Not affected | Risk |
+|---|---|---|
+
+Modules/workspaces that will change or couple tightly vs. ones that must stay untouched.
+
+## 4. Runtime Boundary still applies
+See `00-runtime-boundary.mdc` — Protected Modules require explicit confirmation regardless of
+this rule's scope.

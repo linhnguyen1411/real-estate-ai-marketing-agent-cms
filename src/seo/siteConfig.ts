@@ -6,37 +6,31 @@ export const SITE = {
   url: 'https://bdsdanang.site',
   locale: 'vi_VN',
   language: 'vi',
-  defaultTitle: 'BĐS Đà Nẵng | Estoria',
+  defaultTitle: 'Căn Hộ & Shophouse Sun Group Đà Nẵng | BĐS Giá Đầu Tư',
   /** Brand motto — footer only, not for SEO or header */
   tagline: 'Where assets tell their story',
   taglineVi: 'Nơi mỗi tài sản kể câu chuyện của mình',
   defaultDescription:
-    'Tư vấn BĐS Đà Nẵng: Sun Group, Nam Đà Nẵng và BĐS nổi bật cho nhà đầu tư trung và dài hạn.',
+    'Chuyên mua bán, chuyển nhượng căn hộ, shophouse Sun Group tại Đà Nẵng. Cập nhật quỹ hàng BĐS giá đầu tư, vị trí đẹp, pháp lý chuẩn, tiềm năng sinh lời cao.',
+  /** Schema.org RealEstateAgent display name */
+  schemaName: 'BĐS Đà Nẵng - Căn Hộ & Shophouse Sun Group',
+  priceRange: '$$$',
   defaultKeywords: [
-      'sun symphony đà nẵng',
-      'sun symphony residence',
-      'symphony 5',
-      'symphony s5',
-      'căn hộ symphony 5 đà nẵng',
-      'slight tower sun symphony',
-      'tòa slight sun symphony',
+      'căn hộ sun group đà nẵng',
+      'shophouse sun group đà nẵng',
+      'sun ponte residence',
+      'sun cosmo residence',
+      'sun sora đà nẵng',
+      'bđs giá đầu tư đà nẵng',
       'căn hộ view sông hàn',
-      'căn hộ view pháo hoa',
-    
-      'giá đất nam hòa xuân',
-      'nhà đất nam đà nẵng',
-      'đất mai đăng chơn đà nẵng',
-      'có nên mua đất mai đăng chơn',
-    
-      'bđs dòng tiền đà nẵng',
-      'căn hộ cho thuê đà nẵng',
-      'mua đất xây căn hộ dịch vụ đà nẵng',
-      'đầu tư căn hộ biển đà nẵng dòng tiền'
+      'shophouse sun solar city',
+      'bảng giá sun group đà nẵng',
+      'đất nền nhà phố đà nẵng',
     ],
   logo: '/logo.jpg',
   ogImage: '/logo.jpg',
   foundingDate: '2020',
-  areaServed: ['Đà Nẵng', 'Hội An', 'Quảng Nam', 'Việt Nam'],
+  areaServed: ['Đà Nẵng', 'Ngũ Hành Sơn', 'Sơn Trà', 'Hải Châu', 'Hòa Vang'],
 } as const;
 
 /** Phân khúc & định vị inventory — 3 trụ cột trọng tâm */
@@ -124,6 +118,8 @@ export const PRIMARY_CTA = 'Nhận danh sách cơ hội đầu tư Đà Nẵng';
 export const RESERVED_SLUGS = new Set([
   'admin', 'api', 'listings', 'bds-da-nang',
   'bat-dong-san', 'can-ho', 'dat-nen', 'nha-pho', 'du-an', 'nam-da-nang',
+  'can-ho-sun-group-da-nang', 'shophouse-sun-group-da-nang', 'bds-gia-dau-tu',
+  'bang-gia-sun-group', 'tin-tuc-dau-tu',
   'kien-thuc-dau-tu', 'tin-thi-truong', 'phan-tich', 'review-khu-vuc',
   'gioi-thieu', 'lien-he', 'chinh-sach-bao-mat', 'dieu-khoan-su-dung',
   'chinh-sach-cookie', 'mien-tru-trach-nhiem', 'tac-gia',

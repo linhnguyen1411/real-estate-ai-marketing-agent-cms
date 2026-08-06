@@ -7,6 +7,7 @@ import type { AgentMission, AgentSource } from '@prisma/client';
 import {
   getDefaultNegativeKeywords,
   getDefaultPositiveKeywords,
+  getDefaultSupplyKeywords,
 } from './defaultKeywordSets';
 import {
   DEFAULT_EXCLUDED_CLASSIFICATIONS,
@@ -81,8 +82,19 @@ export function resolveLeadAnalysisConfig(
     sourceConfig.useDefaultKeywords !== false &&
     missionRules.useDefaultKeywords !== false;
 
+  const targetClassifications = resolveClassificationList(
+    missionRules.targetClassifications ?? sourceConfig.targetClassifications,
+    DEFAULT_TARGET_CLASSIFICATIONS,
+  );
+  const supplyTargets = new Set(['seller', 'landlord', 'broker']);
+  const isSupplyMission =
+    targetClassifications.length > 0 &&
+    targetClassifications.every((c) => supplyTargets.has(c));
+
   if (allowDefaults && positiveKeywords.length === 0) {
-    positiveKeywords = getDefaultPositiveKeywords();
+    positiveKeywords = isSupplyMission
+      ? getDefaultSupplyKeywords()
+      : getDefaultPositiveKeywords();
     usedDefaultKeywords = true;
   }
   if (allowDefaults && negativeKeywords.length === 0) {
@@ -121,10 +133,7 @@ export function resolveLeadAnalysisConfig(
     deepAnalyze:
       missionRules.deepAnalyze === true || sourceConfig.deepAnalyze === true,
     skipAi: process.env.AGENT_LEAD_ANALYSIS_SKIP_AI === '1',
-    targetClassifications: resolveClassificationList(
-      missionRules.targetClassifications ?? sourceConfig.targetClassifications,
-      DEFAULT_TARGET_CLASSIFICATIONS,
-    ),
+    targetClassifications,
     excludedClassifications: resolveClassificationList(
       missionRules.excludedClassifications ?? sourceConfig.excludedClassifications,
       DEFAULT_EXCLUDED_CLASSIFICATIONS,
