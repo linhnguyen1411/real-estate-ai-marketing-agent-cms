@@ -28,6 +28,7 @@
     "dist",
     "dist.prev",
     "runtime",
+    "scripts/archive",
     "scripts/tmp-*",
     "scripts/_tmp-*",
     "scripts/_smoke-*",
