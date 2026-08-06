@@ -453,8 +453,8 @@ export const DEFAULT_REAL_ESTATE_KEYWORDS = {
 
 /**
  * Flattened positive pack used when source/mission leave keywords empty.
- * Includes every keyword group except `exclusionSignals` (which is the negative
- * / avoidance pack). Order does not matter — `unique()` trims + dedupes.
+ * Demand-side only — seller/landlord packs must NOT inflate buyer keywordScore
+ * (that was flooding Lead Intelligence with listing posts as "unknown" leads).
  */
 export function getDefaultPositiveKeywords(): string[] {
   return unique([
@@ -462,15 +462,23 @@ export function getDefaultPositiveKeywords(): string[] {
     ...DEFAULT_REAL_ESTATE_KEYWORDS.investor,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.tenant,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.renter,
-    ...DEFAULT_REAL_ESTATE_KEYWORDS.seller,
-    ...DEFAULT_REAL_ESTATE_KEYWORDS.landlord,
-    ...DEFAULT_REAL_ESTATE_KEYWORDS.broker,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.propertyTypes,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.locations,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.budgetSignals,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.areaSignals,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.urgencySignals,
     ...DEFAULT_REAL_ESTATE_KEYWORDS.propertyRequirements,
+  ]);
+}
+
+/** Supply-side pack (seller/landlord/broker listing) — use for supply missions only. */
+export function getDefaultSupplyKeywords(): string[] {
+  return unique([
+    ...DEFAULT_REAL_ESTATE_KEYWORDS.seller,
+    ...DEFAULT_REAL_ESTATE_KEYWORDS.landlord,
+    ...DEFAULT_REAL_ESTATE_KEYWORDS.broker,
+    ...DEFAULT_REAL_ESTATE_KEYWORDS.propertyTypes,
+    ...DEFAULT_REAL_ESTATE_KEYWORDS.locations,
   ]);
 }
 

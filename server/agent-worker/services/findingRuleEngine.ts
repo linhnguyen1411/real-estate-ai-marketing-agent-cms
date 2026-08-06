@@ -539,6 +539,8 @@ export async function processFindingForContent(input: {
     (classification === 'broker' &&
       (brokerActivity === 'supply_listing' || brokerActivity === 'recruitment'));
 
+  // Soft keywords alone must NOT invent buyer intent — default packs include
+  // property/location/seller terms that light up listing posts.
   const hasBuyerIntent =
     actorRole === 'demand_side' ||
     targetMatched ||
@@ -547,15 +549,26 @@ export async function processFindingForContent(input: {
       direction.demandSignals.length >= direction.supplySignals.length &&
       !isClearSupplyDismiss) ||
     (keywordScore >= config.softKeywordScore &&
+      direction.demandSignals.length > 0 &&
       !isClearSupplyDismiss &&
       classification !== 'seller' &&
-      classification !== 'landlord');
+      classification !== 'landlord' &&
+      classification !== 'unknown');
+
+  // "Cần xem lại" = ambiguous demand∩supply or broker demand — NOT every
+  // unclassified listing (those are usually sellers missing strong verbs).
+  const isAmbiguousUnknown =
+    classification === 'unknown' &&
+    direction.demandSignals.length > 0 &&
+    direction.supplySignals.length > 0;
 
   const needsReview =
-    classification === 'unknown' ||
-    actorRole === 'unknown' ||
+    isAmbiguousUnknown ||
     isBrokerDemand ||
-    (!targetMatched && !isClearSupplyDismiss && hasBuyerIntent);
+    (!targetMatched &&
+      !isClearSupplyDismiss &&
+      hasBuyerIntent &&
+      classification !== 'unknown');
 
   const hasPhone = Boolean(deterministic.phone.primaryPhone);
   const hasBudget = Boolean(

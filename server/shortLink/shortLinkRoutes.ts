@@ -55,6 +55,10 @@ export function registerShortLinkRedirect(
   getProperties: () => Property[],
 ) {
   app.get('/s/:slug', async (req: Request, res: Response) => {
+    // Short link chỉ để tracking/redirect nội bộ (Zalo, Facebook, campaign...),
+    // không phải trang nội dung -> luôn chặn index để tránh Google hiển thị URL rác
+    // này trong kết quả tìm kiếm thay vì trang đích thật (property/landing page).
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     try {
       const slug = String(req.params.slug || '').trim();
       const shortLink = await getShortLinkBySlug(slug);

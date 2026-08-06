@@ -3234,6 +3234,15 @@ async function sendPublicIndex(req: Request, res: Response): Promise<boolean> {
 
   const property = findPublicPropertyBySlug(pathSlug);
   if (property) {
+    const canonicalSlug = getPropertySlug(property);
+    // pathSlug already decodeURIComponent'd above — compare exact canonical form.
+    if (pathSlug !== canonicalSlug) {
+      // Truy cập qua property.id, slug cũ, hoặc sai hoa/thường -> 301 về đúng URL chính tắc.
+      // Tránh tình trạng 2 URL cùng trả 200 cho cùng nội dung (nguyên nhân lỗi
+      // "Trang trùng lặp, người dùng chưa chọn trang chính tắc" trên Search Console).
+      res.redirect(301, getPropertyPath(property));
+      return true;
+    }
     const shareMeta = getPropertyShareMeta(property, origin);
     const image = shareMeta.image;
     const dataUrlMatch = (property.gallery_images?.[0] || property.images || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
