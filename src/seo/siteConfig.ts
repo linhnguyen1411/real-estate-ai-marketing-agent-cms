@@ -1,3 +1,6 @@
+import { buildTitle } from './utils/buildTitle';
+import { normalizeCanonical } from './utils/normalizeCanonical';
+
 /** Central SEO & business config — single source of truth for public site */
 export const SITE = {
   name: 'Estoria',
@@ -6,26 +9,24 @@ export const SITE = {
   url: 'https://bdsdanang.site',
   locale: 'vi_VN',
   language: 'vi',
-  defaultTitle: 'Căn Hộ & Shophouse Sun Group Đà Nẵng | BĐS Giá Đầu Tư',
+  defaultTitle: 'Căn Hộ Sun Group, Shophouse Khối Đế & BĐS Đầu Tư Đà Nẵng | Estoria',
   /** Brand motto — footer only, not for SEO or header */
   tagline: 'Where assets tell their story',
   taglineVi: 'Nơi mỗi tài sản kể câu chuyện của mình',
   defaultDescription:
-    'Chuyên mua bán, chuyển nhượng căn hộ, shophouse Sun Group tại Đà Nẵng. Cập nhật quỹ hàng BĐS giá đầu tư, vị trí đẹp, pháp lý chuẩn, tiềm năng sinh lời cao.',
+    'Estoria chuyên căn hộ Sun Group, shophouse khối đế Sun Group và bất động sản đầu tư nổi bật tại Đà Nẵng — giá, dòng tiền, pháp lý để thẩm định trước khi mua.',
   /** Schema.org RealEstateAgent display name */
-  schemaName: 'BĐS Đà Nẵng - Căn Hộ & Shophouse Sun Group',
+  schemaName: 'Estoria — Căn hộ & Shophouse Sun Group Đà Nẵng',
   priceRange: '$$$',
   defaultKeywords: [
-      'căn hộ sun group đà nẵng',
-      'shophouse sun group đà nẵng',
-      'sun ponte residence',
-      'sun cosmo residence',
-      'sun sora đà nẵng',
-      'bđs giá đầu tư đà nẵng',
-      'căn hộ view sông hàn',
-      'shophouse sun solar city',
-      'bảng giá sun group đà nẵng',
-      'đất nền nhà phố đà nẵng',
+      'căn hộ và shophouse sun đà nẵng',
+      'shophouse sun đà nẵng',
+      'shophouse khối đế sun group',
+      'căn hộ sun group đà nẵng đầu tư',
+      'bảng giá căn hộ sun đà nẵng',
+      'đầu tư shophouse sun đà nẵng',
+      'dòng tiền shophouse khối đế',
+      'bđs đầu tư nổi bật đà nẵng',
     ],
   logo: '/logo.jpg',
   ogImage: '/logo.jpg',
@@ -118,7 +119,10 @@ export const PRIMARY_CTA = 'Nhận danh sách cơ hội đầu tư Đà Nẵng';
 export const RESERVED_SLUGS = new Set([
   'admin', 'api', 'listings', 'bds-da-nang',
   'bat-dong-san', 'can-ho', 'dat-nen', 'nha-pho', 'du-an', 'nam-da-nang',
-  'can-ho-sun-group-da-nang', 'shophouse-sun-group-da-nang', 'bds-gia-dau-tu',
+  'can-ho-cao-cap-da-nang', 'dat-nen-nam-hoa-xuan-da-nang',
+  'bat-dong-san-nam-da-nang', 'bat-dong-san-dau-tu-da-nang',
+  'shophouse', 'shophouse-khoi-de-da-nang', 'bds-dau-tu', 'bds-gia-dau-tu',
+  'can-ho-sun-group-da-nang', 'shophouse-sun-group-da-nang',
   'bang-gia-sun-group', 'tin-tuc-dau-tu',
   'kien-thuc-dau-tu', 'tin-thi-truong', 'phan-tich', 'review-khu-vuc',
   'gioi-thieu', 'lien-he', 'chinh-sach-bao-mat', 'dieu-khoan-su-dung',
@@ -127,6 +131,12 @@ export const RESERVED_SLUGS = new Set([
   'can-ho-da-nang-cho-thue', 'can-ho-dau-tu-da-nang',
   'nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang', 'dat-nen-nam-da-nang',
   'tai-lieu-dau-tu', 'tin-tuc', 'nha-dau-tu', 'moi-gioi',
+  'shophouse-sun-da-nang', 'gia-shophouse-sun-da-nang',
+  'shophouse-khoi-de-sun-symphony', 'dau-tu-shophouse-sun-da-nang',
+  'dong-tien-shophouse-sun', 'cho-thue-shophouse-sun',
+  'phap-ly-shophouse-sun', 'chinh-sach-thanh-toan-shophouse-sun',
+  'bang-gia-can-ho-sun-da-nang', 'so-sanh-shophouse-va-can-ho-sun',
+  'du-an-sun-group-da-nang',
   'property-images', 'sitemap.xml', 'robots.txt',
 ]);
 
@@ -139,9 +149,7 @@ export function getSiteOrigin(fallback: string = SITE.url): string {
 
 export function absoluteUrl(path: string, origin: string = SITE.url): string {
   if (!path) return origin;
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = origin.replace(/\/+$/, '');
-  return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
+  return normalizeCanonical(path, origin);
 }
 
 /** Footer copyright line — includes brand motto */
@@ -150,7 +158,5 @@ export function getFooterBrandLine(separator: string = ' — '): string {
 }
 
 export function formatPageTitle(title: string): string {
-  const trimmed = title.trim();
-  if (/\|\s*Estoria\s*$/i.test(trimmed)) return trimmed;
-  return `${trimmed} | Estoria`;
+  return buildTitle(title, { appendBrand: true, brand: SITE.name });
 }

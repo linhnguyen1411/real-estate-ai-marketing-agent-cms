@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 
 import { Property } from '../types';
 import { getPublicPropertySlug } from '../utils/propertyShare';
@@ -18,7 +18,9 @@ import {
   PRICE_RANGES,
   applyListingFilters,
   buildListingPath,
+  getListingCategoryPath,
   getListingFacet,
+  getListingFacetFromPath,
   getTransactionType,
   useListingPageSize,
   useListingUrlState,
@@ -28,17 +30,31 @@ function formatPrice(price: number) {
   return `${price} tỷ`;
 }
 
-export default function CategoryListingsPage() {
-  const { facet: facetSlug } = useParams<{ facet?: string }>();
+interface CategoryListingsPageProps {
+  /** When rendered from a top-level SEO hub route */
+  forcedFacetSlug?: string;
+}
+
+export default function CategoryListingsPage({ forcedFacetSlug }: CategoryListingsPageProps = {}) {
+  const location = useLocation();
+  const { facet: facetSlugParam } = useParams<{ facet?: string }>();
+  const facetFromPath = getListingFacetFromPath(location.pathname);
+  const facetSlug = forcedFacetSlug || facetFromPath?.slug || facetSlugParam;
   const facet = getListingFacet(facetSlug);
 
-  if (facetSlug && !facet) {
+  if ((facetSlugParam || forcedFacetSlug) && !facet && !facetFromPath) {
     return <Navigate to={LISTING_CATALOG_ROOT} replace />;
   }
 
-  const categoryPath = facetSlug
-    ? `${LISTING_CATALOG_ROOT}/${facetSlug}`
-    : LISTING_CATALOG_ROOT;
+  const categoryPath = getListingCategoryPath(facet, facetSlug);
+
+  // Nested /bat-dong-san/:facet → canonical SEO hub when configured
+  if (
+    facet?.seoPath &&
+    location.pathname.replace(/\/+$/, '') === `${LISTING_CATALOG_ROOT}/${facet.slug}`
+  ) {
+    return <Navigate to={facet.seoPath} replace />;
+  }
 
   const [properties, setProperties] = useState<Property[]>([]);
   const { filters, setFilters, resetFilters } = useListingUrlState();
@@ -205,13 +221,13 @@ export default function CategoryListingsPage() {
               >
                 Tất cả
               </Link>
-              {(['can-ho', 'dat-nen', 'nha-pho', 'nam-da-nang', 'mai-dang-chon', 'fpt-city', 'sun-symphony'] as const).map(slug => {
+              {(['can-ho', 'dat-nen', 'shophouse', 'nam-da-nang', 'mai-dang-chon', 'fpt-city', 'sun-symphony'] as const).map(slug => {
                 const def = getListingFacet(slug);
                 if (!def) return null;
                 return (
                   <Link
                     key={slug}
-                    to={buildListingPath(slug)}
+                    to={getListingCategoryPath(def)}
                     className={`rounded-full border px-3 py-1 ${facetSlug === slug ? 'border-invest-blue bg-invest-blue text-white' : 'border-slate-200 text-slate-600 hover:border-invest-blue/40'}`}
                   >
                     {def.label}

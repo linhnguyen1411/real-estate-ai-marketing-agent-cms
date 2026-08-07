@@ -1,4 +1,5 @@
 import { Property } from '../types';
+import { resolvePropertyItemTitle } from '../seo/utils/buildPropertyItemTitle';
 
 export const SITE_BRAND = 'Bdsdanang.site';
 
@@ -59,7 +60,13 @@ function isSunGroupProperty(property: Property) {
 }
 
 export function buildPropertySeoTitle(property: Property) {
-  const title = compactSeoText(property.title);
+  const title = resolvePropertyItemTitle({
+    title: property.title,
+    type: property.type,
+    project_name: property.project_name,
+    location: property.location,
+    selling_points: property.selling_points,
+  });
   const type = getPropertyTypeLabel(property).toLowerCase();
 
   if (isLandProperty(property)) {

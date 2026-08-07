@@ -4,6 +4,7 @@ export {
   LISTING_CATALOG_ROOT,
   LISTING_FACETS,
   LEGACY_LISTING_REDIRECTS,
+  SEO_CATEGORY_PATHS,
   SEO_LISTING_HUB_PATHS,
   applyListingFilters,
   buildListingPath,

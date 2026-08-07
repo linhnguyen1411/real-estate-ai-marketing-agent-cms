@@ -1,3 +1,5 @@
+import { getFaqQaPairs } from './data/faqRegistry';
+
 export interface LandingSection {
   id: string;
   title: string;
@@ -16,26 +18,8 @@ export interface LandingPageData {
   faqs: { question: string; answer: string }[];
 }
 
-const HANOI_FUNNEL_CTA =
-  'Điền form bên dưới để nhận danh sách cơ hội đầu tư Đà Nẵng được lọc theo ngân sách và mục tiêu — không spam, tư vấn 1-1.';
-
 function baseFaqs(): { question: string; answer: string }[] {
-  return [
-    {
-      question: 'Nhà đầu tư nên bắt đầu từ đâu khi mua BĐS Đà Nẵng?',
-      answer:
-        'Nên xác định mục tiêu (ở, cho thuê hay tích lũy), ngân sách và thời gian nắm giữ. Sau đó chọn 2–3 khu vực trọng điểm (Nam Đà Nẵng, FPT City, ven biển) và yêu cầu danh sách sản phẩm có pháp lý rõ để so sánh trước khi xuống Đà Nẵng khảo sát.',
-    },
-    {
-      question: 'Mua BĐS Đà Nẵng từ xa có an toàn không?',
-      answer:
-        'Có thể an toàn nếu làm việc với đơn vị tư vấn uy tín, kiểm tra pháp lý tại Sở Tư pháp, xem hình ảnh thực tế và ký hợp đồng qua luật sư. Estoria hỗ trợ checklist pháp lý và lịch khảo sát trực tiếp cho nhà đầu tư.',
-    },
-    {
-      question: 'Làm sao nhận danh sách cơ hội đầu tư?',
-      answer: HANOI_FUNNEL_CTA,
-    },
-  ];
+  return getFaqQaPairs('faq-investor-base');
 }
 
 export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {

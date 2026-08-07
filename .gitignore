@@ -23,11 +23,7 @@ Thumbs.db
 *.swo
 .cursor/
 !.cursor/rules/
-!.cursor/rules/engineering-constitution.mdc
-!.cursor/rules/impact-analysis.mdc
-!.cursor/rules/architecture-first.mdc
-!.cursor/rules/runtime-boundary.mdc
-!.cursor/rules/product-philosophy.mdc
+!.cursor/rules/**
 
 # Logs
 *.log

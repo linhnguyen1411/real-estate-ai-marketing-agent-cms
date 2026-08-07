@@ -23,6 +23,18 @@ export const AREA_RANGES = [
 /** Canonical catalog root — path SSOT for listing hubs. */
 export const LISTING_CATALOG_ROOT = '/bat-dong-san';
 
+/**
+ * SEO-rich category hubs (top-level, not nested under /bat-dong-san/).
+ * Weak short slugs redirect here via LEGACY_LISTING_REDIRECTS.
+ */
+export const SEO_CATEGORY_PATHS = {
+  canHo: '/can-ho-cao-cap-da-nang',
+  datNen: '/dat-nen-nam-hoa-xuan-da-nang',
+  namDaNang: '/bat-dong-san-nam-da-nang',
+  shophouse: '/shophouse-khoi-de-da-nang',
+  bdsDauTu: '/bat-dong-san-dau-tu-da-nang',
+} as const;
+
 /** Path facets under /bat-dong-san/:facet */
 export type ListingFacetKind = 'type' | 'zone' | 'project' | 'keyword';
 
@@ -44,10 +56,23 @@ export interface ListingFacetDef {
 }
 
 export const LISTING_FACETS: ListingFacetDef[] = [
-  { slug: 'can-ho', kind: 'type', label: 'Căn hộ', typeIncludes: 'căn' },
-  { slug: 'dat-nen', kind: 'type', label: 'Đất nền', typeIncludes: 'đất' },
+  { slug: 'can-ho', kind: 'type', label: 'Căn hộ cao cấp Đà Nẵng', typeIncludes: 'căn', seoPath: SEO_CATEGORY_PATHS.canHo },
+  { slug: 'dat-nen', kind: 'type', label: 'Đất nền Nam Hòa Xuân Đà Nẵng', typeIncludes: 'đất', seoPath: SEO_CATEGORY_PATHS.datNen },
   { slug: 'nha-pho', kind: 'type', label: 'Nhà phố', typeIncludes: 'nhà' },
-  { slug: 'nam-da-nang', kind: 'zone', label: 'Nam Đà Nẵng', marketZone: 'nam-da-nang' },
+  {
+    slug: 'shophouse',
+    kind: 'type',
+    label: 'Shophouse khối đế Đà Nẵng',
+    typeIncludes: 'shophouse',
+    seoPath: SEO_CATEGORY_PATHS.shophouse,
+  },
+  {
+    slug: 'nam-da-nang',
+    kind: 'zone',
+    label: 'Bất động sản Nam Đà Nẵng',
+    marketZone: 'nam-da-nang',
+    seoPath: SEO_CATEGORY_PATHS.namDaNang,
+  },
   { slug: 'fpt-city', kind: 'zone', label: 'FPT City', marketZone: 'fpt-city' },
   { slug: 'mai-dang-chon', kind: 'project', label: 'Mai Đăng Chơn', projectMatch: 'Mai Đăng Chơn' },
   { slug: 'sun-symphony', kind: 'project', label: 'Sun Symphony', projectMatch: 'Sun Symphony' },
@@ -72,11 +97,18 @@ export const LISTING_FACETS: ListingFacetDef[] = [
     seoPath: '/shophouse-sun-group-da-nang',
   },
   {
+    slug: 'bds-dau-tu',
+    kind: 'keyword',
+    label: 'Bất động sản đầu tư Đà Nẵng',
+    keywordAny: ['ngộp', 'cắt lỗ', 'ngoại giao', 'đầu tư', 'giá sập', 'sang nhượng'],
+    seoPath: SEO_CATEGORY_PATHS.bdsDauTu,
+  },
+  {
     slug: 'bds-gia-dau-tu',
     kind: 'keyword',
     label: 'BĐS Giá Đầu Tư',
     keywordAny: ['ngộp', 'cắt lỗ', 'ngoại giao', 'đầu tư', 'giá sập', 'sang nhượng'],
-    seoPath: '/bds-gia-dau-tu',
+    seoPath: SEO_CATEGORY_PATHS.bdsDauTu,
   },
   {
     slug: 'bang-gia-sun-group',
@@ -91,17 +123,25 @@ export const LISTING_FACET_BY_SLUG = Object.fromEntries(
   LISTING_FACETS.map(f => [f.slug, f]),
 ) as Record<string, ListingFacetDef>;
 
-/** Top-level SEO listing hubs → facet slug */
-export const SEO_LISTING_HUB_PATHS: Record<string, string> = Object.fromEntries(
-  LISTING_FACETS.filter(f => f.seoPath).map(f => [f.seoPath!, f.slug]),
-);
+/** Top-level SEO listing hubs → facet slug (first facet wins on shared seoPath) */
+export const SEO_LISTING_HUB_PATHS: Record<string, string> = {};
+for (const facet of LISTING_FACETS) {
+  if (!facet.seoPath || SEO_LISTING_HUB_PATHS[facet.seoPath]) continue;
+  SEO_LISTING_HUB_PATHS[facet.seoPath] = facet.slug;
+}
 
-/** Old top-level hubs → canonical nested paths */
+/** Old weak / nested hubs → canonical SEO-rich paths */
 export const LEGACY_LISTING_REDIRECTS: Record<string, string> = {
-  '/can-ho': `${LISTING_CATALOG_ROOT}/can-ho`,
-  '/dat-nen': `${LISTING_CATALOG_ROOT}/dat-nen`,
+  '/can-ho': SEO_CATEGORY_PATHS.canHo,
+  '/dat-nen': SEO_CATEGORY_PATHS.datNen,
   '/nha-pho': `${LISTING_CATALOG_ROOT}/nha-pho`,
-  '/nam-da-nang': `${LISTING_CATALOG_ROOT}/nam-da-nang`,
+  '/nam-da-nang': SEO_CATEGORY_PATHS.namDaNang,
+  '/shophouse': SEO_CATEGORY_PATHS.shophouse,
+  '/bds-dau-tu': SEO_CATEGORY_PATHS.bdsDauTu,
+  '/bds-gia-dau-tu': SEO_CATEGORY_PATHS.bdsDauTu,
+  '/bat-dong-san/can-ho': SEO_CATEGORY_PATHS.canHo,
+  '/bat-dong-san/dat-nen': SEO_CATEGORY_PATHS.datNen,
+  '/bat-dong-san/nam-da-nang': SEO_CATEGORY_PATHS.namDaNang,
   '/listings': LISTING_CATALOG_ROOT,
 };
 
@@ -187,7 +227,9 @@ export function serializeListingSearchParams(state: ListingFilterState): URLSear
 }
 
 export function buildListingPath(facet?: string | null, state?: Partial<ListingFilterState>): string {
-  const base = facet ? `${LISTING_CATALOG_ROOT}/${facet}` : LISTING_CATALOG_ROOT;
+  const base = facet
+    ? getListingCategoryPath(getListingFacet(facet), facet)
+    : LISTING_CATALOG_ROOT;
   const merged = { ...EMPTY_LISTING_FILTERS, ...state };
   const qs = serializeListingSearchParams(merged).toString();
   return qs ? `${base}?${qs}` : base;

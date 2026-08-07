@@ -1,9 +1,14 @@
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import SeoHead from '../components/seo/SeoHead';
 import Breadcrumbs from '../components/seo/Breadcrumbs';
 import LeadCaptureForm from '../components/LeadCaptureForm';
 import FaqSection from '../components/FaqSection';
-import { LEGACY_PROJECT_REDIRECTS, PROJECTS } from '../seo/portfolioHub';
+import {
+  LEGACY_PROJECT_REDIRECTS,
+  PROJECTS,
+  isSunGroupPortfolioSlug,
+} from '../seo/portfolioHub';
 import { getPageMetaByPath } from '../seo/pageMeta';
 import {
   buildArticleSchema,
@@ -13,8 +18,17 @@ import {
 } from '../seo/schemas';
 import { PRIMARY_CTA, getSiteOrigin } from '../seo/siteConfig';
 import { SEO_LANDING_SLUGS } from '../seo/routes';
+import { getPropertyProjectLabel } from '../seo/propertyCatalog';
+import { fetchPublicProperties } from '../services/propertyService';
+import { getPublicPropertySlug } from '../utils/propertyShare';
+import { getPropertyThumbnailUrl } from '../utils/propertyImage';
+import type { Property } from '../types';
 
 const HUB_LABEL = 'Danh mục BĐS';
+
+function formatPrice(price: number) {
+  return `${price} tỷ`;
+}
 
 export default function ProjectPage() {
   const { projectSlug } = useParams<{ projectSlug: string }>();
@@ -29,6 +43,35 @@ export default function ProjectPage() {
   const meta = getPageMetaByPath(path);
   const origin = getSiteOrigin();
   const isSegment = project?.pillar === 'nam-da-nang' || project?.pillar === 'noi-bat';
+  const isSunGroupHub = isSunGroupPortfolioSlug(projectSlug);
+  const shouldLoadProperties =
+    Boolean(projectSlug) && (isSunGroupHub || project?.pillar === 'sun-group');
+
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loadingProperties, setLoadingProperties] = useState(shouldLoadProperties);
+
+  useEffect(() => {
+    if (!shouldLoadProperties || !projectSlug) {
+      setProperties([]);
+      setLoadingProperties(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingProperties(true);
+    fetchPublicProperties({ portfolioSlug: projectSlug })
+      .then(list => {
+        if (!cancelled) setProperties(list);
+      })
+      .catch(() => {
+        if (!cancelled) setProperties([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingProperties(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectSlug, shouldLoadProperties]);
 
   if (!project) {
     return (
@@ -48,6 +91,7 @@ export default function ProjectPage() {
   ];
 
   const landingMap: Record<string, string> = {
+    'du-an-sun-group-da-nang': 'can-ho-dau-tu-da-nang',
     'sun-cosmo': 'can-ho-dau-tu-da-nang',
     'sun-symphony': 'can-ho-dau-tu-da-nang',
     'sun-ponte': 'can-ho-dau-tu-da-nang',
@@ -103,6 +147,62 @@ export default function ProjectPage() {
             </li>
           ))}
         </ul>
+
+        {shouldLoadProperties && (
+          <section className="mt-12">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-invest-blue">
+                  Quỹ hàng đang mở
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-950">
+                  {isSunGroupHub ? 'BĐS Sun Group Đà Nẵng' : `BĐS ${project.name}`}
+                </h2>
+              </div>
+              <Link to={ctaHref} className="text-sm font-semibold text-invest-blue hover:underline">
+                Xem toàn bộ danh mục →
+              </Link>
+            </div>
+
+            {loadingProperties ? (
+              <p className="text-sm text-slate-500">Đang tải danh sách BĐS…</p>
+            ) : properties.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Chưa có sản phẩm phù hợp trong quỹ hàng công khai. Liên hệ để nhận danh sách riêng.
+              </p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {properties.map(property => (
+                  <Link
+                    key={property.id}
+                    to={`/${encodeURIComponent(getPublicPropertySlug(property))}`}
+                    className="overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:shadow-lg"
+                  >
+                    <img
+                      src={getPropertyThumbnailUrl(property)}
+                      alt={`${property.title} — ${property.location} — ${property.type}`}
+                      width={800}
+                      height={600}
+                      loading="lazy"
+                      decoding="async"
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                    <div className="p-4">
+                      {getPropertyProjectLabel(property) && (
+                        <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">
+                          {getPropertyProjectLabel(property)}
+                        </p>
+                      )}
+                      <h3 className="line-clamp-2 font-bold text-slate-950">{property.title}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{property.location}</p>
+                      <p className="mt-2 font-bold text-invest-gold">{formatPrice(property.price)}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="mt-12 grid gap-10 lg:grid-cols-2">
           <FaqSection

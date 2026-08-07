@@ -83,12 +83,10 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
             <section className="grid gap-5 lg:grid-cols-3">
               {PORTFOLIO_PILLARS.map(pillar => {
                 const Icon = PILLAR_ICONS[pillar.id];
-                const detailHref =
-                  pillar.id === 'sun-group' ? '/du-an#sun-group' : pillar.href;
                 return (
                   <Link
                     key={pillar.id}
-                    to={detailHref}
+                    to={pillar.href}
                     className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-invest-blue/30 hover:shadow-md"
                   >
                     <div className="flex items-start gap-3">
@@ -130,7 +128,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
               <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="text-sm font-bold uppercase tracking-wide text-invest-blue">
-                    Trụ cột 1
+                    Thương hiệu chủ lực
                   </p>
                   <h2 className="mt-1 text-2xl font-bold text-slate-950">Sun Group Đà Nẵng</h2>
                   <p className="mt-2 max-w-2xl text-sm text-slate-600">
@@ -139,7 +137,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
                   </p>
                 </div>
                 <Link
-                  to="/bat-dong-san/can-ho"
+                  to="/can-ho-cao-cap-da-nang"
                   className="text-sm font-semibold text-invest-blue hover:underline"
                 >
                   Xem căn hộ Sun Group →
@@ -182,7 +180,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
                   className="group rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm transition hover:border-invest-blue/30 hover:shadow-md"
                 >
                   <p className="text-xs font-bold uppercase tracking-wide text-invest-blue">
-                    Trụ cột 2
+                    Mũi nhọn khu vực
                   </p>
                   <h2 className="mt-2 text-xl font-bold text-slate-950 group-hover:text-invest-blue">
                     {namSegment.name}
@@ -210,7 +208,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
                   className="group rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm transition hover:border-invest-blue/30 hover:shadow-md"
                 >
                   <p className="text-xs font-bold uppercase tracking-wide text-invest-blue">
-                    Trụ cột 3
+                    Cơ hội đầu tư
                   </p>
                   <h2 className="mt-2 text-xl font-bold text-slate-950 group-hover:text-invest-blue">
                     {noiBatSegment.name}
