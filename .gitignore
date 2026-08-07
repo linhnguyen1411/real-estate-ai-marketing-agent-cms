@@ -86,13 +86,3 @@ data/browser-debug/
 /runtime/logs/
 *.bak
 desktop.ini
-docs/
-!docs/engineering/
-!docs/engineering/**
-!docs/adr/
-!docs/adr/**
-!docs/evolution/
-!docs/evolution/**
-!docs/release/
-!docs/release/**
-/runtime/
