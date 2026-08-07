@@ -1,5 +1,6 @@
 import { buildTitle } from '../utils/buildTitle';
 import { buildDescription } from '../utils/buildDescription';
+import { resolvePropertyItemTitle } from '../utils/buildPropertyItemTitle';
 import type { SeoRouteDefinition } from '../registry/seoRouteRegistry';
 import { PageType } from '../types/PageType';
 
@@ -93,15 +94,20 @@ function pickDescription(input: ResolveMetaInput): { description: string; fromSt
 
 /** Preserves historical `getServerPropertySeoTitle` / ListingsPage formula (pre-limit). */
 function propertyFallbackTitle(entity: SeoEntityLike): string {
-  const title = String(entity.title || '').trim();
+  const itemTitle = resolvePropertyItemTitle({
+    title: entity.title,
+    type: entity.type,
+    location: entity.location,
+    selling_points: entity.selling_points,
+  });
   const type = String(entity.type || '').toLowerCase();
   if (type.includes('căn') || type.includes('can')) {
-    return `${title} | Căn Hộ Đà Nẵng Giá 2026`;
+    return `${itemTitle} | Căn Hộ Đà Nẵng Giá 2026`;
   }
   if (type.includes('shophouse')) {
-    return `${title} | Shophouse Đà Nẵng Kinh Doanh`;
+    return `${itemTitle} | Shophouse Đà Nẵng Kinh Doanh`;
   }
-  return `${title} | BĐS Sun Group Đà Nẵng`;
+  return `${itemTitle} | BĐS Sun Group Đà Nẵng`;
 }
 
 /** Preserves historical SSR `getPropertyShareMeta` description join. */

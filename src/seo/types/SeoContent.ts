@@ -5,7 +5,7 @@ import type { SchemaType } from './SeoMetadata';
  * Typed SEO page content descriptor — SSOT for static page SEO knowledge.
  */
 export interface SeoContent {
-  /** Route path, e.g. `/` or `/bat-dong-san/can-ho` */
+  /** Route path, e.g. `/` or `/can-ho-cao-cap-da-nang` */
   slug: string;
   pageType: PageType;
   entityId?: string;

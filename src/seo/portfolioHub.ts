@@ -20,7 +20,7 @@ export const PORTFOLIO_PILLARS: PortfolioPillar[] = [
     subtitle: 'Thương hiệu chủ lực',
     description:
       'Căn hộ cao cấp ven sông Hàn, shophouse, nhà phố thương mại và đất nền trong các dự án Sun Group tại Đà Nẵng.',
-    href: '/du-an#sun-group',
+    href: '/du-an/du-an-sun-group-da-nang',
     productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Nhà phố thương mại', 'Đất nền dự án'],
   },
   {
@@ -58,6 +58,18 @@ export interface ProjectData {
 /** Dự án Sun Group (trang chi tiết) — FAQ từ SEO data layer */
 
 export const PROJECTS: Record<string, ProjectData> = {
+  'du-an-sun-group-da-nang': {
+    slug: 'du-an-sun-group-da-nang',
+    pillar: 'sun-group',
+    name: 'Dự án Sun Group Đà Nẵng',
+    location: 'Đà Nẵng',
+    summary:
+      'Tổng quan danh mục Sun Group tại Đà Nẵng: căn hộ cao cấp ven sông Hàn, shophouse khối đế và sản phẩm đầu tư trong hệ sinh thái Symphony, Cosmo, Ponte.',
+    highlights: ['Căn hộ ven sông Hàn', 'Shophouse khối đế', 'Symphony · Cosmo · Ponte', 'Quỹ căn ngoại giao'],
+    productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Nhà phố thương mại', 'Đất nền dự án'],
+    faqs: getFaqQaPairs('faq-sun-symphony'),
+    ctaHref: '/can-ho-cao-cap-da-nang',
+  },
   'sun-symphony': {
     slug: 'sun-symphony',
     pillar: 'sun-group',
@@ -68,7 +80,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Ven sông Hàn', 'Symphony · S Light · Spana', 'Căn ngoại giao', 'Dòng tiền & tích sản'],
     productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Đất nền dự án'],
     faqs: getFaqQaPairs('faq-sun-symphony'),
-    ctaHref: '/bat-dong-san/can-ho',
+    ctaHref: '/can-ho-cao-cap-da-nang',
   },
   'sun-cosmo': {
     slug: 'sun-cosmo',
@@ -79,7 +91,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Sun Group', 'Trung tâm thành phố', 'Tiện ích cao cấp', 'Thanh khoản TT2'],
     productTypes: ['Căn hộ cao cấp', 'Shophouse'],
     faqs: getFaqQaPairs('faq-sun-cosmo'),
-    ctaHref: '/bat-dong-san/can-ho',
+    ctaHref: '/can-ho-cao-cap-da-nang',
   },
   'sun-ponte': {
     slug: 'sun-ponte',
@@ -90,7 +102,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Sông Hàn', 'Shophouse', 'Sun Group', 'Thương mại & ở'],
     productTypes: ['Căn hộ', 'Shophouse', 'Nhà phố thương mại'],
     faqs: getFaqQaPairs('faq-sun-ponte'),
-    ctaHref: '/bat-dong-san/can-ho',
+    ctaHref: '/can-ho-cao-cap-da-nang',
   },
   'nam-da-nang': {
     slug: 'nam-da-nang',
@@ -102,7 +114,7 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Đất nền & nhà phố', 'Kho xưởng', 'Khách sạn', 'Mai Đăng Chơn'],
     productTypes: ['Đất nền', 'Nhà ở', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
     faqs: getFaqQaPairs('faq-nam-da-nang'),
-    ctaHref: '/nam-da-nang',
+    ctaHref: '/bat-dong-san-nam-da-nang',
   },
   'bds-noi-bat': {
     slug: 'bds-noi-bat',
@@ -114,15 +126,15 @@ export const PROJECTS: Record<string, ProjectData> = {
     highlights: ['Đa khu vực', 'Deal đáng thẩm định', 'Giá & vị trí hấp dẫn', 'Cập nhật liên tục'],
     productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
     faqs: getFaqQaPairs('faq-bds-noi-bat'),
-    ctaHref: '/bat-dong-san',
+    ctaHref: '/bat-dong-san-dau-tu-da-nang',
   },
 };
 
 /** Dự án Sun Group (trang chi tiết) */
 export const SUN_GROUP_PROJECT_SLUGS = ['sun-symphony', 'sun-cosmo', 'sun-ponte'] as const;
 
-/** Trang phân khúc (không phải dự án developer) */
-export const PORTFOLIO_SEGMENT_SLUGS = ['nam-da-nang', 'bds-noi-bat'] as const;
+/** Hub Sun Group + trang phân khúc (không phải dự án developer đơn lẻ) */
+export const PORTFOLIO_SEGMENT_SLUGS = ['du-an-sun-group-da-nang', 'nam-da-nang', 'bds-noi-bat'] as const;
 
 export const PROJECT_SLUGS = [...SUN_GROUP_PROJECT_SLUGS, ...PORTFOLIO_SEGMENT_SLUGS] as const;
 

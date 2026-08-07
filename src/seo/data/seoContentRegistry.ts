@@ -116,17 +116,17 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         keywordClusterId: 'kc-catalog-bds',
         breadcrumbId: 'bc-catalog',
         moneyPages: MONEY,
-        relatedPages: ['/bat-dong-san/can-ho', '/bat-dong-san/dat-nen', '/du-an'],
+        relatedPages: ['/can-ho-cao-cap-da-nang', '/dat-nen-nam-hoa-xuan-da-nang', '/du-an'],
       },
     );
   })(),
   (() => {
     const p = patterned(PageType.CATALOG, 'Căn hộ đầu tư Đà Nẵng', '');
     return content(
-      '/bat-dong-san/can-ho',
+      '/can-ho-cao-cap-da-nang',
       PageType.CATALOG,
       p.title,
-      'Căn hộ đầu tư Đà Nẵng: giá vào, thanh khoản thứ cấp, căn ven sông Hàn và Sun Group — lọc theo yield và pháp lý.',
+      'Căn hộ cao cấp Đà Nẵng: giá vào, thanh khoản thứ cấp, căn ven sông Hàn và Sun Group — lọc theo yield và pháp lý.',
       {
         priority: 0.8,
         entityId: 'entity-can-ho',
@@ -140,16 +140,32 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
   (() => {
     const p = patterned(PageType.CATALOG, 'Đất nền đầu tư Nam Đà Nẵng', '');
     return content(
-      '/bat-dong-san/dat-nen',
+      '/dat-nen-nam-hoa-xuan-da-nang',
       PageType.CATALOG,
       p.title,
-      'Đất nền đầu tư Nam Đà Nẵng: Hòa Xuân, Mai Đăng Chơn — sổ hồng, bản đồ giá và checklist pháp lý trước khi xuống tiền.',
+      'Đất nền Nam Hòa Xuân Đà Nẵng: sổ hồng, bản đồ giá và checklist pháp lý trước khi xuống tiền.',
       {
         priority: 0.8,
         entityId: 'entity-dat-nen',
         keywordClusterId: 'kc-dat-nen-nam',
         breadcrumbId: 'bc-catalog-dat-nen',
         relatedPages: ['/dat-nen-nam-da-nang', '/du-an/nam-da-nang'],
+      },
+    );
+  })(),
+  (() => {
+    const p = patterned(PageType.CATALOG, 'Shophouse khối đế Đà Nẵng', '');
+    return content(
+      '/shophouse-khoi-de-da-nang',
+      PageType.CATALOG,
+      p.title,
+      'Shophouse khối đế Đà Nẵng: quỹ hàng kinh doanh, dòng tiền thuê và vị trí thương mại để thẩm định đầu tư.',
+      {
+        priority: 0.8,
+        entityId: 'entity-nha-pho',
+        keywordClusterId: 'kc-nha-pho',
+        breadcrumbId: 'bc-catalog-shophouse',
+        relatedPages: ['/shophouse-sun-da-nang', '/shophouse-khoi-de-sun-symphony'],
       },
     );
   })(),
@@ -171,7 +187,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
   (() => {
     const p = patterned(PageType.LOCATION, 'Phân tích BĐS Nam Đà Nẵng', '', { project: 'Nam Đà Nẵng' });
     return content(
-      '/bat-dong-san/nam-da-nang',
+      '/bat-dong-san-nam-da-nang',
       PageType.LOCATION,
       p.title,
       buildIntentDescription({
@@ -188,6 +204,22 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         breadcrumbId: 'bc-nam-da-nang',
         faqId: 'faq-nam-da-nang',
         relatedPages: ['/du-an/nam-da-nang', '/dau-tu-nam-da-nang'],
+      },
+    );
+  })(),
+  (() => {
+    const p = patterned(PageType.CATALOG, 'Bất động sản đầu tư Đà Nẵng', '');
+    return content(
+      '/bat-dong-san-dau-tu-da-nang',
+      PageType.CATALOG,
+      p.title,
+      'Bất động sản đầu tư Đà Nẵng: deal giá tốt, ngộp cắt lỗ và quỹ hàng đáng thẩm định ROI / pháp lý.',
+      {
+        priority: 0.85,
+        entityId: 'entity-bds-noi-bat',
+        keywordClusterId: 'kc-bds-gia-dau-tu',
+        breadcrumbId: 'bc-bds-dau-tu',
+        relatedPages: ['/du-an/bds-noi-bat', '/bat-dong-san', '/can-ho-cao-cap-da-nang'],
       },
     );
   })(),
@@ -658,7 +690,7 @@ const SHOPHOUSE_SUN_PAGES: SeoContent[] = [
       breadcrumbId: 'bc-can-ho-sun-group',
       faqId: 'faq-can-ho-sun-group',
       moneyPages: MONEY,
-      relatedPages: [SHOPHOUSE_HUB, '/bang-gia-can-ho-sun-da-nang', '/bat-dong-san/can-ho', '/so-sanh-shophouse-va-can-ho-sun'],
+      relatedPages: [SHOPHOUSE_HUB, '/bang-gia-can-ho-sun-da-nang', '/can-ho-cao-cap-da-nang', '/so-sanh-shophouse-va-can-ho-sun'],
       group: 'landing',
       schemaType: [...DEFAULT_PAGE_SCHEMAS, 'FAQPage'],
     },
@@ -704,6 +736,16 @@ const PROJECT_META: Record<
     clusterId: string;
   }
 > = {
+  'du-an-sun-group-da-nang': {
+    primaryKeyword: 'Dự án Sun Group Đà Nẵng',
+    project: 'Sun Group',
+    description:
+      'Dự án Sun Group Đà Nẵng: căn hộ cao cấp ven sông Hàn, shophouse khối đế Symphony/Cosmo/Ponte — quỹ hàng và khung thẩm định đầu tư.',
+    entityId: 'entity-sun-group',
+    faqId: 'faq-sun-symphony',
+    breadcrumbId: 'bc-project-sun-group',
+    clusterId: 'kc-home-core',
+  },
   'sun-cosmo': {
     primaryKeyword: 'ROI căn hộ Sun Cosmo Đà Nẵng',
     project: 'Sun Cosmo',
@@ -777,9 +819,11 @@ for (const slug of PROJECT_SLUGS) {
       faqId: meta?.faqId,
       breadcrumbId: meta?.breadcrumbId,
       keywordClusterId: meta?.clusterId,
-      moneyPages: slug === 'sun-symphony' || slug === 'nam-da-nang' ? MONEY : undefined,
+      moneyPages: slug === 'sun-symphony' || slug === 'nam-da-nang' || slug === 'du-an-sun-group-da-nang' ? MONEY : undefined,
       relatedPages:
-        slug === 'sun-symphony' || slug === 'sun-ponte' || slug === 'sun-cosmo'
+        slug === 'du-an-sun-group-da-nang'
+          ? [SHOPHOUSE_HUB, '/du-an', '/can-ho-cao-cap-da-nang', '/can-ho-sun-group-da-nang']
+          : slug === 'sun-symphony' || slug === 'sun-ponte' || slug === 'sun-cosmo'
           ? [SHOPHOUSE_HUB, '/du-an', '/bat-dong-san', '/can-ho-sun-group-da-nang']
           : ['/du-an', '/bat-dong-san', SHOPHOUSE_HUB],
     }),

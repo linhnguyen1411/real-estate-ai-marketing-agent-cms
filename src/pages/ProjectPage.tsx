@@ -48,6 +48,7 @@ export default function ProjectPage() {
   ];
 
   const landingMap: Record<string, string> = {
+    'du-an-sun-group-da-nang': 'can-ho-dau-tu-da-nang',
     'sun-cosmo': 'can-ho-dau-tu-da-nang',
     'sun-symphony': 'can-ho-dau-tu-da-nang',
     'sun-ponte': 'can-ho-dau-tu-da-nang',

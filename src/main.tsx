@@ -16,7 +16,7 @@ import type { Property } from './types.ts';
 import LeadGenProvider from './components/leadGen/LeadGenProvider.tsx';
 import { isPropertySlugCandidate } from './seo/routes.ts';
 import { captureShortLinkFromUrl } from './utils/shortLinkAttribution.ts';
-import { HashListingsRedirect, LEGACY_LISTING_REDIRECTS, LISTING_CATALOG_ROOT } from './features/listings';
+import { HashListingsRedirect, LEGACY_LISTING_REDIRECTS, LISTING_CATALOG_ROOT, SEO_CATEGORY_PATHS } from './features/listings';
 import './index.css';
 
 const AboutPage = React.lazy(() => import('./pages/AboutPage.tsx'));
@@ -252,6 +252,23 @@ createRoot(document.getElementById('root')!).render(
                 </SuspensePage>
               }
             />
+            {Object.entries({
+              [SEO_CATEGORY_PATHS.canHo]: 'can-ho',
+              [SEO_CATEGORY_PATHS.datNen]: 'dat-nen',
+              [SEO_CATEGORY_PATHS.namDaNang]: 'nam-da-nang',
+              [SEO_CATEGORY_PATHS.shophouse]: 'shophouse',
+              [SEO_CATEGORY_PATHS.bdsDauTu]: 'bds-dau-tu',
+            }).map(([hubPath, facetSlug]) => (
+              <Route
+                key={hubPath}
+                path={hubPath}
+                element={
+                  <SuspensePage>
+                    <CategoryListingsPage forcedFacetSlug={facetSlug} />
+                  </SuspensePage>
+                }
+              />
+            ))}
             <Route
               path="/du-an"
               element={

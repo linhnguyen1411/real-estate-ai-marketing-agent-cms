@@ -128,9 +128,9 @@ export function getRelatedProjectLinksForSlug(slug: string): LinkItem[] {
   if (slug.includes('fpt-city')) return [{ label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' }];
   if (slug.includes('mai-dang-chon')) return [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' }];
   if (slug.includes('sun-symphony') || slug.includes('sun-cosmo')) {
-    return [{ label: 'Sun Group Đà Nẵng', href: '/du-an#sun-group' }];
+    return [{ label: 'Sun Group Đà Nẵng', href: '/du-an/du-an-sun-group-da-nang' }];
   }
-  if (slug.includes('can-ho')) return [{ label: 'Danh mục căn hộ', href: '/bat-dong-san/can-ho' }];
+  if (slug.includes('can-ho')) return [{ label: 'Danh mục căn hộ', href: '/can-ho-cao-cap-da-nang' }];
   return [];
 }
 

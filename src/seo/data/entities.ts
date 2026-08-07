@@ -37,7 +37,7 @@ export const ENTITIES: Entity[] = [
       'entity-shophouse-sun',
     ],
     relatedEntityIds: ['entity-da-nang', 'entity-shophouse-sun', 'entity-can-ho'],
-    primaryPageSlug: '/shophouse-sun-da-nang',
+    primaryPageSlug: '/du-an/du-an-sun-group-da-nang',
   },
   {
     id: 'entity-shophouse-sun',
@@ -197,7 +197,7 @@ export const ENTITIES: Entity[] = [
     name: 'Căn hộ',
     entityType: 'product',
     relatedEntityIds: ['entity-sun-group', 'entity-sun-symphony'],
-    primaryPageSlug: '/bat-dong-san/can-ho',
+    primaryPageSlug: '/can-ho-cao-cap-da-nang',
   },
   {
     id: 'entity-dat-nen',
@@ -205,7 +205,7 @@ export const ENTITIES: Entity[] = [
     name: 'Đất nền',
     entityType: 'product',
     relatedEntityIds: ['entity-nam-da-nang'],
-    primaryPageSlug: '/bat-dong-san/dat-nen',
+    primaryPageSlug: '/dat-nen-nam-hoa-xuan-da-nang',
   },
   {
     id: 'entity-nha-pho',

@@ -20,7 +20,7 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Bất động sản', path: '/bat-dong-san' },
-      { name: 'Căn hộ', path: '/bat-dong-san/can-ho' },
+      { name: 'Căn hộ cao cấp Đà Nẵng', path: '/can-ho-cao-cap-da-nang' },
     ],
   },
   {
@@ -28,7 +28,15 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Bất động sản', path: '/bat-dong-san' },
-      { name: 'Đất nền', path: '/bat-dong-san/dat-nen' },
+      { name: 'Đất nền Nam Hòa Xuân', path: '/dat-nen-nam-hoa-xuan-da-nang' },
+    ],
+  },
+  {
+    id: 'bc-catalog-shophouse',
+    items: [
+      { name: 'Trang chủ', path: '/' },
+      { name: 'Bất động sản', path: '/bat-dong-san' },
+      { name: 'Shophouse khối đế Đà Nẵng', path: '/shophouse-khoi-de-da-nang' },
     ],
   },
   {
@@ -44,7 +52,15 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Bất động sản', path: '/bat-dong-san' },
-      { name: 'Nam Đà Nẵng', path: '/bat-dong-san/nam-da-nang' },
+      { name: 'Nam Đà Nẵng', path: '/bat-dong-san-nam-da-nang' },
+    ],
+  },
+  {
+    id: 'bc-bds-dau-tu',
+    items: [
+      { name: 'Trang chủ', path: '/' },
+      { name: 'Bất động sản', path: '/bat-dong-san' },
+      { name: 'BĐS đầu tư Đà Nẵng', path: '/bat-dong-san-dau-tu-da-nang' },
     ],
   },
   {
@@ -52,6 +68,14 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Danh mục', path: '/du-an' },
+    ],
+  },
+  {
+    id: 'bc-project-sun-group',
+    items: [
+      { name: 'Trang chủ', path: '/' },
+      { name: 'Danh mục', path: '/du-an' },
+      { name: 'Sun Group Đà Nẵng', path: '/du-an/du-an-sun-group-da-nang' },
     ],
   },
   {

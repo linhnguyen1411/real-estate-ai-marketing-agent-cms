@@ -201,11 +201,11 @@ export function createSeoPublicRouter() {
   });
 
   router.get('/can-ho', (_req: Request, res: Response) => {
-    res.redirect(301, '/bat-dong-san/can-ho');
+    res.redirect(301, '/can-ho-cao-cap-da-nang');
   });
 
   router.get('/dat-nen', (_req: Request, res: Response) => {
-    res.redirect(301, '/bat-dong-san/dat-nen');
+    res.redirect(301, '/dat-nen-nam-hoa-xuan-da-nang');
   });
 
   router.get('/nha-pho', (_req: Request, res: Response) => {
@@ -213,7 +213,31 @@ export function createSeoPublicRouter() {
   });
 
   router.get('/nam-da-nang', (_req: Request, res: Response) => {
-    res.redirect(301, '/bat-dong-san/nam-da-nang');
+    res.redirect(301, '/bat-dong-san-nam-da-nang');
+  });
+
+  router.get('/shophouse', (_req: Request, res: Response) => {
+    res.redirect(301, '/shophouse-khoi-de-da-nang');
+  });
+
+  router.get('/bds-dau-tu', (_req: Request, res: Response) => {
+    res.redirect(301, '/bat-dong-san-dau-tu-da-nang');
+  });
+
+  router.get('/bds-gia-dau-tu', (_req: Request, res: Response) => {
+    res.redirect(301, '/bat-dong-san-dau-tu-da-nang');
+  });
+
+  router.get('/bat-dong-san/can-ho', (_req: Request, res: Response) => {
+    res.redirect(301, '/can-ho-cao-cap-da-nang');
+  });
+
+  router.get('/bat-dong-san/dat-nen', (_req: Request, res: Response) => {
+    res.redirect(301, '/dat-nen-nam-hoa-xuan-da-nang');
+  });
+
+  router.get('/bat-dong-san/nam-da-nang', (_req: Request, res: Response) => {
+    res.redirect(301, '/bat-dong-san-nam-da-nang');
   });
 
   router.get('/robots.txt', (req: Request, res: Response) => {

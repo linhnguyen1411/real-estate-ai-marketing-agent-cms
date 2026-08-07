@@ -15,6 +15,21 @@ import {
 } from '../auth/authAccess';
 import { applyPropertyHashtagSeo, syncSiteSeoKeywords } from '../public-site/seoKeywords';
 import { triggerAutomationEvent } from '../content/triggerAutomationEvent';
+import { resolvePropertyItemTitle } from '../../../src/seo/utils/buildPropertyItemTitle';
+
+function normalizeIncomingPropertyTitle(propData: Record<string, unknown>): string {
+  return resolvePropertyItemTitle({
+    title: String(propData.title || ''),
+    type: String(propData.type || ''),
+    project_name: propData.project_name != null ? String(propData.project_name) : undefined,
+    location: propData.location != null ? String(propData.location) : undefined,
+    selling_points: Array.isArray(propData.selling_points)
+      ? propData.selling_points.map(String)
+      : propData.selling_points
+        ? [String(propData.selling_points)]
+        : undefined,
+  });
+}
 
 export function createPropertiesRouter() {
   const router = Router();
@@ -82,7 +97,7 @@ router.post('/api/properties', async (req: Request, res: Response) => {
     id: `p-${Date.now()}`,
     created_at: now,
     created_by_user_id: authUser.id,
-    title: propData.title || 'BĐS Chưa đặt tên',
+    title: normalizeIncomingPropertyTitle(propData) || 'BĐS Chưa đặt tên',
     transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
     type: propData.type || 'Đất nền',
     location: propData.location || '',
@@ -138,14 +153,22 @@ router.put('/api/properties/:id', async (req: Request, res: Response) => {
     return;
   }
 
+  const mergedBody = { ...req.body };
+  if (mergedBody.title != null || mergedBody.type != null || mergedBody.project_name != null) {
+    mergedBody.title = normalizeIncomingPropertyTitle({
+      ...db.properties[index],
+      ...mergedBody,
+    });
+  }
+
   db.properties[index] = applyPropertyHashtagSeo({
     ...db.properties[index],
-    ...req.body,
+    ...mergedBody,
     created_by_user_id:
       db.properties[index].created_by_user_id
       || db.properties[index].owner_user_id,
-    public_view_count: req.body.public_view_count ?? db.properties[index].public_view_count ?? 0,
-    last_public_view_at: req.body.last_public_view_at ?? db.properties[index].last_public_view_at
+    public_view_count: mergedBody.public_view_count ?? db.properties[index].public_view_count ?? 0,
+    last_public_view_at: mergedBody.last_public_view_at ?? db.properties[index].last_public_view_at
   });
 
   syncSiteSeoKeywords(db);

@@ -119,7 +119,10 @@ export const PRIMARY_CTA = 'Nhận danh sách cơ hội đầu tư Đà Nẵng';
 export const RESERVED_SLUGS = new Set([
   'admin', 'api', 'listings', 'bds-da-nang',
   'bat-dong-san', 'can-ho', 'dat-nen', 'nha-pho', 'du-an', 'nam-da-nang',
-  'can-ho-sun-group-da-nang', 'shophouse-sun-group-da-nang', 'bds-gia-dau-tu',
+  'can-ho-cao-cap-da-nang', 'dat-nen-nam-hoa-xuan-da-nang',
+  'bat-dong-san-nam-da-nang', 'bat-dong-san-dau-tu-da-nang',
+  'shophouse', 'shophouse-khoi-de-da-nang', 'bds-dau-tu', 'bds-gia-dau-tu',
+  'can-ho-sun-group-da-nang', 'shophouse-sun-group-da-nang',
   'bang-gia-sun-group', 'tin-tuc-dau-tu',
   'kien-thuc-dau-tu', 'tin-thi-truong', 'phan-tich', 'review-khu-vuc',
   'gioi-thieu', 'lien-he', 'chinh-sach-bao-mat', 'dieu-khoan-su-dung',
@@ -133,6 +136,7 @@ export const RESERVED_SLUGS = new Set([
   'dong-tien-shophouse-sun', 'cho-thue-shophouse-sun',
   'phap-ly-shophouse-sun', 'chinh-sach-thanh-toan-shophouse-sun',
   'bang-gia-can-ho-sun-da-nang', 'so-sanh-shophouse-va-can-ho-sun',
+  'du-an-sun-group-da-nang',
   'property-images', 'sitemap.xml', 'robots.txt',
 ]);
 

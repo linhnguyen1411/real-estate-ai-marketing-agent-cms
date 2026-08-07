@@ -60,7 +60,7 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
     ],
     targetPageType: PageType.CATALOG,
     relatedEntityIds: ['entity-sun-group', 'entity-sun-symphony', 'entity-can-ho'],
-    targetSlug: '/bat-dong-san/can-ho',
+    targetSlug: '/can-ho-cao-cap-da-nang',
   },
   {
     id: 'kc-dat-nen-nam',
@@ -73,7 +73,7 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
     ],
     targetPageType: PageType.CATALOG,
     relatedEntityIds: ['entity-nam-da-nang', 'entity-dat-nen'],
-    targetSlug: '/bat-dong-san/dat-nen',
+    targetSlug: '/dat-nen-nam-hoa-xuan-da-nang',
   },
   {
     id: 'kc-nha-pho',
@@ -101,7 +101,7 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
     ],
     targetPageType: PageType.LOCATION,
     relatedEntityIds: ['entity-nam-da-nang'],
-    targetSlug: '/bat-dong-san/nam-da-nang',
+    targetSlug: '/bat-dong-san-nam-da-nang',
   },
   {
     id: 'kc-mai-dang-chon',

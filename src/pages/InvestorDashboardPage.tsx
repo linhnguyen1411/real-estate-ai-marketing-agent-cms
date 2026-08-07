@@ -15,7 +15,7 @@ const breadcrumbs = [
 
 const TOP_AREAS = [
   { name: 'Nam Đà Nẵng', href: '/du-an/nam-da-nang', note: 'Đất, nhà, kho xưởng — mũi nhọn' },
-  { name: 'Sun Group', href: '/du-an#sun-group', note: 'Căn hộ ven sông Hàn' },
+  { name: 'Sun Group', href: '/du-an/du-an-sun-group-da-nang', note: 'Căn hộ ven sông Hàn' },
   { name: 'BĐS nổi bật', href: '/du-an/bds-noi-bat', note: 'Deal đa khu vực' },
   { name: 'Ven biển & miền Trung', href: '/review-khu-vuc', note: 'Đang mở rộng dần' },
 ];
@@ -91,13 +91,13 @@ export default function InvestorDashboardPage() {
                 </Link>
               </li>
               <li>
-                <Link to="/bat-dong-san/can-ho" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
+                <Link to="/can-ho-cao-cap-da-nang" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
                   Căn hộ cho thuê & đầu tư
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </li>
               <li>
-                <Link to="/bat-dong-san/dat-nen" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
+                <Link to="/dat-nen-nam-hoa-xuan-da-nang" className="flex items-center justify-between rounded-lg border border-invest-border p-3 text-sm font-semibold text-invest-blue hover:bg-invest-blue-muted">
                   Đất nền Nam Đà Nẵng
                   <ArrowRight className="h-4 w-4" />
                 </Link>
