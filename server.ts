@@ -6,6 +6,7 @@ import { createApp } from './server/bootstrap/createApp';
 import { mountRoutes } from './server/bootstrap/mountRoutes';
 import {
   registerSpaFallback,
+  registerSitemapXmlRoutes,
   setupViteDevServer,
 } from './server/modules/public-site/seoPublicRoutes';
 import { syncSiteSeoKeywords } from './server/modules/public-site/seoKeywords';
@@ -38,6 +39,8 @@ mountRoutes(app, {
   facebookGraphLegacyEnabled: FACEBOOK_GRAPH_LEGACY_ENABLED,
   agentEnabled: AGENT_ENABLED,
 });
+// Sitemap/XML must register BEFORE static middleware + SPA wildcard (`registerSpaFallback`).
+registerSitemapXmlRoutes(app);
 registerSpaFallback(app);
 
 function freeDevPortsSync() {
