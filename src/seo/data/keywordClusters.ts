@@ -247,7 +247,7 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
     ],
     targetPageType: PageType.PROJECT,
     relatedEntityIds: ['entity-nam-da-nang'],
-    targetSlug: '/du-an/nam-da-nang',
+    targetSlug: '/du-an/bat-dong-san-nam-da-nang',
   },
   {
     id: 'kc-bds-gia-dau-tu',
@@ -261,7 +261,7 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
     ],
     targetPageType: PageType.PROJECT,
     relatedEntityIds: ['entity-bds-noi-bat', 'entity-sun-group'],
-    targetSlug: '/du-an/bds-noi-bat',
+    targetSlug: '/du-an/bat-dong-san-da-nang-noi-bat',
   },
 
   // —— Financial / documents ——

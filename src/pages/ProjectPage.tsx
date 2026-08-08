@@ -1,14 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import SeoHead from '../components/seo/SeoHead';
 import Breadcrumbs from '../components/seo/Breadcrumbs';
 import LeadCaptureForm from '../components/LeadCaptureForm';
 import FaqSection from '../components/FaqSection';
+import PaginationBar from '../components/common/PaginationBar';
 import {
   LEGACY_PROJECT_REDIRECTS,
   PROJECTS,
   isSunGroupPortfolioSlug,
 } from '../seo/portfolioHub';
+import {
+  isNamDaNangPortfolioSlug,
+  isNoiBatPortfolioSlug,
+} from '../seo/portfolioPropertyMatch';
 import { getPageMetaByPath } from '../seo/pageMeta';
 import {
   buildArticleSchema,
@@ -19,6 +24,7 @@ import {
 import { PRIMARY_CTA, getSiteOrigin } from '../seo/siteConfig';
 import { SEO_LANDING_SLUGS } from '../seo/routes';
 import { getPropertyProjectLabel } from '../seo/propertyCatalog';
+import { useListingPageSize } from '../features/listings';
 import { fetchPublicProperties } from '../services/propertyService';
 import { getPublicPropertySlug } from '../utils/propertyShare';
 import { getPropertyThumbnailUrl } from '../utils/propertyImage';
@@ -45,10 +51,16 @@ export default function ProjectPage() {
   const isSegment = project?.pillar === 'nam-da-nang' || project?.pillar === 'noi-bat';
   const isSunGroupHub = isSunGroupPortfolioSlug(projectSlug);
   const shouldLoadProperties =
-    Boolean(projectSlug) && (isSunGroupHub || project?.pillar === 'sun-group');
+    Boolean(projectSlug) &&
+    (isSunGroupHub ||
+      project?.pillar === 'sun-group' ||
+      isNamDaNangPortfolioSlug(projectSlug) ||
+      isNoiBatPortfolioSlug(projectSlug));
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [loadingProperties, setLoadingProperties] = useState(shouldLoadProperties);
+  const [page, setPage] = useState(1);
+  const pageSize = useListingPageSize(3);
 
   useEffect(() => {
     if (!shouldLoadProperties || !projectSlug) {
@@ -60,7 +72,10 @@ export default function ProjectPage() {
     setLoadingProperties(true);
     fetchPublicProperties({ portfolioSlug: projectSlug })
       .then(list => {
-        if (!cancelled) setProperties(list);
+        if (!cancelled) {
+          setProperties(list);
+          setPage(1);
+        }
       })
       .catch(() => {
         if (!cancelled) setProperties([]);
@@ -72,6 +87,13 @@ export default function ProjectPage() {
       cancelled = true;
     };
   }, [projectSlug, shouldLoadProperties]);
+
+  const totalPages = Math.max(1, Math.ceil(properties.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const paginatedProperties = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return properties.slice(start, start + pageSize);
+  }, [properties, safePage, pageSize]);
 
   if (!project) {
     return (
@@ -95,8 +117,8 @@ export default function ProjectPage() {
     'sun-cosmo': 'can-ho-dau-tu-da-nang',
     'sun-symphony': 'can-ho-dau-tu-da-nang',
     'sun-ponte': 'can-ho-dau-tu-da-nang',
-    'nam-da-nang': 'dau-tu-nam-da-nang',
-    'bds-noi-bat': 'dau-tu-da-nang',
+    'bat-dong-san-nam-da-nang': 'dau-tu-nam-da-nang',
+    'bat-dong-san-da-nang-noi-bat': 'dau-tu-da-nang',
   };
   const relatedLanding = landingMap[project.slug];
   const ctaHref = project.ctaHref || '/bat-dong-san';
@@ -171,35 +193,44 @@ export default function ProjectPage() {
                 Chưa có sản phẩm phù hợp trong quỹ hàng công khai. Liên hệ để nhận danh sách riêng.
               </p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {properties.map(property => (
-                  <Link
-                    key={property.id}
-                    to={`/${encodeURIComponent(getPublicPropertySlug(property))}`}
-                    className="overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:shadow-lg"
-                  >
-                    <img
-                      src={getPropertyThumbnailUrl(property)}
-                      alt={`${property.title} — ${property.location} — ${property.type}`}
-                      width={800}
-                      height={600}
-                      loading="lazy"
-                      decoding="async"
-                      className="aspect-[4/3] w-full object-cover"
-                    />
-                    <div className="p-4">
-                      {getPropertyProjectLabel(property) && (
-                        <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">
-                          {getPropertyProjectLabel(property)}
-                        </p>
-                      )}
-                      <h3 className="line-clamp-2 font-bold text-slate-950">{property.title}</h3>
-                      <p className="mt-1 text-sm text-slate-500">{property.location}</p>
-                      <p className="mt-2 font-bold text-invest-gold">{formatPrice(property.price)}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {paginatedProperties.map(property => (
+                    <Link
+                      key={property.id}
+                      to={`/${encodeURIComponent(getPublicPropertySlug(property))}`}
+                      className="overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:shadow-lg"
+                    >
+                      <img
+                        src={getPropertyThumbnailUrl(property)}
+                        alt={`${property.title} — ${property.location} — ${property.type}`}
+                        width={800}
+                        height={600}
+                        loading="lazy"
+                        decoding="async"
+                        className="aspect-[4/3] w-full object-cover"
+                      />
+                      <div className="p-4">
+                        {getPropertyProjectLabel(property) && (
+                          <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">
+                            {getPropertyProjectLabel(property)}
+                          </p>
+                        )}
+                        <h3 className="line-clamp-2 font-bold text-slate-950">{property.title}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{property.location}</p>
+                        <p className="mt-2 font-bold text-invest-gold">{formatPrice(property.price)}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+                <PaginationBar
+                  className="mt-8"
+                  page={safePage}
+                  pageSize={pageSize}
+                  totalItems={properties.length}
+                  onPageChange={setPage}
+                />
+              </>
             )}
           </section>
         )}

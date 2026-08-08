@@ -5,7 +5,15 @@
  * `projectSlug` column. Matching uses slug tokens + human project labels.
  */
 
+import { matchMarketZone } from './propertyCatalog';
+
 export const SUN_GROUP_PORTFOLIO_SLUGS = ['du-an-sun-group-da-nang', 'sun-group'] as const;
+
+/** Nam Đà Nẵng segment — new SEO slug + legacy short slug */
+export const NAM_DA_NANG_PORTFOLIO_SLUGS = ['bat-dong-san-nam-da-nang', 'nam-da-nang'] as const;
+
+/** BĐS nổi bật segment — new SEO slug + legacy short slug */
+export const NOI_BAT_PORTFOLIO_SLUGS = ['bat-dong-san-da-nang-noi-bat', 'bds-noi-bat'] as const;
 
 /**
  * Child identity slugs under the Sun Group parent portfolio.
@@ -72,6 +80,8 @@ export type PortfolioPropertyLike = {
   developer?: string | null;
   projectSlug?: string | null;
   project_slug?: string | null;
+  market_zone?: string | null;
+  is_featured?: boolean | null;
 };
 
 function compact(value: unknown): string {
@@ -100,6 +110,20 @@ export function isSunGroupPortfolioSlug(slug: string | null | undefined): boolea
     .trim()
     .toLowerCase();
   return (SUN_GROUP_PORTFOLIO_SLUGS as readonly string[]).includes(normalized);
+}
+
+export function isNamDaNangPortfolioSlug(slug: string | null | undefined): boolean {
+  const normalized = String(slug || '')
+    .trim()
+    .toLowerCase();
+  return (NAM_DA_NANG_PORTFOLIO_SLUGS as readonly string[]).includes(normalized);
+}
+
+export function isNoiBatPortfolioSlug(slug: string | null | undefined): boolean {
+  const normalized = String(slug || '')
+    .trim()
+    .toLowerCase();
+  return (NOI_BAT_PORTFOLIO_SLUGS as readonly string[]).includes(normalized);
 }
 
 export function isSunGroupChildProjectSlug(slug: string | null | undefined): boolean {
@@ -150,6 +174,22 @@ export function matchesSunGroupProperty(property: PortfolioPropertyLike): boolea
   return SUN_GROUP_ANY_PATTERNS.some(pattern => pattern.test(propertyProjectHaystack(property)));
 }
 
+export function matchesNamDaNangProperty(property: PortfolioPropertyLike): boolean {
+  return matchMarketZone(
+    {
+      market_zone: property.market_zone || undefined,
+      location: property.location || undefined,
+      project_name: property.project_name || undefined,
+    },
+    'nam-da-nang',
+  );
+}
+
+/** BĐS nổi bật = CMS “Gắn nổi bật” (`is_featured`). */
+export function matchesNoiBatProperty(property: PortfolioPropertyLike): boolean {
+  return Boolean(property.is_featured);
+}
+
 export function matchesChildProjectSlug(
   property: PortfolioPropertyLike,
   childSlug: string,
@@ -167,6 +207,8 @@ export function matchesChildProjectSlug(
  * Portfolio / project page filter.
  * - `du-an-sun-group-da-nang` | `sun-group` → all Sun Group children
  * - child slug → only that tower/project
+ * - `bat-dong-san-nam-da-nang` → market zone Nam Đà Nẵng
+ * - `bat-dong-san-da-nang-noi-bat` → `is_featured`
  */
 export function matchesPortfolioProject(
   property: PortfolioPropertyLike,
@@ -178,6 +220,8 @@ export function matchesPortfolioProject(
   if (!slug) return true;
   if (isSunGroupPortfolioSlug(slug)) return matchesSunGroupProperty(property);
   if (isSunGroupChildProjectSlug(slug)) return matchesChildProjectSlug(property, slug);
+  if (isNamDaNangPortfolioSlug(slug)) return matchesNamDaNangProperty(property);
+  if (isNoiBatPortfolioSlug(slug)) return matchesNoiBatProperty(property);
   return false;
 }
 

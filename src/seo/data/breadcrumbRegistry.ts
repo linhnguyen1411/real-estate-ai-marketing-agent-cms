@@ -107,7 +107,7 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Danh mục', path: '/du-an' },
-      { name: 'BĐS Nam Đà Nẵng', path: '/du-an/nam-da-nang' },
+      { name: 'BĐS Nam Đà Nẵng', path: '/du-an/bat-dong-san-nam-da-nang' },
     ],
   },
   {
@@ -115,7 +115,7 @@ export const BREADCRUMB_DEFINITIONS: BreadcrumbDefinition[] = [
     items: [
       { name: 'Trang chủ', path: '/' },
       { name: 'Danh mục', path: '/du-an' },
-      { name: 'BĐS nổi bật', path: '/du-an/bds-noi-bat' },
+      { name: 'BĐS nổi bật', path: '/du-an/bat-dong-san-da-nang-noi-bat' },
     ],
   },
   {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { listingPageSizeForWidth } from './listingFilters';
 
-/** Responsive listing page size: columns × rows (default 3 rows). */
+/** Responsive listing page size: columns × rows (default 3×3 = 9 on desktop). */
 export function useListingPageSize(rows = 3): number {
   const [pageSize, setPageSize] = useState(() =>
     typeof window === 'undefined' ? rows * 3 : listingPageSizeForWidth(window.innerWidth, rows),

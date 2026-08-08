@@ -101,7 +101,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
     breadcrumbId: 'bc-home',
     faqId: 'faq-investor-base',
     moneyPages: MONEY,
-    relatedPages: [SHOPHOUSE_HUB, '/can-ho-sun-group-da-nang', '/du-an/bds-noi-bat', '/lien-he'],
+    relatedPages: [SHOPHOUSE_HUB, '/can-ho-sun-group-da-nang', '/du-an/bat-dong-san-da-nang-noi-bat', '/lien-he'],
   }),
   (() => {
     const p = patterned(PageType.CATALOG, 'Danh sách BĐS Đà Nẵng đầu tư', '');
@@ -149,7 +149,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         entityId: 'entity-dat-nen',
         keywordClusterId: 'kc-dat-nen-nam',
         breadcrumbId: 'bc-catalog-dat-nen',
-        relatedPages: ['/dat-nen-nam-da-nang', '/du-an/nam-da-nang'],
+        relatedPages: ['/dat-nen-nam-da-nang', '/du-an/bat-dong-san-nam-da-nang'],
       },
     );
   })(),
@@ -203,7 +203,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         keywordClusterId: 'kc-nam-da-nang',
         breadcrumbId: 'bc-nam-da-nang',
         faqId: 'faq-nam-da-nang',
-        relatedPages: ['/du-an/nam-da-nang', '/dau-tu-nam-da-nang'],
+        relatedPages: ['/du-an/bat-dong-san-nam-da-nang', '/dau-tu-nam-da-nang'],
       },
     );
   })(),
@@ -219,7 +219,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         entityId: 'entity-bds-noi-bat',
         keywordClusterId: 'kc-bds-gia-dau-tu',
         breadcrumbId: 'bc-bds-dau-tu',
-        relatedPages: ['/du-an/bds-noi-bat', '/bat-dong-san', '/can-ho-cao-cap-da-nang'],
+        relatedPages: ['/du-an/bat-dong-san-da-nang-noi-bat', '/bat-dong-san', '/can-ho-cao-cap-da-nang'],
       },
     );
   })(),
@@ -321,7 +321,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
         keywordClusterId: 'kc-portfolio-hub',
         breadcrumbId: 'bc-du-an',
         moneyPages: MONEY,
-        relatedPages: ['/du-an/sun-symphony', '/du-an/nam-da-nang', '/du-an/bds-noi-bat'],
+        relatedPages: ['/du-an/sun-symphony', '/du-an/bat-dong-san-nam-da-nang', '/du-an/bat-dong-san-da-nang-noi-bat'],
       },
     );
   })(),
@@ -776,7 +776,7 @@ const PROJECT_META: Record<
     breadcrumbId: 'bc-sun-ponte',
     clusterId: 'kc-sun-ponte-project',
   },
-  'nam-da-nang': {
+  'bat-dong-san-nam-da-nang': {
     primaryKeyword: 'Quỹ hàng BĐS Nam Đà Nẵng',
     project: 'Nam Đà Nẵng',
     description:
@@ -786,7 +786,7 @@ const PROJECT_META: Record<
     breadcrumbId: 'bc-project-nam-da-nang',
     clusterId: 'kc-nam-da-nang-project',
   },
-  'bds-noi-bat': {
+  'bat-dong-san-da-nang-noi-bat': {
     primaryKeyword: 'BĐS cắt lỗ Đà Nẵng',
     project: 'Đà Nẵng',
     description:
@@ -819,7 +819,7 @@ for (const slug of PROJECT_SLUGS) {
       faqId: meta?.faqId,
       breadcrumbId: meta?.breadcrumbId,
       keywordClusterId: meta?.clusterId,
-      moneyPages: slug === 'sun-symphony' || slug === 'nam-da-nang' || slug === 'du-an-sun-group-da-nang' ? MONEY : undefined,
+      moneyPages: slug === 'sun-symphony' || slug === 'bat-dong-san-nam-da-nang' || slug === 'du-an-sun-group-da-nang' ? MONEY : undefined,
       relatedPages:
         slug === 'du-an-sun-group-da-nang'
           ? [SHOPHOUSE_HUB, '/du-an', '/can-ho-cao-cap-da-nang', '/can-ho-sun-group-da-nang']

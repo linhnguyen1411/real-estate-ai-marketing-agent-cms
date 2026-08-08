@@ -329,10 +329,10 @@ export function applyListingFilters(
 }
 
 /**
- * Page size = columns × rows (no hardcode of 10).
- * Desktop lg≥1024 → 3 cols; tablet sm≥640 → 2; mobile → 1.
+ * Page size = columns × rows (fills 3-col grids without a leftover row).
+ * Desktop lg≥1024 → 3×3=9; tablet md≥768 → 2×3=6; mobile → 1×3=3.
  */
 export function listingPageSizeForWidth(width: number, rows = 3): number {
-  const cols = width >= 1024 ? 3 : width >= 640 ? 2 : 1;
+  const cols = width >= 1024 ? 3 : width >= 768 ? 2 : 1;
   return cols * rows;
 }

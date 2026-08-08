@@ -123,6 +123,14 @@ export function shouldAttemptPublicIndex(req: Request) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   const requestPath = String(req.path || '');
   if (requestPath.startsWith('/api')) return false;
+  // Vite / bundler internals must reach vite.middlewares (not SSR 404 shell).
+  if (
+    requestPath.startsWith('/@') ||
+    requestPath.startsWith('/node_modules/') ||
+    requestPath === '/__vite_ping'
+  ) {
+    return false;
+  }
   if (/\.[a-z0-9]+$/i.test(requestPath)) return false;
   return true;
 }
@@ -486,12 +494,14 @@ export function registerSpaFallback(app: Express) {
 
 export async function setupViteDevServer(app: Express) {
   const { createServer } = await import('vite');
+  // port:0 is treated as falsy by Vite and falls back to 24678 — use an explicit free port.
+  const hmrPort = Number(process.env.VITE_HMR_PORT || 24679);
   const viteServer = await createServer({
     configFile: path.join(process.cwd(), 'vite.config.ts'),
     server: {
       middlewareMode: true,
       hmr: {
-        port: 0,
+        port: hmrPort,
       },
       watch: {
         ignored: ['**/db.json', '**/db.json.*.bak', '**/dev-server*.log', '**/prod-server*.log'],

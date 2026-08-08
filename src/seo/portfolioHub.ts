@@ -13,6 +13,10 @@ export interface PortfolioPillar {
   productTypes: string[];
 }
 
+/** Canonical portfolio segment slugs under /du-an/ */
+export const PORTFOLIO_SLUG_NAM_DA_NANG = 'bat-dong-san-nam-da-nang';
+export const PORTFOLIO_SLUG_NOI_BAT = 'bat-dong-san-da-nang-noi-bat';
+
 export const PORTFOLIO_PILLARS: PortfolioPillar[] = [
   {
     id: 'sun-group',
@@ -29,7 +33,7 @@ export const PORTFOLIO_PILLARS: PortfolioPillar[] = [
     subtitle: 'Mũi nhọn khu vực',
     description:
       'Đa dạng loại hình tại Nam Đà Nẵng: nhà ở, đất nền, kho xưởng, căn hộ, khách sạn và tài sản đầu tư — Mai Đăng Chơn, Hòa Xuân, Hòa Quý…',
-    href: '/du-an/nam-da-nang',
+    href: `/du-an/${PORTFOLIO_SLUG_NAM_DA_NANG}`,
     productTypes: ['Đất nền', 'Nhà phố', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
   },
   {
@@ -38,7 +42,7 @@ export const PORTFOLIO_PILLARS: PortfolioPillar[] = [
     subtitle: 'Cơ hội đa dạng',
     description:
       'Tài sản đáng chú ý từ nhiều khu vực — deal giá tốt, vị trí độc đáo, không gói gọn trong một dự án hay một quận.',
-    href: '/du-an/bds-noi-bat',
+    href: `/du-an/${PORTFOLIO_SLUG_NOI_BAT}`,
     productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
   },
 ];
@@ -104,8 +108,8 @@ export const PROJECTS: Record<string, ProjectData> = {
     faqs: getFaqQaPairs('faq-sun-ponte'),
     ctaHref: '/can-ho-cao-cap-da-nang',
   },
-  'nam-da-nang': {
-    slug: 'nam-da-nang',
+  [PORTFOLIO_SLUG_NAM_DA_NANG]: {
+    slug: PORTFOLIO_SLUG_NAM_DA_NANG,
     pillar: 'nam-da-nang',
     name: 'BĐS Nam Đà Nẵng',
     location: 'Nam Đà Nẵng',
@@ -116,8 +120,8 @@ export const PROJECTS: Record<string, ProjectData> = {
     faqs: getFaqQaPairs('faq-nam-da-nang'),
     ctaHref: '/bat-dong-san-nam-da-nang',
   },
-  'bds-noi-bat': {
-    slug: 'bds-noi-bat',
+  [PORTFOLIO_SLUG_NOI_BAT]: {
+    slug: PORTFOLIO_SLUG_NOI_BAT,
     pillar: 'noi-bat',
     name: 'BĐS nổi bật',
     location: 'Đà Nẵng & vùng lân cận',
@@ -134,7 +138,11 @@ export const PROJECTS: Record<string, ProjectData> = {
 export const SUN_GROUP_PROJECT_SLUGS = ['sun-symphony', 'sun-cosmo', 'sun-ponte'] as const;
 
 /** Hub Sun Group + trang phân khúc (không phải dự án developer đơn lẻ) */
-export const PORTFOLIO_SEGMENT_SLUGS = ['du-an-sun-group-da-nang', 'nam-da-nang', 'bds-noi-bat'] as const;
+export const PORTFOLIO_SEGMENT_SLUGS = [
+  'du-an-sun-group-da-nang',
+  PORTFOLIO_SLUG_NAM_DA_NANG,
+  PORTFOLIO_SLUG_NOI_BAT,
+] as const;
 
 export const PROJECT_SLUGS = [...SUN_GROUP_PROJECT_SLUGS, ...PORTFOLIO_SEGMENT_SLUGS] as const;
 
@@ -150,7 +158,9 @@ export {
 export const LEGACY_PROJECT_REDIRECTS: Record<string, string> = {
   'fpt-city': '/bat-dong-san/fpt-city',
   'mai-dang-chon': '/bat-dong-san/mai-dang-chon',
-  'gio-hang-ky-gui': '/du-an/bds-noi-bat',
+  'gio-hang-ky-gui': `/du-an/${PORTFOLIO_SLUG_NOI_BAT}`,
+  'nam-da-nang': `/du-an/${PORTFOLIO_SLUG_NAM_DA_NANG}`,
+  'bds-noi-bat': `/du-an/${PORTFOLIO_SLUG_NOI_BAT}`,
 };
 
 export function getSunGroupProjects() {

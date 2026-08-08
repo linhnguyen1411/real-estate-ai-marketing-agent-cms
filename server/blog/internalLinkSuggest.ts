@@ -10,7 +10,7 @@ const LANDING_LINKS = [
   { label: 'Căn hộ đầu tư Đà Nẵng', href: '/can-ho-dau-tu-da-nang', keywords: ['căn hộ', 'sun group', 'symphony', 'cosmo'] },
   { label: 'Đất nền Nam Đà Nẵng', href: '/dat-nen-nam-da-nang', keywords: ['đất nền', 'mai đăng chơn', 'hòa xuân'] },
   { label: 'Danh mục BĐS', href: '/du-an', keywords: ['dự án', 'sun group', 'danh mục'] },
-  { label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang', keywords: ['nam đà nẵng', 'mai đăng chơn'] },
+  { label: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang', keywords: ['nam đà nẵng', 'mai đăng chơn'] },
   { label: 'Tài liệu đầu tư', href: '/tai-lieu-dau-tu', keywords: ['báo cáo', 'tài liệu', 'dữ liệu'] },
   { label: 'Dữ liệu thị trường', href: '/nha-dau-tu', keywords: ['dữ liệu', 'thị trường', 'bảng tin'] },
 ];

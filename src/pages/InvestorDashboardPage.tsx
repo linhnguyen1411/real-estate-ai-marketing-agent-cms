@@ -14,17 +14,17 @@ const breadcrumbs = [
 ];
 
 const TOP_AREAS = [
-  { name: 'Nam Đà Nẵng', href: '/du-an/nam-da-nang', note: 'Đất, nhà, kho xưởng — mũi nhọn' },
+  { name: 'Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang', note: 'Đất, nhà, kho xưởng — mũi nhọn' },
   { name: 'Sun Group', href: '/du-an/du-an-sun-group-da-nang', note: 'Căn hộ ven sông Hàn' },
-  { name: 'BĐS nổi bật', href: '/du-an/bds-noi-bat', note: 'Deal đa khu vực' },
+  { name: 'BĐS nổi bật', href: '/du-an/bat-dong-san-da-nang-noi-bat', note: 'Deal đa khu vực' },
   { name: 'Ven biển & miền Trung', href: '/review-khu-vuc', note: 'Đang mở rộng dần' },
 ];
 
 const TOP_PROJECTS = [
   { name: 'Sun Symphony', href: '/du-an/sun-symphony' },
   { name: 'Sun Cosmo', href: '/du-an/sun-cosmo' },
-  { name: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
-  { name: 'BĐS nổi bật', href: '/du-an/bds-noi-bat' },
+  { name: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang' },
+  { name: 'BĐS nổi bật', href: '/du-an/bat-dong-san-da-nang-noi-bat' },
 ];
 
 export default function InvestorDashboardPage() {

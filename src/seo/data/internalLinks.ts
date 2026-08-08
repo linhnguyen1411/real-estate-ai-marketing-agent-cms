@@ -25,7 +25,7 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
     slug: '/',
     label: 'Trang chủ',
     childSlugs: [SHOPHOUSE_SUN_HUB, '/bat-dong-san', '/du-an', '/tin-tuc', '/nha-dau-tu', '/lien-he'],
-    relatedSlugs: ['/can-ho-sun-group-da-nang', '/du-an/bds-noi-bat', '/tai-lieu-dau-tu'],
+    relatedSlugs: ['/can-ho-sun-group-da-nang', '/du-an/bat-dong-san-da-nang-noi-bat', '/tai-lieu-dau-tu'],
   },
   {
     slug: SHOPHOUSE_SUN_HUB,
@@ -150,7 +150,7 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
     label: 'Đất nền',
     parentSlug: '/bat-dong-san',
     locationSlugs: ['/bat-dong-san-nam-da-nang', '/bat-dong-san/hoa-xuan'],
-    relatedSlugs: ['/dat-nen-nam-da-nang', '/du-an/nam-da-nang'],
+    relatedSlugs: ['/dat-nen-nam-da-nang', '/du-an/bat-dong-san-nam-da-nang'],
   },
   {
     slug: '/bat-dong-san/nha-pho',
@@ -163,7 +163,7 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
     slug: '/bat-dong-san-nam-da-nang',
     label: 'Nam Đà Nẵng',
     parentSlug: '/bat-dong-san',
-    relatedSlugs: ['/du-an/nam-da-nang', '/dau-tu-nam-da-nang', '/dat-nen-nam-da-nang'],
+    relatedSlugs: ['/du-an/bat-dong-san-nam-da-nang', '/dau-tu-nam-da-nang', '/dat-nen-nam-da-nang'],
     locationSlugs: ['/bat-dong-san/hoa-xuan', '/bat-dong-san/mai-dang-chon', '/bat-dong-san/fpt-city'],
   },
   {
@@ -174,8 +174,8 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
       '/du-an/sun-symphony',
       '/du-an/sun-cosmo',
       '/du-an/sun-ponte',
-      '/du-an/nam-da-nang',
-      '/du-an/bds-noi-bat',
+      '/du-an/bat-dong-san-nam-da-nang',
+      '/du-an/bat-dong-san-da-nang-noi-bat',
     ],
     relatedSlugs: [SHOPHOUSE_SUN_HUB, '/bat-dong-san', '/can-ho-sun-group-da-nang'],
   },
@@ -210,18 +210,18 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
     financialSlugs: ['/dong-tien-shophouse-sun'],
   },
   {
-    slug: '/du-an/nam-da-nang',
+    slug: '/du-an/bat-dong-san-nam-da-nang',
     label: 'BĐS Nam Đà Nẵng',
     parentSlug: '/du-an',
     locationSlugs: ['/bat-dong-san-nam-da-nang', '/bat-dong-san/mai-dang-chon'],
-    relatedSlugs: ['/dau-tu-nam-da-nang', '/dat-nen-nam-da-nang', '/du-an/bds-noi-bat'],
+    relatedSlugs: ['/dau-tu-nam-da-nang', '/dat-nen-nam-da-nang', '/du-an/bat-dong-san-da-nang-noi-bat'],
     financialSlugs: ['/nha-dau-tu', '/tai-lieu-dau-tu'],
   },
   {
-    slug: '/du-an/bds-noi-bat',
+    slug: '/du-an/bat-dong-san-da-nang-noi-bat',
     label: 'BĐS nổi bật',
     parentSlug: '/du-an',
-    relatedSlugs: [SHOPHOUSE_SUN_HUB, '/bat-dong-san', '/du-an/nam-da-nang'],
+    relatedSlugs: [SHOPHOUSE_SUN_HUB, '/bat-dong-san', '/du-an/bat-dong-san-nam-da-nang'],
   },
   {
     slug: '/dau-tu-da-nang',
@@ -243,7 +243,7 @@ export const INTERNAL_LINK_NODES: InternalLinkNode[] = [
     label: 'Dữ liệu thị trường',
     parentSlug: '/',
     financialSlugs: ['/tai-lieu-dau-tu'],
-    relatedSlugs: ['/dau-tu-nam-da-nang', '/du-an/nam-da-nang', SHOPHOUSE_SUN_HUB],
+    relatedSlugs: ['/dau-tu-nam-da-nang', '/du-an/bat-dong-san-nam-da-nang', SHOPHOUSE_SUN_HUB],
   },
 ];
 
@@ -301,6 +301,6 @@ export const MONEY_PAGE_SLUGS = [
   '/can-ho-sun-group-da-nang',
   '/bang-gia-can-ho-sun-da-nang',
   '/du-an/sun-symphony',
-  '/du-an/bds-noi-bat',
+  '/du-an/bat-dong-san-da-nang-noi-bat',
   '/lien-he',
 ] as const;

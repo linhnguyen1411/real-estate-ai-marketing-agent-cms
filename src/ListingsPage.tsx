@@ -10,6 +10,7 @@ import {
   Compass,
   Eye,
   Facebook,
+  Handshake,
   Mail,
   MapPin,
   Maximize2,
@@ -18,7 +19,8 @@ import {
   Phone,
   Search,
   Send,
-  Sparkles,
+  Shield,
+  TrendingUp,
   X
 } from 'lucide-react';
 import { Property, PublicAgentProfile } from './types';
@@ -913,27 +915,53 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             className="absolute inset-0 h-full w-full object-cover"
           />
           <div className="hero-investment__overlay" />
-          <div className="relative mx-auto flex min-h-[560px] max-w-7xl flex-col justify-center px-4 pb-20 pt-20 md:min-h-[680px] md:pb-24 md:pt-24">
+          <div className="relative mx-auto flex min-h-[560px] max-w-7xl flex-col justify-center px-4 pb-10 pt-20 md:min-h-[680px] md:pb-12 md:pt-24">
             <div className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-invest-border bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wide text-invest-gold">
-                <Sparkles className="h-4 w-4" />
-                Trung tâm thông tin đầu tư Nam Đà Nẵng
-              </div>
-              <h1 className="heading-hero">
-                Dữ liệu & Cơ hội đầu tư Nam Đà Nẵng
+              <h1 className="heading-hero heading-hero--gold">
+                Estoria - Where assets tell their story
               </h1>
-              <p className="text-body-lg mt-5 max-w-2xl text-invest-muted">
-                Phân tích thị trường, dự án và tài sản phù hợp cho nhà đầu tư trung và dài hạn.
+              <p className="text-body-lg mt-5 max-w-2xl text-invest-text">
+                Đằng sau mỗi không gian sống và tọa độ đầu tư tại Đà Nẵng là một câu chuyện về tiềm năng, đẳng cấp và sự an tâm tuyệt đối...
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <a href="#contact" className="btn-cta px-5 py-3">
-                  Nhận báo cáo thị trường
-                </a>
-                <Link to={LISTING_CATALOG_ROOT} className="btn-primary px-5 py-3">
-                  Xem cơ hội đầu tư
+              <div className="hero-cta-row mt-8 flex flex-wrap gap-3">
+                <Link to={LISTING_CATALOG_ROOT} className="btn-cta">
+                  Tìm BĐS dành cho bạn
                 </Link>
+                <a href="#contact" className="btn-primary">
+                  Liên hệ tư vấn
+                </a>
               </div>
             </div>
+
+            <ul className="mt-12 grid gap-4 border-t border-invest-gold/25 pt-6 sm:grid-cols-3 md:mt-16 md:pt-8">
+              {[
+                {
+                  icon: Shield,
+                  title: 'Pháp Lý Transparency',
+                  description: '100% Sản phẩm kiểm tra quy hoạch & pháp lý rõ ràng.',
+                },
+                {
+                  icon: TrendingUp,
+                  title: 'Góc Nhìn Đầu Tư',
+                  description: 'Phân tích dòng tiền và tiềm năng tăng giá thực tế.',
+                },
+                {
+                  icon: Handshake,
+                  title: 'Đồng Hành Dài Lâu',
+                  description: 'Tư vấn giải pháp cá nhân hóa theo mục tiêu từng khách hàng.',
+                },
+              ].map(item => (
+                <li key={item.title} className="hero-trust-badge">
+                  <span className="hero-trust-badge__icon" aria-hidden>
+                    <item.icon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-invest-text">{item.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-invest-muted">{item.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

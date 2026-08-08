@@ -147,7 +147,7 @@ export const ENTITIES: Entity[] = [
     aliases: ['Nam Da Nang', 'phía Nam Đà Nẵng'],
     childIds: ['entity-hoa-xuan', 'entity-nam-hoa-xuan', 'entity-mai-dang-chon', 'entity-fpt-city'],
     relatedEntityIds: ['entity-sun-group'],
-    primaryPageSlug: '/du-an/nam-da-nang',
+    primaryPageSlug: '/du-an/bat-dong-san-nam-da-nang',
   },
   {
     id: 'entity-nam-hoa-xuan',
@@ -222,7 +222,7 @@ export const ENTITIES: Entity[] = [
     entityType: 'segment',
     locationId: 'entity-da-nang',
     relatedEntityIds: ['entity-sun-group', 'entity-nam-da-nang'],
-    primaryPageSlug: '/du-an/bds-noi-bat',
+    primaryPageSlug: '/du-an/bat-dong-san-da-nang-noi-bat',
   },
 ];
 

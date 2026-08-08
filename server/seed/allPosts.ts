@@ -28,7 +28,7 @@ interface PostBlueprint {
 }
 
 const FPT_CITY_LINKS = [{ label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' }];
-const MAI_DANG_CHON_LINKS = [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' }];
+const MAI_DANG_CHON_LINKS = [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang' }];
 
 const fitText = (text: string, max: number) => {
   if (text.length <= max) {

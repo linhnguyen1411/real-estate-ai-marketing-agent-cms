@@ -4,7 +4,7 @@
  */
 import { execSync } from 'node:child_process';
 
-const PORTS = [3000, 24678];
+const PORTS = [3000, 24678, 24679];
 const myPid = String(process.pid);
 
 function isNodeProcess(pid) {

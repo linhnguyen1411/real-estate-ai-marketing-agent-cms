@@ -17,8 +17,8 @@ interface ClusterConfig {
 
 export const PILLAR_PAGES: LinkItem[] = [
   { label: 'Danh mục BĐS', href: '/du-an' },
-  { label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
-  { label: 'BĐS nổi bật', href: '/du-an/bds-noi-bat' },
+  { label: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang' },
+  { label: 'BĐS nổi bật', href: '/du-an/bat-dong-san-da-nang-noi-bat' },
   { label: 'Sun Symphony', href: '/du-an/sun-symphony' },
   { label: 'Review khu vực', href: '/review-khu-vuc' },
   { label: 'Tài liệu đầu tư', href: '/tai-lieu-dau-tu' },
@@ -64,7 +64,7 @@ const CLUSTERS: ClusterConfig[] = [
   },
   {
     key: 'mai-dang-chon',
-    pillar: { label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' },
+    pillar: { label: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang' },
     slugs: [
       'mai-dang-chon-co-gi-dac-biet-voi-nha-dau-tu',
       'quy-dat-mat-tien-mai-dang-chon-phu-hop-mo-hinh-kinh-doanh-nao',
@@ -126,7 +126,7 @@ export function getLeadMagnetLinkForSlug(slug: string): LinkItem {
 
 export function getRelatedProjectLinksForSlug(slug: string): LinkItem[] {
   if (slug.includes('fpt-city')) return [{ label: 'Phân tích FPT City', href: '/dau-tu-fpt-city' }];
-  if (slug.includes('mai-dang-chon')) return [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/nam-da-nang' }];
+  if (slug.includes('mai-dang-chon')) return [{ label: 'BĐS Nam Đà Nẵng', href: '/du-an/bat-dong-san-nam-da-nang' }];
   if (slug.includes('sun-symphony') || slug.includes('sun-cosmo')) {
     return [{ label: 'Sun Group Đà Nẵng', href: '/du-an/du-an-sun-group-da-nang' }];
   }

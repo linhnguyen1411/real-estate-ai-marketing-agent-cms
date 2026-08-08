@@ -6,6 +6,8 @@ import BlogPostCard from '../components/blog/BlogPostCard';
 import { CONTENT_HUB_CATEGORIES } from '../seo/contentHub';
 import {
   PORTFOLIO_PILLARS,
+  PORTFOLIO_SLUG_NAM_DA_NANG,
+  PORTFOLIO_SLUG_NOI_BAT,
   getSunGroupProjects,
   PROJECTS,
 } from '../seo/portfolioHub';
@@ -51,8 +53,8 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
   const [loadingPosts, setLoadingPosts] = useState(Boolean(categorySlug));
   const isProjectsHub = path === '/du-an';
   const sunProjects = getSunGroupProjects();
-  const namSegment = PROJECTS['nam-da-nang'];
-  const noiBatSegment = PROJECTS['bds-noi-bat'];
+  const namSegment = PROJECTS[PORTFOLIO_SLUG_NAM_DA_NANG];
+  const noiBatSegment = PROJECTS[PORTFOLIO_SLUG_NOI_BAT];
 
   useEffect(() => {
     if (!categorySlug) return;
@@ -176,7 +178,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
             <section className="mt-14 grid gap-5 lg:grid-cols-2">
               {namSegment && (
                 <Link
-                  to="/du-an/nam-da-nang"
+                  to="/du-an/bat-dong-san-nam-da-nang"
                   className="group rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm transition hover:border-invest-blue/30 hover:shadow-md"
                 >
                   <p className="text-xs font-bold uppercase tracking-wide text-invest-blue">
@@ -204,7 +206,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
               )}
               {noiBatSegment && (
                 <Link
-                  to="/du-an/bds-noi-bat"
+                  to="/du-an/bat-dong-san-da-nang-noi-bat"
                   className="group rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm transition hover:border-invest-blue/30 hover:shadow-md"
                 >
                   <p className="text-xs font-bold uppercase tracking-wide text-invest-blue">

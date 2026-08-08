@@ -51,5 +51,7 @@ export function isReservedSlug(slug: string) {
 export function isPropertySlugCandidate(slug: string) {
   const normalized = decodeURIComponent(slug || '').toLowerCase();
   if (!normalized || isReservedSlug(normalized)) return false;
+  // Never treat Vite virtual modules (@vite/client, @react-refresh, …) as property slugs.
+  if (normalized.startsWith('@') || normalized.startsWith('node_modules/')) return false;
   return true;
 }

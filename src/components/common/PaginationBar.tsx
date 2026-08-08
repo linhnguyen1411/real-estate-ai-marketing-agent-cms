@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const DEFAULT_PAGE_SIZE = 10;
+/** Default page size for 3-column grids (3 cols × 3 rows). */
+export const DEFAULT_PAGE_SIZE = 9;
 
 interface PaginationBarProps {
   page: number;
