@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 
-const repo = 'c:/Users/linhn/workspace/real-estate-ai-marketing-agent-cms';
+const repo = process.cwd();
 const ref = 'origin/add_share_button';
 const files = [
   'src/components/PropertyShareActions.tsx',

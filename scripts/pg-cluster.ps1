@@ -3,8 +3,10 @@ param(
   [string]$Action = 'status'
 )
 
-$clusterData = Join-Path $env:LOCALAPPDATA "real-estate-cms-pg\data"
-$clusterLog = Join-Path $env:LOCALAPPDATA "real-estate-cms-pg\postgres.log"
+$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$clusterDir = Join-Path $root "runtime\local-pg\real-estate-cms-pg"
+$clusterData = Join-Path $clusterDir "data"
+$clusterLog = Join-Path $clusterDir "postgres.log"
 $pgCtl = Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_ctl.exe -ErrorAction SilentlyContinue |
   Select-Object -First 1 -ExpandProperty FullName
 

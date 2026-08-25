@@ -25,7 +25,7 @@ if (process.platform !== 'win32') {
   process.exit(0);
 }
 
-const clusterData = join(process.env.LOCALAPPDATA || '', 'real-estate-cms-pg', 'data');
+const clusterData = join(process.cwd(), 'runtime', 'local-pg', 'real-estate-cms-pg', 'data');
 if (!existsSync(clusterData)) {
   console.log('[dev] Chưa có Postgres local. Chạy: npm run db:setup-local');
   process.exit(0);

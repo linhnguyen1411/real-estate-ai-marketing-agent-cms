@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 
-const repo = 'c:/Users/linhn/workspace/real-estate-ai-marketing-agent-cms';
+const repo = process.cwd();
 for (const ref of ['origin/add_share_button', 'origin/update_seo']) {
   try {
     const content = execSync(`git -C "${repo}" show ${ref}:src/ListingsPage.tsx`, { encoding: 'utf8' });

@@ -83,6 +83,8 @@ data/browser-debug/
 /runtime/debug/
 /runtime/tmp/
 /runtime/outbox-dumps/
+/runtime/local-pg/
+/runtime/watchdog/
 /runtime/logs/
 *.bak
 desktop.ini

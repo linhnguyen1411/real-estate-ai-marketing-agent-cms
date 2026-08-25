@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-const repo = 'c:/Users/linhn/workspace/real-estate-ai-marketing-agent-cms';
+const repo = process.cwd();
 const ref = 'origin/add_share_button';
 
 const files = {

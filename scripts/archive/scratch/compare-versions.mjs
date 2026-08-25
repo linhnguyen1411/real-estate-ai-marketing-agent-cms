@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 
-const repo = 'c:/Users/linhn/workspace/real-estate-ai-marketing-agent-cms';
+const repo = process.cwd();
 const master = execSync(`git -C "${repo}" show origin/master:src/ListingsPage.tsx`, { encoding: 'utf8' });
 const seo = execSync(`git -C "${repo}" show origin/update_seo:src/ListingsPage.tsx`, { encoding: 'utf8' });
 

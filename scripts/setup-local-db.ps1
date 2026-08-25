@@ -14,7 +14,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
 $envFile = Join-Path $root ".env"
 $secretsFile = Join-Path $root ".env.postgres"
-$clusterDir = Join-Path $env:LOCALAPPDATA "real-estate-cms-pg"
+$clusterDir = Join-Path $root "runtime\local-pg\real-estate-cms-pg"
 $clusterData = Join-Path $clusterDir "data"
 $clusterLog = Join-Path $clusterDir "postgres.log"
 $clusterPort = 5434

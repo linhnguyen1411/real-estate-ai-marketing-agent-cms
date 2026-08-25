@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 
-const repo = 'c:/Users/linhn/workspace/real-estate-ai-marketing-agent-cms';
+const repo = process.cwd();
 const content = execSync(`git -C "${repo}" show origin/add_share_button:src/ListingsPage.tsx`, { encoding: 'utf8' });
 const mojibake = (content.match(/Ã|Æ°|BÄ|CÄ/g) || []).length;
 console.log('lines', content.split('\n').length, 'mojibake', mojibake);
