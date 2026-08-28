@@ -123,6 +123,16 @@ export function shouldAttemptPublicIndex(req: Request) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   const requestPath = String(req.path || '');
   if (requestPath.startsWith('/api')) return false;
+  // Never SSR-intercept Vite / bundler internals — otherwise /@vite/client becomes
+  // a fake property-slug 404 and the SPA boots without CSS/JS.
+  if (
+    requestPath.startsWith('/@') ||
+    requestPath.startsWith('/src/') ||
+    requestPath.startsWith('/node_modules/') ||
+    requestPath.startsWith('/.vite/')
+  ) {
+    return false;
+  }
   if (/\.[a-z0-9]+$/i.test(requestPath)) return false;
   return true;
 }

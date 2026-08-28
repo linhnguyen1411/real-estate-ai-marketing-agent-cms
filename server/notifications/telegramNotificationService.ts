@@ -47,6 +47,12 @@ export function maskSettingsSecrets(settings: AppSettings): AppSettings {
     agent_sync_secret: settings.agent_sync_secret
       ? maskTelegramToken(settings.agent_sync_secret)
       : settings.agent_sync_secret,
+    gemini_api_key: settings.gemini_api_key
+      ? maskTelegramToken(settings.gemini_api_key)
+      : settings.gemini_api_key,
+    openai_api_key: settings.openai_api_key
+      ? maskTelegramToken(settings.openai_api_key)
+      : settings.openai_api_key,
   };
 }
 

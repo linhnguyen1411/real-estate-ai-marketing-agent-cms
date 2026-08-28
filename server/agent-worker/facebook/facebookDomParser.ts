@@ -5,6 +5,8 @@ import {
   type FacebookArticleSignals,
 } from './facebookArticleClassifier';
 import { FB_FEED_RUNTIME_JS } from './facebookFeedLocator';
+import { applyFacebookPostIdentity } from './facebookPermalinkResolver';
+import { canonicalizeFacebookPostUrl } from '../../../shared/facebook-url';
 import {
   FB_AUTHOR_LINK_SELECTOR,
   FB_METRIC_PATTERN,
@@ -69,21 +71,58 @@ const EXTRACT_POSTS_SCRIPT = `(() => {
     return !!(el.closest && el.closest('[aria-label*="Comment" i], [aria-label*="bình luận" i], [aria-label*="Bình luận" i]'));
   }
 
+  function isPhotoMediaHref(full) {
+    return /photo\.php|\/photo\/|\/photos\/|fbid=/i.test(full);
+  }
+
+  function toFullHref(href) {
+    if (!href) return '';
+    return href.charAt(0) === '/' ? 'https://www.facebook.com' + href : href;
+  }
+
   function extractPermalink(article) {
+    // 1) Timestamp link (abbr) — story permalink, not image lightbox.
+    var timeAnchors = article.querySelectorAll(
+      'a[href*="/posts/"] abbr, a[href*="/permalink/"] abbr, a[href*="story_fbid"] abbr',
+    );
+    for (var t = 0; t < timeAnchors.length; t++) {
+      var abbr = timeAnchors[t];
+      if (isInsideNestedArticle(abbr, article)) continue;
+      var anchor = abbr.closest ? abbr.closest('a[href]') : null;
+      if (!anchor) continue;
+      var thref = anchor.getAttribute('href') || '';
+      if (!thref || /comment_id=/i.test(thref)) continue;
+      var tfull = toFullHref(thref);
+      if (isPhotoMediaHref(tfull)) continue;
+      return tfull.split('?')[0];
+    }
+
+    // 2) Score remaining candidates — deprioritize photo/media links.
     var links = article.querySelectorAll('a[href*="/posts/"], a[href*="permalink"], a[href*="story_fbid"]');
-    var fallback = '';
+    var best = '';
+    var bestScore = -1;
+    var commentFallback = '';
     for (var i = 0; i < links.length; i++) {
       if (isInsideNestedArticle(links[i], article)) continue;
       var href = links[i].getAttribute('href') || '';
       if (!href) continue;
-      var full = href.charAt(0) === '/' ? 'https://www.facebook.com' + href : href;
-      if (full.indexOf('comment_id=') >= 0) {
-        if (!fallback) fallback = full;
+      var full = toFullHref(href);
+      if (isPhotoMediaHref(full)) continue;
+      if (/comment_id=/i.test(full)) {
+        if (!commentFallback) commentFallback = full;
         continue;
       }
-      return full;
+      var score = 0;
+      if (/story_fbid=/i.test(full)) score = 5;
+      else if (/\/permalink\//i.test(full)) score = 4;
+      else if (/\/posts\//i.test(full)) score = 3;
+      if (score > bestScore) {
+        bestScore = score;
+        best = full;
+      }
     }
-    return fallback;
+    if (best) return best.split('?')[0];
+    return commentFallback ? commentFallback.split('?')[0] : '';
   }
 
   function extractExternalId(url) {
@@ -341,26 +380,32 @@ export async function parseVisibleFacebookPostsWithStats(
     }
 
     const canonicalUrl = normalizeFacebookUrl(item.permalink || '', page.url());
-    posts.push({
-      externalId: item.externalId ?? null,
-      canonicalUrl,
-      authorName: item.authorName ?? null,
-      authorUrl: item.authorUrl ?? null,
-      contentText: body,
-      publishedAt: null,
-      publishedLabel: item.publishedLabel ?? null,
-      metrics: item.metrics ?? {},
-      title: item.authorName ? `${item.authorName}: ${body.slice(0, 80)}` : body.slice(0, 100),
-      isPinned: Boolean(item.isPinned),
-      rawData: {
-        publishedLabel: item.publishedLabel ?? null,
-        metrics: item.metrics ?? {},
-        isPinned: Boolean(item.isPinned),
-        articleKind: kind,
-        signals: item.signals,
-        parser: 'facebookDomParser@v3',
-      },
-    });
+    const groupUrl = page.url().split('?')[0].replace(/\/$/, '');
+    posts.push(
+      applyFacebookPostIdentity(
+        {
+          externalId: item.externalId ?? null,
+          canonicalUrl,
+          authorName: item.authorName ?? null,
+          authorUrl: item.authorUrl ?? null,
+          contentText: body,
+          publishedAt: null,
+          publishedLabel: item.publishedLabel ?? null,
+          metrics: item.metrics ?? {},
+          title: item.authorName ? `${item.authorName}: ${body.slice(0, 80)}` : body.slice(0, 100),
+          isPinned: Boolean(item.isPinned),
+          rawData: {
+            publishedLabel: item.publishedLabel ?? null,
+            metrics: item.metrics ?? {},
+            isPinned: Boolean(item.isPinned),
+            articleKind: kind,
+            signals: item.signals,
+            parser: 'facebookDomParser@v4-permalink',
+          },
+        },
+        groupUrl,
+      ),
+    );
   }
 
   return {
@@ -422,7 +467,8 @@ export function normalizeFacebookUrl(href: string, fallback: string): string {
     if (!href) return fallback;
     const url = new URL(href, 'https://www.facebook.com');
     url.hash = '';
-    return url.toString();
+    const raw = url.toString();
+    return canonicalizeFacebookPostUrl(raw) || raw.replace(/\/$/, '');
   } catch {
     return fallback;
   }

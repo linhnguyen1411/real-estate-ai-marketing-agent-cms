@@ -28,6 +28,15 @@ export function normalizeLeadContent(raw: string, title?: string | null): string
   text = text.replace(EMOJI_EDGE, '');
   text = text.replace(ACTION_LABELS, ' ');
   text = text.replace(/\bm\s*2\b/gi, 'm2').replace(/m²/gi, 'm2');
+  // Facebook feed chrome that changes between scans (time ago, reaction counts)
+  text = text.replace(
+    /\b\d+\s*(phút|giờ|ngày|tuần|tháng|năm|minutes?|hours?|days?|weeks?|months?|years?|h|d|w)\b/gi,
+    ' ',
+  );
+  text = text.replace(
+    /\b\d[\d.,]*\s*(lượt thích|likes?|bình luận|comments?|chia sẻ|shares?)\b/gi,
+    ' ',
+  );
   text = text.replace(/[.]{3,}/g, '...').replace(/[!?]{2,}/g, match => match[0]);
   text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   text = text.replace(/[\s!?.,…]+$/g, '').trim();

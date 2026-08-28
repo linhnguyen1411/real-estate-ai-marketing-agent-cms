@@ -33,6 +33,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agent_sync_batch_size: 10,
   agent_sync_timeout_ms: 20000,
   agent_sync_verify_tls: true,
+  gemini_api_key: '',
+  openai_api_key: '',
+  finding_ai_gate_enabled: true,
 };
 
 export const ASSISTANT_WELCOME_MESSAGE: ChatMessage = {

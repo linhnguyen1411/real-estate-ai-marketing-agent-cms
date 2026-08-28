@@ -29,7 +29,7 @@ const defaultSettings: AppSettings = {
           : "auto",
   ollama_endpoint: process.env.OLLAMA_ENDPOINT || "http://localhost:11434",
   ollama_model: process.env.OLLAMA_MODEL || "qwen3:8b",
-  openai_model: process.env.OPENAI_MODEL || "gpt-5-mini",
+  openai_model: process.env.OPENAI_MODEL || process.env.KIRA_MODEL || "kira-mini-1.0",
   agent_tone: process.env.AGENT_TONE || "sang trọng và chuyên nghiệp",
   site_view_count: 0,
   telegram_enabled: true,
@@ -44,6 +44,9 @@ const defaultSettings: AppSettings = {
   agent_sync_batch_size: 10,
   agent_sync_timeout_ms: 20000,
   agent_sync_verify_tls: true,
+  gemini_api_key: '',
+  openai_api_key: '',
+  finding_ai_gate_enabled: true,
 };
 
 let cache: CmsDatabase | null = null;
@@ -127,8 +130,18 @@ async function loadCacheFromPostgres() {
   ]);
 
   const db = emptyDatabase();
-  db.companies = companies.map((row) => row.data as any);
-  db.users = users.map((row) => row.data as any);
+  db.companies = companies
+    .map((row) => {
+      const data = (row.data as Record<string, unknown>) || {};
+      return { ...data, id: data.id || row.id };
+    })
+    .filter((c) => Boolean(c.id));
+  db.users = users
+    .map((row) => {
+      const data = (row.data as Record<string, unknown>) || {};
+      return { ...data, id: data.id || row.id };
+    })
+    .filter((u) => Boolean(u.id));
 
   for (const row of cmsRecords) {
     const collection = row.collection as CmsCollection;
@@ -287,6 +300,10 @@ export async function writeDatabase(dbData: CmsDatabase) {
 
   await prisma.$transaction(async (tx) => {
     for (const company of dbData.companies || []) {
+      if (!company?.id) {
+        console.warn('[writeDatabase] skip company without id');
+        continue;
+      }
       await tx.company.upsert({
         where: { id: company.id },
         create: {
@@ -300,6 +317,10 @@ export async function writeDatabase(dbData: CmsDatabase) {
     }
 
     for (const user of dbData.users || []) {
+      if (!user?.id) {
+        console.warn('[writeDatabase] skip user without id');
+        continue;
+      }
       await tx.user.upsert({
         where: { id: user.id },
         create: {
@@ -323,6 +344,10 @@ export async function writeDatabase(dbData: CmsDatabase) {
 
     for (const collection of ["customers", "properties", "posts", "inbox", "automations"] as CmsCollection[]) {
       for (const record of dbData[collection] || []) {
+        if (!record?.id) {
+          console.warn(`[writeDatabase] skip ${collection} without id`);
+          continue;
+        }
         const createdAt = parseIsoDate(record.created_at, now);
         await tx.cmsRecord.upsert({
           where: { collection_id: { collection, id: record.id } },
@@ -742,7 +767,17 @@ export function getSettings(): AppSettings {
 }
 
 export async function updateSettings(data: Partial<AppSettings>) {
-  const settings = { ...getSettings(), ...data };
+  const current = getSettings();
+  const patch = { ...data } as Partial<AppSettings>;
+  // Never wipe secrets with empty / masked placeholders from the form
+  const wipeSecret = (v: unknown) =>
+    v == null || v === '' || (typeof v === 'string' && (v.includes('…') || v.includes('****')));
+  if (wipeSecret(patch.gemini_api_key)) delete patch.gemini_api_key;
+  if (wipeSecret(patch.openai_api_key)) delete patch.openai_api_key;
+  if (wipeSecret(patch.telegram_bot_token)) delete patch.telegram_bot_token;
+  if (wipeSecret(patch.agent_sync_secret)) delete patch.agent_sync_secret;
+
+  const settings = { ...current, ...patch };
   const db = requireCache();
   db.settings = settings;
   await prisma.appSetting.upsert({

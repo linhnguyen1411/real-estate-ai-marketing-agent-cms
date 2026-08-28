@@ -7,6 +7,7 @@
  */
 import type { Page, Response } from 'playwright';
 import type { FacebookPostParsed } from './facebookDomParser';
+import { applyFacebookPostIdentity } from './facebookPermalinkResolver';
 import { isFacebookGroupUrl } from './facebookSelectors';
 import { sanitizeUnicodeString } from '../services/contentNormalizer';
 
@@ -286,22 +287,26 @@ export function attachFacebookGraphqlCapture(
 
 export function graphqlCaptureToFacebookPost(
   captured: GraphqlCapturedPost,
+  groupUrl?: string | null,
 ): FacebookPostParsed {
-  return {
-    externalId: captured.externalId,
-    canonicalUrl: captured.canonicalUrl,
-    authorName: captured.authorName,
-    authorUrl: null,
-    contentText: captured.contentText,
-    publishedAt: null,
-    publishedLabel: null,
-    metrics: {},
-    title: captured.contentText.slice(0, 100),
-    isPinned: false,
-    rawData: {
-      parser: 'facebookGraphqlCapture@v2',
-      source: 'graphql',
-      permalinkResolved: captured.permalinkResolved,
+  return applyFacebookPostIdentity(
+    {
+      externalId: captured.externalId,
+      canonicalUrl: captured.canonicalUrl,
+      authorName: captured.authorName,
+      authorUrl: null,
+      contentText: captured.contentText,
+      publishedAt: null,
+      publishedLabel: null,
+      metrics: {},
+      title: captured.contentText.slice(0, 100),
+      isPinned: false,
+      rawData: {
+        parser: 'facebookGraphqlCapture@v3',
+        source: 'graphql',
+        permalinkResolved: captured.permalinkResolved,
+      },
     },
-  };
+    groupUrl,
+  );
 }

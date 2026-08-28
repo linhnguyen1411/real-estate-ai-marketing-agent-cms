@@ -30,6 +30,8 @@ import {
 } from '../../agent/leadIntelligence';
 import { enqueueFindingEnrichment } from '../../agent/findingEnrichmentService';
 import type { LeadAnalysisResult } from '../../agent/leadAnalysisSchema';
+import { decideAiFindingGate } from '../../agent/findingAiGate';
+import { isFindingAiGateEnabled } from '../../modules/ai-gateway/apiKeyResolver';
 import {
   buildContentDedupeMeta,
   decideFindingDedupe,
@@ -456,37 +458,134 @@ export async function processFindingForContent(input: {
     ? preAiSpam.decision.scorePenalty
     : 0;
 
-  // Findings MUST NOT wait on Gemini — RAW create from rules, AI enrich async later.
-  const analysisRan = false;
-  const aiScore: number | null = null;
-  const analysis: LeadAnalysisResult | null = null;
-  const leadExtracted: Record<string, unknown> | null = null;
-  const aiSource: 'ai' | 'fallback' | 'skipped' | 'budget' = 'skipped';
-  // Keep budget object for API compat (unused for sync AI).
+  // Keyword already screened above. Prefer AI gate before creating a finding;
+  // keyword/subjectDirection only when AI fails / disabled / keyword_only.
+  let analysisRan = false;
+  let aiScore: number | null = null;
+  let analysis: LeadAnalysisResult | null = null;
+  let leadExtracted: Record<string, unknown> | null = null;
+  let aiSource: 'ai' | 'fallback' | 'skipped' | 'budget' = 'skipped';
+  let aiGateAccepted = false;
   const budget = input.analysisBudget ?? {
     used: 0,
     max: getLeadAnalysisLimits().maxPerJob,
   };
-  void budget;
-  void decideShouldRunAi;
-  void analyzeLeadContent;
 
-  // Resolve classification: subject-direction + deterministic extractors (no AI)
+  const gateOn =
+    isFindingAiGateEnabled() &&
+    !config.skipAi &&
+    config.analysisMode !== 'keyword_only';
+
+  if (gateOn && budget.used < budget.max) {
+    try {
+      const aiOut = await analyzeLeadContent(
+        {
+          title: input.title,
+          bodyText: input.content.contentText,
+          canonicalUrl: input.content.canonicalUrl || '',
+          sourceType: input.source.type,
+          positiveKeywords: config.positiveKeywords,
+          negativeKeywords: config.negativeKeywords,
+          deepAnalyze: true,
+          prefilterMinScore: config.prefilterMinScore,
+        },
+        {
+          preferredProviders: ['gemini', 'openai', 'ollama'],
+          timeoutMs: Math.min(getLeadAnalysisLimits().timeoutMs, 25_000),
+        },
+      );
+      budget.used += 1;
+
+      if (aiOut.meta?.source === 'ai' && aiOut.analysis) {
+        analysisRan = true;
+        analysis = aiOut.analysis;
+        aiScore = analysis.score;
+        leadExtracted = aiOut.extractedData;
+        aiSource = 'ai';
+
+        const gate = decideAiFindingGate(analysis, config.targetClassifications);
+        if (gate.accept === false) {
+          await persistContentAnalysis(input.content.id, {
+            filterStage: 'out_of_scope',
+            analysisMode: config.analysisMode,
+            keywordScore,
+            prefilterScore: prefilter.score,
+            aiScore,
+            leadFitScore: 0,
+            finalScore: 0,
+            classification: analysis.classification,
+            intent: analysis.intent,
+            actorRole: analysis.actorRole,
+            usedDefaultKeywords: config.usedDefaultKeywords,
+            aiSource,
+            pipeline: 'keyword_then_ai_gate',
+            reasons: [
+              gate.rejectReason,
+              `ai_classification=${analysis.classification}`,
+              `ai_actorRole=${analysis.actorRole}`,
+              ...(analysis.reasons || []).slice(0, 4),
+            ],
+            ...(leadExtracted ? { leadAnalysis: leadExtracted } : {}),
+          });
+          return {
+            findingCreated: false,
+            notificationCreated: false,
+            score: 0,
+            analysisRan: true,
+            ignoredByRule: false,
+            outOfScope: true,
+            filterStage: 'out_of_scope',
+            keywordScore,
+            prefilterScore: prefilter.score,
+            aiScore,
+            leadFitScore: 0,
+            finalScore: 0,
+            analysisMode: config.analysisMode,
+            classification: analysis.classification,
+          };
+        }
+        aiGateAccepted = true;
+      } else {
+        aiSource = aiOut.meta?.source === 'fallback' ? 'fallback' : 'skipped';
+        console.warn(
+          `[findingRuleEngine] AI gate unavailable — keyword fallback (content=${input.content.id})`,
+        );
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[findingRuleEngine] AI gate error — keyword fallback: ${msg.slice(0, 200)}`);
+      aiSource = 'fallback';
+    }
+  } else if (gateOn && budget.used >= budget.max) {
+    aiSource = 'budget';
+  }
+
+  void decideShouldRunAi;
+
+  // Resolve classification: AI gate result, else subject-direction + extractors
   const direction = detectSubjectDirection(`${input.title}\n${input.content.contentText}`);
-  let classification = resolveClassification(null, deterministic);
-  if (direction.classification !== 'unknown') {
+  let classification = aiGateAccepted && analysis
+    ? normalizeClassification(analysis.classification)
+    : resolveClassification(null, deterministic);
+  if (!aiGateAccepted && direction.classification !== 'unknown') {
     classification = direction.classification;
   }
 
-  const intent = normalizeIntent(direction.intent || deterministic.property.intent);
+  const intent = normalizeIntent(
+    (aiGateAccepted && analysis?.intent) || direction.intent || deterministic.property.intent,
+  );
   let actorRole: ActorRole =
-    direction.actorRole !== 'unknown'
-      ? direction.actorRole
-      : actorRoleFromClassification(classification);
+    aiGateAccepted && analysis
+      ? normalizeActorRole(analysis.actorRole)
+      : direction.actorRole !== 'unknown'
+        ? direction.actorRole
+        : actorRoleFromClassification(classification);
   if (actorRole === 'unknown') actorRole = actorRoleFromClassification(classification);
 
-  const representedDemand = direction.representedDemand;
-  const brokerActivity = direction.brokerActivity;
+  const representedDemand =
+    (aiGateAccepted && analysis?.representedDemand) || direction.representedDemand;
+  const brokerActivity =
+    (aiGateAccepted && analysis?.brokerActivity) || direction.brokerActivity;
 
   // Tier-2 spam policy (post-classification): classification / actor_role rules
   const postClassSpam = await evaluateContentSpam({
@@ -527,6 +626,7 @@ export async function processFindingForContent(input: {
 
   const targetMatched = config.targetClassifications.includes(classification);
   const isBrokerDemand =
+    !aiGateAccepted &&
     classification === 'broker' &&
     (brokerActivity === 'demand_request' ||
       representedDemand === 'buyer' ||
@@ -542,6 +642,7 @@ export async function processFindingForContent(input: {
   // Soft keywords alone must NOT invent buyer intent — default packs include
   // property/location/seller terms that light up listing posts.
   const hasBuyerIntent =
+    aiGateAccepted ||
     actorRole === 'demand_side' ||
     targetMatched ||
     isBrokerDemand ||
@@ -558,24 +659,36 @@ export async function processFindingForContent(input: {
   // "Cần xem lại" = ambiguous demand∩supply or broker demand — NOT every
   // unclassified listing (those are usually sellers missing strong verbs).
   const isAmbiguousUnknown =
+    !aiGateAccepted &&
     classification === 'unknown' &&
     direction.demandSignals.length > 0 &&
     direction.supplySignals.length > 0;
 
   const needsReview =
-    isAmbiguousUnknown ||
-    isBrokerDemand ||
-    (!targetMatched &&
-      !isClearSupplyDismiss &&
-      hasBuyerIntent &&
-      classification !== 'unknown');
+    !aiGateAccepted &&
+    (isAmbiguousUnknown ||
+      isBrokerDemand ||
+      (!targetMatched &&
+        !isClearSupplyDismiss &&
+        hasBuyerIntent &&
+        classification !== 'unknown'));
 
-  const hasPhone = Boolean(deterministic.phone.primaryPhone);
-  const hasBudget = Boolean(
-    deterministic.money.budgetMin != null || deterministic.money.budgetMax != null,
+  const hasPhone = Boolean(
+    analysis?.contact?.phone || deterministic.phone.primaryPhone,
   );
-  const hasLocation = Boolean(deterministic.location.primaryLocation);
-  const propertyTypes = deterministic.property.propertyTypes || [];
+  const hasBudget = Boolean(
+    analysis?.budgetMin != null ||
+      analysis?.budgetMax != null ||
+      deterministic.money.budgetMin != null ||
+      deterministic.money.budgetMax != null,
+  );
+  const hasLocation = Boolean(
+    analysis?.region || deterministic.location.primaryLocation,
+  );
+  const propertyTypes =
+    (analysis?.propertyTypes?.length ? analysis.propertyTypes : null) ||
+    deterministic.property.propertyTypes ||
+    [];
   const hasPropertyType = propertyTypes.length > 0;
 
   const leadFitScore = computeLeadFitScore({
@@ -586,7 +699,7 @@ export async function processFindingForContent(input: {
     hasBudget,
     hasLocation,
     hasPropertyType,
-    urgency: null,
+    urgency: analysis?.urgency ?? null,
   });
 
   const ruleScore = computeRuleScore({
@@ -600,7 +713,7 @@ export async function processFindingForContent(input: {
     0,
     computeIntelligenceFinalScore({
       leadFitScore: Math.max(leadFitScore, hasBuyerIntent ? 40 : 0),
-      aiScore: null,
+      aiScore,
       keywordScore,
       targetMatched: hasBuyerIntent || (targetMatched && actorRole === 'demand_side'),
       ruleScore: hasBuyerIntent ? Math.max(ruleScore, 35) : ruleScore,
@@ -608,7 +721,11 @@ export async function processFindingForContent(input: {
   );
 
   const analysisReasons = [
-    'pipeline:rules_first_async_enrich',
+    aiGateAccepted
+      ? 'pipeline:keyword_then_ai_gate'
+      : aiSource === 'fallback' || aiSource === 'budget'
+        ? 'pipeline:keyword_fallback_after_ai'
+        : 'pipeline:keyword_rules',
     ...direction.demandSignals.slice(0, 3).map(s => `demand:${s}`),
   ];
 
@@ -897,14 +1014,14 @@ export async function processFindingForContent(input: {
           sourceId: input.source.id,
           scannedContentId: contentRow.id,
           type: findingType,
-          status: 'raw',
-          scoreStatus: 'raw',
+          status: aiGateAccepted ? 'enriched' : 'raw',
+          scoreStatus: aiGateAccepted ? 'enriched' : 'raw',
           ...columnData,
         },
       });
       findingId = finding.id;
       findingCreated = true;
-      // H3.6 — Decision Engine gate inside enrichment (AI only when allowed)
+      // Decision / Lead Acquisition still run async; AI re-call skipped when already enriched.
       enqueueFindingEnrichment(finding.id);
     } catch (error) {
       const code = (error as { code?: string } | null)?.code;

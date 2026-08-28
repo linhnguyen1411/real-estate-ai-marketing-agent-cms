@@ -2,6 +2,7 @@ import type { ScannedContent } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma';
 import type { FacebookPostParsed } from '../facebook/facebookDomParser';
+import { resolveFacebookScannedPostIdentity } from '../facebook/facebookPermalinkResolver';
 import {
   buildRawMetadata,
   computeContentHash,
@@ -154,9 +155,23 @@ export async function saveFacebookScannedPost(input: {
   sourceId: string;
   post: FacebookPostParsed;
   maxContentChars: number;
+  groupUrl?: string | null;
 }): Promise<SaveContentResult | null> {
   const bodyText = normalizeText(input.post.contentText, input.maxContentChars);
   if (!bodyText || bodyText.length < 15) return null;
+
+  const identity = resolveFacebookScannedPostIdentity({
+    permalink: input.post.canonicalUrl,
+    externalId: input.post.externalId,
+    contentText: bodyText,
+    groupUrl: input.groupUrl,
+  });
+  const canonicalUrl = identity.canonicalUrl;
+  const externalId = identity.externalId;
+  // Body-based hash — URL changes (photo fbid vs story id) must not create twins.
+  const contentHash = identity.stableContentHash;
+  const publishedAt = parsePublishedAt(input.post.publishedAt);
+  const dedupeMeta = buildContentDedupeMeta(bodyText);
 
   const authorName = input.post.authorName
     ? sanitizeUnicodeString(input.post.authorName)
@@ -168,13 +183,8 @@ export async function saveFacebookScannedPost(input: {
     ? sanitizeUnicodeString(input.post.publishedLabel)
     : null;
 
-  const canonicalUrl = input.post.canonicalUrl;
-  const contentHash = computeContentHash(canonicalUrl, bodyText);
-  const publishedAt = parsePublishedAt(input.post.publishedAt);
-  const dedupeMeta = buildContentDedupeMeta(bodyText);
-
   const existing = await findExistingFacebookPost(input.sourceId, {
-    externalId: input.post.externalId,
+    externalId,
     canonicalUrl,
     contentText: bodyText,
   });
@@ -195,11 +205,12 @@ export async function saveFacebookScannedPost(input: {
     const record = await prisma.scannedContent.update({
       where: { id: existing.id },
       data: {
-        externalId: input.post.externalId ?? undefined,
+        externalId: externalId ?? undefined,
         canonicalUrl,
         authorName,
         authorUrl,
         contentText: bodyText,
+        contentHash,
         normalizedContentHash: dedupeMeta.normalizedContentHash,
         nearDuplicateFingerprint: dedupeMeta.nearDuplicateFingerprint,
         dedupeVersion: dedupeMeta.dedupeVersion,
@@ -239,7 +250,7 @@ export async function saveFacebookScannedPost(input: {
     create: {
       companyId: input.companyId,
       sourceId: input.sourceId,
-      externalId: input.post.externalId,
+      externalId,
       canonicalUrl,
       authorName,
       authorUrl,

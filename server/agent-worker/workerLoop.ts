@@ -16,6 +16,11 @@ import {
 import type { JobHandlerRegistry, JobQueuePort } from './ports';
 import { createPrismaJobQueuePort } from './prismaJobQueue';
 import { createDefaultJobHandlerRegistry } from './defaultHandlers';
+import { reclaimOrphanedAgentJobs } from './jobClaimer';
+
+/** Reclaim jobs left running by dead workers (other workerIds on same DB). */
+const ORPHAN_RECLAIM_INTERVAL_MS = 90_000;
+const ORPHAN_RECLAIM_STALE_MS = 120_000;
 
 function isResourceBusyError(error: unknown): boolean {
   if (error instanceof SlotBusyError || error instanceof SlotStoppedError || error instanceof BrowserBusyError) {
@@ -43,6 +48,7 @@ export class WorkerLoop {
   private readonly handlers: JobHandlerRegistry;
   private readonly capabilities: string[];
   private running = false;
+  private lastOrphanReclaimAt = 0;
 
   constructor(
     private readonly config: WorkerConfig,
@@ -140,6 +146,7 @@ export class WorkerLoop {
 
     while (this.running && !isShuttingDown()) {
       try {
+        await this.maybeReclaimOrphanedJobs();
         this.executionPool.tickHeartbeat();
         const leaseTick = this.browserPool.tickHeartbeat();
         if (leaseTick.expired.length > 0) {
@@ -218,6 +225,26 @@ export class WorkerLoop {
 
   stop(): void {
     this.running = false;
+  }
+
+  private async maybeReclaimOrphanedJobs(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastOrphanReclaimAt < ORPHAN_RECLAIM_INTERVAL_MS) return;
+    this.lastOrphanReclaimAt = now;
+    try {
+      const reclaimed = await reclaimOrphanedAgentJobs({
+        workerId: this.config.workerId,
+        staleMs: ORPHAN_RECLAIM_STALE_MS,
+      });
+      if (reclaimed > 0) {
+        console.log(`[agent-worker] Reclaimed ${reclaimed} orphaned job(s) from dead workers`);
+      }
+    } catch (error) {
+      console.warn(
+        '[agent-worker] Orphan reclaim failed:',
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 
   stopSlot(kind: Parameters<ExecutionPool['stopSlot']>[0]): void {

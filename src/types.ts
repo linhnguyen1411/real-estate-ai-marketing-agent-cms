@@ -359,6 +359,16 @@ export interface AppSettings {
   agent_sync_batch_size?: number;
   agent_sync_timeout_ms?: number;
   agent_sync_verify_tls?: boolean;
+  /** Gemini API key (stored in settings; masked on GET) */
+  gemini_api_key?: string;
+  /** OpenAI / Kira-compatible API key (stored in settings; masked on GET) */
+  openai_api_key?: string;
+  /**
+   * Finding pipeline: keyword screen → AI check → create lead.
+   * When true (default), AI must accept before creating AgentFinding.
+   * Keyword/rules only used when AI fails or this is false.
+   */
+  finding_ai_gate_enabled?: boolean;
 }
 
 export interface ChatHistoryRecord {

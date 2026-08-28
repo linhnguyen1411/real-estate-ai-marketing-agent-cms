@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import {
   getPublicChatGuests,
   readDatabase,
+  updateSettings,
   verifyGeneratedContent,
   writeDatabase,
 } from '../../dbHelper';
@@ -226,19 +227,17 @@ router.get('/api/settings', (req: Request, res: Response) => {
 router.put('/api/settings', async (req: Request, res: Response) => {
   if (!requireOwner(req, res)) return;
 
-  const db = readDatabase();
   const body = { ...(req.body || {}) } as Record<string, unknown>;
   // Do not overwrite secrets when client sends masked values back
   const maskedLike = (v: unknown) => typeof v === 'string' && (v.includes('…') || v.includes('****'));
   if (maskedLike(body.telegram_bot_token)) delete body.telegram_bot_token;
   if (maskedLike(body.agent_sync_secret)) delete body.agent_sync_secret;
+  if (maskedLike(body.gemini_api_key)) delete body.gemini_api_key;
+  if (maskedLike(body.openai_api_key)) delete body.openai_api_key;
 
-  db.settings = {
-    ...db.settings,
-    ...body,
-  };
-  await writeDatabase(db);
-  res.json({ status: 'success', data: maskSettingsSecrets(db.settings) });
+  // Settings-only write — never rewrite the full CMS DB (slow / crash-prone).
+  const settings = await updateSettings(body as Partial<AppSettings>);
+  res.json({ status: 'success', data: maskSettingsSecrets(settings) });
 });
 
 router.post('/api/settings/telegram/test', async (req: Request, res: Response) => {

@@ -23,6 +23,7 @@
     "agent:worker": "tsx server/agent-worker/index.ts",
     "local:watchdog": "powershell -ExecutionPolicy Bypass -File scripts/local/watchdog-local.ps1",
     "local:watchdog:install": "powershell -ExecutionPolicy Bypass -File scripts/local/register-watchdog-task.ps1",
+    "local:watchdog:install:lean": "powershell -ExecutionPolicy Bypass -File scripts/local/register-watchdog-task.ps1 -LeanMode",
     "local:watchdog:stop": "powershell -ExecutionPolicy Bypass -File scripts/local/stop-watchdog.ps1",
     "local:watchdog:uninstall": "powershell -ExecutionPolicy Bypass -File scripts/local/stop-watchdog.ps1 -UnregisterTask",
     "automation-agent": "tsx server/automation-agent/index.ts",

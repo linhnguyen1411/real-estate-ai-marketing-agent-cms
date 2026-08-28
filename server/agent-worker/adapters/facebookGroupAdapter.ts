@@ -62,11 +62,12 @@ import {
   shouldStopScrolling,
   switchFacebookFeedTab,
 } from '../facebook/facebookScrollController';
-import { computeContentHash, normalizeText } from '../services/contentNormalizer';
+import { normalizeText } from '../services/contentNormalizer';
 import {
   findExistingFacebookPostDetailed,
   saveFacebookScannedPost,
 } from '../services/contentRepository';
+import { resolveFacebookScannedPostIdentity } from '../facebook/facebookPermalinkResolver';
 import { type AnalysisBudget } from '../services/findingRuleEngine';
 import { processContentAfterCollect } from '../../modules/mission-engine/application/processContentAfterCollect';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
@@ -155,11 +156,23 @@ export class FacebookGroupAdapter implements SourceAdapter {
         return;
       }
 
-      const contentHash = computeContentHash(post.canonicalUrl, bodyText);
-      const session = markSessionSeen(sessionSets, {
+      const identity = resolveFacebookScannedPostIdentity({
+        permalink: post.canonicalUrl,
         externalId: post.externalId,
-        canonicalUrl: post.canonicalUrl,
-        contentHash,
+        contentText: bodyText,
+        groupUrl,
+      });
+      const resolvedPost = {
+        ...post,
+        contentText: bodyText,
+        canonicalUrl: identity.canonicalUrl,
+        externalId: identity.externalId,
+      };
+
+      const session = markSessionSeen(sessionSets, {
+        externalId: resolvedPost.externalId,
+        canonicalUrl: resolvedPost.canonicalUrl,
+        contentHash: identity.stableContentHash,
       });
 
       if (session.duplicateInSession) {
@@ -173,8 +186,8 @@ export class FacebookGroupAdapter implements SourceAdapter {
       // Always persist + score when the agent has a DB. Stateless mode only means
       // source/mission come from hydrated payload — it must not skip findings.
       const existingHit = await findExistingFacebookPostDetailed(ctx.source.id, {
-        externalId: post.externalId,
-        canonicalUrl: post.canonicalUrl,
+        externalId: resolvedPost.externalId,
+        canonicalUrl: resolvedPost.canonicalUrl,
         contentText: bodyText,
       });
 
@@ -207,8 +220,9 @@ export class FacebookGroupAdapter implements SourceAdapter {
       const saved = await saveFacebookScannedPost({
         companyId: ctx.source.companyId,
         sourceId: ctx.source.id,
-        post: { ...post, contentText: bodyText },
+        post: resolvedPost,
         maxContentChars: config.maxContentChars,
+        groupUrl,
       });
 
       if (!saved) {
@@ -403,7 +417,7 @@ export class FacebookGroupAdapter implements SourceAdapter {
           );
         }
         for (const captured of gqlPosts) {
-          await processOnePost(graphqlCaptureToFacebookPost(captured), uniqueNewRef);
+          await processOnePost(graphqlCaptureToFacebookPost(captured, groupUrl), uniqueNewRef);
           if (stats.stoppedReason === 'known_post_streak' || stats.stoppedReason === 'max_posts') {
             break;
           }

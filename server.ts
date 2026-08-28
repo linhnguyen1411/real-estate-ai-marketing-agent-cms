@@ -44,6 +44,9 @@ registerSitemapXmlRoutes(app);
 registerSpaFallback(app);
 
 function freeDevPortsSync() {
+  if (process.env.SKIP_FREE_DEV_PORTS === '1' || process.env.SKIP_FREE_DEV_PORTS === 'true') {
+    return;
+  }
   try {
     execSync('node scripts/free-dev-ports.mjs', { stdio: 'inherit', cwd: process.cwd() });
   } catch {

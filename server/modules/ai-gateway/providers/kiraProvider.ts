@@ -8,6 +8,8 @@ import {
   isQuotaExhaustedError,
   recordProviderCall,
 } from '../healthMonitor';
+import { resolveOpenAiApiKey } from '../apiKeyResolver';
+import { getSettings } from '../../../dbHelper';
 import type {
   AIProvider,
   ChatRequest,
@@ -20,25 +22,29 @@ import type {
 import { normalizeEndpoint, stripThinking, withTimeout } from '../utils';
 
 function apiKey(): string | null {
-  return (
-    String(process.env.KIRA_API_KEY || process.env.OPENAI_API_KEY || '').trim() || null
-  );
+  return resolveOpenAiApiKey();
 }
 
 function baseUrl(): string {
   return normalizeEndpoint(
     process.env.KIRA_BASE_URL ||
       process.env.OPENAI_BASE_URL ||
-      'https://api.openai.com/v1',
+      'https://kiraai.vn/api/v1',
   );
 }
 
 function chatModel(): string {
-  return process.env.KIRA_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  try {
+    const fromSettings = String(getSettings().openai_model || '').trim();
+    if (fromSettings) return fromSettings;
+  } catch {
+    /* settings not ready */
+  }
+  return process.env.KIRA_MODEL || process.env.OPENAI_MODEL || 'kira-mini-1.0';
 }
 
 function embedModel(): string {
-  return process.env.KIRA_EMBED_MODEL || process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small';
+  return process.env.KIRA_EMBED_MODEL || process.env.OPENAI_EMBED_MODEL || 'kira-mini-1.0';
 }
 
 export class KiraProvider implements AIProvider {

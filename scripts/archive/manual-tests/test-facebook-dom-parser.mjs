@@ -53,6 +53,15 @@ const FEED_HTML = `
       </div>
     </div>
     <div>
+      <div role="article" aria-label="Post with photo link">
+        <h2><a role="link" href="/user/3">Author Three</a></h2>
+        <a href="/groups/123/posts/9001/"><img alt="listing photo"></a>
+        <a href="/groups/123/posts/1003/"><abbr>19h</abbr></a>
+        <div data-ad-preview="message"><div dir="auto">POST THREE BODY photo permalink must use timestamp not image link.</div></div>
+        ${ACTION_BAR}
+      </div>
+    </div>
+    <div>
       <div role="article" aria-label="Post two">
         <h2><a role="link" href="/user/2">Author Two</a></h2>
         <a href="/groups/123/posts/1002/"><abbr>3 giờ</abbr></a>
@@ -118,11 +127,11 @@ async function main() {
   assert(located.found, 'locateFacebookGroupFeed finds the feed root');
 
   const result = await parseVisibleFacebookPostsWithStats(page);
-  assert(result.postsAccepted === 2, `exactly 2 posts accepted (got ${result.postsAccepted})`);
+  assert(result.postsAccepted === 3, `exactly 3 posts accepted (got ${result.postsAccepted})`);
   assert(!result.noFeed, 'feed present (noFeed=false)');
   assert(
-    result.articleNodesObserved === 3,
-    `article nodes observed = 3 (2 posts + 1 nested comment), got ${result.articleNodesObserved}`,
+    result.articleNodesObserved === 4,
+    `article nodes observed = 4 (3 posts + 1 nested comment), got ${result.articleNodesObserved}`,
   );
   assert(result.commentsRejected >= 1, `nested comment rejected (got ${result.commentsRejected})`);
 
@@ -133,16 +142,21 @@ async function main() {
   assert(!bodies.includes('MODAL POST BODY'), 'modal post NOT parsed (outside feed root)');
   assert(!bodies.includes('MODAL COMMENT'), 'modal comment NOT parsed');
 
+  assert(bodies.includes('POST THREE BODY'), 'post three body captured');
+  const postThree = result.posts.find(p => p.contentText.includes('POST THREE'));
+  assert(postThree?.externalId === '1003', `post three uses timestamp id (got ${postThree?.externalId})`);
+  assert(!postThree?.canonicalUrl.includes('/posts/9001'), 'post three must not use image link id');
+
   const ids = result.posts.map(p => p.externalId).sort();
-  assert(ids.includes('1001') && ids.includes('1002'), 'external ids extracted from permalinks');
+  assert(ids.includes('1001') && ids.includes('1002') && ids.includes('1003'), 'external ids from timestamp links');
 
   // --- Fingerprint excludes comments ---
   console.log('\nAccepted-post fingerprint');
   const fp = await captureFeedFingerprint(page);
-  assert(fp.articleCount === 2, `fingerprint counts only 2 top-level posts (got ${fp.articleCount})`);
+  assert(fp.articleCount === 3, `fingerprint counts only 3 top-level posts (got ${fp.articleCount})`);
   assert(
-    fp.externalIds.includes('1001') && fp.externalIds.includes('1002'),
-    'fingerprint external ids are post ids only',
+    fp.externalIds.includes('1001') && fp.externalIds.includes('1002') && fp.externalIds.includes('1003'),
+    'fingerprint external ids are timestamp post ids only',
   );
 
   // --- Exact "See more" clicking ---

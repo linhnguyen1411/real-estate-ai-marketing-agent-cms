@@ -3,6 +3,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { resolveGeminiApiKey } from '../apiKeyResolver';
 import {
   getProviderMetrics,
   inferStatus,
@@ -21,7 +22,7 @@ import type {
 import { stripThinking } from '../utils';
 
 function client() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) return null;
   return new GoogleGenAI({
     apiKey,
@@ -126,7 +127,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   async health(): Promise<ProviderHealth> {
-    const configured = Boolean(process.env.GEMINI_API_KEY);
+    const configured = Boolean(resolveGeminiApiKey());
     const metrics = getProviderMetrics(this.id);
     const online = configured;
     const status = inferStatus({ configured, online, metrics });
@@ -145,7 +146,7 @@ export class GeminiProvider implements AIProvider {
       avgLatencyMs: metrics.avgLatencyMs,
       successRate: metrics.successRate,
       message: !configured
-        ? 'Thiếu GEMINI_API_KEY'
+        ? 'Thiếu Gemini API key (Settings hoặc GEMINI_API_KEY)'
         : metrics.lastError
           ? `Last error: ${metrics.lastError}`
           : status === 'idle'

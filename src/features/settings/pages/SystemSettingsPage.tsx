@@ -116,6 +116,50 @@ export default function SystemSettingsPage({ onNotify, onSettingsSaved }: Props)
         </div>
 
         <div className="border-t border-slate-800 pt-6 space-y-4">
+          <h3 className="text-sm font-bold text-white">API keys &amp; Finding AI gate</h3>
+          <p className="text-xs text-slate-400">
+            Crawl → keyword sàng → AI check → mới tạo lead. Key lưu trong cấu hình hệ thống (mask khi hiển thị).
+            Nếu AI lỗi/thiếu key → fallback keyword.
+          </p>
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={settings.finding_ai_gate_enabled !== false}
+              onChange={(e) =>
+                setSettings({ ...settings, finding_ai_gate_enabled: e.target.checked })
+              }
+              className="rounded border-slate-700 bg-slate-950"
+            />
+            Bật AI gate trước khi tạo Finding (khuyến nghị)
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">Gemini API Key</label>
+              <input
+                type="password"
+                autoComplete="off"
+                value={settings.gemini_api_key || ''}
+                onChange={(e) => setSettings({ ...settings, gemini_api_key: e.target.value })}
+                placeholder="Dán key Gemini (để trống nếu dùng .env)"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">Kira / OpenAI API Key</label>
+              <input
+                type="password"
+                autoComplete="off"
+                value={settings.openai_api_key || ''}
+                onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
+                placeholder="Bearer key Kira (kiraai.vn) hoặc OpenAI"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              />
+              <p className="text-[11px] text-slate-500">Base: https://kiraai.vn/api/v1 · model gợi ý: kira-mini-1.0 / kira-3.5-flash</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-800 pt-6 space-y-4">
           <h3 className="text-sm font-bold text-white">Telegram</h3>
           <label className="flex items-center gap-2 text-xs text-slate-300">
             <input
@@ -324,7 +368,9 @@ export default function SystemSettingsPage({ onNotify, onSettingsSaved }: Props)
           </p>
           <p>
             Sử dụng phím Settings Secrets ở ngoài thanh bên AI Studio để ghi đè{' '}
-            <span className="text-white font-mono font-bold">GEMINI_API_KEY</span> chính xác khi chạy production.
+            Key Gemini/OpenAI cấu hình ở mục API keys phía trên (ưu tiên hơn biến môi trường).
+            Vẫn hỗ trợ <span className="text-white font-mono font-bold">GEMINI_API_KEY</span> /{' '}
+            <span className="text-white font-mono font-bold">OPENAI_API_KEY</span> trên server nếu chưa dán trong UI.
           </p>
         </div>
 
