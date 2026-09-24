@@ -101,7 +101,7 @@ export default function SeoCmsAdmin({ token, section = 'posts' }: SeoCmsAdminPro
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-white">Nội dung SEO — CMS</h2>
-          <p className="text-xs text-slate-500">Estoria · Prompt workflow · SEO audit · DB-driven public</p>
+          <p className="text-xs text-slate-500">House & Life · Prompt workflow · SEO audit · DB-driven public</p>
         </div>
         <button type="button" onClick={load} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">
           <RefreshCw className="h-3.5 w-3.5" /> Refresh

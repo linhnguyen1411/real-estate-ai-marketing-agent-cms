@@ -37,7 +37,7 @@ export default function BlogCategoryPage() {
 
   const path = `/tin-tuc/chuyen-muc/${categorySlug}`;
   const title = category?.name || categorySlug || 'Chuyên mục';
-  const description = category?.description || `Bài viết chuyên mục ${title} — Estoria`;
+  const description = category?.description || `Bài viết chuyên mục ${title} — House & Life`;
   const breadcrumbs = [
     { name: 'Trang chủ', path: '/' },
     { name: 'Tin tức', path: '/tin-tuc' },

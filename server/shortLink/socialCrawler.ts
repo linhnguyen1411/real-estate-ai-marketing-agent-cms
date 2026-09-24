@@ -40,7 +40,7 @@ export function renderShortLinkOgHtml(meta: ShortLinkShareMeta): string {
   <meta name="description" content="${escapeHtml(meta.description)}" />
   <meta property="og:locale" content="vi_VN" />
   <meta property="og:type" content="${escapeHtml(meta.ogType || 'website')}" />
-  <meta property="og:site_name" content="Estoria" />
+  <meta property="og:site_name" content="House & Life" />
   <meta property="og:url" content="${escapeHtml(meta.url)}" />
   <meta property="og:title" content="${escapeHtml(meta.title)}" />
   <meta property="og:description" content="${escapeHtml(meta.description)}" />

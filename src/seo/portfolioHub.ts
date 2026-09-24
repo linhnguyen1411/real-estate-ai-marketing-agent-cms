@@ -15,31 +15,31 @@ export interface PortfolioPillar {
 
 export const PORTFOLIO_PILLARS: PortfolioPillar[] = [
   {
-    id: 'sun-group',
-    title: 'Sun Group Đà Nẵng',
-    subtitle: 'Thương hiệu chủ lực',
-    description:
-      'Căn hộ cao cấp ven sông Hàn, shophouse, nhà phố thương mại và đất nền trong các dự án Sun Group tại Đà Nẵng.',
-    href: '/du-an/du-an-sun-group-da-nang',
-    productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Nhà phố thương mại', 'Đất nền dự án'],
-  },
-  {
     id: 'nam-da-nang',
-    title: 'BĐS Nam Đà Nẵng',
-    subtitle: 'Mũi nhọn khu vực',
+    title: 'Nhà Phố & Đất Nền Nam Hòa Xuân',
+    subtitle: 'Thị trường trọng tâm',
     description:
-      'Đa dạng loại hình tại Nam Đà Nẵng: nhà ở, đất nền, kho xưởng, căn hộ, khách sạn và tài sản đầu tư — Mai Đăng Chơn, Hòa Xuân, Hòa Quý…',
+      'Mục tiêu trọng tâm: chuyên sâu mua bán nhà phố, đất nền Nam Hòa Xuân, đất nền Nam Đà Nẵng — sổ đỏ chính chủ, pháp lý minh bạch, thanh khoản vững vàng.',
     href: '/du-an/nam-da-nang',
-    productTypes: ['Đất nền', 'Nhà phố', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
+    productTypes: ['Nhà phố', 'Đất nền Nam Hòa Xuân', 'Đất nền Nam Đà Nẵng', 'Nhà ở trung tâm'],
   },
   {
     id: 'noi-bat',
-    title: 'BĐS nổi bật',
-    subtitle: 'Cơ hội đa dạng',
+    title: 'Bán & Cho Thuê Căn Hộ',
+    subtitle: 'Dòng tiền & An cư',
     description:
-      'Tài sản đáng chú ý từ nhiều khu vực — deal giá tốt, vị trí độc đáo, không gói gọn trong một dự án hay một quận.',
+      'Phân phối căn hộ bán và cho thuê căn hộ tại Đà Nẵng: căn hộ ở thực, căn hộ dịch vụ cao cấp, tối ưu lợi suất dòng tiền và an cư lâu dài.',
     href: '/du-an/bds-noi-bat',
-    productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
+    productTypes: ['Bán căn hộ', 'Cho thuê căn hộ', 'Căn hộ dịch vụ', 'Căn hộ cao cấp'],
+  },
+  {
+    id: 'sun-group',
+    title: 'Giỏ Hàng Tiềm Năng Sun Group',
+    subtitle: 'Giỏ hàng tiềm năng',
+    description:
+      'Giỏ hàng bất động sản tiềm năng chọn lọc: căn hộ cao cấp ven sông Hàn, shophouse khối đế và tài sản đầu tư trong hệ sinh thái Sun Group.',
+    href: '/du-an/du-an-sun-group-da-nang',
+    productTypes: ['Căn hộ cao cấp', 'Shophouse khối đế', 'Nhà phố thương mại', 'Đất nền dự án'],
   },
 ];
 

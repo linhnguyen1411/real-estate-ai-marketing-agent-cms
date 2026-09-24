@@ -54,8 +54,8 @@ export default function AgentProfilePage() {
   return (
     <>
       <SeoHead
-        title={`${agent.name} | Môi giới BĐS Estoria`}
-        description={agent.bio || `Hồ sơ môi giới bất động sản ${agent.name} tại Estoria.`}
+        title={`${agent.name} | Môi giới BĐS House & Life`}
+        description={agent.bio || `Hồ sơ môi giới bất động sản ${agent.name} tại House & Life.`}
         path={path}
         ogType="profile"
         image={agent.avatar_url}
@@ -89,7 +89,7 @@ export default function AgentProfilePage() {
                   </p>
                 )}
                 <p className="mt-3 text-sm text-white/75">
-                  {agent.property_count} tin bất động sản · Môi giới chuyên nghiệp Estoria
+                  {agent.property_count} tin bất động sản · Môi giới chuyên nghiệp House & Life
                 </p>
               </div>
             </div>

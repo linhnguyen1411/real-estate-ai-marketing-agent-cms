@@ -413,8 +413,8 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
 
     if (isGreetingOnlyMessage(String(message))) {
       const greetingResponse = [
-        'Dạ chào anh/chị ạ, em là Lily bên Estoria.',
-        'Anh/chị đang quan tâm loại BĐS nào ở Đà Nẵng để em lọc đúng nhu cầu hơn: nhà phố, đất nền, căn hộ hay shophouse ạ?'
+        'Dạ chào anh/chị ạ, em là Lily bên House & Life (Vững tâm an cư - kiến tạo tương lai).',
+        'Anh/chị đang quan tâm loại BĐS nào ở Đà Nẵng để em hỗ trợ đúng nhu cầu hơn: nhà phố, đất nền Nam Hòa Xuân, căn hộ mua hay thuê ạ?'
       ].join('\n\n');
 
       await saveChatMessage({

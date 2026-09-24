@@ -31,7 +31,7 @@ export function renderDocumentWithSeo(input: RenderDocumentInput): string {
     `<meta name="googlebot" content="${escapeHtml(seo.robots)}" />`,
     `<meta property="og:locale" content="${escapeHtml(og.locale || 'vi_VN')}" />`,
     `<meta property="og:type" content="${escapeHtml(og.type || 'website')}" />`,
-    `<meta property="og:site_name" content="${escapeHtml(og.siteName || 'Estoria')}" />`,
+    `<meta property="og:site_name" content="${escapeHtml(og.siteName || 'House & Life')}" />`,
     `<meta property="og:url" content="${escapeHtml(og.url || seo.canonical)}" />`,
     `<meta property="og:title" content="${escapeHtml(og.title || seo.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(og.description || seo.description)}" />`,

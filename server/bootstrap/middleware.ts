@@ -34,7 +34,7 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
 
   const publicAssetsPath = path.join(process.cwd(), 'public');
   app.get('/favicon.ico', (_req: Request, res: Response) => {
-    res.sendFile(path.join(publicAssetsPath, 'logo.jpg'));
+    res.sendFile(path.join(publicAssetsPath, 'logo_hl.png'));
   });
   app.use(express.static(publicAssetsPath, createPublicStaticOptions()));
 

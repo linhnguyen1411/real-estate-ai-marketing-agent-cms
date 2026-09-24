@@ -1,22 +1,23 @@
 import { Property } from '../types';
 import { resolvePropertyItemTitle } from '../seo/utils/buildPropertyItemTitle';
 
-export const SITE_BRAND = 'Bdsdanang.site';
+export const SITE_BRAND = 'House & Life';
 
-export const DEFAULT_SEO_TITLE = `${SITE_BRAND} | Căn Hộ Sun Group & Quỹ Đất Ngộp Giá Sập Hầm`;
+export const DEFAULT_SEO_TITLE = 'House & Life | BĐS Đà Nẵng - Nhà Phố, Đất Nền Nam Hòa Xuân, Căn Hộ & Cho Thuê';
 
 export const DEFAULT_SEO_DESCRIPTION =
-  'Chuyên giỏ hàng ngoại giao căn hộ, shophouse Sun Group tại Đà Nẵng và nguồn đất ngộp cắt lỗ sâu chính chủ. Hỗ trợ nhà đầu tư HN & SG 24/7.';
+  'House & Life — Vững tâm an cư, kiến tạo tương lai. Chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, bán và cho thuê căn hộ tại Đà Nẵng. Pháp lý rõ, hỗ trợ xem nhà đất 24/7.';
 
 export const DEFAULT_SEO_KEYWORDS = [
-  'căn hộ sun group đà nẵng',
-  'shophouse sun group đà nẵng',
-  'mua biệt thự sun group đà nẵng',
-  'quỹ căn ngoại giao sun group',
-  'đất ngộp đà nẵng',
-  'mua đất cắt lỗ hòa xuân',
-  'đất hòa khương giá sập hầm',
-  'bds sun group đà nẵng'
+  'nhà phố đà nẵng',
+  'đất nền nam hòa xuân',
+  'bán nhà phố đà nẵng',
+  'bán đất nam hòa xuân',
+  'bán căn hộ đà nẵng',
+  'cho thuê căn hộ đà nẵng',
+  'căn hộ cao cấp đà nẵng',
+  'bất động sản đà nẵng',
+  'bds sun group đà nẵng',
 ];
 
 export const SUN_FLAGSHIP_PROJECTS = [
@@ -51,12 +52,17 @@ function getPropertyTypeLabel(property: Property) {
 
 function isLandProperty(property: Property) {
   const haystack = `${property.title} ${property.type} ${property.location}`.toLowerCase();
-  return /đất|dat|ngộp|ngop|cắt lỗ|cat lo|hòa xuân|hoa xuan|hòa khương|hoa khuong/.test(haystack);
+  return /đất|dat|hòa xuân|hoa xuan|hòa khương|hoa khuong|ngũ hành sơn/.test(haystack);
+}
+
+function isTownhouseProperty(property: Property) {
+  const haystack = `${property.title} ${property.type} ${property.location}`.toLowerCase();
+  return /nhà phố|nha pho|nhà ở|nha o|shophouse|nhà kiệt|mặt tiền/.test(haystack);
 }
 
 function isSunGroupProperty(property: Property) {
   const haystack = `${property.title} ${property.type} ${property.location}`.toLowerCase();
-  return /sun|căn hộ|can ho|shophouse|biệt thự|biet thu/.test(haystack);
+  return /sun|symphony|cosmo|ponte|s light/.test(haystack);
 }
 
 export function buildPropertySeoTitle(property: Property) {
@@ -70,19 +76,16 @@ export function buildPropertySeoTitle(property: Property) {
   const type = getPropertyTypeLabel(property).toLowerCase();
 
   if (isLandProperty(property)) {
-    return limitSeoTitle(`${title} | Đất Ngộp Giá Sập Hầm Đà Nẵng`);
+    return limitSeoTitle(`${title} | Đất Nền Đà Nẵng | House & Life`);
+  }
+  if (isTownhouseProperty(property)) {
+    return limitSeoTitle(`${title} | Nhà Phố Đà Nẵng | House & Life`);
   }
   if (type.includes('căn') || type.includes('can')) {
-    return limitSeoTitle(`${title} | Căn Hộ Sun Group Đà Nẵng`);
-  }
-  if (type.includes('shophouse')) {
-    return limitSeoTitle(`${title} | Shophouse Sun Group Đà Nẵng`);
-  }
-  if (type.includes('biệt thự') || type.includes('biet thu')) {
-    return limitSeoTitle(`${title} | Biệt Thự Sun Group Đà Nẵng`);
+    return limitSeoTitle(`${title} | Căn Hộ Đà Nẵng | House & Life`);
   }
   if (isSunGroupProperty(property)) {
-    return limitSeoTitle(`${title} | BĐS Sun Group Đà Nẵng`);
+    return limitSeoTitle(`${title} | BĐS Sun Group Đà Nẵng | House & Life`);
   }
 
   return limitSeoTitle(`${title} | BĐS Đà Nẵng | ${SITE_BRAND}`);
@@ -97,13 +100,19 @@ export function buildPropertySeoDescription(property: Property) {
 
   if (isLandProperty(property)) {
     return truncateSeoText(
-      `Đất ngộp tại ${location}${area ? `, ${area}` : ''}, giá ${price}, ${legal}. Nguồn chính chủ, hỗ trợ xem đất 24/7 qua ${SITE_BRAND}.`
+      `Đất nền tại ${location}${area ? `, ${area}` : ''}, giá ${price}, ${legal}. House & Life hỗ trợ xem đất thực tế và kiểm tra quy hoạch 24/7.`
+    );
+  }
+
+  if (isTownhouseProperty(property)) {
+    return truncateSeoText(
+      `Nhà phố tại ${location}${area ? `, ${area}` : ''}, giá ${price}, ${legal}. Thông tin chính chủ, hỗ trợ đàm phán và pháp lý qua ${SITE_BRAND}.`
     );
   }
 
   if (isSunGroupProperty(property)) {
     return truncateSeoText(
-      `${type} Sun Group tại ${location}${area ? `, ${area}` : ''}, giá ${price}, ${legal}. Quỹ căn ngoại giao, tư vấn nhà đầu tư HN & SG qua ${SITE_BRAND}.`
+      `${type} Sun Group tại ${location}${area ? `, ${area}` : ''}, giá ${price}, ${legal}. Giỏ hàng tiềm năng, tư vấn chi tiết cùng ${SITE_BRAND}.`
     );
   }
 

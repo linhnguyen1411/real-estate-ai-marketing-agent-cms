@@ -33,7 +33,7 @@ export default function BlogTagPage() {
     <>
       <SeoHead
         title={`#${title} | Tin Tức BĐS`}
-        description={`Bài viết gắn tag ${title} — Estoria`}
+        description={`Bài viết gắn tag ${title} — House & Life`}
         path={path}
         schemas={[...buildDefaultPageSchemas(breadcrumbs, origin), buildBreadcrumbSchema(breadcrumbs, origin)]}
       />

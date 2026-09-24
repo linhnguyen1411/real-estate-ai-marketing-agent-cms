@@ -72,7 +72,7 @@ interface PublicChatGuestProfile {
 
 const PUBLIC_CHAT_SESSION_KEY = 'real_estate_public_chat_session';
 const PUBLIC_CHAT_GUEST_KEY = 'real_estate_public_chat_guest';
-const PUBLIC_CHAT_WELCOME = 'Chào anh/chị, em là Lily AI tư vấn BĐS. Anh/chị đang tìm đất nền, nhà phố hay căn hộ?';
+const PUBLIC_CHAT_WELCOME = 'Chào anh/chị, em là Lily AI tư vấn BĐS House & Life. Anh/chị đang tìm nhà phố, đất nền Nam Hòa Xuân, căn hộ mua hay thuê ạ?';
 
 function readStoredGuestProfile(sessionId: string): PublicChatGuestProfile | null {
   try {
@@ -95,14 +95,18 @@ const heroImageUrl = '/hero-da-nang.jpg';
 const publicListingsPath = '/';
 const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
 const DEFAULT_SEO_KEYWORDS = [
-  'bất động sản sun group đà nẵng',
+  'nhà phố đà nẵng',
+  'đất nền nam hòa xuân',
+  'bán nhà phố đà nẵng',
+  'bán căn hộ đà nẵng',
+  'cho thuê căn hộ đà nẵng',
   'căn hộ cao cấp đà nẵng',
   'bất động sản nam đà nẵng',
-  'shophouse kinh doanh đà nẵng',
+  'house and life bds đà nẵng',
   'giá đất đà nẵng 2026'
 ];
-const DEFAULT_SEO_TITLE = 'BĐS Sun Group Đà Nẵng | Căn Đẹp Giá Gốc 2026';
-const DEFAULT_SEO_DESCRIPTION = 'Đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn — pháp lý rõ, hình ảnh thật, giỏ ký gửi cập nhật 2026.';
+const DEFAULT_SEO_TITLE = 'House & Life | BĐS Đà Nẵng - Nhà Phố, Đất Nền Nam Hòa Xuân, Căn Hộ & Cho Thuê';
+const DEFAULT_SEO_DESCRIPTION = 'House & Life — Vững tâm an cư, kiến tạo tương lai. Chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, bán và cho thuê căn hộ Đà Nẵng. Pháp lý chuẩn, giỏ hàng cập nhật 2026.';
 
 function formatPrice(price: number) {
   return `${price.toLocaleString('vi-VN')} tỷ`;
@@ -190,7 +194,7 @@ function getPropertySeoTitle(property: Property) {
   if (type.includes('shophouse')) {
     return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
   }
-  return limitSeoTitle(`${property.title} | BĐS Sun Group Đà Nẵng`);
+  return limitSeoTitle(`${property.title} | BĐS Đà Nẵng | House & Life`);
 }
 
 async function readJsonResponse(response: Response) {
@@ -640,7 +644,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
       {
         '@context': 'https://schema.org',
         '@type': 'RealEstateAgent',
-        name: 'Estoria',
+        name: 'House & Life',
         url: siteOrigin,
         telephone: '+84905777594',
         areaServed: { '@type': 'City', name: 'Đà Nẵng' },
@@ -667,12 +671,12 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ Estoria qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
+              text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ House & Life qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
             }
           },
           {
             '@type': 'Question',
-            name: 'Estoria có hỗ trợ lọc bất động sản theo ngân sách không?',
+            name: 'House & Life có hỗ trợ lọc bất động sản theo ngân sách không?',
             acceptedAnswer: {
               '@type': 'Answer',
               text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
@@ -851,7 +855,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:locale" content="vi_VN" />
         <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
-        <meta property="og:site_name" content="Estoria" />
+        <meta property="og:site_name" content="House & Life" />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={seoDescription} />
@@ -917,20 +921,20 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             <div className="max-w-3xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-invest-border bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wide text-invest-gold">
                 <Sparkles className="h-4 w-4" />
-                Trung tâm thông tin đầu tư Nam Đà Nẵng
+                Vững tâm an cư - kiến tạo tương lai
               </div>
               <h1 className="heading-hero">
-                Dữ liệu & Cơ hội đầu tư Nam Đà Nẵng
+                Nhà Phố, Đất Nền Nam Hòa Xuân & Căn Hộ Đà Nẵng
               </h1>
               <p className="text-body-lg mt-5 max-w-2xl text-invest-muted">
-                Phân tích thị trường, dự án và tài sản phù hợp cho nhà đầu tư trung và dài hạn.
+                House & Life chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, phân phối căn hộ và cho thuê căn hộ tại Đà Nẵng. Đồng hành cùng quý khách kiến tạo tổ ấm và tài sản tương lai.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#contact" className="btn-cta px-5 py-3">
-                  Nhận báo cáo thị trường
+                  Tư vấn mua bán & cho thuê
                 </a>
                 <Link to={LISTING_CATALOG_ROOT} className="btn-primary px-5 py-3">
-                  Xem cơ hội đầu tư
+                  Xem giỏ hàng mới nhất
                 </Link>
               </div>
             </div>
@@ -1186,7 +1190,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 Tìm bất động sản phù hợp tại Đà Nẵng
               </h2>
               <p className="mt-5 leading-7 text-slate-600">
-                Danh sách BĐS Estoria tập trung các loại hình căn hộ, nhà phố, đất và shophouse tại Đà Nẵng.
+                Danh sách BĐS House & Life tập trung các loại hình nhà phố, đất nền Nam Hòa Xuân, căn hộ bán và cho thuê tại Đà Nẵng.
                 Mỗi sản phẩm được trình bày rõ vị trí, mức giá, diện tích và tình trạng pháp lý để người mua
                 dễ so sánh trước khi đặt lịch xem thực tế.
               </p>

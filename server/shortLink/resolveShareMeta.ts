@@ -39,7 +39,7 @@ function getPropertyImageValue(property: Property, index = 0) {
 
 function getPropertyPublicImageUrl(property: Property, origin: string, index = 0) {
   const image = getPropertyImageValue(property, index);
-  if (!image) return `${origin}/logo.jpg`;
+  if (!image) return `${origin}/logo_hl.png`;
   if (image.startsWith('data:image/')) {
     return `${origin}/property-images/${encodeURIComponent(property.id)}/${index}.jpg`;
   }
@@ -75,7 +75,7 @@ function buildPropertyShareMeta(property: Property, origin: string, shortUrl: st
     .join('. ');
 
   return {
-    title: limitSeoTitle(property.ai_posts?.seo?.title || `${property.title} | Estoria`),
+    title: limitSeoTitle(property.ai_posts?.seo?.title || `${property.title} | House & Life`),
     description: property.ai_posts?.seo?.meta_description || truncateMeta(baseDescription),
     image,
     url: shortUrl,
@@ -93,14 +93,14 @@ export async function resolveShareMetaForShortLink(
 ): Promise<ShortLinkShareMeta> {
   const shortUrl = `${origin}/s/${shortLink.slug}`;
   const fallback: ShortLinkShareMeta = {
-    title: limitSeoTitle(shortLink.title || 'Estoria BĐS Đà Nẵng'),
-    description: truncateMeta(shortLink.description || 'Xem chi tiết bất động sản tại Estoria.'),
-    image: `${origin}/logo.jpg`,
+    title: limitSeoTitle(shortLink.title || 'House & Life BĐS Đà Nẵng'),
+    description: truncateMeta(shortLink.description || 'Xem chi tiết bất động sản tại House & Life.'),
+    image: `${origin}/logo_hl.png`,
     url: shortUrl,
     ogType: 'website',
     imageWidth: 1200,
     imageHeight: 630,
-    imageType: 'image/jpeg',
+    imageType: 'image/png',
   };
 
   if (shortLink.entity_type === 'property' && shortLink.entity_id) {

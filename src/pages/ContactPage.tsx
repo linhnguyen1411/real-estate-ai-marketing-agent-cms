@@ -21,8 +21,8 @@ export default function ContactPage() {
   return (
     <>
       <SeoHead
-        title="Liên Hệ Tư Vấn BĐS Đà Nẵng | Hotline & Zalo"
-        description={`Liên hệ ${CONTACT.representative} — hotline ${CONTACT.phoneDisplay}, Zalo, Messenger. Tư vấn miễn phí BĐS Đà Nẵng.`}
+        title="Liên Hệ Tư Vấn BĐS Đà Nẵng | House & Life"
+        description={`Liên hệ ${CONTACT.representative} — House & Life: hotline ${CONTACT.phoneDisplay}, Zalo, Messenger. Tư vấn nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê Đà Nẵng.`}
         path="/lien-he"
         schemas={schemas}
       />

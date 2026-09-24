@@ -43,10 +43,10 @@ export default function BlogListPage() {
   return (
     <>
       <SeoHead
-        title="Tin Tức & Phân Tích BĐS Đà Nẵng 2026 | Estoria"
-        description="Nội dung biên tập bởi Estoria. Phân tích đầu tư, review khu vực và kiến thức BĐS Đà Nẵng."
+        title="Tin Tức & Phân Tích BĐS Đà Nẵng 2026 | House & Life"
+        description="Nội dung biên tập bởi House & Life. Phân tích đầu tư, nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê Đà Nẵng."
         path={path}
-        keywords={['tin bđs đà nẵng', 'phân tích bđs đà nẵng', 'đầu tư nam đà nẵng']}
+        keywords={['tin bđs đà nẵng', 'nhà phố đà nẵng', 'đất nền nam hòa xuân', 'căn hộ đà nẵng']}
         schemas={[
           ...buildDefaultPageSchemas(breadcrumbs, origin),
           buildBreadcrumbSchema(breadcrumbs, origin),
@@ -56,7 +56,7 @@ export default function BlogListPage() {
       <ContentPageHero
         breadcrumbs={breadcrumbs}
         title="Tin tức & phân tích BĐS Đà Nẵng"
-        description="Bài viết từ CMS Estoria — Sun Group, Nam Đà Nẵng, BĐS nổi bật. Menu chuyên mục tự sinh từ bài published."
+        description="Bài viết từ House & Life — Nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê, giỏ hàng tiềm năng."
       />
 
       <div className="mx-auto max-w-6xl px-4 py-10">

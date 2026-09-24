@@ -129,11 +129,11 @@ export function buildPropertySeo(property: any) {
   const shortLocation = primaryLocation.split(/\s+-\s+/)[0] || primaryLocation;
   const type = compactSeoText(property.type || 'bất động sản');
   const title = truncateSeoText(
-    `Bán ${type} ${shortLocation}, ${property.area}m2, ${property.price} tỷ | Estoria`,
+    `Bán ${type} ${shortLocation}, ${property.area}m2, ${property.price} tỷ | House & Life`,
     60
   );
   const metaDescription = truncateSeoText(
-    `Bán ${type} tại ${location}, diện tích ${property.area}m2, giá ${property.price} tỷ, pháp lý ${property.legal_status}. Xem chi tiết và đặt lịch cùng Estoria.`,
+    `Bán ${type} tại ${location}, diện tích ${property.area}m2, giá ${property.price} tỷ, pháp lý ${property.legal_status}. Xem chi tiết và đặt lịch cùng House & Life.`,
     155
   );
   const keywords = Array.from(new Set([

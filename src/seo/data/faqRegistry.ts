@@ -137,7 +137,7 @@ export const FAQ_SETS: FaqSet[] = [
       item(
         'faq-investor-base-2',
         'Mua BĐS Đà Nẵng từ xa có an toàn không?',
-        'Có thể an toàn nếu làm việc với đơn vị tư vấn uy tín, kiểm tra pháp lý tại Sở Tư pháp, xem hình ảnh thực tế và ký hợp đồng qua luật sư. Estoria hỗ trợ checklist pháp lý và lịch khảo sát trực tiếp cho nhà đầu tư.',
+        'Có thể an toàn nếu làm việc với đơn vị tư vấn uy tín, kiểm tra pháp lý tại Sở Tư pháp, xem hình ảnh thực tế và ký hợp đồng qua luật sư. House & Life hỗ trợ checklist pháp lý và lịch khảo sát trực tiếp cho nhà đầu tư.',
         { entityIds: ['entity-da-nang'], pageTypes: [PageType.ARTICLE] },
       ),
       item(
@@ -161,7 +161,7 @@ export const FAQ_SETS: FaqSet[] = [
       ),
       item(
         'faq-shophouse-hub-2',
-        'Estoria hỗ trợ đầu tư shophouse Sun những gì?',
+        'House & Life hỗ trợ đầu tư shophouse Sun những gì?',
         'Gửi bảng giá / giỏ hàng thứ cấp, mô phỏng dòng tiền, checklist pháp lý và kết nối khảo sát thực tế tại Đà Nẵng — không cam kết lợi nhuận.',
         { entityIds: ['entity-shophouse-sun'], pageTypes: [PageType.CATALOG, PageType.FINANCIAL] },
       ),
@@ -281,7 +281,7 @@ export const FAQ_SETS: FaqSet[] = [
       ),
       item(
         'faq-phap-ly-2',
-        'Estoria có cam kết pháp lý không?',
+        'House & Life có cam kết pháp lý không?',
         'Không. Thông tin mang tính tham khảo; nhà đầu tư nên kiểm tra hồ sơ gốc và/hoặc luật sư trước giao dịch.',
         { entityIds: ['entity-shophouse-sun'], pageTypes: [PageType.LEGAL] },
       ),
@@ -301,7 +301,7 @@ export const FAQ_SETS: FaqSet[] = [
       item(
         'faq-tt-2',
         'Có hỗ trợ vay ngân hàng cho shophouse không?',
-        'Tùy ngân hàng và hồ sơ tài sản. Estoria hỗ trợ định hướng giấy tờ; phê duyệt thuộc ngân hàng.',
+        'Tùy ngân hàng và hồ sơ tài sản. House & Life hỗ trợ định hướng giấy tờ; phê duyệt thuộc ngân hàng.',
         { entityIds: ['entity-shophouse-sun'], pageTypes: [PageType.FINANCIAL] },
       ),
     ],

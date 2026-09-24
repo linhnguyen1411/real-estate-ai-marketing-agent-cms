@@ -28,17 +28,17 @@ export type IntentTitlePattern = {
   brand?: string;
 };
 
-const DEFAULT_BRAND = 'Estoria';
+const DEFAULT_BRAND = 'House & Life';
 
 /**
  * Build title from investor-intent patterns.
  *
- * FINANCIAL  — {Primary} | Phân tích đầu tư {Project} | Estoria
- * COMPARISON — So sánh {A} và {B}: {Intent} | Estoria
+ * FINANCIAL  — {Primary} | Phân tích đầu tư {Project} | House & Life
+ * COMPARISON — So sánh {A} và {B}: {Intent} | House & Life
  * LEGAL      — {Primary} | Cập nhật {Year}
- * LOCATION   — {Primary} | Phân tích khu vực | Estoria
+ * LOCATION   — {Primary} | Phân tích khu vực | House & Life
  * CATALOG    — {Primary} | Danh sách cập nhật
- * PROJECT    — {Primary} | Phân tích đầu tư {Project} | Estoria
+ * PROJECT    — {Primary} | Phân tích đầu tư {Project} | House & Life
  */
 export function buildIntentTitle(pattern: IntentTitlePattern): string {
   const primary = String(pattern.primaryKeyword || '').trim();

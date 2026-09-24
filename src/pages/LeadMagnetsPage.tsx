@@ -77,7 +77,7 @@ export function LeadMagnetDetailPage() {
   return (
     <>
       <SeoHead
-        title={`${magnet.title} | Estoria`}
+        title={`${magnet.title} | House & Life`}
         description={magnet.description}
         path={path}
         schemas={[

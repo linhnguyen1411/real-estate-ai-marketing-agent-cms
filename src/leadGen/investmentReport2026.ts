@@ -3,7 +3,7 @@ import type { InvestmentReportContent } from '../types/leadMagnetContent';
 export const INVESTMENT_REPORT_2026: Omit<InvestmentReportContent, 'source' | 'sourceLabel'> = {
   type: 'investment-report',
   edition: 'Ấn bản Q2 · 2026',
-  publisher: 'Estoria Research · Nam Đà Nẵng',
+  publisher: 'House & Life Research · Nam Đà Nẵng',
   chapters: [
     {
       number: 1,

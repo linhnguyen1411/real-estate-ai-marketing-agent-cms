@@ -72,7 +72,7 @@ export function normalizeLeadMagnetContent(
       type: 'investment-report',
       chapters: payload.chapters,
       edition: String(payload.edition || 'Ấn bản Q2 · 2026'),
-      publisher: String(payload.publisher || 'Estoria Research · Nam Đà Nẵng'),
+      publisher: String(payload.publisher || 'House & Life Research · Nam Đà Nẵng'),
       source,
       sourceLabel,
     };

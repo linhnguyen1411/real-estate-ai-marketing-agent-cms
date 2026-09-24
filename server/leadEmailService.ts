@@ -5,7 +5,7 @@ const SITE_URL = process.env.APP_URL || 'https://bdsdanang.site';
 async function sendEmail(to: string, subject: string, html: string) {
   const resendKey = process.env.RESEND_API_KEY?.trim();
   const brevoKey = process.env.BREVO_API_KEY?.trim();
-  const from = process.env.EMAIL_FROM || 'Estoria <contact@bdsdanang.site>';
+  const from = process.env.EMAIL_FROM || 'House & Life <contact@bdsdanang.site>';
 
   if (resendKey) {
     const response = await fetch('https://api.resend.com/emails', {
@@ -31,7 +31,7 @@ async function sendEmail(to: string, subject: string, html: string) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sender: { name: 'Estoria', email: from.match(/<(.+)>/)?.[1] || 'contact@bdsdanang.site' },
+        sender: { name: 'House & Life', email: from.match(/<(.+)>/)?.[1] || 'contact@bdsdanang.site' },
         to: [{ email: to }],
         subject,
         htmlContent: html,
@@ -63,14 +63,14 @@ export async function sendLeadMagnetEmailSequence(lead: InvestorLead) {
 
   await sendEmail(
     lead.email,
-    'Báo cáo thị trường Nam Đà Nẵng 2026 — Estoria',
+    'Báo cáo thị trường Nam Đà Nẵng 2026 — House & Life',
     `
     <p>Xin chào <strong>${lead.name}</strong>,</p>
     <p>Cảm ơn anh/chị đã quan tâm đầu tư BĐS Nam Đà Nẵng.</p>
     <p><strong>Email 1/3 — Báo cáo thị trường</strong></p>
     <p>Truy cập báo cáo FPT City, Sun Group, Mai Đăng Chơn, căn hộ & đất nền:</p>
     <p><a href="${links.report}">Xem báo cáo thị trường 2026</a></p>
-    <p>Estoria — Tư vấn BĐS Đà Nẵng</p>
+    <p>House & Life — Vững tâm an cư, kiến tạo tương lai</p>
     `
   );
 
@@ -95,7 +95,7 @@ export async function sendLeadMagnetEmailSequence(lead: InvestorLead) {
     `
     <p>Xin chào <strong>${lead.name}</strong>,</p>
     <p><strong>Email 3/3 — Tư vấn cá nhân</strong></p>
-    <p>Đội ngũ Estoria sẵn sàng tư vấn theo ngân sách và mục tiêu của anh/chị.</p>
+    <p>Đội ngũ House & Life sẵn sàng tư vấn theo ngân sách và mục tiêu của anh/chị.</p>
     <p><a href="${links.contact}">Đặt lịch nhận danh sách đầu tư</a></p>
     <p>Hotline: 0905 777 594</p>
     `
@@ -106,7 +106,7 @@ export async function sendSingleMagnetEmail(lead: InvestorLead, magnetTitle: str
   if (!lead.email) return;
   await sendEmail(
     lead.email,
-    `${magnetTitle} — Estoria`,
+    `${magnetTitle} — House & Life`,
     `<p>Xin chào <strong>${lead.name}</strong>,</p>
      <p>Link tài liệu anh/chị yêu cầu:</p>
      <p><a href="${link}">${magnetTitle}</a></p>`

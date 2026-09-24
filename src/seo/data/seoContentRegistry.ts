@@ -78,9 +78,9 @@ const SHOPHOUSE_SUPPORT = [
 ] as const;
 
 const homeTitle =
-  'Căn Hộ Sun Group, Shophouse Khối Đế & BĐS Đầu Tư Đà Nẵng | Estoria';
+  'House & Life | BĐS Đà Nẵng - Nhà Phố, Đất Nền Nam Hòa Xuân, Căn Hộ & Cho Thuê';
 const homeDesc =
-  'Estoria chuyên căn hộ Sun Group, shophouse khối đế Sun Group và bất động sản đầu tư nổi bật tại Đà Nẵng — giá, dòng tiền, pháp lý để thẩm định trước khi mua.';
+  'House & Life — Vững tâm an cư, kiến tạo tương lai. Chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, bán và cho thuê căn hộ tại Đà Nẵng. Pháp lý minh bạch, tư vấn tận tâm.';
 
 /**
  * SEO content registry — SSOT for static page SEO knowledge.
@@ -91,17 +91,21 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
     schemaType: ['defaultPage'],
     priority: 1,
     keywords: [
-      'căn hộ và shophouse sun đà nẵng',
-      'shophouse khối đế sun group',
-      'căn hộ sun group đà nẵng',
-      'bđs đầu tư nổi bật đà nẵng',
+      'nhà phố đà nẵng',
+      'đất nền nam hòa xuân',
+      'bán nhà phố đà nẵng',
+      'bán đất nam hòa xuân',
+      'bán căn hộ đà nẵng',
+      'cho thuê căn hộ đà nẵng',
+      'bđs đà nẵng uy tín',
+      'bds sun group đà nẵng',
     ],
     entityId: 'entity-da-nang',
     keywordClusterId: 'kc-home-core',
     breadcrumbId: 'bc-home',
     faqId: 'faq-investor-base',
     moneyPages: MONEY,
-    relatedPages: [SHOPHOUSE_HUB, '/can-ho-sun-group-da-nang', '/du-an/bds-noi-bat', '/lien-he'],
+    relatedPages: ['/dat-nen-nam-hoa-xuan-da-nang', '/can-ho-cao-cap-da-nang', '/du-an/nam-da-nang', '/lien-he'],
   }),
   (() => {
     const p = patterned(PageType.CATALOG, 'Danh sách BĐS Đà Nẵng đầu tư', '');
@@ -328,7 +332,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
   content(
     '/kien-thuc-dau-tu',
     PageType.ARTICLE,
-    'Kiến thức đầu tư BĐS Đà Nẵng | Estoria',
+    'Kiến thức đầu tư BĐS Đà Nẵng | House & Life',
     'Kiến thức đầu tư BĐS Đà Nẵng: pháp lý, dòng tiền, chọn dự án và rủi ro — khung tư duy trước khi xuống tiền.',
     {
       schemaType: ARTICLE_SCHEMAS,
@@ -359,7 +363,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
       },
     );
   })(),
-  content('/tin-tuc', PageType.ARTICLE, 'Tin Tức & Phân Tích BĐS Đà Nẵng 2026 | Estoria', 'Tin tức, phân tích và review khu vực bất động sản Đà Nẵng dành cho nhà đầu tư trung và dài hạn.', {
+  content('/tin-tuc', PageType.ARTICLE, 'Tin Tức & Phân Tích BĐS Đà Nẵng 2026 | House & Life', 'Tin tức, phân tích và review khu vực bất động sản Đà Nẵng dành cho nhà đầu tư trung và dài hạn.', {
     schemaType: ARTICLE_SCHEMAS,
     priority: 0.7,
     breadcrumbId: 'bc-tin-tuc',
@@ -383,7 +387,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
       },
     );
   })(),
-  content('/gioi-thieu', PageType.ARTICLE, 'Giới Thiệu Estoria | Tư Vấn BĐS Đà Nẵng', 'Estoria — đội ngũ tư vấn bất động sản Đà Nẵng hỗ trợ nhà đầu tư bằng dữ liệu minh bạch và góc nhìn thẩm định thực tế.', {
+  content('/gioi-thieu', PageType.ARTICLE, 'Giới Thiệu House & Life | Tư Vấn BĐS Đà Nẵng', 'House & Life — Vững tâm an cư, kiến tạo tương lai. Đội ngũ tư vấn bất động sản Đà Nẵng hỗ trợ khách hàng bằng dữ liệu minh bạch và góc nhìn thực tế.', {
     schemaType: ARTICLE_SCHEMAS,
     ogType: 'article',
     priority: 0.6,
@@ -407,7 +411,7 @@ export const SEO_CONTENT_REGISTRY: SeoContent[] = [
       },
     );
   })(),
-  content('/lien-he', PageType.ARTICLE, 'Liên Hệ Tư Vấn BĐS Đà Nẵng | Hotline & Zalo', 'Liên hệ Estoria: hotline, Zalo, Messenger, email. Tư vấn miễn phí bất động sản Đà Nẵng cho nhà đầu tư.', {
+  content('/lien-he', PageType.ARTICLE, 'Liên Hệ Tư Vấn BĐS Đà Nẵng | House & Life', 'Liên hệ House & Life: hotline, Zalo, Messenger, email. Tư vấn miễn phí nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê Đà Nẵng.', {
     schemaType: ['defaultPage', 'BreadcrumbList', 'LocalBusiness'],
     priority: 0.6,
     breadcrumbId: 'bc-lien-he',
@@ -832,7 +836,7 @@ for (const slug of PROJECT_SLUGS) {
 
 const LANDING_MAP: Record<string, { title: string; description: string; clusterId: string }> = {
   'dau-tu-da-nang': {
-    title: 'Hướng dẫn đầu tư BĐS Đà Nẵng | Estoria',
+    title: 'Hướng dẫn đầu tư BĐS Đà Nẵng | House & Life',
     description:
       'Hướng dẫn đầu tư BĐS Đà Nẵng: chọn khu vực, pháp lý, dòng tiền và rủi ro — khung cho nhà đầu tư mới trước khi xuống tiền.',
     clusterId: 'kc-investor-guide',
@@ -844,7 +848,7 @@ const LANDING_MAP: Record<string, { title: string; description: string; clusterI
     clusterId: 'kc-invest-nam',
   },
   'dau-tu-fpt-city': {
-    title: 'Chiến lược đầu tư FPT City | Estoria',
+    title: 'Chiến lược đầu tư FPT City | House & Life',
     description:
       'Chiến lược đầu tư FPT City: đất nền, shophouse, timeline và checklist cho nhà đầu tư Hà Nội / liên tỉnh.',
     clusterId: 'kc-invest-fpt',
@@ -856,9 +860,9 @@ const LANDING_MAP: Record<string, { title: string; description: string; clusterI
     clusterId: 'kc-rental-yield',
   },
   'can-ho-dau-tu-da-nang': {
-    title: 'Căn hộ Sun Group ven sông Hàn đầu tư | Estoria',
+    title: 'Căn hộ Sun Group ven sông Hàn đầu tư | House & Life',
     description:
-      'Căn hộ Sun Group ven sông Hàn đầu tư: giá vào, thanh khoản thứ cấp, so sánh Symphony / Cosmo / Ponte.',
+      'Căn hộ Sun Group ven sông Hàn đầu tư: giỏ hàng tiềm năng, giá vào, thanh khoản thứ cấp, so sánh Symphony / Cosmo / Ponte.',
     clusterId: 'kc-can-ho-invest-landing',
   },
   'nha-dau-tu-ha-noi-mua-bat-dong-san-da-nang': {

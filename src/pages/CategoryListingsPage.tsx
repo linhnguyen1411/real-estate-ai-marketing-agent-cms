@@ -128,7 +128,7 @@ export default function CategoryListingsPage({ forcedFacetSlug }: CategoryListin
   return (
     <>
       <SeoHead
-        title={meta?.title || `${heading} | Estoria`}
+        title={meta?.title || `${heading} | House & Life`}
         description={meta?.description || ''}
         path={categoryPath}
         schemas={[

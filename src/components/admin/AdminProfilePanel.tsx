@@ -120,7 +120,7 @@ export default function AdminProfilePanel({
           Hồ sơ môi giới
         </h2>
         <p className="text-sm text-slate-400">
-          Thiết lập avatar, giới thiệu và hồ sơ công khai hiển thị trên website Estoria.
+          Thiết lập avatar, giới thiệu và hồ sơ công khai hiển thị trên website House & Life.
         </p>
       </div>
 

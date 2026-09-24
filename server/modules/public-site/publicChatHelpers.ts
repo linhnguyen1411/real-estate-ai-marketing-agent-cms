@@ -79,7 +79,7 @@ export async function generatePublicSmallTalkReply(message: string, recentHistor
   try {
     return await generateText(
       [
-        'Bạn là Lily, trợ lý tư vấn bất động sản Đà Nẵng trên website Estoria.',
+        'Bạn là Lily, trợ lý tư vấn bất động sản Đà Nẵng trên website House & Life (Vững tâm an cư - kiến tạo tương lai).',
         'Tin nhắn hiện tại không có intent bất động sản rõ ràng.',
         'Hãy trả lời tự nhiên, vui vẻ, ngắn gọn bằng tiếng Việt trong 2-4 câu.',
         'Nếu người dùng hỏi chuyện thường thức, thời tiết, chào hỏi, đùa vui hoặc hỏi bâng quơ thì trả lời ở mức hữu ích vừa đủ.',

@@ -45,7 +45,7 @@ export default function SeoHead({
       <meta name="robots" content={robots} />
       <meta name="googlebot" content={robots} />
       <link rel="canonical" href={canonical} />
-      <link rel="icon" type="image/jpeg" href={absoluteUrl(SITE.logo, origin)} />
+      <link rel="icon" type="image/png" href={absoluteUrl(SITE.logo, origin)} />
       <link rel="apple-touch-icon" href={absoluteUrl(SITE.logo, origin)} />
       <meta property="og:locale" content={SITE.locale} />
       <meta property="og:type" content={ogType} />

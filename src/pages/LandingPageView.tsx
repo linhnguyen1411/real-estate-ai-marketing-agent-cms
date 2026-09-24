@@ -91,7 +91,7 @@ export default function LandingPageView() {
             ))}
 
             <section className="mt-12">
-              <h2 className="heading-section">Lợi ích khi làm việc với Estoria</h2>
+              <h2 className="heading-section">Lợi ích khi làm việc với House & Life</h2>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 {data.benefits.map(b => (
                   <div key={b.title} className="invest-card p-5">

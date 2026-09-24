@@ -35,7 +35,7 @@ export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {
     ],
     benefits: [
       { title: 'Dữ liệu thực tế', description: 'Giá, pháp lý và hình ảnh từng sản phẩm — không quảng cáo ảo.' },
-      { title: 'Tư vấn 1-1', description: 'Đội ngũ Estoria hỗ trợ khách Hà Nội khảo sát và chốt từ xa.' },
+      { title: 'Tư vấn 1-1', description: 'Đội ngũ House & Life hỗ trợ khách Hà Nội khảo sát và chốt từ xa.' },
       { title: 'Lọc theo mục tiêu', description: 'Dòng tiền, tích lũy hoặc ở — danh sách riêng cho từng nhu cầu.' },
       { title: 'Minh bạch pháp lý', description: 'Checklist sổ hồng, HĐMB, quy hoạch trước khi đặt cọc.' },
     ],
@@ -73,7 +73,7 @@ export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {
         id: 'risks',
         title: 'Rủi ro cần nhận diện',
         content: [
-          'Mua theo lời cam kết lợi nhuận không có căn cứ; không kiểm tra pháp lý; vượt đòn bẩy tài chính; chọn khu vực chưa có hạ tầng xác nhận. Estoria cam kết trình bày cả ưu và nhược điểm từng sản phẩm trước khi khách quyết định.',
+          'Mua theo lời cam kết lợi nhuận không có căn cứ; không kiểm tra pháp lý; vượt đòn bẩy tài chính; chọn khu vực chưa có hạ tầng xác nhận. House & Life cam kết trình bày cả ưu và nhược điểm từng sản phẩm trước khi khách quyết định.',
         ],
       },
     ],
@@ -101,7 +101,7 @@ export const LANDING_PAGES_DATA: Record<string, LandingPageData> = {
         title: 'Vì sao nhà đầu tư Hà Nội chọn Đà Nẵng?',
         content: [
           'Giá vào thấp hơn nhiều phân khúc tại Hà Nội với cùng chất lượng sống biển và hạ tầng. Thanh khoản thị trường thứ cấp căn hộ tốt hơn nhiều tỉnh nhỏ. Chính quyền Đà Nẵng ổn định, thông tin quy hoạch tra cứu được.',
-          'Nhiều khách Estoria tại Hà Nội mua căn cho thuê hoặc đất nền Nam Đà Nẵng với tầm nhìn 5 năm, kết hợp nghỉ dưỡng gia đình.',
+          'Nhiều khách House & Life tại Hà Nội mua căn cho thuê hoặc đất nền Nam Đà Nẵng với tầm nhìn 5 năm, kết hợp nghỉ dưỡng gia đình.',
         ],
       },
       {

@@ -11,15 +11,17 @@ export const KEYWORD_CLUSTERS: KeywordCluster[] = [
   {
     id: 'kc-home-core',
     intent: 'COMMERCIAL',
-    primaryKeyword: 'căn hộ và shophouse sun đà nẵng',
+    primaryKeyword: 'nhà phố đất nền căn hộ đà nẵng',
     secondaryKeywords: [
-      'shophouse khối đế sun group',
-      'căn hộ sun group đà nẵng',
-      'bđs đầu tư nổi bật đà nẵng',
-      'giỏ hàng estoria đà nẵng',
+      'nhà phố đà nẵng',
+      'đất nền nam hòa xuân',
+      'bán căn hộ đà nẵng',
+      'cho thuê căn hộ đà nẵng',
+      'giỏ hàng house & life đà nẵng',
+      'bds sun group đà nẵng',
     ],
     targetPageType: PageType.HOME,
-    relatedEntityIds: ['entity-sun-group', 'entity-shophouse-sun', 'entity-can-ho', 'entity-da-nang'],
+    relatedEntityIds: ['entity-nam-da-nang', 'entity-can-ho', 'entity-da-nang', 'entity-sun-group'],
     targetSlug: '/',
   },
   {

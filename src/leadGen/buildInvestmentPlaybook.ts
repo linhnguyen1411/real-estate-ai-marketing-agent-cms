@@ -445,7 +445,7 @@ export function buildInvestmentPlaybook(): Omit<
   return {
     type: 'investment-playbook',
     edition: 'Ấn bản 2026',
-    publisher: 'Estoria · Nghiên cứu Đà Nẵng',
+    publisher: 'House & Life · Nghiên cứu Đà Nẵng',
     chapters: [buildChapter1(), buildChapter2(), buildChapter3(), buildChapter4()],
     closingMessage:
       'Nếu muốn nhận danh mục tài sản phù hợp với ngân sách và mục tiêu đầu tư, hãy để lại thông tin để đội ngũ tư vấn gửi bảng hàng mới nhất.',

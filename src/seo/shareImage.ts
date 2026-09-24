@@ -1,6 +1,6 @@
 /** Resolve OG / Facebook share image URLs */
 
-const DEFAULT_OG_IMAGE = '/logo.jpg';
+const DEFAULT_OG_IMAGE = '/logo_hl.png';
 
 export function extractFirstImageFromContent(
   content?: string | null,

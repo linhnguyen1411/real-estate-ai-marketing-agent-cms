@@ -39,16 +39,16 @@ export const CONTENT_HUB_CATEGORIES: ContentCategory[] = [
   {
     slug: 'du-an',
     title: 'Danh mục BĐS',
-    description: 'Sun Group Đà Nẵng, BĐS Nam Đà Nẵng và BĐS nổi bật — danh mục bất động sản Estoria tại Đà Nẵng.',
+    description: 'Nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê — danh mục bất động sản House & Life tại Đà Nẵng.',
     path: '/du-an',
-    keywords: ['danh mục bđs đà nẵng', 'sun group đà nẵng'],
+    keywords: ['danh mục bđs đà nẵng', 'nhà phố đất nền đà nẵng', 'căn hộ đà nẵng'],
   },
   {
     slug: 'can-ho',
-    title: 'Căn hộ cao cấp Đà Nẵng',
-    description: 'Căn hộ cao cấp Sun Group ven sông Hàn và trung tâm Đà Nẵng.',
+    title: 'Căn hộ bán & Cho thuê',
+    description: 'Bán và cho thuê căn hộ chung cư, căn hộ cao cấp và căn hộ dịch vụ tại Đà Nẵng.',
     path: '/can-ho-cao-cap-da-nang',
-    keywords: ['căn hộ cao cấp đà nẵng', 'căn hộ sun group'],
+    keywords: ['bán căn hộ đà nẵng', 'cho thuê căn hộ đà nẵng', 'căn hộ đà nẵng'],
   },
   {
     slug: 'dat-nen',

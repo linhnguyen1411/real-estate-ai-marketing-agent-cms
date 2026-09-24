@@ -3,66 +3,67 @@ import { normalizeCanonical } from './utils/normalizeCanonical';
 
 /** Central SEO & business config — single source of truth for public site */
 export const SITE = {
-  name: 'Estoria',
+  name: 'House & Life',
   brand: 'bdsdanang.site',
   domain: 'bdsdanang.site',
   url: 'https://bdsdanang.site',
   locale: 'vi_VN',
   language: 'vi',
-  defaultTitle: 'Căn Hộ Sun Group, Shophouse Khối Đế & BĐS Đầu Tư Đà Nẵng | Estoria',
-  /** Brand motto — footer only, not for SEO or header */
-  tagline: 'Where assets tell their story',
-  taglineVi: 'Nơi mỗi tài sản kể câu chuyện của mình',
+  defaultTitle: 'House & Life | BĐS Đà Nẵng - Nhà Phố, Đất Nền Nam Hòa Xuân, Căn Hộ & Cho Thuê',
+  /** Brand motto — Slogan mới */
+  tagline: 'Vững tâm an cư - kiến tạo tương lai',
+  taglineVi: 'Vững tâm an cư - kiến tạo tương lai',
   defaultDescription:
-    'Estoria chuyên căn hộ Sun Group, shophouse khối đế Sun Group và bất động sản đầu tư nổi bật tại Đà Nẵng — giá, dòng tiền, pháp lý để thẩm định trước khi mua.',
+    'House & Life — Vững tâm an cư, kiến tạo tương lai. Chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, bán và cho thuê căn hộ tại Đà Nẵng. Thông tin minh bạch, pháp lý chuẩn và giỏ hàng cập nhật liên tục.',
   /** Schema.org RealEstateAgent display name */
-  schemaName: 'Estoria — Căn hộ & Shophouse Sun Group Đà Nẵng',
+  schemaName: 'House & Life — Bất Động Sản Đà Nẵng',
   priceRange: '$$$',
   defaultKeywords: [
-      'căn hộ và shophouse sun đà nẵng',
-      'shophouse sun đà nẵng',
-      'shophouse khối đế sun group',
-      'căn hộ sun group đà nẵng đầu tư',
-      'bảng giá căn hộ sun đà nẵng',
-      'đầu tư shophouse sun đà nẵng',
-      'dòng tiền shophouse khối đế',
-      'bđs đầu tư nổi bật đà nẵng',
-    ],
-  logo: '/logo.jpg',
-  ogImage: '/logo.jpg',
+    'nhà phố đà nẵng',
+    'đất nền nam hòa xuân',
+    'bán nhà phố đà nẵng',
+    'bán đất nam hòa xuân',
+    'bán căn hộ đà nẵng',
+    'cho thuê căn hộ đà nẵng',
+    'căn hộ dịch vụ đà nẵng',
+    'bđs đà nẵng uy tín',
+    'bđs sun group đà nẵng',
+  ],
+  logo: '/logo_hl.png',
+  ogImage: '/logo_hl.png',
   foundingDate: '2020',
-  areaServed: ['Đà Nẵng', 'Ngũ Hành Sơn', 'Sơn Trà', 'Hải Châu', 'Hòa Vang'],
+  areaServed: ['Đà Nẵng', 'Ngũ Hành Sơn', 'Cẩm Lệ', 'Hải Châu', 'Sơn Trà', 'Hòa Vang'],
 } as const;
 
-/** Phân khúc & định vị inventory — 3 trụ cột trọng tâm */
+/** Phân khúc & định vị inventory — Tái định vị theo mục tiêu mới */
 export const BRAND_FOCUS = {
-  sunGroup: {
-    title: 'Sun Group Đà Nẵng',
+  nhaPhoDatNen: {
+    title: 'Nhà phố & Đất nền Nam Hòa Xuân',
     summary:
-      'Căn hộ cao cấp ven sông Hàn, shophouse, nhà phố thương mại và đất nền dự án trong hệ sinh thái Sun Group.',
-    productTypes: ['Căn hộ cao cấp', 'Shophouse', 'Nhà phố thương mại', 'Đất nền dự án'],
+      'Trọng tâm cốt lõi: chuyên sâu mua bán nhà phố trung tâm, đất nền Nam Hòa Xuân, đất nền Nam Đà Nẵng — pháp lý an toàn, sổ đỏ sẵn sàng, vị trí đắc địa.',
+    productTypes: ['Nhà phố trung tâm', 'Đất nền Nam Hòa Xuân', 'Đất nền Nam Đà Nẵng', 'Shophouse'],
   },
-  namDaNang: {
-    title: 'BĐS Nam Đà Nẵng',
+  canHoChoThue: {
+    title: 'Bán & Cho thuê Căn hộ',
     summary:
-      'Mũi nhọn khu vực: đất nền, nhà phố, kho xưởng, căn hộ, khách sạn và tài sản đầu tư — Mai Đăng Chơn, Hòa Xuân, Hòa Quý…',
-    productTypes: ['Đất nền', 'Nhà ở', 'Kho xưởng', 'Căn hộ', 'Khách sạn', 'Đầu tư'],
+      'Chuyên phân phối căn hộ ở thực, căn hộ cao cấp và căn hộ dịch vụ cho thuê tại Đà Nẵng — tối ưu dòng tiền cho thuê và an cư lâu dài.',
+    productTypes: ['Bán căn hộ', 'Cho thuê căn hộ', 'Căn hộ dòng tiền', 'Căn hộ cao cấp'],
   },
-  noiBat: {
-    title: 'BĐS nổi bật',
+  gioHangTiemNang: {
+    title: 'Giỏ hàng tiềm năng (Sun Group & BĐS Chọn lọc)',
     summary:
-      'Tài sản đáng chú ý từ nhiều khu vực — deal giá tốt, vị trí độc đáo, không gói trong một dự án hay một quận.',
-    productTypes: ['Căn hộ', 'Đất & nhà', 'Shophouse', 'Khách sạn', 'Tài sản đặc biệt'],
+      'Giỏ hàng bất động sản tiềm năng chọn lọc gồm hệ sinh thái Sun Group (Symphony, Cosmo, Ponte) và các tài sản thanh khoản cao tại Đà Nẵng.',
+    productTypes: ['Dự án Sun Group', 'BĐS Ven sông & Biển', 'Tài sản đặc biệt'],
   },
   fptCityNote:
-    'FPT City chỉ xuất hiện trong bài phân tích thị trường Nam Đà Nẵng — không phải sản phẩm chủ lực.',
-  expansion: 'Mở rộng dần sang ven biển miền Trung và các tỉnh thành khi có nguồn hàng phù hợp.',
+    'FPT City và các khu vực lân cận nằm trong giỏ hàng mở rộng Nam Đà Nẵng theo nhu cầu khách hàng.',
+  expansion: 'Mở rộng đồng bộ thị trường nhà phố, đất nền và căn hộ cho thuê toàn khu vực Đà Nẵng - Quảng Nam.',
   inventorySummary:
-    'Sun Group Đà Nẵng · BĐS Nam Đà Nẵng · BĐS nổi bật — ba trụ cột danh mục của chúng tôi.',
+    'Nhà phố · Đất nền Nam Hòa Xuân · Bán & Cho thuê Căn hộ · Giỏ hàng tiềm năng Sun Group.',
 } as const;
 
 export const CONTACT = {
-  companyName: 'Estoria',
+  companyName: 'House & Life',
   representative: 'Linh Nguyễn',
   title: 'Tư vấn BĐS Đà Nẵng',
   phone: '0905777594',
@@ -76,12 +77,12 @@ export const CONTACT = {
     {
       display: '0905 777 594',
       tel: '+84905777594',
-      label: 'Tư vấn đất, nhà phố',
+      label: 'Tư vấn Nhà phố & Đất nền Nam Hòa Xuân',
     },
     {
       display: '0947 92 43 43',
       tel: '+84947924343',
-      label: 'Tư vấn BĐS Sun Group, Căn hộ cao cấp',
+      label: 'Tư vấn Bán & Cho thuê Căn hộ, Giỏ hàng tiềm năng',
     },
   ] as const,
   email: 'linhnguyendn2305@gmail.com',
@@ -99,16 +100,16 @@ export const CONTACT = {
 export const AUTHOR = {
   slug: 'nguyen-phan-hoang-linh',
   name: 'Linh Nguyễn',
-  title: 'Tư vấn BĐS Đà Nẵng',
+  title: 'Tư vấn BĐS Đà Nẵng — House & Life',
   expertise: [
-    'Đất nền & nhà phố Nam Đà Nẵng',
-    'Căn hộ Sun Group ven sông Hàn',
-    'BĐS nổi bật',
-    'Tư vấn nhà đầu tư trung và dài hạn',
-    'Pháp lý & dòng tiền cho thuê',
+    'Nhà phố & Đất nền Nam Hòa Xuân',
+    'Bán & Cho thuê Căn hộ Đà Nẵng',
+    'Đất nền Nam Đà Nẵng',
+    'Giỏ hàng tiềm năng Sun Group',
+    'Thẩm định pháp lý & Định giá tài sản',
   ],
   bio:
-    'Tư vấn bất động sản tại Đà Nẵng: ưu tiên đất nền và nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn.',
+    'Tư vấn bất động sản House & Life tại Đà Nẵng: chuyên sâu nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê cùng giỏ hàng tiềm năng Sun Group.',
   url: `${SITE.url}/tac-gia/nguyen-phan-hoang-linh`,
   image: `${SITE.url}/og-author.jpg`,
 } as const;

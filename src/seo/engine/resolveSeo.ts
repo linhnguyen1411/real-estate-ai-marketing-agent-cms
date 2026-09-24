@@ -159,7 +159,7 @@ function resolvePageType(
 }
 
 function buildNotFound(origin: string, site: SiteConfigLike): SeoMetadata {
-  const title = 'Không tìm thấy trang | Estoria';
+  const title = `Không tìm thấy trang | ${site.name || 'House & Life'}`;
   const description = 'Trang bạn yêu cầu không tồn tại hoặc đã được gỡ khỏi BDSDanang.site.';
   const canonical = resolveCanonical({ path: '/', origin });
   const robots = resolveRobots({ noindex: true });

@@ -17,7 +17,7 @@ export default function AboutPage() {
     ...buildDefaultPageSchemas(breadcrumbs, origin),
     buildBreadcrumbSchema(breadcrumbs, origin),
     buildArticleSchema({
-      title: 'Giới thiệu Estoria',
+      title: `Giới thiệu ${SITE.name}`,
       description: SITE.defaultDescription,
       path: '/gioi-thieu',
       origin,
@@ -27,8 +27,8 @@ export default function AboutPage() {
   return (
     <>
       <SeoHead
-        title="Giới Thiệu Estoria | Tư Vấn BĐS Đà Nẵng"
-        description="Estoria — đội ngũ tư vấn bất động sản Đà Nẵng hỗ trợ nhà đầu tư bằng dữ liệu minh bạch và góc nhìn thẩm định thực tế."
+        title={`Giới Thiệu ${SITE.name} | Tư Vấn BĐS Đà Nẵng`}
+        description={`${SITE.name} — Vững tâm an cư, kiến tạo tương lai. Đội ngũ tư vấn bất động sản Đà Nẵng chuyên sâu nhà phố, đất nền Nam Hòa Xuân, căn hộ bán & cho thuê.`}
         path="/gioi-thieu"
         ogType="article"
         schemas={schemas}
@@ -39,8 +39,8 @@ export default function AboutPage() {
           Giới thiệu {SITE.name}
         </h1>
         <p className="mt-4 text-lg leading-8 text-slate-600">
-          {SITE.name} ({SITE.brand}) chuyên hỗ trợ nhà đầu tư trung và dài hạn tại Đà Nẵng.
-          Trọng tâm danh mục: đất nền & nhà phố Nam Đà Nẵng, căn hộ Sun Group ven sông Hàn và BĐS nổi bật đa khu vực.
+          {SITE.name} ({SITE.brand}) hoạt động với phương châm "{SITE.tagline}".
+          Mục tiêu và thị trường đích của chúng tôi: chuyên sâu mua bán nhà phố, đất nền Nam Hòa Xuân, phân phối và cho thuê căn hộ tại Đà Nẵng cùng giỏ hàng tiềm năng Sun Group.
         </p>
 
         <section className="mt-10 space-y-4 text-slate-700 leading-7">

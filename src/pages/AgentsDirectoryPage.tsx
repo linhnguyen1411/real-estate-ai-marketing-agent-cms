@@ -25,14 +25,14 @@ export default function AgentsDirectoryPage() {
   return (
     <>
       <SeoHead
-        title="Đội ngũ môi giới BĐS | Estoria"
-        description="Danh sách môi giới bất động sản chuyên nghiệp của Estoria — hồ sơ, kinh nghiệm và tin đang quản lý."
+        title="Đội ngũ môi giới BĐS | House & Life"
+        description="Danh sách môi giới bất động sản chuyên nghiệp của House & Life — hồ sơ, kinh nghiệm và tin đang quản lý."
         path="/moi-gioi"
       />
       <div className="mx-auto max-w-5xl px-4 py-10">
         <Breadcrumbs items={breadcrumbs} className="mb-6" />
         <h1 className="text-3xl font-extrabold text-slate-950">Đội ngũ môi giới</h1>
-        <p className="mt-2 text-slate-600">Chuyên viên tư vấn bất động sản Estoria — minh bạch hồ sơ và thành tích.</p>
+        <p className="mt-2 text-slate-600">Chuyên viên tư vấn bất động sản House & Life — minh bạch hồ sơ và thành tích.</p>
 
         {loading ? (
           <div className="flex min-h-[30vh] items-center justify-center">

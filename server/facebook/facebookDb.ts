@@ -13,7 +13,7 @@ export async function ensureFacebookPageConnection() {
     create: {
       id: `fb-page-${cfg.pageId}`,
       pageId: cfg.pageId,
-      pageName: 'Estoria Fanpage',
+      pageName: 'House & Life Fanpage',
       accessTokenEncrypted: encrypted,
       isActive: true,
     },

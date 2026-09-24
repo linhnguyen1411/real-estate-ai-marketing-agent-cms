@@ -39,7 +39,7 @@ export function getPublicPropertyUrl(property: Property, origin = window.locatio
 export function getPropertyShareData(property: Property, origin = window.location.origin) {
   const url = getPublicPropertyUrl(property, origin);
   const image = property.gallery_images?.[0] || property.images;
-  const title = property.ai_posts?.seo?.title || `${property.title} | Estoria`;
+  const title = property.ai_posts?.seo?.title || `${property.title} | House & Life`;
   const description = property.ai_posts?.seo?.meta_description || truncateText(
     `${property.title} tại ${property.location}, diện tích ${property.area} m2, giá ${property.price} tỷ. ${property.rich_description || property.description}`
   );
