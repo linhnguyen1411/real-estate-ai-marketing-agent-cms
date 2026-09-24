@@ -9,13 +9,13 @@ import {
   parseFacebookContentUrl,
   resolveOpenableFacebookPostUrl,
   asFacebookId,
-} from '../shared/facebook-url';
+} from '../../../shared/facebook-url';
 import {
   isSolidFacebookPermalink,
   normalizeSocialLinks,
   toMobileFriendlyFacebookUrl,
-} from '../server/modules/link-normalization';
-import { resolveSourceProvenance, isTrustedContentUrl } from '../server/modules/sales-layer/salesActionCardViewModel';
+} from '../../../server/modules/link-normalization';
+import { resolveSourceProvenance, isTrustedContentUrl } from '../../../server/modules/sales-layer/salesActionCardViewModel';
 
 function ok(name: string, cond: unknown) {
   assert.ok(cond, name);
@@ -75,7 +75,13 @@ function ok(name: string, cond: unknown) {
       'https://www.facebook.com/watch/?v=123456789012345',
   );
   ok(
-    'photo.php',
+    'photo.php with set=gm → group posts',
+    canonicalizeFacebookPostUrl(
+      'https://www.facebook.com/photo.php?fbid=123456789012345&set=gm.1083402087528421&id=434542872414349',
+    ) === 'https://www.facebook.com/groups/434542872414349/posts/1083402087528421',
+  );
+  ok(
+    'photo.php without set stays photo.php',
     canonicalizeFacebookPostUrl('https://www.facebook.com/photo.php?fbid=123456789012345&set=gm.1') ===
       'https://www.facebook.com/photo.php?fbid=123456789012345',
   );

@@ -1,8 +1,21 @@
 # Start local scan/publish worker attached to CDP Chrome on this workstation.
 $ErrorActionPreference = 'Stop'
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path
 Set-Location $Root
+
+# ── Ensure Postgres local is running ──
+Write-Host '[fleet] Checking local Postgres...' -ForegroundColor Yellow
+& node scripts/ensure-local-pg.mjs
+if ($LASTEXITCODE -ne 0) {
+  Write-Host 'Postgres not ready. Try: npm run db:pg-start' -ForegroundColor Red
+  Read-Host 'Enter to close'
+  exit 1
+}
+Write-Host '[fleet] Postgres OK' -ForegroundColor Green
+
+# ── Local worker = NOT stateless (reads DB directly) ──
+$env:EXECUTION_AGENT_STATELESS = '0'
 
 $hostname = $env:COMPUTERNAME
 if (-not $hostname) { $hostname = [System.Net.Dns]::GetHostName() }
@@ -28,6 +41,7 @@ Write-Host "  machineId:  $($env:AGENT_MACHINE_ID)"
 Write-Host "  cdp:        $($env:AGENT_CDP_ENDPOINT)"
 Write-Host "  managed:    $($env:AGENT_BROWSER_PROFILE_DIR)"
 Write-Host "  scheduler:  $($env:AGENT_SCHEDULER_ENABLED)"
+Write-Host "  stateless:  $($env:EXECUTION_AGENT_STATELESS)"
 
 try {
   $null = Invoke-WebRequest -Uri "$($env:AGENT_CDP_ENDPOINT)/json/version" -UseBasicParsing -TimeoutSec 3

@@ -16,7 +16,9 @@ export async function runScanSourceJob(
   job: AgentJob,
   browser: BrowserManager,
 ): Promise<ScanMetrics & Record<string, unknown>> {
-  requireHydratedExecution(job.payload, job.type);
+  if (isStatelessExecutionAgent() && !job.sourceId) {
+    requireHydratedExecution(job.payload, job.type);
+  }
 
   const { source, mission } = await resolveScanExecutionContext(job);
   const evidence = isStatelessExecutionAgent() ? new ExecutionEvidenceSink() : null;

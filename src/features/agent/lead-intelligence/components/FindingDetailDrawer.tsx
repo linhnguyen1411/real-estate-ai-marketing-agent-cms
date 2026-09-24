@@ -387,6 +387,12 @@ export default function FindingDetailDrawer({
                 <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-300">
                   {contentText.trim() || 'Chưa xác định'}
                 </pre>
+                {contentText.trim() && (
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Bài trên Facebook có thể chỉ hiển thị ảnh khi mở link — nội dung trên đã được
+                    agent trích từ feed/GraphQL.
+                  </p>
+                )}
               </div>
               {hasOriginalPostUrl(originalUrl) && (
                 <a

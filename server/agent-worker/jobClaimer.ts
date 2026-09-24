@@ -397,8 +397,6 @@ export async function reclaimOrphanedAgentJobs(input: {
           AND: [{ startedAt: null }, { claimedAt: null }, { updatedAt: { lt: cutoff } }],
         },
       ],
-      // Never steal a job this same process just claimed
-      NOT: { claimedBy: input.workerId },
     },
     data: {
       status: 'queued',

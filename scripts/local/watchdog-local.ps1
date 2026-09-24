@@ -1,43 +1,38 @@
-# Local keepalive for CMS + agent worker on this workstation.
-# Process supervisor only - does not modify Runtime/Fleet/Queue/Browser lease.
+# Minimal local keepalive: PG + CDP + agent worker (lean).
+# Only restarts when a process is actually dead. Does NOT kill idle workers.
 param(
-  [int]$PollSeconds = 20,
+  [int]$PollSeconds = 30,
+  [int]$NodeMaxOldSpaceMb = 768,
+  [switch]$LeanMode,
   [switch]$Once
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $Root
+
+# Default lean: no CMS UI (jobs come from VPS).
+if (-not $PSBoundParameters.ContainsKey('LeanMode')) { $LeanMode = $true }
+if ($env:LOCAL_WATCHDOG_LEAN -eq '0') { $LeanMode = $false }
+if ($env:LOCAL_WATCHDOG_LEAN -eq '1') { $LeanMode = $true }
+if ($env:LOCAL_WATCHDOG_NODE_MB -match '^\d+$') { $NodeMaxOldSpaceMb = [int]$env:LOCAL_WATCHDOG_NODE_MB }
 
 $StateDir = Join-Path $Root 'runtime\watchdog'
 $LogDir = Join-Path $StateDir 'logs'
 New-Item -ItemType Directory -Force -Path $StateDir, $LogDir | Out-Null
 
-$CmsPidFile = Join-Path $StateDir 'cms.pid'
 $WorkerPidFile = Join-Path $StateDir 'worker.pid'
 $WatchdogPidFile = Join-Path $StateDir 'watchdog.pid'
 $MainLog = Join-Path $LogDir 'watchdog.log'
 $CdpPort = if ($env:AGENT_CDP_PORT) { $env:AGENT_CDP_PORT } else { '9222' }
 $RepoMarker = 'real-estate-ai-marketing-agent-cms'
+$HeartbeatEvery = 20
+$loopCount = 0
 
 function Write-Log([string]$Message) {
   $line = '[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
   Add-Content -Path $MainLog -Value $line -Encoding UTF8
   Write-Host $line
-}
-
-function Get-RepoNodeProcs([string]$Pattern) {
-  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object {
-      $_.Name -match '^(node|tsx)\.exe$' -and
-      $_.CommandLine -and
-      $_.CommandLine -match $Pattern -and
-      (
-        $_.CommandLine -match [regex]::Escape($RepoMarker) -or
-        $_.CommandLine -match 'server[/\\]agent-worker' -or
-        $_.CommandLine -match 'ensure-local-pg\.mjs'
-      )
-    }
 }
 
 function Test-PidAlive([int]$ProcessId) {
@@ -63,12 +58,50 @@ function Write-PidFile([string]$Path, [int]$ProcessId) {
   Set-Content -Path $Path -Value $ProcessId -Encoding ascii
 }
 
+function Get-WorkerNodes {
+  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -match '^(node|tsx)\.exe$' -and
+      $_.CommandLine -and
+      $_.CommandLine -match 'agent-worker' -and
+      (
+        $_.CommandLine -match [regex]::Escape($RepoMarker) -or
+        $_.CommandLine -match 'server[/\\]agent-worker'
+      )
+    })
+}
+
+function Get-CmsNodes {
+  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -match '^(node|tsx)\.exe$' -and
+      $_.CommandLine -and
+      $_.CommandLine -match [regex]::Escape($RepoMarker) -and
+      $_.CommandLine -match 'ensure-local-pg\.mjs|tsx.*server\.ts|[\\/]server\.ts'
+    })
+}
+
+function Get-WorkerCmdWrappers {
+  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -eq 'cmd.exe' -and
+      $_.CommandLine -and
+      $_.CommandLine -match [regex]::Escape($RepoMarker) -and
+      $_.CommandLine -match 'npm run agent:worker'
+    })
+}
+
 function Ensure-Postgres {
   $pgScript = Join-Path $Root 'scripts\pg-cluster.ps1'
-  $status = & powershell -NoProfile -ExecutionPolicy Bypass -File $pgScript -Action status 2>&1 | Out-String
-  if ($status -match 'server is running') { return }
-  Write-Log 'Postgres down - starting cluster'
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $pgScript -Action start 2>&1 | Out-Null
+  $status = cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File `"$pgScript`" -Action status 2>&1"
+  $text = "$status"
+  if ($text -match 'server is running') { return }
+  if ($text -match 'recovery|starting up|in recovery') {
+    Write-Log 'Postgres in recovery - waiting (not restarting)'
+    return
+  }
+  Write-Log 'Postgres down - starting cluster once'
+  cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File `"$pgScript`" -Action start 2>&1" | Out-Null
 }
 
 function Test-Cdp {
@@ -82,25 +115,37 @@ function Test-Cdp {
 
 function Ensure-Cdp {
   if (Test-Cdp) { return }
-  Write-Log ("CDP down on :{0} - restarting Chrome profile" -f $CdpPort)
-  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine -match 'remote-debugging-port=9222|agent-cdp-profile' } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  Start-Sleep -Seconds 2
+  Write-Log ("CDP down on :{0} - starting Chrome" -f $CdpPort)
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'scripts\fleet\start-cdp-chrome.ps1')
-  Start-Sleep -Seconds 4
+  Start-Sleep -Seconds 5
   if (-not (Test-Cdp)) {
-    Write-Log 'WARN: CDP still unreachable after restart'
+    Write-Log 'WARN: CDP still unreachable'
   } else {
     Write-Log 'CDP is up'
   }
 }
 
-function Start-ManagedNpm([string]$NpmScript, [string]$LogName) {
-  $outLog = Join-Path $LogDir ("{0}.out.log" -f $LogName)
-  $errLog = Join-Path $LogDir ("{0}.err.log" -f $LogName)
-  # Use cmd file redirection (not Start-Process -Redirect*) so npm children survive parent exit.
-  $cmd = 'npm run {0} >> "{1}" 2>> "{2}"' -f $NpmScript, $outLog, $errLog
+function Ensure-NoCms {
+  if (-not $LeanMode) { return }
+  $cms = Get-CmsNodes
+  if ($cms.Count -eq 0) { return }
+  Write-Log ("LeanMode: stopping {0} CMS process(es)" -f $cms.Count)
+  foreach ($p in $cms) {
+    try { & taskkill.exe /PID $p.ProcessId /T /F 2>$null | Out-Null } catch {}
+  }
+}
+
+function Start-Worker {
+  $existingCmd = Get-WorkerCmdWrappers
+  if ($existingCmd.Count -gt 0) {
+    Write-Log ("Worker cmd already running pid={0}" -f $existingCmd[0].ProcessId)
+    return [int]$existingCmd[0].ProcessId
+  }
+
+  $outLog = Join-Path $LogDir 'worker.out.log'
+  $errLog = Join-Path $LogDir 'worker.err.log'
+  $nodeOpts = "--max-old-space-size={0}" -f $NodeMaxOldSpaceMb
+  $cmd = 'set NODE_OPTIONS={0}&& npm run agent:worker >> "{1}" 2>> "{2}"' -f $nodeOpts, $outLog, $errLog
   $proc = Start-Process -FilePath 'cmd.exe' `
     -ArgumentList @('/c', $cmd) `
     -WorkingDirectory $Root `
@@ -109,34 +154,22 @@ function Start-ManagedNpm([string]$NpmScript, [string]$LogName) {
   return $proc.Id
 }
 
-function Ensure-Cms {
-  $existing = @(Get-RepoNodeProcs 'ensure-local-pg\.mjs|tsx.*server\.ts|[\\/]server\.ts')
-  if ($existing.Count -gt 0) {
-    Write-PidFile $CmsPidFile ([int]$existing[0].ProcessId)
-    return
-  }
-
-  $stored = Read-PidFile $CmsPidFile
-  if (Test-PidAlive $stored) { return }
-
-  Write-Log 'CMS down - starting npm run dev'
-  $newPid = Start-ManagedNpm 'dev' 'cms'
-  Write-PidFile $CmsPidFile $newPid
-  Write-Log ("CMS started pid={0}" -f $newPid)
-}
-
 function Ensure-Worker {
-  $existing = @(Get-RepoNodeProcs 'agent-worker')
-  if ($existing.Count -gt 0) {
-    Write-PidFile $WorkerPidFile ([int]$existing[0].ProcessId)
+  $nodes = Get-WorkerNodes
+  if ($nodes.Count -gt 0) {
+    Write-PidFile $WorkerPidFile ([int]$nodes[0].ProcessId)
     return
   }
 
-  $stored = Read-PidFile $WorkerPidFile
-  if (Test-PidAlive $stored) { return }
+  $wrappers = Get-WorkerCmdWrappers
+  if ($wrappers.Count -gt 0) {
+    # npm still starting - give it time, do not spawn a second worker
+    Write-PidFile $WorkerPidFile ([int]$wrappers[0].ProcessId)
+    return
+  }
 
-  Write-Log 'Worker down - starting npm run agent:worker'
-  $newPid = Start-ManagedNpm 'agent:worker' 'worker'
+  Write-Log 'Worker process missing - starting npm run agent:worker'
+  $newPid = Start-Worker
   Write-PidFile $WorkerPidFile $newPid
   Write-Log ("Worker started pid={0}" -f $newPid)
 }
@@ -152,15 +185,20 @@ if ($oldWatchdog -gt 0 -and $oldWatchdog -ne $myPid -and (Test-PidAlive $oldWatc
   }
 }
 Write-PidFile $WatchdogPidFile $myPid
-Write-Log ("Watchdog started pid={0} root={1} poll={2}s" -f $myPid, $Root, $PollSeconds)
+Write-Log ("Watchdog v2 started pid={0} poll={1}s nodeMb={2} lean={3} (restart-only-if-dead)" -f $myPid, $PollSeconds, $NodeMaxOldSpaceMb, [bool]$LeanMode)
 
 try {
   do {
     try {
       Ensure-Postgres
       Ensure-Cdp
-      Ensure-Cms
+      Ensure-NoCms
       Ensure-Worker
+      $loopCount++
+      if (($loopCount % $HeartbeatEvery) -eq 0) {
+        $wn = (Get-WorkerNodes).Count
+        Write-Log ("heartbeat ok loop={0} workerNodes={1}" -f $loopCount, $wn)
+      }
     } catch {
       Write-Log ('ERROR: ' + $_.Exception.Message)
     }

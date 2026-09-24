@@ -104,13 +104,16 @@ export async function resolveScanExecutionContext(job: AgentJob): Promise<{
           url: source.url,
           NOT: { id: source.id },
         },
-        select: { id: true, _count: { select: { scannedContents: true } } },
+        select: {
+          id: true,
+          _count: { select: { scannedContents: true, jobs: true } },
+        },
       });
       if (!conflict) throw error;
-      if (conflict._count.scannedContents > 0) {
+      if (conflict._count.scannedContents > 0 || conflict._count.jobs > 0) {
         console.warn(
           `[scan] hydrated source ${source.id} conflicts with local ${conflict.id} ` +
-            `(same url, ${conflict._count.scannedContents} contents) — using local id`,
+            `(same url; contents=${conflict._count.scannedContents}, jobs=${conflict._count.jobs}) — using local id`,
         );
         resolvedSource = await prisma.agentSource.findUniqueOrThrow({ where: { id: conflict.id } });
       } else {
@@ -159,14 +162,15 @@ export async function resolveScanExecutionContext(job: AgentJob): Promise<{
     return { source: resolvedSource, mission };
   }
 
-  if (isStatelessExecutionAgent()) {
+  const payload = (job.payload || {}) as Record<string, unknown>;
+  const sourceId = String(job.sourceId || payload.sourceId || '').trim();
+
+  if (isStatelessExecutionAgent() && !sourceId) {
     throw new Error(
       'Stateless Execution Agent: scan_source job missing payload.execution.scan — hydrate at claim.',
     );
   }
 
-  const payload = (job.payload || {}) as Record<string, unknown>;
-  const sourceId = String(job.sourceId || payload.sourceId || '').trim();
   if (!sourceId) throw new Error('scan_source thiếu sourceId.');
 
   const source = await assertAgentSourceActiveForScan(sourceId);

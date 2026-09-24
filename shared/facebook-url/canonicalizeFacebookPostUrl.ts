@@ -144,6 +144,13 @@ export function parseFacebookContentUrl(raw: string | null | undefined): Faceboo
   const fbid = asFacebookId(u.searchParams.get('fbid'));
   const groupMatch = path.match(/\/groups\/([^/]+)/i);
   const groupId = groupMatch ? decodeURIComponent(groupMatch[1]) : null;
+  const gmStoryId = (() => {
+    const set = u.searchParams.get('set') || '';
+    const m = set.match(/^gm\.(\d{8,})/i);
+    return m ? m[1] : null;
+  })();
+  const queryGroupId = asFacebookId(u.searchParams.get('id'));
+  const resolvedGroupId = groupId || queryGroupId;
 
   const postsMatch = path.match(/\/posts\/(pfbid[\w]+|\d+)/i);
   if (postsMatch) {
@@ -189,10 +196,11 @@ export function parseFacebookContentUrl(raw: string | null | undefined): Faceboo
 
   const photoPath = path.match(/\/photos\/(?:[^/]+\/)?(\d{8,})/i);
   if (photoPath || (/photo\.php/i.test(path) && fbid)) {
+    const storyPostId = gmStoryId || photoPath?.[1] || null;
     return {
       kind: 'photo',
-      groupId,
-      postId: photoPath?.[1] || fbid,
+      groupId: resolvedGroupId,
+      postId: storyPostId || fbid,
       mediaId: photoPath?.[1] || fbid,
       raw: input,
     };
@@ -245,8 +253,8 @@ export function buildCanonicalFacebookPostUrl(parts: FacebookUrlParts): string |
   if (parts.kind === 'group_home') return null;
 
   if (parts.kind === 'photo' && mediaId) {
-    if (groupId) {
-      return `https://www.facebook.com/groups/${encodeURIComponent(groupId)}/permalink/${mediaId}`;
+    if (groupId && postId) {
+      return `https://www.facebook.com/groups/${encodeURIComponent(groupId)}/posts/${postId}`;
     }
     return `https://www.facebook.com/photo.php?fbid=${encodeURIComponent(mediaId)}`;
   }

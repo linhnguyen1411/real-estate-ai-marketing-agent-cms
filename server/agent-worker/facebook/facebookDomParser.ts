@@ -72,7 +72,7 @@ const EXTRACT_POSTS_SCRIPT = `(() => {
   }
 
   function isPhotoMediaHref(full) {
-    return /photo\.php|\/photo\/|\/photos\/|fbid=/i.test(full);
+    return /photo\\.php|\\/photo\\/|\\/photos\\/|fbid=/i.test(full);
   }
 
   function toFullHref(href) {
@@ -114,8 +114,8 @@ const EXTRACT_POSTS_SCRIPT = `(() => {
       }
       var score = 0;
       if (/story_fbid=/i.test(full)) score = 5;
-      else if (/\/permalink\//i.test(full)) score = 4;
-      else if (/\/posts\//i.test(full)) score = 3;
+      else if (/\\/permalink\\//i.test(full)) score = 4;
+      else if (/\\/posts\\//i.test(full)) score = 3;
       if (score > bestScore) {
         bestScore = score;
         best = full;
@@ -188,6 +188,14 @@ const EXTRACT_POSTS_SCRIPT = `(() => {
         .replace(/\\s*(Thích|Like|Bình luận|Comment|Chia sẻ|Share|Trả lời|Reply)(?:\\s+\\d+)?(?:\\s+(Thích|Like|Bình luận|Comment|Chia sẻ|Share|Trả lời|Reply)(?:\\s+\\d+)?)*\\s*$/gi, '')
         .trim();
       if (body.length >= 15) return body;
+    }
+    // 4) Image-only posts — text often lives in image alt/aria, not message block.
+    var img = article.querySelector(
+      'a[href*="/photo"] img, a[href*="fbid="] img, div[data-ad-rendering-role="story_photo"] img, img[src*="fbcdn"]',
+    );
+    if (img && !isInsideNestedArticle(img, article)) {
+      var alt = (img.getAttribute('alt') || img.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim();
+      if (alt.length >= 12 && !/^Ảnh của /i.test(alt)) return alt;
     }
     return '';
   }
@@ -263,7 +271,7 @@ const EXTRACT_POSTS_SCRIPT = `(() => {
       articleDepth: depth,
       insideDialog: !!article.closest('[role="dialog"]'),
       insideCommentsRegion: isInsideComments(article) || isFeedCommentArticle,
-      hasPostPermalink: /\\/posts\\//.test(permalink) || /permalink/.test(permalink),
+      hasPostPermalink: permalink.includes('/posts/') || /permalink/i.test(permalink),
       hasStoryFbid: !!story,
       hasAuthorLink: !!(authorLink && closestArticle(authorLink) === article),
       hasTimestampLink: !!(timeLink && closestArticle(timeLink) === article),

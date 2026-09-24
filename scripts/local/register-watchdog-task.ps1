@@ -1,6 +1,8 @@
-# Register Windows Scheduled Task so local CMS+worker watchdog survives reboot/logon.
+# Register Windows Scheduled Task - lean keepalive (worker+CDP+PG, no CMS UI).
 param(
-  [string]$TaskName = 'RealEstateCMS-LocalWatchdog'
+  [string]$TaskName = 'RealEstateCMS-LocalWatchdog',
+  [switch]$LeanMode,
+  [int]$NodeMaxOldSpaceMb = 768
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,13 +11,18 @@ $Watchdog = Join-Path $Root 'scripts\local\watchdog-local.ps1'
 $LogDir = Join-Path $Root 'runtime\watchdog\logs'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+# Default lean unless explicitly disabled
+if (-not $PSBoundParameters.ContainsKey('LeanMode')) { $LeanMode = $true }
+
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
 $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$arg = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Watchdog`""
+$extra = "-NodeMaxOldSpaceMb $NodeMaxOldSpaceMb"
+if ($LeanMode) { $extra = "$extra -LeanMode" }
+$arg = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Watchdog`" $extra"
 
 $action = New-ScheduledTaskAction -Execute $ps -Argument $arg -WorkingDirectory $Root
 $triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -36,13 +43,12 @@ Register-ScheduledTask `
   -Trigger $triggerLogon `
   -Settings $settings `
   -Principal $principal `
-  -Description 'Keep Real Estate AI CMS local Postgres/CDP/dev server/agent worker alive' |
+  -Description 'Minimal keepalive: Postgres + CDP Chrome + agent worker (no false hung kills)' |
   Out-Null
 
-# Start immediately
 Start-ScheduledTask -TaskName $TaskName
 
-Write-Host "Registered + started Scheduled Task: $TaskName"
-Write-Host "  script: $Watchdog"
-Write-Host "  logs:   $LogDir"
-Write-Host "  stop:   npm run local:watchdog:stop"
+Write-Host "Registered + started: $TaskName"
+Write-Host "  lean=$([bool]$LeanMode) nodeMb=$NodeMaxOldSpaceMb"
+Write-Host "  mode=restart-only-if-dead"
+Write-Host "  stop: npm run local:watchdog:stop"

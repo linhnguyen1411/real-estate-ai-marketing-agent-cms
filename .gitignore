@@ -86,5 +86,9 @@ data/browser-debug/
 /runtime/local-pg/
 /runtime/watchdog/
 /runtime/logs/
+/runtime/*.bat
+/runtime/*.json
+/runtime/*.js
+/runtime/*-profile*/
 *.bak
 desktop.ini

@@ -14,6 +14,9 @@ import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus'
 import './scanSourceHandler';
 
 async function main(): Promise<void> {
+  // Local agent-worker operates with direct PostgreSQL connection
+  delete process.env.EXECUTION_AGENT_STATELESS;
+
   const config = loadWorkerConfig();
 
   const db = await checkDatabaseConnection();

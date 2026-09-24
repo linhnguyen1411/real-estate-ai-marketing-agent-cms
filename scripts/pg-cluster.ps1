@@ -15,8 +15,30 @@ if (-not $pgCtl -or -not (Test-Path $clusterData)) {
   exit 1
 }
 
+function Test-PgClusterRunning {
+  & $pgCtl -D $clusterData status *> $null
+  return ($LASTEXITCODE -eq 0)
+}
+
 switch ($Action) {
-  'start' { & $pgCtl -D $clusterData -l $clusterLog start }
-  'stop'  { & $pgCtl -D $clusterData stop }
-  'status' { & $pgCtl -D $clusterData status }
+  'start' {
+    if (Test-PgClusterRunning) {
+      Write-Host '[pg] Cluster da chay - bo qua start.' -ForegroundColor Green
+      exit 0
+    }
+    & $pgCtl -D $clusterData -l $clusterLog start
+    if ($LASTEXITCODE -ne 0) {
+      if (Test-PgClusterRunning) {
+        Write-Host '[pg] Cluster da chay - bo qua start.' -ForegroundColor Green
+        exit 0
+      }
+      exit $LASTEXITCODE
+    }
+  }
+  'stop' {
+    & $pgCtl -D $clusterData stop
+  }
+  'status' {
+    & $pgCtl -D $clusterData status
+  }
 }
