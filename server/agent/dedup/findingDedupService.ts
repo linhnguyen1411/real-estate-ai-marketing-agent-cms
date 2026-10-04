@@ -97,7 +97,38 @@ export async function decideFindingDedupe(input: {
   authorName?: string | null;
   title?: string | null;
   excludeFindingId?: string | null;
+  propertySignature?: string | null;
 }): Promise<FindingDedupeDecision> {
+  // 1. Property signature clustering (Stage 2: same block/lot/area/price)
+  if (input.propertySignature) {
+    try {
+      const sigFindings = await prisma.agentFinding.findMany({
+        where: {
+          companyId: input.companyId,
+          dedupeStatus: { in: ['unique', 'possible_duplicate'] },
+          ...(input.excludeFindingId ? { id: { not: input.excludeFindingId } } : {}),
+        },
+        select: { id: true, extractedData: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+
+      for (const sf of sigFindings) {
+        const ed = (sf.extractedData && typeof sf.extractedData === 'object' ? sf.extractedData : {}) as Record<string, unknown>;
+        if (ed.propertySignature && ed.propertySignature === input.propertySignature) {
+          return {
+            status: 'duplicate',
+            duplicateOfFindingId: sf.id,
+            similarityScore: 0.95,
+            reason: 'property_signature_match',
+          };
+        }
+      }
+    } catch {
+      /* soft fail, continue to text dedupe */
+    }
+  }
+
   const meta = buildContentDedupeMeta(input.contentText, input.title);
 
   // Same normalized hash on another finding in company/source

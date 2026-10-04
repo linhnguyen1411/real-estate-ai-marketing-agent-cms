@@ -329,6 +329,10 @@ export interface AppSettings {
   project_display_order?: string[];
   /** Danh mục dự án tùy chỉnh (ghi đè PROPERTY_PROJECT_GROUPS khi có) */
   project_groups?: ProjectCatalogGroup[];
+  /** Contact & Brand info */
+  hotline?: string;
+  phone?: string;
+  zalo_phone?: string;
   /** Telegram lead alerts */
   telegram_enabled?: boolean;
   telegram_bot_token?: string;

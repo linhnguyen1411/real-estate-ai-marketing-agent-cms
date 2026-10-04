@@ -66,7 +66,7 @@ function parseAmountExpr(expr: string): number | null {
     let total = parseNumber(tyMatch[1]) * TY;
     // trailing remainder after tỷ: "4 tỷ 500" (=> +500 triệu) or "4 tỷ 5" (=> +500 triệu)
     const after = lower.slice((tyMatch.index ?? 0) + tyMatch[0].length);
-    const remMatch = after.match(/^\s*([\d.,]+)\s*(triệu|tr)?/);
+    const remMatch = after.match(/^\s*(\d+(?:[.,]\d+)?)\s*(triệu|tr)?/);
     if (remMatch && remMatch[1]) {
       const n = parseNumber(remMatch[1]);
       if (remMatch[2]) {
@@ -98,7 +98,7 @@ function classifyType(context: string, period: MoneyPeriod): MoneyType {
 // range: "3-4 tỷ", "3 đến 4 tỷ", "3 tới 4 tỷ"
 const RANGE_RE = /([\d.,]+)\s*(?:-|–|đến|tới|~)\s*([\d.,]+)\s*(t[yỷ]|triệu|tr)(?![\p{L}])/giu;
 // single with unit, possibly with tỷ+remainder: capture greedily unit phrase
-const SINGLE_RE = /([\d.,]+\s*t[yỷ](?:\s*[\d.,]+\s*(?:triệu|tr)?)?|[\d.,]+\s*(?:triệu|tr|k|nghìn|ngàn))(?![\p{L}])/giu;
+const SINGLE_RE = /([\d.,]+\s*t[yỷ](?:\s*\d+(?:[.,]\d+)?\s*(?:triệu|tr)?)?|[\d.,]+\s*(?:triệu|tr|k|nghìn|ngàn))(?![\p{L}])/giu;
 const BOUND_RE = /(dưới|trên|từ|tối\s*đa|tối\s*thiểu)\s+([\d.,]+\s*(?:t[yỷ]|triệu|tr|k))(?![\p{L}])/giu;
 const SLIGHTLY_ABOVE_RE =
   /(?:nhỉnh|hơn|trên|khoảng|tầm)\s+([\d.,]+\s*(?:t[yỷ]|triệu|tr))(?![\p{L}])|([\d.,]+\s*t[yỷ])\s*(?:hơn|xxx|xx)\b/giu;

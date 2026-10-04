@@ -316,14 +316,18 @@ export async function notifyFindingIfEligible(input: {
       );
     }
 
+    const extracted = (finding.extractedData && typeof finding.extractedData === 'object' ? finding.extractedData : {}) as Record<string, unknown>;
+    const extractedIntentScore = typeof extracted.intentScore === 'number' ? extracted.intentScore : 0;
+    const isHighPriorityIntent = extractedIntentScore >= 70 || extracted.isHighPriorityLead === true;
+
     const confidencePct = resolveBuyerConfidencePct({
-      salesConfidencePct: null,
+      salesConfidencePct: isHighPriorityIntent ? Math.max(85, extractedIntentScore) : null,
       acquisitionFinalScore:
         acq?.priority.finalScore ?? finding.finalScore ?? finding.score ?? null,
       intentConfidence: acq?.intent.confidence ?? null,
     });
 
-    if (!input.force && !shouldSendBuyerAlert(confidencePct) && !acq?.isVip) {
+    if (!input.force && !shouldSendBuyerAlert(confidencePct) && !acq?.isVip && !isHighPriorityIntent) {
       console.info(
         'lead_alert: findingId=%s event=NEW_LEAD status=skipped reason=below_threshold confidence=%s',
         finding.id,

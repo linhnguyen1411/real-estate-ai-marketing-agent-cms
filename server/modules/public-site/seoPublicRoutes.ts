@@ -2,7 +2,8 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import path from 'path';
 import fs from 'fs';
 import type { Property } from '../../../src/types';
-import { getProperties } from '../../dbHelper';
+import { getProperties, getSettings } from '../../dbHelper';
+import { renderMiniLandingPage } from './miniLandingPage';
 import { buildSitemapEntries, entriesToXml, sitemapIndexXml, generateSitemapXml } from '../../../src/seo/sitemap';
 import { getPublishedBlogPostsForSitemap } from '../../blogDb';
 import { createDistStaticOptions } from '../../middleware/staticAssets';
@@ -196,6 +197,51 @@ export function createSeoPublicRouter() {
 
   router.get('/bds-da-nang/:propertySlug', (req: Request, res: Response) => {
     res.redirect(301, `/${encodeURIComponent(req.params.propertySlug)}`);
+  });
+
+  // Stage 4.3: Fast Mobile Mini Landing Page & Zalo/Messenger Share Preview (/p/:slug)
+  router.get('/p/:propertySlug', (req: Request, res: Response) => {
+    const slug = req.params.propertySlug;
+    const property = findPublicPropertyBySlug(slug);
+    if (!property) {
+      res.redirect(302, '/');
+      return;
+    }
+    const origin = getPublicOrigin(req);
+    const settings = getSettings();
+    const shareUrl = `${origin}/p/${encodeURIComponent(slug)}`;
+    const html = renderMiniLandingPage({ property, settings, origin, shareUrl });
+    res.status(200).type('text/html').send(html);
+  });
+
+  // Share Card JSON preview endpoint
+  router.get('/api/public/properties/:propertySlug/share-card', (req: Request, res: Response) => {
+    const slug = req.params.propertySlug;
+    const property = findPublicPropertyBySlug(slug);
+    if (!property) {
+      res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+      return;
+    }
+    const origin = getPublicOrigin(req);
+    const settings = getSettings();
+    const shareUrl = `${origin}/p/${encodeURIComponent(slug)}`;
+    const hotline = settings.hotline || settings.phone || '0905777594';
+
+    res.json({
+      status: 'success',
+      data: {
+        id: property.id,
+        title: property.title,
+        priceDisplay: property.price ? `${property.price} tỷ` : 'Thương lượng',
+        areaDisplay: property.area ? `${property.area} m²` : null,
+        location: property.location || 'Đà Nẵng',
+        type: property.type,
+        heroImage: property.images || property.gallery_images?.[0] || `${origin}/logo_hl.png`,
+        shareUrl,
+        hotline,
+        zaloUrl: `https://zalo.me/${(settings.zalo_phone || hotline).replace(/\D/g, '')}`,
+      },
+    });
   });
 
   router.get('/listings', (req: Request, res: Response) => {

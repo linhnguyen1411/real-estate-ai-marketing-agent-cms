@@ -36,6 +36,7 @@ import {
   buildContentDedupeMeta,
   decideFindingDedupe,
 } from '../../agent/dedup/findingDedupService';
+import { normalizeListing } from '../../agent/listingNormalization';
 import { matchPropertiesForLead } from '../../agent/propertyMatchingService';
 import { detectSubjectDirection } from '../../agent/subjectDirection';
 import {
@@ -937,6 +938,8 @@ export async function processFindingForContent(input: {
     };
   }
 
+  const normalizedListing = normalizeListing(input.content.contentText, deterministic);
+
   const dedupe = await decideFindingDedupe({
     companyId: input.content.companyId,
     sourceId: input.source.id,
@@ -945,6 +948,7 @@ export async function processFindingForContent(input: {
     authorName: input.content.authorName,
     title: input.title,
     excludeFindingId: existingFinding?.id,
+    propertySignature: normalizedListing.propertySignature,
   });
 
   const intelligencePayload = buildIntelligenceExtractedData({
@@ -966,6 +970,7 @@ export async function processFindingForContent(input: {
     matching,
     aiSource,
     dedupe,
+    normalizedListing,
   });
 
   let findingId = existingFinding?.id;
@@ -1271,15 +1276,26 @@ function buildIntelligenceExtractedData(input: {
   matching: Awaited<ReturnType<typeof matchPropertiesForLead>>;
   aiSource: string;
   dedupe: Awaited<ReturnType<typeof decideFindingDedupe>>;
+  normalizedListing?: ReturnType<typeof normalizeListing>;
 }): Record<string, unknown> {
   const d = input.deterministic;
   const raw = toRawExtracted(d);
   const a = input.analysis;
+  const norm = input.normalizedListing;
 
   return {
+    postType: raw.postType,
+    intentScore: raw.intentScore,
+    isHighPriorityLead: raw.isHighPriorityLead,
+    scoreBreakdown: raw.scoreBreakdown,
+    propertySignature: norm?.propertySignature ?? null,
+    projectDetails: norm?.projectDetails ?? null,
+    standardPropertyType: norm?.standardPropertyType ?? null,
+    unitPricePerM2Vnd: norm?.unitPricePerM2Vnd ?? null,
+    authorType: norm?.authorType ?? null,
     classification: input.classification,
     intent: input.intent,
-    actorRole: input.actorRole,
+    actorRole: norm?.authorType === 'broker' ? 'broker' : norm?.authorType === 'owner' ? 'owner' : input.actorRole,
     confidence: input.confidence,
     keywordScore: input.keywordScore,
     aiScore: input.aiScore,

@@ -73,14 +73,30 @@ export class BrowserManager {
     };
   }
 
+  private scanCycleCount = 0;
+  private static readonly MAX_SCAN_CYCLES_BEFORE_RECYCLE = 50;
+
   /**
    * Get the worker-owned Facebook scan tab, creating it once and reusing it.
    * In CDP mode this is a fresh tab opened by the worker — never the user's tab,
    * and it is closed on worker shutdown without touching external Chrome.
+   * Auto-recycles every 50 scan cycles to prevent memory leak.
    */
   async getScanPage(options: GetPageOptions): Promise<Page> {
     const mode = this.resolveMode(options);
     const conn = await this.ensureConnection(mode);
+
+    this.scanCycleCount++;
+    if (this.scanCycleCount >= BrowserManager.MAX_SCAN_CYCLES_BEFORE_RECYCLE && this.scanPage) {
+      console.log(
+        `[browser-manager] Reached ${this.scanCycleCount} scan cycles. Recycling scan tab to prevent RAM leak...`,
+      );
+      if (!this.scanPage.isClosed()) {
+        await this.scanPage.close().catch(() => undefined);
+      }
+      this.scanPage = null;
+      this.scanCycleCount = 0;
+    }
 
     // Reuse the existing worker-owned tab whenever it is still open.
     if (this.scanPage && !this.scanPage.isClosed()) {

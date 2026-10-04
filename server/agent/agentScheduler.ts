@@ -52,10 +52,58 @@ export function shouldEnqueueSourceScan(input: SourceEnqueueDecisionInput): bool
   return true;
 }
 
-export function computeNextScanAt(from: Date, scanIntervalMinutes: number): Date {
-  const raw = Math.floor(Number(scanIntervalMinutes));
-  const minutes = Number.isFinite(raw) && raw >= 1 ? raw : 60;
-  return new Date(from.getTime() + minutes * 60_000);
+/**
+ * Dynamic Adaptive Crawling (Stage 3):
+ * - Peak hours (08:30–11:30, 14:00–16:30, 19:30–22:00 VN): 15–20 mins to catch hot leads.
+ * - Normal hours (12:00–13:30, 17:00–19:00 VN): 45 mins.
+ * - Night hours (23:00–07:00 VN): 120 mins.
+ */
+export function computeAdaptiveScanInterval(now: Date = new Date(), baseIntervalMinutes?: number): {
+  intervalMinutes: number;
+  timeWindow: 'peak' | 'normal' | 'night';
+  description: string;
+} {
+  const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const hour = vnTime.getUTCHours();
+  const minute = vnTime.getUTCMinutes();
+  const totalMin = hour * 60 + minute;
+
+  // 1. Peak hours: 08:30–11:30 (510–690), 14:00–16:30 (840–990), 19:30–22:00 (1170–1320)
+  const isMorningPeak = totalMin >= 510 && totalMin <= 690;
+  const isAfternoonPeak = totalMin >= 840 && totalMin <= 990;
+  const isEveningPeak = totalMin >= 1170 && totalMin <= 1320;
+
+  if (isMorningPeak || isAfternoonPeak || isEveningPeak) {
+    const mins = baseIntervalMinutes && baseIntervalMinutes < 15 ? baseIntervalMinutes : 15;
+    return {
+      intervalMinutes: mins,
+      timeWindow: 'peak',
+      description: `Khung giờ cao điểm (${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} VN): Quét ${mins}p/lần`,
+    };
+  }
+
+  // 2. Night hours: 23:00–07:00 (>= 1380 or < 420)
+  if (totalMin >= 1380 || totalMin < 420) {
+    return {
+      intervalMinutes: 120,
+      timeWindow: 'night',
+      description: `Khung giờ đêm (${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} VN): Giãn cách 120p/lần`,
+    };
+  }
+
+  // 3. Normal hours: 45 mins
+  return {
+    intervalMinutes: 45,
+    timeWindow: 'normal',
+    description: `Khung giờ bình thường (${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} VN): Quét 45p/lần`,
+  };
+}
+
+export function computeNextScanAt(from: Date, scanIntervalMinutes?: number, adaptive = true): Date {
+  const interval = adaptive
+    ? computeAdaptiveScanInterval(from, scanIntervalMinutes).intervalMinutes
+    : Math.max(1, Math.floor(Number(scanIntervalMinutes) || 60));
+  return new Date(from.getTime() + interval * 60_000);
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;

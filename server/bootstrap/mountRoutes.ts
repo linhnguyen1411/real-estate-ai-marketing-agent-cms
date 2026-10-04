@@ -43,6 +43,7 @@ import { createPostsRouter } from '../modules/posts/postsRoutes';
 import { createInboxRouter } from '../modules/inbox/inboxRoutes';
 import { createChatRouter } from '../modules/chat/chatRoutes';
 import { createContentRouter } from '../modules/content/contentRoutes';
+import { createAppointmentRouter } from '../modules/appointments/appointmentRoutes';
 
 export type MountRoutesOptions = {
   facebookGraphLegacyEnabled: boolean;
@@ -172,5 +173,6 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   app.use(createInboxRouter());
   app.use(createChatRouter());
   app.use(createContentRouter({ agentEnabled: AGENT_ENABLED }));
+  app.use(createAppointmentRouter());
   app.use(createSeoPublicRouter());
 }

@@ -8,12 +8,14 @@ import { extractMoneyData, type MoneyExtractionResult } from './moneyExtractor';
 import { extractLocation, type LocationExtractionResult } from './locationExtractor';
 import { extractPropertyData, type PropertyExtractionResult } from './propertyExtractor';
 import { extractContactData, type ContactExtractionResult } from './contactExtractor';
+import { evaluateLeadScore, type LeadScoringResult } from './leadScoring';
 
 export * from './phoneExtractor';
 export * from './moneyExtractor';
 export * from './locationExtractor';
 export * from './propertyExtractor';
 export * from './contactExtractor';
+export * from './leadScoring';
 
 export const EXTRACTION_VERSION = 'facebook-extract-2';
 
@@ -23,6 +25,7 @@ export interface DeterministicExtraction {
   location: LocationExtractionResult;
   property: PropertyExtractionResult;
   contact: ContactExtractionResult;
+  leadScoring: LeadScoringResult;
   extractionVersion: string;
   status: 'succeeded' | 'partial' | 'failed';
 }
@@ -35,6 +38,7 @@ export function extractLeadData(contentText: string): DeterministicExtraction {
   const location = extractLocation(text);
   const property = extractPropertyData(text);
   const contact = extractContactData(text);
+  const leadScoring = evaluateLeadScore(text);
 
   if (contact.primaryContact?.associatedPhone) {
     phone.primaryPhone = contact.primaryContact.associatedPhone;
@@ -70,6 +74,7 @@ export function extractLeadData(contentText: string): DeterministicExtraction {
     location,
     property,
     contact,
+    leadScoring,
     extractionVersion: EXTRACTION_VERSION,
     status,
   };
@@ -80,6 +85,10 @@ export function toRawExtracted(x: DeterministicExtraction) {
   return {
     version: x.extractionVersion,
     status: x.status,
+    postType: x.leadScoring?.postType ?? 'UNKNOWN',
+    intentScore: x.leadScoring?.intentScore ?? 0,
+    isHighPriorityLead: x.leadScoring?.isHighPriorityLead ?? false,
+    scoreBreakdown: x.leadScoring?.breakdown ?? null,
     phones: x.phone.phones,
     primaryPhone: x.phone.primaryPhone,
     contactName: x.contact.primaryContact?.displayName ?? null,

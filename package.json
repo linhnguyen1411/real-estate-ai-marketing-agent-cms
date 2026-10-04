@@ -18,6 +18,7 @@
     "db:sync-prod": "node scripts/sync-prod-db.mjs",
     "db:pull-and-sync": "npm run db:pull-prod && npm run db:setup-local && npm run prisma:push && npm run db:sync-prod",
     "db:bootstrap-vps": "powershell -ExecutionPolicy Bypass -File scripts/bootstrap-vps-db.ps1",
+    "db:sync-master-plan": "node scripts/ensure-master-plan-db.mjs",
     "preview": "vite preview",
     "analyze": "ANALYZE=true npm run build",
     "agent:worker": "tsx server/agent-worker/index.ts",
