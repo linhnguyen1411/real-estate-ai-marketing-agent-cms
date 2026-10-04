@@ -65,7 +65,7 @@ npx prisma generate
 node scripts/ensure-master-plan-db.mjs || true
 
 echo "==> build"
-npm run build
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
 test -f dist/server.cjs || test -f dist/index.html
 
 echo "==> Swap verified: keep dist.prev for rollback"

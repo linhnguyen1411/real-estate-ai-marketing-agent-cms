@@ -28,11 +28,11 @@ $remoteCommand = (
   '; test -n "$DATABASE_URL" || { echo ''DATABASE_URL empty on VPS'' >&2; exit 1; }' +
   '; command -v pg_dump >/dev/null 2>&1 || { echo ''pg_dump not installed on VPS'' >&2; exit 1; }' +
   '; DB_URL="${DATABASE_URL%%\?*}"' +
-  '; pg_dump "$DB_URL" --no-owner --clean --if-exists --format=plain -f ' + $BackupDir + '/db-' + $timestamp + '.sql' +
+  '; pg_dump "$DB_URL" --no-owner --clean --if-exists --format=plain | gzip -9 > ' + $BackupDir + '/db-' + $timestamp + '.sql.gz' +
   '; test -d dist && tar -czf ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz dist' +
   '; cp .env ' + $BackupDir + '/env-' + $timestamp + '.bak' +
-  '; ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz 2>/dev/null || ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql' +
-  '; echo BACKUP_DB=' + $BackupDir + '/db-' + $timestamp + '.sql'
+  '; ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql.gz ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz 2>/dev/null || ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql.gz' +
+  '; echo BACKUP_DB=' + $BackupDir + '/db-' + $timestamp + '.sql.gz'
 )
 
 ssh $remote $remoteCommand
@@ -46,8 +46,8 @@ if ($DownloadLocal) {
     New-Item -ItemType Directory -Path $localPath -Force | Out-Null
   }
 
-  $remoteDb = "$BackupDir/db-$timestamp.sql"
-  $localDb = Join-Path $localPath "prod-db-$timestamp.sql"
+  $remoteDb = "$BackupDir/db-$timestamp.sql.gz"
+  $localDb = Join-Path $localPath "prod-db-$timestamp.sql.gz"
 
   Write-Host ""
   Write-Host "==> Download DB backup locally" -ForegroundColor Cyan
