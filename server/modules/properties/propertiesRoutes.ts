@@ -16,6 +16,8 @@ import {
 import { applyPropertyHashtagSeo, syncSiteSeoKeywords } from '../public-site/seoKeywords';
 import { triggerAutomationEvent } from '../content/triggerAutomationEvent';
 import { resolvePropertyItemTitle } from '../../../src/seo/utils/buildPropertyItemTitle';
+import { slugify } from '../../../src/seo/utils/slugify';
+import { parseQuickPropertyText, generatePropertyJsonLd } from './quickPropertyParser';
 
 function normalizeIncomingPropertyTitle(propData: Record<string, unknown>): string {
   return resolvePropertyItemTitle({
@@ -87,20 +89,116 @@ router.get('/api/properties', (req: Request, res: Response) => {
   res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
+  // Quick Parse: Nhận tin nhắn raw Zalo/Facebook -> bóc tách trường + auto SEO
+  const handleQuickParse = (req: Request, res: Response) => {
+    const rawText = String(req.body.rawText || req.body.text || req.body.content || '').trim();
+    if (!rawText) {
+      res.status(400).json({ status: 'error', message: 'Vui lòng cung cấp nội dung bài đăng thô.' });
+      return;
+    }
+    const parsed = parseQuickPropertyText(rawText);
+    res.json({ status: 'success', data: parsed });
+  };
+
+  router.post('/api/admin/properties/quick-parse', handleQuickParse);
+  router.post('/api/properties/quick-parse', handleQuickParse);
+
+  // Batch Import: Nhập giỏ hàng hàng loạt từ CSV/Excel
+  const handleBatchImport = async (req: Request, res: Response) => {
+    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!rawItems.length) {
+      res.status(400).json({ status: 'error', message: 'Danh sách giỏ hàng trống.' });
+      return;
+    }
+    const db = readDatabase();
+    const authUser = getAuthUser(req);
+    const now = new Date().toISOString();
+    const created: Property[] = [];
+
+    for (const item of rawItems) {
+      const generatedSlug = item.slug || slugify(item.title || `${item.type || 'Đất nền'} ${item.block || ''} ${item.project_name || 'Nam Hòa Xuân'} ${item.area || 100}m2 ${item.price || ''}`);
+      const newProp: Property = {
+        id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        created_at: now,
+        created_by_user_id: authUser.id,
+        title: item.title || `${item.type || 'Đất nền'} ${item.block || ''} ${item.project_name || 'Nam Hòa Xuân'} - DT ${item.area || 100}m2 - Giá ${item.price || 0} tỷ`,
+        slug: generatedSlug,
+        seo_title: item.seo_title || `${item.title} | House & Life`,
+        meta_description: item.meta_description || `${item.title} tại Đà Nẵng.`,
+        transaction_type: item.transaction_type || 'Bán',
+        type: item.type || 'Đất nền',
+        project_name: item.project_name || 'Nam Hòa Xuân',
+        block: item.block || undefined,
+        lot: item.lot || undefined,
+        street: item.street || undefined,
+        location: item.location || `${item.project_name || 'Nam Hòa Xuân'}, Đà Nẵng`,
+        area: parseFloat(item.area) || 100,
+        price: parseFloat(item.price) || 0,
+        direction: item.direction || 'Đông Nam',
+        legal_status: item.legal_status || 'Sổ hồng riêng',
+        road_width: parseFloat(item.road_width) || 7.5,
+        contact_phone: item.contact_phone || undefined,
+        description: item.description || item.rich_description || '',
+        rich_description: item.rich_description || item.description || '',
+        selling_points: Array.isArray(item.selling_points) ? item.selling_points : ['Vị trí đắc địa', 'Pháp lý an toàn'],
+        images: item.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
+        gallery_images: Array.isArray(item.gallery_images) ? item.gallery_images : [],
+        sale_status: 'available',
+        schema_json_ld: item.schema_json_ld || generatePropertyJsonLd({
+          title: item.title,
+          type: item.type || 'Đất nền',
+          area: parseFloat(item.area) || 100,
+          price: parseFloat(item.price) || 0,
+          location: item.location || 'Nam Hòa Xuân, Đà Nẵng',
+          slug: generatedSlug,
+        }),
+        ...accessDefaults(req, item),
+      };
+      db.properties.unshift(newProp);
+      created.push(newProp);
+    }
+
+    await writeDatabase(db);
+    clearCacheKey('public-properties');
+    clearCacheKey('public-homepage');
+    clearCacheKey('sitemap-xml');
+    clearCacheKey('sitemap-properties');
+
+    res.json({
+      status: 'success',
+      message: `Đã import thành công ${created.length} bất động sản vào giỏ hàng.`,
+      count: created.length,
+      data: created,
+    });
+  };
+
+  router.post('/api/admin/properties/batch-import', handleBatchImport);
+  router.post('/api/properties/batch-import', handleBatchImport);
+
 router.post('/api/properties', async (req: Request, res: Response) => {
   const db = readDatabase();
   const propData = req.body;
   
   const now = new Date().toISOString();
   const authUser = getAuthUser(req);
+  const normalizedTitle = normalizeIncomingPropertyTitle(propData) || 'BĐS Chưa đặt tên';
+  const generatedSlug = propData.slug || slugify(normalizedTitle);
   const newProperty: Property = {
     id: `p-${Date.now()}`,
     created_at: now,
     created_by_user_id: authUser.id,
-    title: normalizeIncomingPropertyTitle(propData) || 'BĐS Chưa đặt tên',
+    title: normalizedTitle,
+    slug: generatedSlug,
+    seo_title: propData.seo_title || `${normalizedTitle} | House & Life`,
+    meta_description: propData.meta_description || `${normalizedTitle} tại Đà Nẵng.`,
     transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
     type: propData.type || 'Đất nền',
     location: propData.location || '',
+    project_name: propData.project_name || 'Nam Hòa Xuân',
+    block: propData.block || undefined,
+    lot: propData.lot || undefined,
+    street: propData.street || undefined,
+    contact_phone: propData.contact_phone || undefined,
     area: parseFloat(propData.area) || 0,
     floor_area: parseFloat(propData.floor_area) || undefined,
     price: parseFloat(propData.price) || 0,
@@ -121,6 +219,14 @@ router.post('/api/properties', async (req: Request, res: Response) => {
     images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
     gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
     selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
+    schema_json_ld: propData.schema_json_ld || generatePropertyJsonLd({
+      title: normalizedTitle,
+      type: propData.type || 'Đất nền',
+      area: parseFloat(propData.area) || 0,
+      price: parseFloat(propData.price) || 0,
+      location: propData.location || '',
+      slug: generatedSlug,
+    }),
     ...accessDefaults(req, propData)
   };
 
@@ -136,6 +242,8 @@ router.post('/api/properties', async (req: Request, res: Response) => {
   await writeDatabase(db);
   clearCacheKey('public-properties');
   clearCacheKey('public-homepage');
+  clearCacheKey('sitemap-xml');
+  clearCacheKey('sitemap-properties');
   res.json({ status: 'success', data: db.properties[indexedProperty] });
 });
 

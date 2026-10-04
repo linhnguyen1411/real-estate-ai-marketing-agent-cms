@@ -109,6 +109,14 @@ export interface Property {
   selling_points: string[]; // Key selling highligts
   project_name?: string;
   market_zone?: string;
+  block?: string;
+  lot?: string;
+  street?: string;
+  contact_phone?: string;
+  slug?: string;
+  seo_title?: string;
+  meta_description?: string;
+  schema_json_ld?: Record<string, unknown>;
   ai_posts?: {
     strategy?: {
       target_customer: string;

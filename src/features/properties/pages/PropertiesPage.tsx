@@ -1,7 +1,9 @@
 import React, { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Plus, Search, X } from 'lucide-react';
+import { ExternalLink, Plus, Search, X, Zap, Upload } from 'lucide-react';
 import AdminPropertyDirectory from '../../../components/admin/AdminPropertyDirectory';
 import PaginationBar from '../../../components/common/PaginationBar';
+import QuickPostModal from '../components/QuickPostModal';
+import BatchImportModal from '../components/BatchImportModal';
 import {
   createProperty,
   deleteProperty,
@@ -62,6 +64,8 @@ export default function PropertiesPage({
   const [propertiesTotal, setPropertiesTotal] = useState(0);
   const [propertyGalleryIndex, setPropertyGalleryIndex] = useState<{ [key: string]: number }>({});
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
+  const [showQuickPostModal, setShowQuickPostModal] = useState(false);
+  const [showBatchImportModal, setShowBatchImportModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
   const [customProjectMode, setCustomProjectMode] = useState(false);
@@ -402,14 +406,39 @@ export default function PropertiesPage({
           <h2 className="text-xl font-bold text-white flex items-center gap-2">Danh sách Bất động sản</h2>
           <p className="text-slate-400 text-sm">Chi tiết thông tin bất động sản, sổ đỏ, và tính năng tiếp thị tự động.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <a href="/" target="_blank" rel="noreferrer" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-indigo-600/25 transition-all">
-            <ExternalLink className="w-4 h-4" />
-            <span>Xem trang BĐS Public</span>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowQuickPostModal(true)}
+            className="bg-gradient-to-r from-amber-500 to-rose-600 hover:brightness-110 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-rose-600/25 transition-all"
+          >
+            <Zap className="w-4 h-4" />
+            <span>⚡ Đăng nhanh 1 chạm</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowBatchImportModal(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all"
+          >
+            <Upload className="w-4 h-4 text-indigo-400" />
+            <span>📥 Batch Import</span>
+          </button>
+          <a
+            href="/"
+            target="_blank"
+            rel="noreferrer"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs sm:text-sm px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-700"
+          >
+            <ExternalLink className="w-4 h-4 text-slate-400" />
+            <span>Xem Public</span>
           </a>
-          <button type="button" onClick={openAddPropertyModal} className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all">
+          <button
+            type="button"
+            onClick={openAddPropertyModal}
+            className="bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-rose-600/25 transition-all"
+          >
             <Plus className="w-4 h-4" />
-            <span>Thêm Bất Động Sản</span>
+            <span>+ Thêm BĐS</span>
           </button>
         </div>
       </div>
@@ -545,6 +574,20 @@ export default function PropertiesPage({
         onSubmit={handleSaveProperty}
         onReorderGallery={reorderGalleryImages}
         onReadImageFiles={readImageFiles}
+      />
+
+      <QuickPostModal
+        isOpen={showQuickPostModal}
+        onClose={() => setShowQuickPostModal(false)}
+        onSuccess={() => void loadProperties()}
+        onNotify={onNotify}
+      />
+
+      <BatchImportModal
+        isOpen={showBatchImportModal}
+        onClose={() => setShowBatchImportModal(false)}
+        onSuccess={() => void loadProperties()}
+        onNotify={onNotify}
       />
 
     </div>

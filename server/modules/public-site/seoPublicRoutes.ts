@@ -210,7 +210,21 @@ export function createSeoPublicRouter() {
     const origin = getPublicOrigin(req);
     const settings = getSettings();
     const shareUrl = `${origin}/p/${encodeURIComponent(slug)}`;
-    const html = renderMiniLandingPage({ property, settings, origin, shareUrl });
+
+    // Internal linking: Tìm BĐS liên quan cùng Block, cùng dự án, hoặc cùng tầm giá ±30%
+    const allProps = getProperties().filter(
+      (p: Property) => p.id !== property.id && !['sold', 'hidden'].includes(p.sale_status || 'available')
+    );
+    const relatedProperties = allProps
+      .filter((p: Property) => {
+        if (property.block && p.block && property.block.toLowerCase() === p.block.toLowerCase()) return true;
+        if (property.project_name && p.project_name && property.project_name.toLowerCase() === p.project_name.toLowerCase()) return true;
+        if (property.price && p.price && Math.abs(p.price - property.price) <= property.price * 0.35) return true;
+        return false;
+      })
+      .slice(0, 4);
+
+    const html = renderMiniLandingPage({ property, settings, origin, shareUrl, relatedProperties });
     res.status(200).type('text/html').send(html);
   });
 

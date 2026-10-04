@@ -1,22 +1,26 @@
 /**
  * Fast Mini Landing Page & Zalo/Messenger Share Card Generator.
  *
- * Implements Stage 4.3 of Master Plan:
+ * Implements Stage 4.3 of Master Plan & Auto-SEO Engine:
  * - Ultra-fast responsive mobile preview for Zalo / Messenger sharing: /p/:slug
  * - Optimized OpenGraph tags for rich chat card previews
+ * - Embedded Schema.org JSON-LD (RealEstateListing / SingleFamilyResidence)
+ * - Internal Linking: "Sản phẩm liên quan cùng Block / cùng tầm giá"
  * - Instant Call / Zalo Chat buttons and Viewing Appointment booking
  */
 
 import type { Property, AppSettings } from '../../../src/types';
 import { escapeHtml } from './seoPublicRoutes';
+import { generatePropertyJsonLd } from '../properties/quickPropertyParser';
 
 export function renderMiniLandingPage(input: {
   property: Property;
   settings: AppSettings;
   origin: string;
   shareUrl: string;
+  relatedProperties?: Property[];
 }): string {
-  const { property, settings, origin, shareUrl } = input;
+  const { property, settings, origin, shareUrl, relatedProperties = [] } = input;
 
   const title = property.title || 'Bất động sản House & Life Đà Nẵng';
   const priceDisplay = property.price ? `${property.price} tỷ` : 'Thỏa thuận';
@@ -36,11 +40,23 @@ export function renderMiniLandingPage(input: {
     `${origin}/logo_hl.png`;
 
   const description =
-    property.description ||
     property.rich_description ||
+    property.description ||
     `${typeDisplay} tại ${locationDisplay}. Diện tích: ${areaDisplay}, Giá: ${priceDisplay}. Pháp lý: ${legalDisplay}. Liên hệ tư vấn trực tiếp House & Life.`;
 
   const sellingPoints = Array.isArray(property.selling_points) ? property.selling_points : [];
+
+  // Generate or use stored JSON-LD Schema
+  const jsonLd =
+    property.schema_json_ld ||
+    generatePropertyJsonLd({
+      title,
+      type: property.type,
+      area: property.area || 100,
+      price: property.price || 0,
+      location: locationDisplay,
+      slug: property.slug || property.id,
+    });
 
   return `<!DOCTYPE html>
 <html lang="vi">
@@ -56,7 +72,13 @@ export function renderMiniLandingPage(input: {
   <meta property="og:url" content="${escapeHtml(shareUrl)}" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="House & Life - BĐS Đà Nẵng" />
+  <meta name="description" content="${escapeHtml(property.meta_description || description.slice(0, 160))}" />
   
+  <!-- Schema.org JSON-LD Structured Data -->
+  <script type="application/ld+json">
+${JSON.stringify(jsonLd, null, 2)}
+  </script>
+
   <link rel="icon" type="image/png" href="${origin}/logo_hl.png" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
@@ -81,6 +103,16 @@ export function renderMiniLandingPage(input: {
     .points li { font-size: 13.5px; color: #1e293b; padding: 4px 0; display: flex; align-items: center; gap: 6px; }
     .points li::before { content: "✓"; color: #16a34a; font-weight: 700; }
     
+    /* Related properties cards */
+    .rel-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .rel-card { display: flex; gap: 12px; padding: 10px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; text-decoration: none; color: inherit; transition: background 0.2s; }
+    .rel-card:hover { background: #f1f5f9; }
+    .rel-thumb { width: 75px; height: 75px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #cbd5e1; }
+    .rel-info { flex: 1; min-width: 0; }
+    .rel-title { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .rel-meta { font-size: 12px; color: #64748b; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+    .rel-price { font-size: 13.5px; font-weight: 800; color: #dc2626; margin-top: 4px; }
+
     /* Sticky action bar */
     .action-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #ffffff; border-top: 1px solid #e2e8f0; padding: 10px 16px; display: flex; gap: 10px; z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.06); max-width: 600px; margin: 0 auto; }
     .btn { flex: 1; padding: 12px; border-radius: 10px; font-size: 14.5px; font-weight: 700; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; border: none; cursor: pointer; }
@@ -144,9 +176,38 @@ export function renderMiniLandingPage(input: {
     }
 
     <div class="card">
-      <div class="card-title">Thông tin chi tiết</div>
+      <div class="card-title">Mô tả chi tiết & Tiềm năng đầu tư</div>
       <div class="desc">${escapeHtml(description)}</div>
     </div>
+
+    ${
+      relatedProperties.length > 0
+        ? `<div class="card">
+      <div class="card-title">🏡 Sản phẩm cùng Block & Tầm giá lân cận</div>
+      <div class="rel-grid">
+        ${relatedProperties
+          .map(rel => {
+            const relImg = rel.images || rel.gallery_images?.[0] || `${origin}/logo_hl.png`;
+            const relPrice = rel.price ? `${rel.price} tỷ` : 'Thỏa thuận';
+            const relArea = rel.area ? `${rel.area} m²` : '';
+            return `<a href="/p/${encodeURIComponent(rel.id)}" class="rel-card">
+              <img class="rel-thumb" src="${escapeHtml(relImg)}" alt="${escapeHtml(rel.title)}" />
+              <div class="rel-info">
+                <div class="rel-title">${escapeHtml(rel.title)}</div>
+                <div class="rel-meta">
+                  <span>${escapeHtml(relArea)}</span>
+                  <span>•</span>
+                  <span>${escapeHtml(rel.type)}</span>
+                </div>
+                <div class="rel-price">${escapeHtml(relPrice)}</div>
+              </div>
+            </a>`;
+          })
+          .join('')}
+      </div>
+    </div>`
+        : ''
+    }
 
     <div class="card">
       <div class="card-title">Đặt lịch xem thực tế</div>
