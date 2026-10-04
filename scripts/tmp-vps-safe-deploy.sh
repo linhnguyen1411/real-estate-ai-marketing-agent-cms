@@ -62,6 +62,7 @@ echo "==> prisma validate + migrate deploy + generate"
 npx prisma validate
 npx prisma migrate deploy
 npx prisma generate
+node scripts/ensure-master-plan-db.mjs || true
 
 echo "==> build"
 npm run build
