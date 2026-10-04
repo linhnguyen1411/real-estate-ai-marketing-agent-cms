@@ -126,6 +126,20 @@ export async function stopTelegramControlPlane(): Promise<void> {
   config = null;
 }
 
+import crypto from 'crypto';
+
+function timingSafeSecretCompare(given?: string | null, expected?: string | null): boolean {
+  if (!given || !expected) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 export async function handleTelegramWebhookUpdate(
   raw: unknown,
   secret?: string | null,
@@ -134,14 +148,14 @@ export async function handleTelegramWebhookUpdate(
     const cfg = config ?? (await loadTelegramConsoleConfig());
     if (!cfg.enabled || !cfg.botToken) return { ok: false, reason: 'not_running' };
     if (cfg.mode !== 'webhook') return { ok: false, reason: 'mode_not_webhook' };
-    if (cfg.webhookSecret && secret !== cfg.webhookSecret) {
+    if (cfg.webhookSecret && !timingSafeSecretCompare(secret, cfg.webhookSecret)) {
       return { ok: false, reason: 'invalid_secret' };
     }
     const replyPort = createTelegramReplyPort();
     webhookReceiver = createWebhookReceiver({ config: cfg, routerDeps: { replyPort } });
     config = cfg;
     running = true;
-  } else if (config.webhookSecret && secret !== config.webhookSecret) {
+  } else if (config.webhookSecret && !timingSafeSecretCompare(secret, config.webhookSecret)) {
     return { ok: false, reason: 'invalid_secret' };
   }
 

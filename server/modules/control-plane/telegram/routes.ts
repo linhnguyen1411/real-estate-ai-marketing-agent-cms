@@ -39,15 +39,14 @@ export function registerTelegramControlPlaneRoutes(app: Express): void {
 
   /**
    * Telegram Bot webhook ingress.
-   * Optional secret: ?secret= or header X-Telegram-Bot-Api-Secret-Token
+   * Secret accepted ONLY via header X-Telegram-Bot-Api-Secret-Token (never via ?secret= query param).
    */
   app.post('/api/webhooks/telegram', async (req: Request, res: Response) => {
     try {
       const secret =
-        (typeof req.query.secret === 'string' && req.query.secret) ||
-        (typeof req.headers['x-telegram-bot-api-secret-token'] === 'string'
+        typeof req.headers['x-telegram-bot-api-secret-token'] === 'string'
           ? req.headers['x-telegram-bot-api-secret-token']
-          : null);
+          : null;
       const result = await handleTelegramWebhookUpdate(req.body, secret);
       if (!result.ok && result.reason === 'invalid_secret') {
         sendError(res, 401, 'Invalid webhook secret');

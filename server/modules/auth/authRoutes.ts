@@ -18,10 +18,13 @@ import {
   verifyPlaintextLegacy,
 } from './password';
 
+import { loginRateLimiter } from '../../middleware/rateLimiters';
+import { validateSchema, loginSchema, updateProfileSchema } from '../../middleware/validation';
+
 export function createAuthLoginRouter() {
   const router = Router();
 
-router.post('/api/auth/login', async (req: Request, res: Response) => {
+router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), async (req: Request, res: Response) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const plainPassword = String(req.body?.password || '');
 
@@ -98,6 +101,14 @@ export function createApiAuthGate() {
     return;
   }
 
+  // Token version revocation check: if user's token_version differs, token is invalidated
+  const expectedVersion = user.token_version ?? 1;
+  const tokenVersion = decoded?.token_version ?? 1;
+  if (tokenVersion !== expectedVersion) {
+    res.status(401).json({ status: 'error', message: 'Phiên đăng nhập đã hết hiệu lực do thay đổi mật khẩu hoặc bảo mật.' });
+    return;
+  }
+
   (req as any).authUser = toAuthUser(user, db);
   next();
   };
@@ -110,7 +121,7 @@ router.get('/api/auth/me', (req: Request, res: Response) => {
   res.json({ status: 'success', data: getAuthUser(req) });
 });
 
-router.put('/api/auth/profile', async (req: Request, res: Response) => {
+router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req: Request, res: Response) => {
   const authUser = getAuthUser(req);
   const db = readDatabase();
   const index = db.users.findIndex((user: User) => user.id === authUser.id);
@@ -186,6 +197,8 @@ router.put('/api/auth/profile', async (req: Request, res: Response) => {
     nextPasswordHash = await hashPassword(newPassword);
   }
 
+  const nextTokenVersion = newPassword ? (target.token_version ?? 1) + 1 : (target.token_version ?? 1);
+
   const updatedUser: User = {
     ...target,
     name: nextName,
@@ -196,6 +209,7 @@ router.put('/api/auth/profile', async (req: Request, res: Response) => {
     public_slug: nextPublicSlug,
     show_public_profile: nextShowPublic,
     password_hash: nextPasswordHash,
+    token_version: nextTokenVersion,
   };
   delete updatedUser.password;
 

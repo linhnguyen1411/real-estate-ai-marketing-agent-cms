@@ -74,28 +74,39 @@ export function assertUniquePublicSlug(db: any, slug: string, userId: string, re
   return true;
 }
 
-export function signToken(user: AuthUser): string {
+export function signToken(user: AuthUser, tokenVersion = 1): string {
+  const iat = Date.now();
+  const jti = crypto.randomUUID();
   const payload = Buffer.from(JSON.stringify({
     sub: user.id,
     role: user.role,
     company_id: user.company_id,
-    exp: Date.now() + 1000 * 60 * 60 * 12
+    token_version: user.token_version ?? tokenVersion,
+    jti,
+    iat,
+    exp: iat + 1000 * 60 * 60, // 1 hour TTL
   })).toString('base64url');
   const signature = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
 
-export function verifyToken(token: string): { sub: string; exp: number } | null {
+export function verifyToken(token: string): { sub: string; role: string; company_id?: string; token_version?: number; jti: string; iat: number; exp: number } | null {
   const [payload, signature] = token.split('.');
   if (!payload || !signature) return null;
 
   const expected = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
-  if (signature.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return null;
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-  if (!decoded.exp || decoded.exp < Date.now()) return null;
-  return decoded;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!decoded.exp || decoded.exp < Date.now()) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
 }
 
 export function getAuthUser(req: Request): AuthUser {

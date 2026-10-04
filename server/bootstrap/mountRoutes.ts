@@ -4,6 +4,7 @@ import fs from 'fs';
 import { checkDatabaseConnection } from '../prisma';
 import { getAgentSchedulerStatus } from '../agent/agentScheduler';
 import { getProperties } from '../dbHelper';
+import { globalErrorHandler } from './errorHandler';
 import { createInvestorLeadPublicRouter, registerInvestorLeadAdminRoutes } from '../investorLeadRoutes';
 import { registerBlogAdminRoutes, registerBlogPublicRoutes } from '../blogRoutes';
 import {
@@ -175,4 +176,7 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   app.use(createContentRouter({ agentEnabled: AGENT_ENABLED }));
   app.use(createAppointmentRouter());
   app.use(createSeoPublicRouter());
+
+  // Global safe error handler (prevents leaking internal stack traces in production)
+  app.use(globalErrorHandler);
 }

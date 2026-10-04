@@ -38,8 +38,12 @@ function getIdempotencyKey(req: Request, body: IngestFindingPayload): string | u
   return undefined;
 }
 
+import { ingestWebhookRateLimiter } from '../middleware/rateLimiters';
+
 export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
   const { getAuthUser, accessDefaults } = deps;
+
+  app.use('/api/agent-ingest', ingestWebhookRateLimiter);
 
   app.get('/api/agent-ingest/v1/health', async (req: Request, res: Response) => {
     const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });

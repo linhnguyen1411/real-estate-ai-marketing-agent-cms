@@ -6,6 +6,7 @@ import { clearCacheKey } from '../../cache/publicCache';
 import { getAuthUser, scopeCollection, toPublicUser } from '../auth/authAccess';
 import { hashPassword, validatePasswordPolicy } from '../auth/password';
 import { applyPropertyHashtagSeo, syncSiteSeoKeywords } from '../public-site/seoKeywords';
+import { validateSchema, createUserSchema, updateUserSchema } from '../../middleware/validation';
 
 export function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);
@@ -58,7 +59,7 @@ router.get('/api/users', (req: Request, res: Response) => {
   res.json({ status: 'success', data: list });
 });
 
-router.post('/api/users', async (req: Request, res: Response) => {
+router.post('/api/users', validateSchema(createUserSchema), async (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
 
   const db = readDatabase();
@@ -116,7 +117,7 @@ router.post('/api/users', async (req: Request, res: Response) => {
   res.json({ status: 'success', data: toPublicUser(newUser) });
 });
 
-router.put('/api/users/:id', async (req: Request, res: Response) => {
+router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
 
   const db = readDatabase();

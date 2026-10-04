@@ -40,8 +40,19 @@ import {
   rankProperties,
 } from './publicChatHelpers';
 
+import {
+  publicApiRateLimiter,
+  publicChatRateLimiter,
+} from '../../middleware/rateLimiters';
+import { validateSchema, publicContactSchema } from '../../middleware/validation';
+
 export function createPublicSiteRouter() {
   const router = Router();
+
+  // Rate limiter for general public endpoints
+  router.use('/api/public', publicApiRateLimiter);
+  // Dedicated rate limiter for public AI chat
+  router.use('/api/public/chat', publicChatRateLimiter);
 
 router.get('/api/public/properties', (req: Request, res: Response) => {
   const portfolioSlug = String(
@@ -283,7 +294,7 @@ router.post('/api/public/chat/guest', async (req: Request, res: Response) => {
   res.json({ status: 'success', data: guest });
 });
 
-router.post('/api/public/contact', async (req: Request, res: Response) => {
+router.post('/api/public/contact', validateSchema(publicContactSchema), async (req: Request, res: Response) => {
   const name = String(req.body?.name || '').trim();
   const phone = String(req.body?.phone || '').trim();
   const budget = String(req.body?.budget || '').trim();

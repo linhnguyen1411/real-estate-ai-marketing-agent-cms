@@ -15,6 +15,7 @@ export interface User {
   password?: string;
   password_hash?: string;
   must_change_password?: boolean;
+  token_version?: number;
   role: UserRole;
   company_id?: string;
   phone?: string;
@@ -32,6 +33,7 @@ export interface AuthUser {
   name: string;
   email: string;
   role: UserRole;
+  token_version?: number;
   company_id?: string;
   company_name?: string;
   phone?: string;
