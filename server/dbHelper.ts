@@ -296,6 +296,10 @@ function upsertRecordInCache(collection: CmsCollection, record: any) {
 
 export async function writeDatabase(dbData: CmsDatabase) {
   cache = cloneDb(dbData);
+  // When running isolated unit/integration tests with in-memory mock cache, skip Postgres transaction
+  if (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST) {
+    return;
+  }
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {

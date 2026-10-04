@@ -3,7 +3,8 @@ import { readDatabase, writeDatabase } from '../../dbHelper';
 import type { AuthUser, Property, User } from '../../../src/types';
 import type { AgentTier } from '../../../src/utils/agentTier';
 import { clearCacheKey } from '../../cache/publicCache';
-import { getAuthUser, scopeCollection } from '../auth/authAccess';
+import { getAuthUser, scopeCollection, toPublicUser } from '../auth/authAccess';
+import { hashPassword, validatePasswordPolicy } from '../auth/password';
 import { applyPropertyHashtagSeo, syncSiteSeoKeywords } from '../public-site/seoKeywords';
 
 export function canManageUsers(req: Request, res: Response): boolean {
@@ -53,7 +54,8 @@ export function createUsersRouter() {
 router.get('/api/users', (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
   const db = readDatabase();
-  res.json({ status: 'success', data: scopeUsers(db.users || [], req) });
+  const list = scopeUsers(db.users || [], req).map(toPublicUser);
+  res.json({ status: 'success', data: list });
 });
 
 router.post('/api/users', async (req: Request, res: Response) => {
@@ -63,9 +65,16 @@ router.post('/api/users', async (req: Request, res: Response) => {
   const authUser = getAuthUser(req);
   const body = req.body || {};
   const email = String(body.email || '').trim().toLowerCase();
+  const plainPassword = String(body.password || '').trim();
 
-  if (!body.name || !email || !body.password) {
+  if (!body.name || !email || !plainPassword) {
     res.status(400).json({ status: 'error', message: 'Tên, email và password là bắt buộc.' });
+    return;
+  }
+
+  const policy = validatePasswordPolicy(plainPassword, email);
+  if (!policy.valid) {
+    res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
     return;
   }
 
@@ -89,11 +98,13 @@ router.post('/api/users', async (req: Request, res: Response) => {
     ? (body.company_id || (role === 'owner' ? undefined : authUser.company_id || 'comp-da-nang'))
     : authUser.company_id;
 
+  const password_hash = await hashPassword(plainPassword);
+
   const newUser: User = {
     id: `u-${Date.now()}`,
     name: String(body.name).trim(),
     email,
-    password: String(body.password),
+    password_hash,
     role,
     company_id,
     status: body.status === 'inactive' ? 'inactive' : 'active',
@@ -102,7 +113,7 @@ router.post('/api/users', async (req: Request, res: Response) => {
 
   db.users.push(newUser);
   await writeDatabase(db);
-  res.json({ status: 'success', data: newUser });
+  res.json({ status: 'success', data: toPublicUser(newUser) });
 });
 
 router.put('/api/users/:id', async (req: Request, res: Response) => {
@@ -192,19 +203,33 @@ router.put('/api/users/:id', async (req: Request, res: Response) => {
     nextAgentTier = 'normal';
   }
 
-  db.users[index] = {
+  let nextPasswordHash = target.password_hash;
+  if (body.password) {
+    const plainPass = String(body.password).trim();
+    const policy = validatePasswordPolicy(plainPass, nextEmail);
+    if (!policy.valid) {
+      res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
+      return;
+    }
+    nextPasswordHash = await hashPassword(plainPass);
+  }
+
+  const updatedTarget: User = {
     ...target,
     name: nextName,
     email: nextEmail,
-    password: body.password ? String(body.password) : target.password,
+    password_hash: nextPasswordHash,
     role: nextRole,
     company_id: nextCompanyId,
     status: nextStatus,
     agent_tier: nextAgentTier,
   };
+  delete updatedTarget.password;
+
+  db.users[index] = updatedTarget;
 
   await writeDatabase(db);
-  res.json({ status: 'success', data: db.users[index] });
+  res.json({ status: 'success', data: toPublicUser(db.users[index]) });
 });
 
 type MemberPermissionCollection = 'customers' | 'properties' | 'posts';

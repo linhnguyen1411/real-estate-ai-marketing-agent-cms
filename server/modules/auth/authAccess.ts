@@ -1,10 +1,12 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import type { AuthUser, Property, User } from '../../../src/types';
+import { getEnv } from '../../config/env';
 import { resolveAgentTier, slugifyAgentProfile } from '../../../src/utils/agentTier';
 import { filterPublicProperties } from '../../publicPropertyMapper';
 
-export const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-only-auth-secret-change-me';
+export const getAuthSecret = () => getEnv().AUTH_SECRET;
+export const AUTH_SECRET = process.env.AUTH_SECRET || getEnv().AUTH_SECRET;
 
 export function toAuthUser(user: User, db: any): AuthUser {
   const company = db.companies?.find((item: any) => item.id === user.company_id);
@@ -23,6 +25,11 @@ export function toAuthUser(user: User, db: any): AuthUser {
     public_slug: publicSlug,
     show_public_profile: user.show_public_profile !== false,
   };
+}
+
+export function toPublicUser(user: User): Omit<User, 'password' | 'password_hash'> {
+  const { password, password_hash, ...safeUser } = user;
+  return safeUser;
 }
 
 export function toPublicAgentProfile(user: User, db: any, propertyCount = 0): any {

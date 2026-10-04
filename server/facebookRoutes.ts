@@ -21,17 +21,25 @@ import { getFacebookMessengerUrl, getFacebookPostUrl } from './facebook/graphApi
 import { testFacebookPageConnection } from './facebook/graphApi';
 import { canSendPrivateReply } from './facebook/privateReplyService';
 
-function verifyPostSignature(req: Request): boolean {
+export function verifyPostSignature(req: Request): boolean {
   const { appSecret } = getFacebookConfig();
   const signature = req.headers['x-hub-signature-256'];
+  // Fail-closed: Must have appSecret and valid signature header string
   if (!appSecret || !signature || typeof signature !== 'string') {
-    return true;
+    return false;
   }
   const raw = (req as Request & { rawBody?: Buffer }).rawBody;
-  if (!raw) return false;
+  if (!raw || !Buffer.isBuffer(raw)) return false;
+
   const expected = `sha256=${crypto.createHmac('sha256', appSecret).update(raw).digest('hex')}`;
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+
+  if (sigBuf.length !== expBuf.length) {
+    return false;
+  }
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   } catch {
     return false;
   }

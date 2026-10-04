@@ -160,3 +160,14 @@ K?nh uu ti?n hi?n t?i:
 - Zalo
 
 C?c k?nh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? ph?ng v? c? th? tri?n khai s?u hon sau.
+
+---
+
+## 🔒 Security Operations (Local / Staging Only)
+
+### Force Password Reset
+To force all users to update their credentials during security migrations in local or staging environments:
+```bash
+npx tsx scripts/security/force-password-reset.ts
+```
+> **Warning**: Never run this script directly against the production database without scheduled maintenance notification.

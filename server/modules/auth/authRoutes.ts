@@ -11,15 +11,51 @@ import {
   verifyToken,
 } from './authAccess';
 
+import {
+  hashPassword,
+  validatePasswordPolicy,
+  verifyPassword,
+  verifyPlaintextLegacy,
+} from './password';
+
 export function createAuthLoginRouter() {
   const router = Router();
 
-router.post('/api/auth/login', (req: Request, res: Response) => {
-  const { email, password } = req.body;
+router.post('/api/auth/login', async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const plainPassword = String(req.body?.password || '');
+
+  if (!email || !plainPassword) {
+    res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
+    return;
+  }
+
   const db = readDatabase();
-  const user = db.users?.find(item => item.email === email && item.password === password && item.status === 'active');
+  const user = db.users?.find(
+    item => item.email?.trim().toLowerCase() === email && item.status === 'active'
+  );
 
   if (!user) {
+    res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
+    return;
+  }
+
+  let isValid = false;
+
+  if (user.password_hash) {
+    isValid = await verifyPassword(plainPassword, user.password_hash);
+  } else if (user.password) {
+    isValid = verifyPlaintextLegacy(plainPassword, user.password);
+    if (isValid) {
+      // Automatic transparent upgrade: hash password, write password_hash, delete plaintext password
+      const newHash = await hashPassword(plainPassword);
+      user.password_hash = newHash;
+      delete user.password;
+      await writeDatabase(db);
+    }
+  }
+
+  if (!isValid) {
     res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
     return;
   }
@@ -125,22 +161,32 @@ router.put('/api/auth/profile', async (req: Request, res: Response) => {
     return;
   }
 
-  let nextPassword = target.password;
+  let nextPasswordHash = target.password_hash;
   const newPassword = String(body.new_password || '').trim();
   if (newPassword) {
     const currentPassword = String(body.current_password || '');
-    if (!currentPassword || currentPassword !== target.password) {
+    let isCurrentValid = false;
+    if (target.password_hash) {
+      isCurrentValid = await verifyPassword(currentPassword, target.password_hash);
+    } else if (target.password) {
+      isCurrentValid = verifyPlaintextLegacy(currentPassword, target.password);
+    }
+
+    if (!isCurrentValid) {
       res.status(400).json({ status: 'error', message: 'Mật khẩu hiện tại không đúng.' });
       return;
     }
-    if (newPassword.length < 6) {
-      res.status(400).json({ status: 'error', message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+
+    const policy = validatePasswordPolicy(newPassword, nextEmail);
+    if (!policy.valid) {
+      res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
       return;
     }
-    nextPassword = newPassword;
+
+    nextPasswordHash = await hashPassword(newPassword);
   }
 
-  db.users[index] = {
+  const updatedUser: User = {
     ...target,
     name: nextName,
     email: nextEmail,
@@ -149,8 +195,11 @@ router.put('/api/auth/profile', async (req: Request, res: Response) => {
     avatar_url: nextAvatarUrl || undefined,
     public_slug: nextPublicSlug,
     show_public_profile: nextShowPublic,
-    password: nextPassword,
+    password_hash: nextPasswordHash,
   };
+  delete updatedUser.password;
+
+  db.users[index] = updatedUser;
 
   await writeDatabase(db);
   res.json({ status: 'success', data: toAuthUser(db.users[index], db) });

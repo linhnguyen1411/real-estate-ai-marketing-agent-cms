@@ -12,7 +12,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string;
+  password?: string;
+  password_hash?: string;
+  must_change_password?: boolean;
   role: UserRole;
   company_id?: string;
   phone?: string;

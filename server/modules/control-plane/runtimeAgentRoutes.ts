@@ -15,11 +15,15 @@ import {
   runtimeAgentRequeueJob,
 } from './runtimeAgentService';
 
+import crypto from 'crypto';
+import { getEnv } from '../../config/env';
+
 function runtimeToken(): string {
   return (
     process.env.AGENT_RUNTIME_TOKEN?.trim() ||
     process.env.AGENT_WORKER_TOKEN?.trim() ||
-    'dev-runtime-token'
+    getEnv().AGENT_RUNTIME_TOKEN ||
+    ''
   );
 }
 
@@ -30,10 +34,31 @@ function requireAgentToken(req: Request, res: Response, next: NextFunction): voi
     : '';
   const alt = String(req.headers['x-agent-token'] || '').trim();
   const token = bearer || alt;
-  if (!token || token !== runtimeToken()) {
+  const expected = runtimeToken();
+
+  if (!token || !expected) {
     res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
     return;
   }
+
+  const tokenBuf = Buffer.from(token);
+  const expectedBuf = Buffer.from(expected);
+
+  if (tokenBuf.length !== expectedBuf.length) {
+    res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+    return;
+  }
+
+  try {
+    if (!crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
+      res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+      return;
+    }
+  } catch {
+    res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+    return;
+  }
+
   next();
 }
 

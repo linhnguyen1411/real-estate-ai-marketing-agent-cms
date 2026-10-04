@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { validateEnv } from './server/config/env';
+validateEnv();
 import { execSync } from 'node:child_process';
 import type { Server } from 'node:http';
 import { ensureDatabaseReady, readDatabase, updateSettings } from './server/dbHelper';
