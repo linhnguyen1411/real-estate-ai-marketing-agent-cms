@@ -815,3 +815,17 @@ export function getAllDataForContext() {
     settings: getSettings(),
   };
 }
+
+export function setCacheForTesting(mockDb: Partial<CmsDatabase>) {
+  cache = {
+    ...emptyDatabase(),
+    ...cloneDb(mockDb as CmsDatabase),
+  };
+  readyPromise = Promise.resolve();
+}
+
+export function resetCacheForTesting() {
+  cache = null;
+  readyPromise = null;
+}
+

@@ -1,0 +1,41 @@
+name: CI Safety Net & Security Scan
+
+on:
+  push:
+    branches: [master, 'fix/**']
+  pull_request:
+    branches: [master]
+
+jobs:
+  ci:
+    name: Lint, Test & Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check (Lint)
+        run: npm run lint
+
+      - name: Run Tests (Vitest)
+        run: npm run test:ci
+
+      - name: Dependency Vulnerability Audit (High+)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Secret Detection (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
