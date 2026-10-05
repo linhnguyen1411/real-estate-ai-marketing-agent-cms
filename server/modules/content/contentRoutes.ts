@@ -4,6 +4,7 @@ import {
   readDatabase,
   updateSettings,
   verifyGeneratedContent,
+  upsertCmsRecord,
   writeDatabase,
 } from '../../dbHelper';
 import type { AppSettings, AutomationTask } from '../../../src/types';
@@ -173,38 +174,45 @@ router.post('/api/automations/:id/toggle', async (req: Request, res: Response) =
     return;
   }
 
-  const currentStatus = db.automations[index].status;
-  db.automations[index].status = currentStatus === 'active' ? 'inactive' : 'active';
-  
+  const oldAuto = db.automations[index];
+  const nextStatus = oldAuto.status === 'active' ? 'inactive' : 'active';
   const now = new Date().toISOString();
-  db.automations[index].logs.unshift(`${now} - Trạng thái hoạt động chuyển sang: ${db.automations[index].status.toUpperCase()}`);
+  const nextLogs = [`${now} - Trạng thái hoạt động chuyển sang: ${nextStatus.toUpperCase()}`, ...(oldAuto.logs || [])];
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: db.automations[index] });
+  const updatedAuto = {
+    ...oldAuto,
+    status: nextStatus,
+    logs: nextLogs,
+    updated_at: now,
+  };
+
+  const savedAuto = await upsertCmsRecord('automations', updatedAuto, oldAuto.version);
+  res.json({ status: 'success', data: savedAuto });
 });
 
 // Run Demo simulation report
 router.post('/api/automations/run-demo', async (req: Request, res: Response) => {
   const db = readDatabase();
   const now = new Date().toISOString();
-  const scopedIds = new Set(scopeCollection(db.automations, req).map(auto => auto.id));
+  const scopedList = scopeCollection(db.automations, req);
+  const scopedIds = new Set(scopedList.map(auto => auto.id));
 
   // Run all active automations
-  db.automations = db.automations.map((auto: AutomationTask) => {
+  for (const auto of db.automations as AutomationTask[]) {
     if (auto.status === 'active' && scopedIds.has(auto.id)) {
       const demoLog = `${now} - Chạy thử nghiệm thủ công bởi quản trị viên. Kết quả hoàn hảo.`;
-      return {
+      const updated = {
         ...auto,
         last_run: now,
         run_count: auto.run_count + 1,
-        logs: [demoLog, ...auto.logs].slice(0, 20)
+        logs: [demoLog, ...auto.logs].slice(0, 20),
+        updated_at: now,
       };
+      await upsertCmsRecord('automations', updated, (auto as any).version);
     }
-    return auto;
-  });
+  }
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: scopeCollection(db.automations, req) });
+  res.json({ status: 'success', data: scopeCollection(readDatabase().automations, req) });
 });
 
 router.get('/api/channels', (req: Request, res: Response) => {

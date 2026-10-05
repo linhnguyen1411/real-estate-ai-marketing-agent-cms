@@ -58,9 +58,27 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
     agentEnabled: AGENT_ENABLED,
   } = opts;
 
-  app.get('/api/health', async (_req: Request, res: Response) => {
+  // P6.3: Kubernetes/Liveness endpoint — lightweight, fast
+  app.get('/healthz', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok', uptime: process.uptime() });
+  });
+
+  // P6.3: Readiness endpoint — verifies database connectivity
+  app.get('/readyz', async (_req: Request, res: Response) => {
     const dbStatus = await checkDatabaseConnection();
+    if (!dbStatus.ok) {
+      res.status(503).json({ status: 'unready', database: dbStatus.message });
+      return;
+    }
+    res.status(200).json({ status: 'ready', database: 'connected' });
+  });
+
+  // Backward-compatible /api/health — hides scheduler details unless authenticated
+  app.get('/api/health', async (req: Request, res: Response) => {
+    const dbStatus = await checkDatabaseConnection();
+    const isAuthed = Boolean(req.headers.authorization);
     const scheduler = getAgentSchedulerStatus();
+
     res.json({
       status: dbStatus.ok ? 'success' : 'degraded',
       data: {
@@ -69,22 +87,24 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
         timestamp: new Date().toISOString(),
         database: dbStatus.message,
         aiProvider: process.env.DEFAULT_AI_MODE || 'db-settings',
-        scheduler: {
-          enabled: scheduler.enabled,
-          running: scheduler.running,
-          tickIntervalMs: scheduler.tickIntervalMs,
-          lastTickAt: scheduler.lastTickAt,
-          lastError: scheduler.lastError,
-          lastTickResult: scheduler.lastTickResult
-            ? {
-                skipped: scheduler.lastTickResult.skipped,
-                reason: scheduler.lastTickResult.reason,
-                sourcesDue: scheduler.lastTickResult.sourcesDue,
-                jobsCreated: scheduler.lastTickResult.jobsCreated,
-                jobsSkippedDuplicate: scheduler.lastTickResult.jobsSkippedDuplicate,
-              }
-            : null,
-        },
+        scheduler: isAuthed
+          ? {
+              enabled: scheduler.enabled,
+              running: scheduler.running,
+              tickIntervalMs: scheduler.tickIntervalMs,
+              lastTickAt: scheduler.lastTickAt,
+              lastError: scheduler.lastError,
+              lastTickResult: scheduler.lastTickResult
+                ? {
+                    skipped: scheduler.lastTickResult.skipped,
+                    reason: scheduler.lastTickResult.reason,
+                    sourcesDue: scheduler.lastTickResult.sourcesDue,
+                    jobsCreated: scheduler.lastTickResult.jobsCreated,
+                    jobsSkippedDuplicate: scheduler.lastTickResult.jobsSkippedDuplicate,
+                  }
+                : null,
+            }
+          : { enabled: scheduler.enabled, running: scheduler.running },
       },
     });
   });

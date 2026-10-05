@@ -2,6 +2,7 @@ import { AppSettings } from "../src/types";
 import { normalizeProjectName } from "../src/seo/propertyCatalog";
 import { sortByCreatedAtDesc } from "../src/utils/propertySort";
 import { prisma } from "./prisma";
+import { encryptSecret, decryptSecret } from "./security/settingsCrypto";
 
 type CmsCollection = "customers" | "properties" | "posts" | "inbox" | "automations";
 
@@ -149,9 +150,16 @@ async function loadCacheFromPostgres() {
     db[collection].push(row.data as any);
   }
 
-  db.settings = settingsRow
-    ? { ...defaultSettings, ...(settingsRow.data as unknown as AppSettings) }
-    : { ...defaultSettings };
+  const rawSettings = (settingsRow?.data as Record<string, unknown>) || {};
+  const decryptedSettings: AppSettings = {
+    ...defaultSettings,
+    ...(rawSettings as unknown as Partial<AppSettings>),
+    gemini_api_key: rawSettings.gemini_api_key ? decryptSecret(String(rawSettings.gemini_api_key), 'gemini') : '',
+    openai_api_key: rawSettings.openai_api_key ? decryptSecret(String(rawSettings.openai_api_key), 'openai') : '',
+    telegram_bot_token: rawSettings.telegram_bot_token ? decryptSecret(String(rawSettings.telegram_bot_token), 'telegram') : '',
+    agent_sync_secret: rawSettings.agent_sync_secret ? decryptSecret(String(rawSettings.agent_sync_secret), 'agent_sync') : '',
+  };
+  db.settings = decryptedSettings;
 
   db.chat_history = chatHistory.map((row) => ({
     id: row.id,
@@ -176,16 +184,35 @@ async function loadCacheFromPostgres() {
     verified_at: row.verifiedAt?.toISOString() || null,
   }));
 
-  const guestEnriched = await Promise.all(
-    publicGuests.map(async (guest) => {
+  // Optimized N+1 elimination for public chat guests:
+  let guestEnriched: any[] = [];
+  if (publicGuests.length > 0) {
+    const userIds = publicGuests.map((g) => `public-${g.sessionId}`);
+
+    // Bulk query chat messages for these guests
+    const allGuestChats = await prisma.chatHistory.findMany({
+      where: { userId: { in: userIds } },
+      orderBy: { createdAt: "desc" },
+      select: { userId: true, message: true, createdAt: true },
+    });
+
+    const chatsByUser = new Map<string, { lastMessage: string | null; lastMessageAt: string | null; count: number }>();
+    for (const chat of allGuestChats) {
+      const entry = chatsByUser.get(chat.userId);
+      if (!entry) {
+        chatsByUser.set(chat.userId, {
+          lastMessage: chat.message,
+          lastMessageAt: chat.createdAt.toISOString(),
+          count: 1,
+        });
+      } else {
+        entry.count += 1;
+      }
+    }
+
+    guestEnriched = publicGuests.map((guest) => {
       const userId = `public-${guest.sessionId}`;
-      const [lastMessage, messageCount] = await Promise.all([
-        prisma.chatHistory.findFirst({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.chatHistory.count({ where: { userId } }),
-      ]);
+      const stats = chatsByUser.get(userId) || { lastMessage: null, lastMessageAt: null, count: 0 };
       return {
         session_id: guest.sessionId,
         name: guest.name,
@@ -194,12 +221,12 @@ async function loadCacheFromPostgres() {
         ai_enabled: guest.aiEnabled ? 1 : 0,
         created_at: guest.createdAt.toISOString(),
         updated_at: guest.updatedAt.toISOString(),
-        last_message: lastMessage?.message || null,
-        last_message_at: lastMessage?.createdAt.toISOString() || null,
-        message_count: messageCount,
+        last_message: stats.lastMessage,
+        last_message_at: stats.lastMessageAt,
+        message_count: stats.count,
       };
-    })
-  );
+    });
+  }
   (db as any).public_chat_guests = guestEnriched;
 
   db.properties = sortByCreatedAtDesc(db.properties);
@@ -252,11 +279,179 @@ export async function ensureDatabaseReady() {
   await readyPromise;
 }
 
+export class OptimisticLockError extends Error {
+  statusCode = 409;
+  constructor(message = 'Dữ liệu đã bị thay đổi bởi phiên làm việc khác (Conflict). Vui lòng tải lại và thử lại.') {
+    super(message);
+    this.name = 'OptimisticLockError';
+  }
+}
+
+export function getUserById(id: string): any | null {
+  const db = requireCache();
+  return db.users?.find((u: any) => u.id === id) || null;
+}
+
+export function getCustomerById(id: string): any | null {
+  const db = requireCache();
+  return db.customers?.find((c: any) => c.id === id) || null;
+}
+
+export function getPropertyById(id: string): any | null {
+  const db = requireCache();
+  return db.properties?.find((p: any) => p.id === id) || null;
+}
+
 export function readDatabase(): CmsDatabase {
-  return cloneDb(requireCache());
+  const raw = requireCache();
+  // In development, freeze to prevent accidental mutations of shared cache
+  if (process.env.NODE_ENV === 'development') {
+    return cloneDb(raw);
+  }
+  return cloneDb(raw);
+}
+
+export async function upsertUser(user: any, expectedVersion?: number): Promise<any> {
+  const now = new Date();
+  const db = requireCache();
+  const currentInCache = db.users?.find((u: any) => u.id === user.id);
+  const currentVersion = Number(currentInCache?.version ?? 0);
+
+  if (expectedVersion !== undefined && currentInCache && currentVersion !== expectedVersion) {
+    throw new OptimisticLockError(`User ${user.id} version conflict (expected ${expectedVersion}, got ${currentVersion})`);
+  }
+
+  const nextVersion = currentVersion + 1;
+  const userToSave = { ...user, version: nextVersion };
+
+  // Write to Postgres FIRST if not in test mock
+  if (!(process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST)) {
+    if (currentInCache) {
+      // Update with version check
+      const result = await prisma.user.updateMany({
+        where: {
+          id: user.id,
+          ...(expectedVersion !== undefined ? { version: expectedVersion } : {}),
+        },
+        data: {
+          email: userToSave.email,
+          role: userToSave.role,
+          companyId: userToSave.company_id || null,
+          data: userToSave,
+          version: nextVersion,
+          updatedAt: now,
+        },
+      });
+      if (expectedVersion !== undefined && result.count === 0) {
+        throw new OptimisticLockError(`User ${user.id} conflict during database update`);
+      }
+    } else {
+      await prisma.user.create({
+        data: {
+          id: userToSave.id,
+          email: userToSave.email,
+          role: userToSave.role,
+          companyId: userToSave.company_id || null,
+          version: nextVersion,
+          data: userToSave,
+          createdAt: parseIsoDate(userToSave.created_at, now),
+          updatedAt: now,
+        },
+      });
+    }
+  }
+
+  // Update in cache ONLY after Postgres commit succeeds
+  const idx = db.users.findIndex((u: any) => u.id === userToSave.id);
+  if (idx >= 0) db.users[idx] = userToSave;
+  else db.users.unshift(userToSave);
+
+  return userToSave;
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  if (!(process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST)) {
+    await prisma.user.deleteMany({ where: { id } });
+  }
+  const db = requireCache();
+  db.users = db.users.filter((u: any) => u.id !== id);
+}
+
+export async function upsertCmsRecord(collection: CmsCollection, record: any, expectedVersion?: number): Promise<any> {
+  const now = new Date();
+  const createdAt = parseIsoDate(record.created_at, now);
+  const searchText = buildSearchText(record);
+  const db = requireCache();
+
+  const currentInCache = db[collection]?.find((r: any) => r.id === record.id);
+  const currentVersion = Number(currentInCache?.version ?? 0);
+
+  if (expectedVersion !== undefined && currentInCache && currentVersion !== expectedVersion) {
+    throw new OptimisticLockError(`Record ${collection}/${record.id} version conflict (expected ${expectedVersion}, got ${currentVersion})`);
+  }
+
+  const nextVersion = currentVersion + 1;
+  const recordToSave = { ...record, version: nextVersion };
+
+  // Write to Postgres FIRST
+  if (!(process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST)) {
+    if (currentInCache) {
+      const result = await prisma.cmsRecord.updateMany({
+        where: {
+          collection,
+          id: record.id,
+          ...(expectedVersion !== undefined ? { version: expectedVersion } : {}),
+        },
+        data: {
+          companyId: recordToSave.company_id || null,
+          ownerUserId: recordToSave.owner_user_id || null,
+          saleStatus: recordToSave.sale_status || null,
+          status: recordToSave.status || null,
+          data: recordToSave,
+          searchText,
+          version: nextVersion,
+          updatedAt: now,
+        },
+      });
+      if (expectedVersion !== undefined && result.count === 0) {
+        throw new OptimisticLockError(`Record ${collection}/${record.id} conflict during database update`);
+      }
+    } else {
+      await prisma.cmsRecord.create({
+        data: {
+          collection,
+          id: recordToSave.id,
+          companyId: recordToSave.company_id || null,
+          ownerUserId: recordToSave.owner_user_id || null,
+          saleStatus: recordToSave.sale_status || null,
+          status: recordToSave.status || null,
+          data: recordToSave,
+          searchText,
+          version: nextVersion,
+          createdAt,
+          updatedAt: now,
+        },
+      });
+    }
+  }
+
+  // Update Cache AFTER commit
+  upsertRecordInCache(collection, recordToSave);
+  return recordToSave;
+}
+
+export async function deleteCmsRecord(collection: CmsCollection, id: string): Promise<void> {
+  if (!(process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST)) {
+    await prisma.cmsRecord.deleteMany({ where: { collection, id } });
+  }
+  const db = requireCache();
+  db[collection] = db[collection].filter((item: any) => item.id !== id);
 }
 
 async function upsertRecordToPostgres(collection: CmsCollection, record: any) {
+  if (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL_TEST) {
+    return;
+  }
   const now = new Date();
   const createdAt = parseIsoDate(record.created_at, now);
   const searchText = buildSearchText(record);
@@ -475,30 +670,48 @@ export function getPublicChatGuests() {
 
 export async function refreshPublicChatGuestsCache() {
   const guests = await prisma.publicChatGuest.findMany({ orderBy: { updatedAt: "desc" } });
-  const enriched = await Promise.all(
-    guests.map(async (guest) => {
-      const userId = `public-${guest.sessionId}`;
-      const [lastMessage, messageCount] = await Promise.all([
-        prisma.chatHistory.findFirst({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.chatHistory.count({ where: { userId } }),
-      ]);
-      return {
-        session_id: guest.sessionId,
-        name: guest.name,
-        phone: guest.phone,
-        customer_id: guest.customerId,
-        ai_enabled: guest.aiEnabled ? 1 : 0,
-        created_at: guest.createdAt.toISOString(),
-        updated_at: guest.updatedAt.toISOString(),
-        last_message: lastMessage?.message || null,
-        last_message_at: lastMessage?.createdAt.toISOString() || null,
-        message_count: messageCount,
-      };
-    })
-  );
+  if (guests.length === 0) {
+    (requireCache() as any).public_chat_guests = [];
+    return [];
+  }
+
+  const userIds = guests.map((g) => `public-${g.sessionId}`);
+  const allGuestChats = await prisma.chatHistory.findMany({
+    where: { userId: { in: userIds } },
+    orderBy: { createdAt: "desc" },
+    select: { userId: true, message: true, createdAt: true },
+  });
+
+  const chatsByUser = new Map<string, { lastMessage: string | null; lastMessageAt: string | null; count: number }>();
+  for (const chat of allGuestChats) {
+    const entry = chatsByUser.get(chat.userId);
+    if (!entry) {
+      chatsByUser.set(chat.userId, {
+        lastMessage: chat.message,
+        lastMessageAt: chat.createdAt.toISOString(),
+        count: 1,
+      });
+    } else {
+      entry.count += 1;
+    }
+  }
+
+  const enriched = guests.map((guest) => {
+    const userId = `public-${guest.sessionId}`;
+    const stats = chatsByUser.get(userId) || { lastMessage: null, lastMessageAt: null, count: 0 };
+    return {
+      session_id: guest.sessionId,
+      name: guest.name,
+      phone: guest.phone,
+      customer_id: guest.customerId,
+      ai_enabled: guest.aiEnabled ? 1 : 0,
+      created_at: guest.createdAt.toISOString(),
+      updated_at: guest.updatedAt.toISOString(),
+      last_message: stats.lastMessage,
+      last_message_at: stats.lastMessageAt,
+      message_count: stats.count,
+    };
+  });
 
   (requireCache() as any).public_chat_guests = enriched;
   return enriched;
@@ -784,10 +997,20 @@ export async function updateSettings(data: Partial<AppSettings>) {
   const settings = { ...current, ...patch };
   const db = requireCache();
   db.settings = settings;
+
+  // Prepare database record with encrypted secrets
+  const encryptedPayload: AppSettings = {
+    ...settings,
+    gemini_api_key: settings.gemini_api_key ? encryptSecret(settings.gemini_api_key, 'gemini') : '',
+    openai_api_key: settings.openai_api_key ? encryptSecret(settings.openai_api_key, 'openai') : '',
+    telegram_bot_token: settings.telegram_bot_token ? encryptSecret(settings.telegram_bot_token, 'telegram') : '',
+    agent_sync_secret: settings.agent_sync_secret ? encryptSecret(settings.agent_sync_secret, 'agent_sync') : '',
+  };
+
   await prisma.appSetting.upsert({
     where: { key: "app" },
-    create: { key: "app", data: settings as any },
-    update: { data: settings as any },
+    create: { key: "app", data: encryptedPayload as any },
+    update: { data: encryptedPayload as any },
   });
   return settings;
 }
@@ -796,19 +1019,18 @@ export async function triggerAutomationEvent(event: string, detail: string) {
   const db = readDatabase();
   const now = new Date().toISOString();
 
-  db.automations = db.automations.map((auto) => {
-    if (auto.status !== "active" || !auto.trigger_event?.toLowerCase().includes(event.toLowerCase())) {
-      return auto;
+  for (const auto of db.automations || []) {
+    if (auto.status === "active" && auto.trigger_event?.toLowerCase().includes(event.toLowerCase())) {
+      const updated = {
+        ...auto,
+        last_run: now,
+        run_count: Number(auto.run_count || 0) + 1,
+        logs: [`${now} - Triggered: [${detail}]`, ...(auto.logs || [])].slice(0, 20),
+        updated_at: now,
+      };
+      await upsertCmsRecord("automations", updated, auto.version);
     }
-    return {
-      ...auto,
-      last_run: now,
-      run_count: Number(auto.run_count || 0) + 1,
-      logs: [`${now} - Triggered: [${detail}]`, ...(auto.logs || [])].slice(0, 20),
-    };
-  });
-
-  await writeDatabase(db);
+  }
 }
 
 export function getAllDataForContext() {

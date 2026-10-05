@@ -35,40 +35,46 @@ function collectListenerPids(port) {
   return pids;
 }
 
-function freePortsWindows() {
-  const victims = new Set();
+function warnPortsWindows() {
+  const busy = [];
   for (const port of PORTS) {
-    for (const pid of collectListenerPids(port)) {
-      victims.add(pid);
+    const pids = Array.from(collectListenerPids(port));
+    if (pids.length > 0) {
+      busy.push({ port, pids });
     }
   }
-  for (const pid of victims) {
-    try {
-      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
-    } catch {
-      /* already gone */
+  if (busy.length > 0) {
+    console.warn('[DEV NOTICE] Các port dev sau đang có tiến trình chiếm giữ (không kill tự động):');
+    for (const b of busy) {
+      console.warn(`  - Port ${b.port}: PID [${b.pids.join(', ')}]`);
     }
-  }
-  if (victims.size > 0) {
-    console.log(`[dev] Đã dừng ${victims.size} tiến trình node chiếm port dev.`);
+    console.warn('Gợi ý: Nếu cần giải phóng port, vui lòng dừng ứng dụng cũ hoặc chạy: npm run dev:restart\n');
   }
 }
 
-function freePortsUnix() {
+function warnPortsUnix() {
+  const busy = [];
   for (const port of PORTS) {
     try {
-      execSync(`lsof -ti tcp:${port} -sTCP:LISTEN | grep -v ${myPid} | xargs -r kill -9`, {
-        shell: '/bin/bash',
-        stdio: 'ignore',
-      });
+      const out = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: 'utf8' }).trim();
+      if (out) {
+        busy.push({ port, pids: out.split('\n') });
+      }
     } catch {
       /* port already free */
     }
   }
+  if (busy.length > 0) {
+    console.warn('[DEV NOTICE] Các port dev sau đang có tiến trình chiếm giữ (không kill tự động):');
+    for (const b of busy) {
+      console.warn(`  - Port ${b.port}: PID [${b.pids.join(', ')}]`);
+    }
+    console.warn('Gợi ý: Nếu cần giải phóng port, vui lòng dừng ứng dụng cũ hoặc chạy: npm run dev:restart\n');
+  }
 }
 
 if (process.platform === 'win32') {
-  freePortsWindows();
+  warnPortsWindows();
 } else {
-  freePortsUnix();
+  warnPortsUnix();
 }

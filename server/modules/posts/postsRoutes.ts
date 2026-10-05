@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, deleteCmsRecord, writeDatabase } from '../../dbHelper';
 import { appendStandardHashtags, buildPropertySeo } from '../../aiService';
 import type { Post } from '../../../src/types';
 import { parseListQuery, paginateItems, matchesSearchText } from '../../listPagination';
@@ -77,9 +77,8 @@ router.post('/api/posts', async (req: Request, res: Response) => {
     ...accessDefaults(req, postData)
   };
 
-  db.posts.push(newPost);
-  await writeDatabase(db);
-  res.json({ status: 'success', data: newPost });
+  const savedPost = await upsertCmsRecord('posts', newPost);
+  res.json({ status: 'success', data: savedPost });
 });
 
 router.put('/api/posts/:id', async (req: Request, res: Response) => {
@@ -96,21 +95,22 @@ router.put('/api/posts/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  db.posts[index] = {
-    ...db.posts[index],
-    ...req.body
+  const oldPost = db.posts[index];
+  const updatedPost = {
+    ...oldPost,
+    ...req.body,
+    updated_at: new Date().toISOString(),
   };
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: db.posts[index] });
+  const savedPost = await upsertCmsRecord('posts', updatedPost, oldPost.version);
+  res.json({ status: 'success', data: savedPost });
 });
 
 router.delete('/api/posts/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const target = db.posts.find(p => p.id === req.params.id);
-  const filtered = db.posts.filter(p => p.id !== req.params.id);
 
-  if (filtered.length === db.posts.length) {
+  if (!target) {
     res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
     return;
   }
@@ -120,8 +120,7 @@ router.delete('/api/posts/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  db.posts = filtered;
-  await writeDatabase(db);
+  await deleteCmsRecord('posts', req.params.id);
   res.json({ status: 'success', message: 'Đã xóa bài viết thành công' });
 });
 

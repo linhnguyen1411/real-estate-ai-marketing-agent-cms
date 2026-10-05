@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertUser, upsertCmsRecord, writeDatabase } from '../../dbHelper';
 import type { AuthUser, Property, User } from '../../../src/types';
 import type { AgentTier } from '../../../src/utils/agentTier';
 import { clearCacheKey } from '../../cache/publicCache';
@@ -112,9 +112,8 @@ router.post('/api/users', validateSchema(createUserSchema), async (req: Request,
     created_at: new Date().toISOString()
   };
 
-  db.users.push(newUser);
-  await writeDatabase(db);
-  res.json({ status: 'success', data: toPublicUser(newUser) });
+  const savedUser = await upsertUser(newUser);
+  res.json({ status: 'success', data: toPublicUser(savedUser) });
 });
 
 router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Request, res: Response) => {
@@ -227,10 +226,8 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   };
   delete updatedTarget.password;
 
-  db.users[index] = updatedTarget;
-
-  await writeDatabase(db);
-  res.json({ status: 'success', data: toPublicUser(db.users[index]) });
+  const savedUser = await upsertUser(updatedTarget, target.version);
+  res.json({ status: 'success', data: toPublicUser(savedUser) });
 });
 
 type MemberPermissionCollection = 'customers' | 'properties' | 'posts';
@@ -279,9 +276,10 @@ router.post('/api/member-permissions/bulk', async (req: Request, res: Response) 
     };
 
     if (collection === 'properties') {
-      db.properties[index] = applyPropertyHashtagSeo(nextItem as Property);
+      const saved = applyPropertyHashtagSeo(nextItem as Property);
+      await upsertCmsRecord('properties', saved, (items[index] as any).version);
     } else {
-      db[collection][index] = nextItem;
+      await upsertCmsRecord(collection, nextItem, (items[index] as any).version);
     }
     updated += 1;
   }
@@ -289,9 +287,6 @@ router.post('/api/member-permissions/bulk', async (req: Request, res: Response) 
   if (updated > 0) {
     if (collection === 'properties') {
       syncSiteSeoKeywords(db);
-    }
-    await writeDatabase(db);
-    if (collection === 'properties') {
       clearCacheKey('public-properties');
       clearCacheKey('public-homepage');
     }

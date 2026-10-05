@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, writeDatabase } from '../../dbHelper';
 import { generateAIConsultantReply } from '../../aiService';
 import { parseListQuery, paginateItems, matchesSearchText } from '../../listPagination';
 import {
@@ -61,9 +61,10 @@ router.put('/api/inbox/:id', async (req: Request, res: Response) => {
     res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật tin nhắn này.' });
     return;
   }
-  db.inbox[index] = { ...db.inbox[index], ...req.body };
-  await writeDatabase(db);
-  res.json({ status: 'success', data: db.inbox[index] });
+  const oldMsg = db.inbox[index];
+  const updatedMsg = { ...oldMsg, ...req.body };
+  const savedMsg = await upsertCmsRecord('inbox', updatedMsg, oldMsg.version);
+  res.json({ status: 'success', data: savedMsg });
 });
 
 // POST /api/ai/generate-reply - Draft reply suggestion for a single message
@@ -113,8 +114,8 @@ router.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
       triggerAutomationEvent('Nhận comment bình luận hỏi giá', `Tin nhắn của ${msg.sender_name}`, db);
     }
 
-    await writeDatabase(db);
-    res.json({ status: 'success', data: msg });
+    const savedMsg = await upsertCmsRecord('inbox', msg, msg.version);
+    res.json({ status: 'success', data: savedMsg });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }
@@ -136,13 +137,14 @@ router.post('/api/inbox/:id/reply', async (req: Request, res: Response) => {
     return;
   }
 
-  db.inbox[index].status = 'replied';
+  const oldMsg = db.inbox[index];
+  const updatedMsg = { ...oldMsg, status: 'replied' };
   
   // Simulate posting the reply back to the platform
-  console.log(`[OUTBOX SENT] Sent to ${db.inbox[index].platform} to ${db.inbox[index].sender_name}: "${replyText}"`);
+  console.log(`[OUTBOX SENT] Sent to ${oldMsg.platform} to ${oldMsg.sender_name}: "${replyText}"`);
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: db.inbox[index] });
+  const savedMsg = await upsertCmsRecord('inbox', updatedMsg, oldMsg.version);
+  res.json({ status: 'success', data: savedMsg });
 });
 
   return router;

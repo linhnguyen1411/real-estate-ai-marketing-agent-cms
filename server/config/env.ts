@@ -28,6 +28,22 @@ export const envSchema = z.object({
     z.boolean()
   ).optional(),
   TELEGRAM_ALLOWED_USER_IDS: z.string().optional(),
+  USE_REPO_CUSTOMERS: z.preprocess(
+    v => typeof v === 'string' ? ['1', 'true', 'on', 'yes'].includes(v.toLowerCase()) : Boolean(v),
+    z.boolean()
+  ).default(false),
+  USE_REPO_PROPERTIES: z.preprocess(
+    v => typeof v === 'string' ? ['1', 'true', 'on', 'yes'].includes(v.toLowerCase()) : Boolean(v),
+    z.boolean()
+  ).default(false),
+  USE_REPO_POSTS: z.preprocess(
+    v => typeof v === 'string' ? ['1', 'true', 'on', 'yes'].includes(v.toLowerCase()) : Boolean(v),
+    z.boolean()
+  ).default(false),
+  USE_REPO_INBOX: z.preprocess(
+    v => typeof v === 'string' ? ['1', 'true', 'on', 'yes'].includes(v.toLowerCase()) : Boolean(v),
+    z.boolean()
+  ).default(false),
 }).superRefine((data, ctx) => {
   if (data.TELEGRAM_CONSOLE_ENABLED && (!data.TELEGRAM_ALLOWED_USER_IDS || !data.TELEGRAM_ALLOWED_USER_IDS.trim())) {
     ctx.addIssue({

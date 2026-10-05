@@ -16,6 +16,7 @@ export interface User {
   password_hash?: string;
   must_change_password?: boolean;
   token_version?: number;
+  version?: number;
   role: UserRole;
   company_id?: string;
   phone?: string;

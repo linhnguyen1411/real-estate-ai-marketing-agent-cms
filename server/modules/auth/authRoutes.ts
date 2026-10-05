@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { readDatabase, writeDatabase } from '../../dbHelper';
+import { getUserById, readDatabase, upsertUser, writeDatabase } from '../../dbHelper';
 import { saveImageFromDataUrl } from '../../blog/imageStorage';
 import type { User } from '../../../src/types';
 import { slugifyAgentProfile } from '../../../src/utils/agentTier';
@@ -54,7 +54,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
       const newHash = await hashPassword(plainPassword);
       user.password_hash = newHash;
       delete user.password;
-      await writeDatabase(db);
+      await upsertUser(user);
     }
   }
 
@@ -91,26 +91,26 @@ export function createApiAuthGate() {
     return next();
   }
 
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  const decoded = token ? verifyToken(token) : null;
-  const db = readDatabase();
-  const user = decoded ? db.users?.find(item => item.id === decoded.sub && item.status === 'active') : null;
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    const decoded = token ? verifyToken(token) : null;
+    const user = decoded ? getUserById(decoded.sub) : null;
 
-  if (!user) {
-    res.status(401).json({ status: 'error', message: 'Bạn cần đăng nhập để truy cập hệ thống.' });
-    return;
-  }
+    if (!user || user.status !== 'active') {
+      res.status(401).json({ status: 'error', message: 'Bạn cần đăng nhập để truy cập hệ thống.' });
+      return;
+    }
 
-  // Token version revocation check: if user's token_version differs, token is invalidated
-  const expectedVersion = user.token_version ?? 1;
-  const tokenVersion = decoded?.token_version ?? 1;
-  if (tokenVersion !== expectedVersion) {
-    res.status(401).json({ status: 'error', message: 'Phiên đăng nhập đã hết hiệu lực do thay đổi mật khẩu hoặc bảo mật.' });
-    return;
-  }
+    // Token version revocation check: if user's token_version differs, token is invalidated
+    const expectedVersion = user.token_version ?? 1;
+    const tokenVersion = decoded?.token_version ?? 1;
+    if (tokenVersion !== expectedVersion) {
+      res.status(401).json({ status: 'error', message: 'Phiên đăng nhập đã hết hiệu lực do thay đổi mật khẩu hoặc bảo mật.' });
+      return;
+    }
 
-  (req as any).authUser = toAuthUser(user, db);
-  next();
+    const db = readDatabase();
+    (req as any).authUser = toAuthUser(user, db);
+    next();
   };
 }
 
@@ -213,10 +213,8 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
   };
   delete updatedUser.password;
 
-  db.users[index] = updatedUser;
-
-  await writeDatabase(db);
-  res.json({ status: 'success', data: toAuthUser(db.users[index], db) });
+  const savedUser = await upsertUser(updatedUser, target.version);
+  res.json({ status: 'success', data: toAuthUser(savedUser, db) });
 });
 
   return router;

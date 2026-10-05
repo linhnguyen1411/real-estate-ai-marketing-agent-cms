@@ -134,8 +134,10 @@ async function main() {
 
   const dbReady = await bootstrap();
 
+  const RUN_WORKERS = envFlagEnabled('RUN_WORKERS', true);
+
   if (dbReady) {
-    if (AGENT_ENABLED) {
+    if (AGENT_ENABLED && RUN_WORKERS) {
       startAgentScheduler();
       startAgentSyncOutboxWorker();
       void startTelegramControlPlane().then(r => {
@@ -158,26 +160,71 @@ async function main() {
     console.warn('[agent-scheduler] Bỏ qua — DB chưa sẵn sàng');
   }
 
-  const shutdown = (signal: string) => {
-    console.log(`[Server] ${signal} — stopping scheduler…`);
-    stopAgentScheduler();
-    stopAgentSyncOutboxWorker();
-    void stopTelegramControlPlane();
-    void import('./server/modules/control-plane/operations')
-      .then(ops => ops.stopMetricsCollector())
-      .catch(() => undefined);
+  let httpServer: Server | null = null;
+  let isShuttingDown = false;
+
+  const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`[Server] ${signal} received — initiating graceful shutdown...`);
+
+    const forceTimer = setTimeout(() => {
+      console.error('[Server] Graceful shutdown timeout (20s) exceeded. Forcing exit.');
+      process.exit(1);
+    }, 20_000);
+
+    try {
+      // 1. Stop background workers if running in this process
+      stopAgentScheduler();
+      stopAgentSyncOutboxWorker();
+      await stopTelegramControlPlane();
+      const ops = await import('./server/modules/control-plane/operations').catch(() => null);
+      if (ops) ops.stopMetricsCollector();
+
+      // 2. Stop incoming HTTP requests
+      if (httpServer) {
+        await new Promise<void>((resolve) => {
+          httpServer!.close((err) => {
+            if (err) console.warn('[Server] Error closing HTTP server:', err);
+            resolve();
+          });
+        });
+        console.log('[Server] HTTP connections closed.');
+      }
+
+      // 3. Disconnect Prisma
+      const { prisma } = await import('./server/prisma');
+      await prisma.$disconnect();
+      console.log('[Server] Database connections closed.');
+
+      clearTimeout(forceTimer);
+      console.log('[Server] Graceful shutdown completed cleanly.');
+      process.exit(0);
+    } catch (err) {
+      console.error('[Server] Error during graceful shutdown:', err);
+      process.exit(1);
+    }
   };
-  process.once('SIGINT', () => shutdown('SIGINT'));
-  process.once('SIGTERM', () => shutdown('SIGTERM'));
+
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('[UNHANDLED_REJECTION]', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[UNCAUGHT_EXCEPTION] Fatal error:', err);
+    void shutdown('UNCAUGHT_EXCEPTION');
+  });
 
   if (process.env.NODE_ENV === 'production') {
-    await startHttpServerWithRetry();
+    httpServer = await listenHttpServer();
     return;
   }
 
   try {
     await setupViteDevServer(app);
-    await startHttpServerWithRetry();
+    httpServer = await listenHttpServer();
   } catch (error) {
     console.error('Vite server fails construction:', error);
     process.exit(1);

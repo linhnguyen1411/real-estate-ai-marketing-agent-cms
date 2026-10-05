@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, deleteCmsRecord, writeDatabase } from '../../dbHelper';
 import { analyzeCustomerWithAI } from '../../aiService';
 import type { Customer } from '../../../src/types';
 import { parseListQuery, paginateItems, matchesSearchText } from '../../listPagination';
@@ -66,15 +66,13 @@ router.post('/api/customers', async (req: Request, res: Response) => {
     ...accessDefaults(req, customerData)
   };
 
-  db.customers.push(newCustomer);
-  
   // Lead score automation trigger
   if (newCustomer.lead_score > 80) {
     triggerAutomationEvent('Lead Score vượt mốc 80', `Khách hàng tiềm năng: ${newCustomer.name}`, db);
   }
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: newCustomer });
+  const savedCustomer = await upsertCmsRecord('customers', newCustomer);
+  res.json({ status: 'success', data: savedCustomer });
 });
 
 router.put('/api/customers/:id', async (req: Request, res: Response) => {
@@ -98,23 +96,20 @@ router.put('/api/customers/:id', async (req: Request, res: Response) => {
     updated_at: new Date().toISOString()
   };
 
-  db.customers[index] = updatedCustomer;
-
   // Check if score changed above 80
   if (updatedCustomer.lead_score > 80 && oldCustomer.lead_score <= 80) {
     triggerAutomationEvent('Lead Score vượt mốc 80', `Cập nhật khách hàng VIP: ${updatedCustomer.name}`, db);
   }
 
-  await writeDatabase(db);
-  res.json({ status: 'success', data: updatedCustomer });
+  const savedCustomer = await upsertCmsRecord('customers', updatedCustomer, oldCustomer.version);
+  res.json({ status: 'success', data: savedCustomer });
 });
 
 router.delete('/api/customers/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const target = db.customers.find(c => c.id === req.params.id);
-  const filtered = db.customers.filter(c => c.id !== req.params.id);
   
-  if (filtered.length === db.customers.length) {
+  if (!target) {
     res.status(404).json({ status: 'error', message: 'Không tìm thấy khách hàng' });
     return;
   }
@@ -124,8 +119,7 @@ router.delete('/api/customers/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  db.customers = filtered;
-  await writeDatabase(db);
+  await deleteCmsRecord('customers', req.params.id);
   res.json({ status: 'success', message: 'Đã xóa khách hàng thành công' });
 });
 
@@ -147,16 +141,20 @@ router.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
 
   try {
     const analysis = await analyzeCustomerWithAI(customer);
-    customer.ai_summary = analysis.ai_summary;
-    customer.lead_score = analysis.lead_score;
+    const updatedCustomer = {
+      ...customer,
+      ai_summary: analysis.ai_summary,
+      lead_score: analysis.lead_score,
+      updated_at: new Date().toISOString(),
+    };
     
     // Check if score changed above 80
-    if (customer.lead_score > 80) {
+    if (updatedCustomer.lead_score > 80) {
       triggerAutomationEvent('Lead Score vượt mốc 80', `AI chấm điểm VIP: ${customer.name}`, db);
     }
 
-    await writeDatabase(db);
-    res.json({ status: 'success', data: customer });
+    const savedCustomer = await upsertCmsRecord('customers', updatedCustomer, customer.version);
+    res.json({ status: 'success', data: savedCustomer });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }

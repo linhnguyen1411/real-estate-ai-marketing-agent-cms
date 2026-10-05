@@ -21,6 +21,7 @@ model User {
   email     String   @unique
   role      String
   companyId String?  @map("company_id")
+  version   Int      @default(0)
   data      Json
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -35,6 +36,7 @@ model CmsRecord {
   ownerUserId String?  @map("owner_user_id")
   saleStatus  String?  @map("sale_status")
   status      String?
+  version     Int      @default(0)
   data        Json
   searchText  String?  @map("search_text") @db.Text
   createdAt   DateTime @default(now()) @map("created_at")

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, writeDatabase, saveGeneratedContent } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, writeDatabase, saveGeneratedContent } from '../../dbHelper';
 import { generatePropertyMarketingContent } from '../../aiService';
 import type { Property } from '../../../src/types';
 import { sortByCreatedAtDesc } from '../../../src/utils/propertySort';
@@ -171,11 +171,10 @@ router.get('/api/properties', (req: Request, res: Response) => {
         }),
         ...accessDefaults(req, item),
       };
-      db.properties.unshift(newProp);
-      created.push(newProp);
+      const saved = await upsertCmsRecord('properties', newProp);
+      created.push(saved);
     }
 
-    await writeDatabase(db);
     clearCacheKey('public-properties');
     clearCacheKey('public-homepage');
     clearCacheKey('sitemap-xml');
@@ -247,21 +246,18 @@ router.post('/api/properties', async (req: Request, res: Response) => {
     ...accessDefaults(req, propData)
   };
 
-  db.properties.unshift(newProperty);
+  const seoProperty = applyPropertyHashtagSeo(newProperty);
+  const savedProperty = await upsertCmsRecord('properties', seoProperty);
   
   // Trigger automation: Khi thêm mới bất động sản
-  triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${newProperty.title}`, db);
-
-  const indexedProperty = 0;
-  db.properties[indexedProperty] = applyPropertyHashtagSeo(db.properties[indexedProperty]);
+  triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${savedProperty.title}`, db);
   syncSiteSeoKeywords(db);
 
-  await writeDatabase(db);
   clearCacheKey('public-properties');
   clearCacheKey('public-homepage');
   clearCacheKey('sitemap-xml');
   clearCacheKey('sitemap-properties');
-  res.json({ status: 'success', data: db.properties[indexedProperty] });
+  res.json({ status: 'success', data: savedProperty });
 });
 
 router.get('/api/properties/:id', (req: Request, res: Response) => {
@@ -300,21 +296,22 @@ router.put('/api/properties/:id', async (req: Request, res: Response) => {
     });
   }
 
-  db.properties[index] = applyPropertyHashtagSeo({
+  const updatedProperty = applyPropertyHashtagSeo({
     ...db.properties[index],
     ...mergedBody,
     created_by_user_id:
       db.properties[index].created_by_user_id
       || db.properties[index].owner_user_id,
     public_view_count: mergedBody.public_view_count ?? db.properties[index].public_view_count ?? 0,
-    last_public_view_at: mergedBody.last_public_view_at ?? db.properties[index].last_public_view_at
+    last_public_view_at: mergedBody.last_public_view_at ?? db.properties[index].last_public_view_at,
+    updated_at: new Date().toISOString(),
   });
 
+  const savedProperty = await upsertCmsRecord('properties', updatedProperty, db.properties[index].version);
   syncSiteSeoKeywords(db);
-  await writeDatabase(db);
   clearCacheKey('public-properties');
   clearCacheKey('public-homepage');
-  res.json({ status: 'success', data: db.properties[index] });
+  res.json({ status: 'success', data: savedProperty });
 });
 
 router.delete('/api/properties/:id', async (req: Request, res: Response) => {
@@ -332,17 +329,15 @@ router.delete('/api/properties/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  db.properties[index] = {
-    ...db.properties[index],
-    sale_status: 'hidden'
+  const hiddenProperty = {
+    ...target,
+    sale_status: 'hidden',
+    updated_at: new Date().toISOString(),
   };
-  await writeDatabase(db);
+  const savedHidden = await upsertCmsRecord('properties', hiddenProperty, target.version);
   clearCacheKey('public-properties');
   clearCacheKey('public-homepage');
-  res.json({ status: 'success', data: db.properties[index], message: 'Soft deleted property.' });
-  return;
-  await writeDatabase(db);
-  res.json({ status: 'success', message: 'Đã xóa bất động sản thành công' });
+  res.json({ status: 'success', data: savedHidden, message: 'Soft deleted property.' });
 });
 
 // POST /api/ai/generate-content
@@ -388,14 +383,19 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
         // Check if there is already an AI post draft for this property/platform to update or add
         const existingPost = db.posts.find(post => post.property_id === propertyId && post.platform === platform && post.status === 'draft');
         if (existingPost) {
-          existingPost.content = content[platform];
-          existingPost.title = content.seo?.title || existingPost.title;
-          existingPost.seo_title = content.seo?.title;
-          existingPost.meta_description = content.seo?.meta_description;
-          existingPost.keywords = content.seo?.keywords || [];
-          existingPost.hashtags = platform === 'zalo' ? [] : (content.seo?.hashtags || []);
+          const updatedPost = {
+            ...existingPost,
+            content: content[platform],
+            title: content.seo?.title || existingPost.title,
+            seo_title: content.seo?.title,
+            meta_description: content.seo?.meta_description,
+            keywords: content.seo?.keywords || [],
+            hashtags: platform === 'zalo' ? [] : (content.seo?.hashtags || []),
+            updated_at: new Date().toISOString(),
+          };
+          await upsertCmsRecord('posts', updatedPost, existingPost.version);
         } else {
-          db.posts.push({
+          const newDraftPost = {
             id: `post-${Date.now()}-${platform}`,
             title: content.seo?.title || property.title,
             platform: platform,
@@ -412,7 +412,8 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
             company_id: property.company_id,
             owner_user_id: property.owner_user_id,
             assigned_member_ids: property.assigned_member_ids || []
-          });
+          };
+          await upsertCmsRecord('posts', newDraftPost);
         }
       }
     }
@@ -433,8 +434,8 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
       }
     }
 
-    await writeDatabase(db);
-    res.json({ status: 'success', data: property });
+    const savedProp = await upsertCmsRecord('properties', property, property.version);
+    res.json({ status: 'success', data: savedProp });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }
