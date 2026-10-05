@@ -1,173 +1,119 @@
-# Real Estate AI Marketing Agent CMS
+# Real Estate AI Marketing Agent & Multi-tenant CMS
 
-H? th?ng qu?n tr? n?i dung (CMS), qu?n l� kh�ch h�ng (CRM) v� T? ??ng h�a ti?p th? t�ch h?p **AI Agent chuy�n s�u cho Marketing B?t ??ng s?n** t?i Vi?t Nam.
+Hệ thống quản trị nội dung (CMS), quản lý khách hàng (CRM) và Tự động hóa tiếp thị tích hợp **AI Marketing Agent chuyên sâu cho Bất động sản** tại Việt Nam.
 
-?ng d?ng h? tr? c�c nh� ph�t tri?n b?t ??ng s?n v� ??i l� m�i gi?i t? ??ng h�a to�n b? quy tr�nh t? kh�u thu th?p th�ng tin nh� ??t, t?o v� v�n k?ch b?n qu?ng c�o ?a k�nh, ph�n lo?i � ??nh inbox c?a kh�ch h�ng, cho ??n ch?m ?i?m ti?m n?ng v� t? v?n th�ng minh.
-
----
-
-## ?? T�nh n?ng n?i b?t (Features)
-
-1. **Dashboard T?ng Quan**: Tr?c quan h�a s? l??ng kh�ch h�ng, c? c?u r? h�ng, t? l? hi?u su?t ph?u marketing ?a n?n t?ng (Facebook, Zalo, Tiktok, Website) v� nh?t k� v?n h�nh live-system.
-2. **Qu?n l� kh�ch h�ng CRM**: L?u tr? th�ng tin chi ti?t kh�ch, ng�n s�ch t�i ch�nh, ghi ch� h�nh vi v� n�t k�ch ho?t **AI ph�n t�ch t�m l�, t? ??ng t�m l??c v� ch?m ?i?m ti?m n?ng (lead score)**.
-3. **Qu?n l� B?t ??ng s?n**: L?u tr? r? th�ng tin nh� ph?, ??t n?n s�ng bi?n, shophouse c?c tr?c quan v� t�nh n?ng **AI sinh n?i dung k?ch b?n marketing 4 k�nh** (Zalo, Facebook, TikTok, Blog SEO) k�m Prompt nhi?p ?nh & cinematic video.
-4. **AI Content Generator**: Trung t�m ??u n�o t�y � ch?n m?c ?? v?n phong (Sang tr?ng, Viral t?u h�i, Thuy?t ph?c kh?n tr??ng) ?? Agent s�ng t?o b�i ??ng t�y bi?n.
-5. **CMS ??ng b�i**: B?n nh�p l?u tr? t? ??ng, gi? l?p th?ng k� s? li?u ti?p c?n th?c t? c?a d? �n.
-6. **Inbox ?a K�nh**: Giao di?n t?p trung h�a tin nh?n ?a n?n t?ng, **AI ph�n lo?i � ??** (h?i v? tr�, h?i gi�, th??ng l??ng) v� ?? xu?t k?ch b?n ph?n h?i kh�ch c?c k? nh?y b�n.
-7. **Chatbot AI n?i b?**: Ng??i d�ng c� th? h?i tr?c ti?p h? th?ng b?ng ng�n ng? t? nhi�n v? t�nh tr?ng gi? h�ng ("C?n n�o ? c?u R?ng?"), t�m t?t th�ng tin kh�ch ho?c ?? xu?t chi?n d?ch trong tu?n.
-8. **Si�u t? ??ng h�a (Automation Center)**: M� ph?ng workflow t? ??ng (th�m B?S m?i t? t?o 3 b�i vi?t; ch?m kh�ch ??t score > 80 t? chuy?n th�nh lead v�ng v� giao vi?c cho sale).
+Hệ thống được thiết kế theo tiêu chuẩn Enterprise-grade với kiến trúc đa người thuê (Multi-tenant), phân quyền nghiêm ngặt (RBAC deny-by-default), kiểm soát an toàn AI (Prompt Injection Defense, Guardrails, Human-in-the-loop) và hỗ trợ cơ sở dữ liệu quan hệ PostgreSQL với Prisma ORM.
 
 ---
 
-## ?? C?u tr�c m� ngu?n (Project Architecture)
+## 🚀 Tính Năng Nổi Bật
+
+1. **Multi-tenant CRM & Phân Quyền RBAC**:
+   - Cách ly dữ liệu chặt chẽ theo `company_id`.
+   - Phân quyền theo vai trò (`owner`, `admin`, `manager`, `staff`) với mô hình deny-by-default. Chống triệt để các lỗ hổng IDOR.
+2. **AI Marketing Engine & Content Generator**:
+   - Tự động sinh nội dung truyền thông đa kênh (Facebook, Zalo, TikTok, Website SEO) cho từng bất động sản.
+   - Hỗ trợ đa nhà cung cấp qua AI Gateway: Gemini, OpenAI, Ollama (Local LLM).
+   - Tự động tạo SEO Title, Meta Description, Schema Markup JSON-LD và OpenGraph tags.
+3. **AI Safety & Real Estate Content Guardrails**:
+   - **Chống Prompt Injection**: Toàn bộ dữ liệu người dùng, bài viết cào được cô lập trong sandbox `<untrusted_data>` với chỉ dẫn hệ thống nghiêm ngặt.
+   - **Tự động che chắn PII**: Tự động phát hiện và mask số điện thoại, email trước khi gửi tới LLM bên ngoài.
+   - **Real Estate Guardrails**: Kiểm tra chéo thông số giá, diện tích và tính pháp lý giữa nội dung AI sinh với bản ghi gốc trong DB; tự động chặn và yêu cầu duyệt thủ công khi phát hiện sai lệch.
+4. **Action Proposal & Human-in-the-loop**:
+   - Mọi hành động có tác dụng phụ (đăng bài MXH, gửi tin nhắn khách, đổi trạng thái) bắt buộc phải qua cơ chế đề xuất (`ActionProposal`) và được con người phê duyệt trước khi thực thi.
+   - Nhật ký kiểm toán (Audit Trail) ghi lại mã băm SHA-256 của toàn bộ payload.
+5. **Lead Intelligence & Auto Mining**:
+   - Bóc tách tự động nhu cầu khách hàng từ các nhóm mạng xã hội, phân loại Buyer/Seller/Broker và tính toán Lead Score.
+6. **Bảo Mật Hệ Thống & Vận Hành Bền Vững**:
+   - Kiểm soát SSRF với IP/DNS pinning và chặn private subnet.
+   - Đăng nhập bảo mật chống timing-attack, tự động nâng cấp hash mật khẩu sang PBKDF2/scrypt an toàn.
+   - Rate limiting, token revocation tức thì khi đổi mật khẩu, cơ chế fail-fast khi thiếu secrets môi trường.
+
+---
+
+## 🛠 Kiến Trúc Công Nghệ
+
+- **Backend**: Node.js (>=20), Express.js, TypeScript, Zod.
+- **Database & ORM**: PostgreSQL, Prisma ORM (với migrations có thể review và optimistic locking).
+- **Frontend**: React 19, Vite, Tailwind CSS, Lucide Icons.
+- **AI & Automation**: Google Gemini, OpenAI, Ollama, Playwright (isolated CDP profiles).
+- **Logging & Security**: Pino logger, Helmet, express-rate-limit.
 
 ```text
-??? /backend            # M� ngu?n backend tham kh?o ?a ng�n ng?
-?   ??? app.rb          # Sinatra API ch�nh (Ruby)
-?   ??? app.py          # FastAPI API ch�nh (Python)
-??? /server             # M� ngu?n Backend Node.js ph?c v? API ? AI Studio (TypeScript)
-?   ??? aiService.ts    # Service t�ch h?p Gemini API / Ollama API
-?   ??? dbHelper.ts     # Tr�nh qu?n l� ??c ghi PostgreSQL (Prisma) an to�n
-??? /src                # M� ngu?n Frontend React
-?   ??? App.tsx         # Dashboard UI ch�nh v� c�ng hi?n ??i, tr?c quan
-?   ??? types.ts        # C�c ki?u d? li?u Typescript ch?t ch?
-?   ??? index.css       # Import Tailwind CSS
-??? db.json             # C? s? d? li?u m?u chu?n h�a v?i 10 kh�ch h�ng, 8 B?S l?n, 15 Inbox
-??? server.ts           # Unified static server kh?i ch?y Vite middleware tr?c tuy?n
-??? package.json        # ??nh chu?n kh?i ch?y v� dependencies phi�n b?n m?i nh?t
-??? tsconfig.json       # Ph�n gi?i Typescript bundler
+├── server/
+│   ├── agent/                 # Lead intelligence, action proposal, dedup & scoring
+│   ├── ai/                    # AI prompt sanitizer, PII redaction & property guardrails
+│   ├── modules/               # AI gateway, social publishing, auth, public site & SEO
+│   ├── security/              # RBAC matrix, SSRF safeFetch, rate limiters, token revocation
+│   ├── dataLifecycle/         # Data retention jobs (cleanup chat messages cũ)
+│   ├── prisma.ts              # Prisma database client
+│   └── aiService.ts           # Marketing content & customer analysis service
+├── src/                       # Frontend React 19 SPA dashboard
+├── prisma/                    # Database schema & migrations
+├── scripts/                   # Scripts vận hành, backup, setup local cluster
+├── docs/                      # Tài liệu kiến trúc, runbook, hướng dẫn xoay key
+└── tests/                     # Test suites bảo mật (P0 -> P7) với Vitest
 ```
 
 ---
 
-## ??? H??ng d?n c�i ??t & kh?i ch?y (Quickstart Guide)
+## ⚡ Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Quickstart)
 
-### 1. Chu?n b? m�i tr??ng & c�i ??t Ollama
-?? s? d?ng m� h�nh tr� tu? nh�n t?o ch?y c?c b? mi?n ph�, h�y t?i c�ng c? **Ollama**:
-1. Truy c?p [Ollama Official Website](https://ollama.com/) v� t?i phi�n b?n ph� h?p cho h? ?i?u h�nh c?a b?n (Windows / macOS / Linux).
-2. H�y c�i ??t v� m? terminal l�n ?? t?i m� h�nh m?c ??nh b?ng c�u l?nh:
-   ```bash
-   ollama pull qwen2.5
-   # B?n c?ng c� th? d�ng llama3.1
-   ollama pull llama3.1
-   ```
-3. Kh?i ??ng d?ch v? Ollama c?c b?:
-   ```bash
-   ollama serve
-   ```
-*M?c ??nh Ollama s? l?ng nghe t?i c?ng `http://localhost:11434`.*
+### 1. Yêu Cầu Môi Trường
+- Node.js >= 20.0.0
+- npm >= 10.0.0
+- PostgreSQL (hoặc chạy local script)
 
----
-
-### 2. Ch?y ?ng d?ng Web (Node.js Unified Client + Server)
-?? ch?y demo nhanh ch�ng tr�n m�y t�nh c� nh�n c?a b?n, h�y s? d?ng c?ng Express + Vite th?ng nh?t ???c setup s?n:
-
-**C�i ??t c�c g�i ph? thu?c:**
+### 2. Cài Đặt Dependencies
 ```bash
 npm install
 ```
 
-**Kh?i ch?y m�y ch? ph�t tri?n (Development):**
-```bash
-npm run dev
-```
-*Giao di?n c?a b?n s? xu?t hi?n lung linh t?i ??a ch? `http://localhost:3000`.*
-
-**Bi�n d?ch b?n s?n xu?t (Production Build & Start):**
-```bash
-npm run build
-npm run start
-```
-**C?u h�nh ch?y th?c t?:**
+### 3. Cấu Hình Môi Trường
+Sao chép file `.env.example` thành `.env` và thiết lập các biến cơ bản:
 ```bash
 cp .env.example .env
-# c?p nh?t GEMINI_API_KEY n?u d�ng Gemini, ho?c ch?n Ollama trong Settings
+```
+*(Lưu ý: Ở môi trường development, hệ thống sẽ tự sinh khóa bí mật ngẫu nhiên nếu chưa khai báo `AUTH_SECRET`).*
+
+### 4. Khởi Tạo Cơ Sở Dữ Liệu
+```bash
+# Khởi động PostgreSQL và đồng bộ schema
+npm run db:setup-local
+# Hoặc sinh Prisma Client và chạy migration
+npx prisma migrate dev
 ```
 
-- Server Node/Express v� frontend Vite ???c ch?y chung qua `server.ts` ? m�i tr??ng development.
-- Production build t?o `dist/server.cjs`; l?nh `npm run start` s? serve API v� frontend ?� build.
-- Health check backend: `http://localhost:3000/api/health`.
-- AI Assistant trong tab Chatbot AI g?i backend `/api/ai/chat`, d�ng Gemini qua `GEMINI_API_KEY` ho?c Ollama local qua Settings.
-
----
-
-### 3. Ch?y Backend b?ng Python (FastAPI tham kh?o)
-N?u b?n mong mu?n v?n h�nh ?ng d?ng qua m�y ch? **Python FastAPI** m?nh m? & b?o m?t:
-
-1. Di chuy?n v�o th? m?c backend:
-   ```bash
-   cd backend
-   ```
-2. C�i ??t c�c th? vi?n c?n thi?t:
-   ```bash
-   pip install fastapi uvicorn httpx pydantic
-   ```
-3. Kh?i ch?y ?ng d?ng FastAPI:
-   ```bash
-   python app.py
-   ```
-M�y ch? Python FastAPI c?a b?n s? ho?t ??ng ho�n h?o t?i c?ng `http://localhost:8000`.
-
----
-
-### 4. Ch?y Backend b?ng Ruby (Sinatra API tham kh?o)
-N?u b?n mong mu?n v?n h�nh ?ng d?ng th�ng qua c?m m�y ch? **Ruby** chuy�n bi?t:
-
-1. Di chuy?n v�o th? m?c backend:
-   ```bash
-   cd backend
-   ```
-2. C�i ??t c�c th? vi?n c?n thi?t:
-   ```bash
-   gem install sinatra json net-http
-   ```
-3. Ch?y ?ng d?ng Sinatra:
-   ```bash
-   ruby app.rb
-   ```
-M�y ch? backend Ruby c?a b?n s? t? ??ng kh?i ??ng t?i ??a ch? `http://localhost:4567`. B?n c� th? tinh ch?nh API fetch c?a frontend sang c?ng `4567` ho?c `8000` n�y trong m� ngu?n khi tri?n khai.
-
----
-
-## ?? C�ch tr?i nghi?m & Test t�nh n?ng AI Agent
-
-1. **C�ch chuy?n ch? ?? AI:** Chuy?n qua tab **C?u h�nh h? th?ng (Settings)** tr�n thanh ?i?u h??ng b�n tr�i. B?n c� th? ch?n gi?a **Gemini API** (m?c ??nh m??t m� ngo�i kh�u ??ng k�) ho?c **Ollama c?c b? c?a b?n** (truy xu?t nhanh qua endpoint ?� ch? ??nh).
-2. **Ki?m th? AI Ph�n T�ch CRM:** ? tab **Kh�ch h�ng CRM**, h�y nh?n n�t **"Ph�n t�ch AI"** t?i m?t kh�ch h�ng b?t k?. AI Agent s? ??c d? li?u nhu c?u th?c t? c?a kh�ch, t�m g?n c�c b??c ti?p c?n th�ng th�i v� b? sung ?i?m ti?m n?ng cho chuy�n vi�n.
-3. **Th? nghi?m AI T?o Tin T?c:** T?i tab **Gi? h�ng B?t ??ng s?n**, b?m ch?n **"Sinh Content Marketing"** tr�n m?t t?m card. B?n c� th? ?i?u ch?nh tone gi?ng v� th??ng th?c b�i vi?t k?ch b?n 4 k�nh kh�c bi?t c�ng Prompt sinh ?nh si�u th?c.
-4. **H?i ?�p AI Chatbot:** ? m?c **Chatbot AI**, h�y g� c�c c�u l?nh b?ng ti?ng Vi?t nh?: *"Kh�ch n�o ?ang n�ng nh?t?"*, *"Vi?t b�i b�n l� ??t H�a Xu�n 4.6 t?"* ?? AI Agent l?c l?i database th?i gian th?c v� ?�m tho?i ??c l?c.
-
----
-
-## Local Database (PostgreSQL)
-
-App d?ng **PostgreSQL** qua Prisma (`DATABASE_URL` trong `.env`).
-
+### 5. Khởi Chạy Ứng Dụng
 ```bash
-cp .env.example .env
-npm run prisma:push
+# Chạy cả server và client
 npm run dev
 ```
-
-??ng b? DB production v? local ?? test:
-```bash
-npm run db:pull-and-sync
-```
-
-C?c nh?m d? li?u ch?nh: `cms_records`, `chat_history`, `generated_contents`, `leads`, `companies`, `users`, `settings`.
-
-K?nh uu ti?n hi?n t?i:
-- Facebook
-- Zalo
-
-C?c k?nh TikTok, Website, image/video prompt v?n du?c gi? ? m?c d? li?u d? ph?ng v? c? th? tri?n khai s?u hon sau.
+Hệ thống sẽ chạy tại `http://localhost:3000`.
 
 ---
 
-## 🔒 Security Operations (Local / Staging Only)
+## 🧪 Kiểm Thử & Đảm Bảo Chất Lượng
 
-### Force Password Reset
-To force all users to update their credentials during security migrations in local or staging environments:
+Dự án trang bị bộ test suite tự động kiểm tra toàn bộ các rào chắn bảo mật và luồng nghiệp vụ:
+
 ```bash
-npx tsx scripts/security/force-password-reset.ts
+# Chạy toàn bộ test
+npm test
+
+# Chạy riêng các bài test bảo mật (P1 -> P7)
+npm run test:security
+
+# Kiểm tra static typing
+npm run lint
 ```
-> **Warning**: Never run this script directly against the production database without scheduled maintenance notification.
+
+---
+
+## 📚 Tài Liệu Bổ Sung
+
+- [Tài Liệu Kiến Trúc Hệ Thống (Architecture)](docs/ARCHITECTURE.md)
+- [Sổ Tay Vận Hành & Khắc Phục Sự Cố (Runbook)](docs/RUNBOOK.md)
+- [Chính Sách & Quy Trình Xoay Secret (Rotation Guide)](docs/audit/ROTATION.md)
+- [Chính Sách Bảo Mật (Security Policy)](SECURITY.md)
+- [Hướng Dẫn Scripts Vận Hành](scripts/README.md)

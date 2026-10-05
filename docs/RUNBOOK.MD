@@ -1,187 +1,112 @@
-# RUNBOOK — real-estate-ai-marketing-agent-cms
+# Sổ Tay Vận Hành & Khắc Phục Sự Cố (Production Runbook)
 
-Đây là **1 doc duy nhất** trả lời "vào dự án/cần chạy tay thì làm gì" — gộp từ 5 file rời trước đây (`POSTGRES_SETUP.md`, `docs/engineering/RELEASE_PROCESS.md`, `docs/refactor/DATA-RETENTION-POLICY.md`, `scripts/fleet/README.md`, `docs/runtime/BROWSER-LIFECYCLE.md`). 5 file gốc **giữ nguyên tại chỗ** làm tài liệu chi tiết — file này là bản tóm tắt, đi thẳng vào lệnh cần chạy.
+Tài liệu này hướng dẫn các thao tác vận hành hàng ngày, quy trình triển khai phiên bản mới, sao lưu, phục hồi dữ liệu và xử lý các sự cố khẩn cấp.
 
 ---
 
-## 1. Chạy local lần đầu
+## 1. Quy Trình Triển Khai (Deployment Workflow)
 
-```bash
-# 1) Postgres local — ưu tiên cluster dev của repo (port 5434):
-npm run db:setup-local
-# (hoặc tự cài Postgres service port 5432 rồi tạo DB thủ công)
+> [!IMPORTANT]
+> TUYỆT ĐỐI KHÔNG sử dụng `prisma db push` trên môi trường VPS hoặc Production. Chỉ sử dụng `prisma migrate deploy` để đảm bảo dữ liệu không bị xóa ngoài ý muốn.
 
-# 2) Tạo .env ở root
-cp .env.example .env
-# sửa DATABASE_URL, GEMINI_API_KEY, PORT trong .env
-# DATABASE_URL phải bắt đầu đúng postgresql:// (không thêm chữ/prefix trước URL)
-# ví dụ cluster local: postgresql://real_estate_ai:localdev@localhost:5434/real_estate_ai?schema=public
+### 1.1 Chuẩn Bị Trước Khi Deploy (Pre-flight Checks)
+1. Kiểm tra build và typecheck trên local:
+   ```bash
+   npm run lint
+   npm test
+   npm run build
+   ```
+2. Đảm bảo toàn bộ migration file mới đã được sinh ra và review:
+   ```bash
+   npx prisma migrate status
+   ```
 
-# 3) Cài deps + generate Prisma client + tạo bảng
-npm install
-npx prisma generate
-npx prisma migrate dev --name init
-
-# 4) Chạy (xem mục 2)
-npm run dev
-
-```
-
-→ http://localhost:3000. Prisma Studio: `npx prisma studio` → http://localhost:5555
-
-## 2. Chạy lại local + agent (hàng ngày)
-
-Mở **3 terminal** ở root repo. CDP Chrome giữ mở sau khi login Facebook.
-
-**Terminal A — CMS (local DB):**
-
-```bash
-npm run db:pg-start    # nếu Postgres cluster local (5434) đang tắt
-npm run dev            # free port + ensure PG + start server → http://localhost:3000
-```
-
-**Terminal B — Chrome CDP (chỉ cần khi agent cần browser):**
-
+### 1.2 Triển Khai An Toàn Lên VPS
+Sử dụng script `deploy-safe.ps1`:
 ```powershell
-.\scripts\fleet\start-cdp-chrome.ps1
-# giữ cửa sổ Chrome mở; login Facebook nếu chưa login
-```
-
-**Terminal C — Agent** (chọn **một** mode):
-
-```powershell
-# Mode 1 — Agent local (DB-direct, scheduler local): scan/publish trên máy này
-.\scripts\fleet\start-scan-worker.ps1
-
-# Mode 2 — Execution agent gắn VPS Runtime (claim job từ production):
-$env:EXECUTION_AGENT_STATELESS='1'
-$env:AGENT_BROWSER_MODE='cdp'
-$env:AGENT_WORKER_ID='worker-linhmsc'          # giữ ổn định theo máy
-$env:AGENT_CDP_ENDPOINT='http://127.0.0.1:9222'
-$env:AGENT_RUNTIME_URL='https://bdsdanang.site'
-npm run automation-agent
-```
-
-Linux/macOS (CDP + local worker):
-
-```bash
-bash scripts/fleet/start-cdp-chrome.sh
-bash scripts/fleet/start-scan-worker.sh
-```
-
-**Healthy khi:**
-
-- CMS log: `[DB] PostgreSQL sẵn sàng` + `listening on port 3000`
-- Agent mode 1: worker loop poll
-- Agent mode 2: `Registered session=…` + `Loop started`
-- CDP sống: mở `http://127.0.0.1:9222/json/version` thấy JSON Chrome
-
-**Lỗi hay gặp:**
-
-| Triệu chứng | Cách xử lý |
-|-------------|------------|
-| `URL must start with the protocol postgresql://` | Sửa `.env`: `DATABASE_URL="postgresql://…"` — không prefix/`"` thừa |
-| CMS chạy nhưng `[DB] Không kết nối` | `npm run db:pg-start`; kiểm tra port trong URL (5434 cluster vs 5432 service) |
-| Agent: `CDP unreachable` | Chạy lại Terminal B |
-| Port 3000 bận | `npm run dev` đã gọi `free-dev-ports`; hoặc tắt process cũ rồi chạy lại |
-
-Tắt Postgres khi xong: `npm run db:pg-stop`
-
-## 3. Build & kiểm tra trước khi build production
-
-```bash
-npm run lint            # tsc --noEmit — bắt lỗi type trước
-npm run build            # prisma generate + vite build + esbuild server.ts -> dist/server.cjs
-npm run start             # chạy bản đã build (node scripts/start-production.cjs)
-
-```
-
-Không build/deploy nếu `npm run lint` còn lỗi.
-
-## 4. Database — sync/pull từ production về local
-
-```bash
-npm run db:pull-prod          # kéo schema/data prod về
-npm run db:setup-local        # setup lại local db
-npm run prisma:push
-npm run db:sync-prod          # hoặc gộp cả 3 bước trên bằng:
-npm run db:pull-and-sync
-
-```
-
-## 5. Backup & Restore
-
-**Backup thủ công (local):**
-
-```bash
-pg_dump -U postgres real_estate_ai > backup.sql
-psql -U postgres real_estate_ai < backup.sql   # restore
-
-```
-
-**Backup production (script chính thức):**
-
-```bash
-npm run backup:prod
-# hoặc download về máy local luôn:
-powershell -ExecutionPolicy Bypass -File scripts/backup-prod.ps1 -DownloadLocal
-
-```
-
-**Chính sách retention (tự động dọn data cũ, không đụng data quan trọng):**
-
-```bash
-npm run cleanup:db-tech-retention              # dry-run mặc định — chỉ xem sẽ xoá gì
-npm run cleanup:db-tech-retention -- --apply    # xoá thật
-npm run cleanup:agent-runtime                   # dọn debug screenshots/files sau 7-14d
-
-```
-
-Không bao giờ tự xoá: `ScannedContent`, `AgentFinding`, CRM `Lead`, External/Official Inventory. Chi tiết đầy đủ bảng retention từng table: `docs/refactor/DATA-RETENTION-POLICY.md`.
-
-## 6. Chrome CDP + Scan/Publish worker (chi tiết)
-
-Lệnh start hàng ngày → **mục 2**. Env overrides / checklist session → `scripts/fleet/README.md`.
-
-Vòng đời browser (debug lease treo): `idle → lease(job) → active → heartbeat ~10s → job xong → release → idle`. Hết heartbeat >45s → reclaim idle. Chi tiết: `docs/runtime/BROWSER-LIFECYCLE.md`.
-
-## 7. Deploy production
-
-**Trước khi deploy** (checklist rút gọn — bản đầy đủ ở `docs/engineering/RELEASE_PROCESS.md`):
-
-- [ ] `npm run lint` pass
-- [ ] Cleanup xong (dọn code/test data/script rác — xem mục "Clean Repository" trong Constitution)
-- [ ] Biết cách rollback (commit/tag trước đó)
-- [ ] Nếu đổi schema: backup DB trước khi `prisma migrate deploy`
-
-**Deploy (luôn dùng bản safe, không dùng** `deploy.ps1` **— xem ghi chú rủi ro bên dưới):**
-
-```bash
+# Chạy với biến môi trường hoặc truyền -HostName
+$env:VPS_HOST = "your.vps.ip.or.domain"
 npm run deploy:safe
 
+# Hoặc truyền tham số trực tiếp
+.\scripts\deploy-safe.ps1 -HostName "your.vps.ip.or.domain"
 ```
-
-**Health check sau deploy:**
-
-```bash
-curl -sS https://bdsdanang.site/api/health
-
-```
-
-Không phải HTTP 200 → dừng → rollback (redeploy commit tốt gần nhất, `no force-push to main`).
-
-⚠️ `scripts/deploy.ps1` (chạy qua `npm run deploy`, không phải `deploy:safe`) dùng `prisma db push --accept-data-loss` — rủi ro mất dữ liệu, chưa được sửa. Dùng `npm run deploy:safe` cho tới khi việc này được xử lý dứt điểm (xem mục rules mới — Clean Repository check).
+Quy trình tự động thực hiện:
+- Tự động tạo backup DB trên VPS trước khi áp dụng thay đổi.
+- Đóng gói mã nguồn và upload lên thư mục đích.
+- Chạy `prisma migrate deploy` để áp dụng các migration mới.
+- Build và reload PM2 instance với zero-downtime (`pm2 reload`).
+- Kiểm tra endpoint `/api/health` đảm bảo server hoạt động ổn định.
 
 ---
 
-## Tài liệu chi tiết đầy đủ (giữ nguyên, không xoá)
+## 2. Quy Trình Rollback Khẩn Cấp (Emergency Rollback)
 
-- `scripts/README.md` — danh sách script ops còn giữ ở root `scripts/`
-- `POSTGRES_SETUP.md` — cài đặt Postgres, troubleshooting kết nối
-- `docs/engineering/RELEASE_PROCESS.md` — quy trình release đầy đủ, template Release Report
-- `docs/refactor/DATA-RETENTION-POLICY.md` — bảng retention từng table
-- `scripts/fleet/README.md` — bootstrap Chrome CDP chi tiết
-- `docs/runtime/BROWSER-LIFECYCLE.md` — state machine browser lease
-- Lịch sử audit/refactor hệ thống → xem `docs/history/INDEX.md`
-- Probe / test / one-off cũ → `scripts/archive/` (không gắn npm)
+Khi phiên bản mới phát sinh lỗi nghiêm trọng sau khi triển khai:
 
+1. **Rollback Mã Nguồn & PM2:**
+   - Kết nối SSH vào VPS.
+   - Trỏ symlink hoặc giải nén bản backup gần nhất trong `/var/www/real-estate-ai-cms/backups/`:
+     ```bash
+     cd /var/www/real-estate-ai-cms
+     # Khôi phục bản dist trước đó
+     tar -xzf backups/dist-<TIMESTAMP>.tar.gz
+     pm2 restart real-estate-ai-cms
+     ```
+
+2. **Rollback Cơ Sở Dữ Liệu (Nếu Schema Thay Đổi Bị Lỗi):**
+   - Khôi phục từ file dump `.sql.gz` đã sao lưu trước đó:
+     ```bash
+     zcat backups/db-<TIMESTAMP>.sql.gz | psql "$DATABASE_URL"
+     ```
+
+---
+
+## 3. Sao Lưu & Phục Hồi Dữ Liệu (Backup & Restore)
+
+### 3.1 Sao Lưu Từ Xa (Remote Backup)
+Thực hiện từ máy quản trị viên:
+```powershell
+.\scripts\backup-prod.ps1 -HostName "your.vps.ip.or.domain" -DownloadLocal
+```
+Bản dump cơ sở dữ liệu và thư mục uploads sẽ được lưu tại `data/backups/`.
+
+### 3.2 Khôi Phục Dữ Liệu Local Phục Vụ Thử Nghiệm
+```powershell
+.\scripts\pull-prod-db.ps1 -HostName "your.vps.ip.or.domain"
+npm run db:setup-local
+```
+
+---
+
+## 4. Giám Sát & Xem Nhật Ký Lỗi (Monitoring & Logs)
+
+### 4.1 Xem Nhật Ký Ứng Dụng (Application Logs)
+Server sử dụng thư viện Pino log định dạng JSON có cấu trúc:
+```bash
+# Xem log trực tiếp qua PM2
+pm2 logs real-estate-ai-cms --lines 100
+
+# Lọc các log có mức độ cảnh báo (warn/error)
+pm2 logs real-estate-ai-cms --raw | grep -E '"level":(40|50|60)'
+```
+
+### 4.2 Kiểm Tra Trạng Thái Sức Khỏe (Health Check)
+```bash
+curl -I https://bdsdanang.site/api/health
+```
+Kết quả mong muốn: `HTTP/1.1 200 OK` kèm thông tin gateway status và database connectivity.
+
+---
+
+## 5. Dọn Dẹp Dữ Liệu Định Kỳ (Data Retention Job)
+
+Hệ thống cung cấp job dọn dẹp các đoạn chat cũ (`chat_history` và `public_chat_guests`) theo thời gian lưu trữ `RETENTION_DAYS` (mặc định 180 ngày):
+
+```bash
+# Kiểm tra số lượng bản ghi sẽ xóa (Dry Run)
+node -e "import('./server/dataLifecycle/retentionJob.js').then(m => m.runDataRetentionCleanup({ dryRun: true })).then(console.log)"
+
+# Thực thi dọn dẹp thực tế
+node -e "import('./server/dataLifecycle/retentionJob.js').then(m => m.runDataRetentionCleanup({ dryRun: false })).then(console.log)"
+```

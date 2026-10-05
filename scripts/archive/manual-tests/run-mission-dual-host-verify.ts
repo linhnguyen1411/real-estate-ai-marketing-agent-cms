@@ -27,7 +27,11 @@ import {
 
 const SESSION = `m2dh_${Date.now()}`;
 const companyId = 'comp-da-nang';
-const VPS_HOST = process.env.VPS_SSH_HOST || '112.213.87.124';
+const VPS_HOST = process.env.VPS_SSH_HOST || process.env.VPS_HOST || '';
+if (!VPS_HOST) {
+  console.error('Missing VPS_SSH_HOST or VPS_HOST environment variable.');
+  process.exit(1);
+}
 const VPS_USER = process.env.VPS_SSH_USER || 'root';
 const VPS_DIR = '/var/www/real-estate-ai-cms';
 

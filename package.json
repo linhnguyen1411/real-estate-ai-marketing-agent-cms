@@ -1,8 +1,12 @@
 {
-  "name": "react-example",
+  "name": "real-estate-ai-marketing-agent-cms",
+  "description": "Production-grade Real Estate AI Marketing Agent & Multi-tenant CMS",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "node scripts/free-dev-ports.mjs && node scripts/ensure-local-pg.mjs && tsx server.ts",
     "dev:restart": "node scripts/free-dev-ports.mjs && node scripts/ensure-local-pg.mjs && tsx server.ts",
@@ -16,7 +20,6 @@
     "db:pg-stop": "powershell -ExecutionPolicy Bypass -File scripts/pg-cluster.ps1 -Action stop",
     "db:pull-prod": "powershell -ExecutionPolicy Bypass -File scripts/pull-prod-db.ps1",
     "db:sync-prod": "node scripts/sync-prod-db.mjs",
-    "db:pull-and-sync": "npm run db:pull-prod && npm run db:setup-local && npm run prisma:push && npm run db:sync-prod",
     "db:bootstrap-vps": "powershell -ExecutionPolicy Bypass -File scripts/bootstrap-vps-db.ps1",
     "db:sync-master-plan": "node scripts/ensure-master-plan-db.mjs",
     "preview": "vite preview",
@@ -39,6 +42,8 @@
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:security": "vitest run tests/security/",
+    "test:baseline": "vitest run tests/baseline/",
     "test:watch": "vitest",
     "test:ci": "vitest run --coverage.enabled=false",
     "prisma:generate": "prisma generate",

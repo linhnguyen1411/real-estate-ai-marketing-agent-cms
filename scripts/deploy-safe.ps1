@@ -1,11 +1,16 @@
 param(
-  [string]$HostName = "112.213.87.124",
+  [string]$HostName = $env:VPS_HOST,
   [string]$User = "root",
   [string]$ArchiveName = "deploy-agent-safe.tar.gz",
   [string]$HealthUrl = "https://bdsdanang.site/api/health",
   [switch]$SkipLint,
   [switch]$SkipBackup
 )
+
+if (-not $HostName) {
+  Write-Error "HostName is required. Provide -HostName <IP/Host> or set `$env:VPS_HOST."
+  exit 1
+}
 
 # SAFE DEPLOY ENTRYPOINT — never calls deploy.ps1 / db push.
 $ErrorActionPreference = "Stop"

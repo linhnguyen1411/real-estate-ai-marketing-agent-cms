@@ -1,5 +1,5 @@
 param(
-  [string]$HostName = "112.213.87.124",
+  [string]$HostName = $env:VPS_HOST,
   [string]$User = "root",
   [string]$RemoteDir = "/var/www/real-estate-ai-cms",
   [string]$Pm2Name = "real-estate-ai-cms",

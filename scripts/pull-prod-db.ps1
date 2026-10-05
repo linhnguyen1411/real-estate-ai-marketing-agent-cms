@@ -1,11 +1,16 @@
 param(
-  [string]$HostName = "112.213.87.124",
+  [string]$HostName = $env:VPS_HOST,
   [string]$User = "root",
   [string]$RemoteDir = "/var/www/real-estate-ai-cms",
   [string]$RemoteDump = "/tmp/real-estate-ai-prod-dump.sql",
   [string]$LocalDir = "data",
   [string]$LocalFile = "prod-dump.sql"
 )
+
+if (-not $HostName) {
+  Write-Error "HostName is required. Provide -HostName <IP/Host> or set `$env:VPS_HOST."
+  exit 1
+}
 
 $ErrorActionPreference = "Stop"
 

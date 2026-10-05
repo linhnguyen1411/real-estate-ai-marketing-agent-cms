@@ -42,9 +42,14 @@ db.json.*.bak
 data/*
 !data/.gitkeep
 
-# Deploy packages
+# Deploy packages & archives
 deploy-*.tar.gz
 *.tar.gz
+*.zip
+
+# Runtime temporary artifacts
+runtime/*
+!runtime/.gitkeep
 
 # Uploaded media (generated on server / local dev)
 public/blog-covers/*

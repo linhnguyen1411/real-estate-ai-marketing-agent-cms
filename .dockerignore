@@ -13,6 +13,11 @@ yarn-error.log*
 Thumbs.db
 runtime/agent-cdp-profile
 runtime/social-media/*
+runtime/*
+data/*
+*.zip
+*.tar.gz
+*.gz
 tests
 docs
 *.tmp*
