@@ -116,9 +116,9 @@ export async function processLeadCapture(payload: LeadCapturePayload) {
 
       created_at: new Date().toISOString(),
 
-      company_id: 'comp-da-nang',
+      company_id: process.env.DEFAULT_COMPANY_ID || 'comp-da-nang',
 
-      owner_user_id: 'u-owner',
+      owner_user_id: process.env.DEFAULT_OWNER_USER_ID || 'user-owner-1',
 
       assigned_member_ids: [],
 

@@ -118,7 +118,6 @@ export function compactProperty(property: Property) {
     sale_status: property.sale_status || 'available',
     description: String(property.rich_description || property.description || '').slice(0, 700),
     selling_points: (property.selling_points || []).slice(0, 6),
-    internal_notes: String(property.internal_notes || '').slice(0, 300)
   };
 }
 

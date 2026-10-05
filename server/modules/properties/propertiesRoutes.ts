@@ -247,6 +247,20 @@ router.post('/api/properties', async (req: Request, res: Response) => {
   res.json({ status: 'success', data: db.properties[indexedProperty] });
 });
 
+router.get('/api/properties/:id', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const property = db.properties.find(p => p.id === req.params.id);
+  if (!property) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+    return;
+  }
+  if (!canAccessResource(property, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem bất động sản này.' });
+    return;
+  }
+  res.json({ status: 'success', data: property });
+});
+
 router.put('/api/properties/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.properties.findIndex(p => p.id === req.params.id);

@@ -50,10 +50,14 @@ export async function loadTelegramConsoleConfig(
         ? settingsConsole && telegramOn
         : telegramOn && Boolean(String(settings.telegram_bot_token || '').trim());
 
-  const allowedUserIds = [
+  const rawAllowedUserIds = [
     ...splitIds(process.env.TELEGRAM_ALLOWED_USER_IDS),
     ...splitIds(settings.telegram_allowed_user_ids),
   ];
+  const allowedUserIds = [...new Set(rawAllowedUserIds)];
+
+  // Mandatory requirement P3.6: TELEGRAM_ALLOWED_USER_IDS must not be empty when console is enabled
+  const finalEnabled = Boolean(enabled && allowedUserIds.length > 0);
   const allowedChatIds = [
     ...splitIds(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
     ...splitIds(settings.telegram_allowed_chat_ids),
@@ -65,10 +69,10 @@ export async function loadTelegramConsoleConfig(
   ];
 
   return {
-    enabled,
+    enabled: finalEnabled,
     botToken: String(settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || '').trim(),
     primaryChatId: String(settings.telegram_chat_id || '').trim(),
-    allowedUserIds: [...new Set(allowedUserIds)],
+    allowedUserIds,
     allowedChatIds: [...new Set(allowedChatIds.filter(Boolean))],
     adminUserIds: [...new Set(adminUserIds)],
     mode: resolveMode(settings),

@@ -50,10 +50,12 @@ export function toPublicAgentProfile(user: User, db: any, propertyCount = 0): an
 }
 
 export function countPublicAgentProperties(db: any, userId: string): number {
-  return filterPublicProperties(db.properties || []).filter((property: Property) => {
+  const list = (db.properties || []).filter((property: any) => {
+    if (['sold', 'hidden'].includes(property.sale_status || 'available')) return false;
     const creatorId = property.created_by_user_id || property.owner_user_id;
     return creatorId === userId;
-  }).length;
+  });
+  return list.length;
 }
 
 export function assertUniquePublicSlug(db: any, slug: string, userId: string, res: Response): boolean {
@@ -117,11 +119,12 @@ export function scopeCollection<T extends { company_id?: string; owner_user_id?:
   const user = getAuthUser(req);
   if (user.role === 'owner') return items;
   if (user.role === 'company') {
-    return items.filter(item => !item.company_id || item.company_id === user.company_id);
+    // Deny-by-default: record must have company_id and match user's company_id
+    return items.filter(item => Boolean(item.company_id) && item.company_id === user.company_id);
   }
+  // Member: must match company_id AND be assigned
   return items.filter(item => {
-    const itemCompanyId = item.company_id || user.company_id;
-    return itemCompanyId === user.company_id && (item.assigned_member_ids || []).includes(user.id);
+    return Boolean(item.company_id) && item.company_id === user.company_id && (item.assigned_member_ids || []).includes(user.id);
   });
 }
 
@@ -129,27 +132,32 @@ export function canAccessResource(resource: { company_id?: string; assigned_memb
   if (!resource) return false;
   const user = getAuthUser(req);
   if (user.role === 'owner') return true;
+  // Deny-by-default: missing company_id is only accessible by owner
+  if (!resource.company_id) return false;
+
   if (user.role === 'company') {
-    return !resource.company_id || resource.company_id === user.company_id;
+    return resource.company_id === user.company_id;
   }
-  const companyId = resource.company_id || user.company_id;
-  return companyId === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
+  return resource.company_id === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
 }
 
 export function canManageResource(resource: { company_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
   if (!resource) return false;
   const user = getAuthUser(req);
   if (user.role === 'owner') return true;
+  // Deny-by-default: missing company_id is only manageable by owner
+  if (!resource.company_id) return false;
+
   if (user.role === 'company') {
-    return !resource.company_id || resource.company_id === user.company_id;
+    return resource.company_id === user.company_id;
   }
-  const companyId = resource.company_id || user.company_id;
-  return companyId === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
+  return resource.company_id === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
 }
 
 export function accessDefaults(req: Request, body: any = {}) {
   const user = getAuthUser(req);
-  const company_id = user.role === 'owner' ? (body.company_id || 'comp-da-nang') : user.company_id;
+  const defaultCompanyId = process.env.DEFAULT_COMPANY_ID || getEnv().DEFAULT_COMPANY_ID || 'comp-da-nang';
+  const company_id = user.role === 'owner' ? (body.company_id || defaultCompanyId) : user.company_id;
   return {
     company_id,
     owner_user_id: user.role === 'company' ? user.id : body.owner_user_id || user.id,

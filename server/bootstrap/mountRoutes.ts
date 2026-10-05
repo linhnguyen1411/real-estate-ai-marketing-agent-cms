@@ -45,6 +45,7 @@ import { createInboxRouter } from '../modules/inbox/inboxRoutes';
 import { createChatRouter } from '../modules/chat/chatRoutes';
 import { createContentRouter } from '../modules/content/contentRoutes';
 import { createAppointmentRouter } from '../modules/appointments/appointmentRoutes';
+import { rbacRouteGuard } from '../security/rbac';
 
 export type MountRoutesOptions = {
   facebookGraphLegacyEnabled: boolean;
@@ -103,6 +104,12 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
     fs.mkdirSync(socialMediaDir, { recursive: true });
     app.use(
       '/api/social/media/files',
+      (req, res, next) => {
+        if (!/^\/[a-f0-9]{32}\.(png|jpg|webp)$/i.test(req.path)) {
+          return res.status(400).json({ status: 'error', message: 'Tên file không hợp lệ.' });
+        }
+        next();
+      },
       express.static(socialMediaDir, {
         fallthrough: false,
         index: false,
@@ -114,6 +121,7 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   }
 
   app.use('/api', createApiAuthGate());
+  app.use('/api', rbacRouteGuard());
   app.use(createAuthMeRouter());
 
   registerInvestorLeadAdminRoutes(app);

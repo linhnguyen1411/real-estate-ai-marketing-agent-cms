@@ -164,7 +164,7 @@ export function createTestApp(): TestContext {
   const app = createApp({ facebookGraphLegacyEnabled: false });
   mountRoutes(app, {
     facebookGraphLegacyEnabled: false,
-    agentEnabled: false,
+    agentEnabled: true,
   });
 
   return {

@@ -15,11 +15,7 @@ export function resolveTelegramRole(
   userId: string,
 ): TelegramConsoleRole {
   if (config.adminUserIds.includes(userId)) return 'admin';
-  if (config.allowedUserIds.length === 0) {
-    // Open user list only when explicitly empty AND chats are allowlisted —
-    // still require chat ACL. Role defaults to operator for allowed chats.
-    return 'operator';
-  }
+  // Strict ACL: Operator only when user ID is in allowedUserIds. No wildcard / open fallback.
   if (config.allowedUserIds.includes(userId)) return 'operator';
   return 'denied';
 }

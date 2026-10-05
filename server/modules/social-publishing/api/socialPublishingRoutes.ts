@@ -53,6 +53,7 @@ import { canScheduleDraftStatus } from '../safetyService';
 import { DEFAULT_SAFETY_SETTINGS } from '../types';
 import path from 'path';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
@@ -568,13 +569,49 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
 
   app.get('/api/social/evidence-file', async (req: Request, res: Response) => {
     try {
-      const raw = String(req.query.path || '').trim();
-      if (!raw) return sendError(res, 400, 'path is required');
+      const jobId = String(req.query.jobId || '').trim();
+      const attemptId = String(req.query.attemptId || '').trim();
+      const type = String(req.query.type || '').trim(); // 'screenshot-before' | 'screenshot-after' | 'composer' | 'manifest'
+      const evidenceId = String(req.query.evidenceId || '').trim();
+
+      // If evidenceId is provided, parse format "jobId:attemptId:type" or query DB
+      let targetJobId = jobId;
+      let targetAttemptId = attemptId;
+      let targetType = type;
+
+      if (evidenceId && evidenceId.includes(':')) {
+        const parts = evidenceId.split(':');
+        targetJobId = parts[0];
+        targetAttemptId = parts[1];
+        targetType = parts[2] || 'screenshot-after';
+      }
+
+      if (!targetJobId || !targetAttemptId) {
+        return sendError(res, 400, 'jobId and attemptId (or evidenceId) are required');
+      }
+
+      // Check job access
+      const job = await getJobById(targetJobId);
+      if (!job) return sendError(res, 404, 'Job not found');
+      if (!assertRecordAccess(req, res, job.companyId)) return;
+
+      const allowedTypes: Record<string, string> = {
+        'screenshot-before': 'screenshot-before.png',
+        'screenshot-after': 'screenshot-after.png',
+        'composer': 'composer.html',
+        'manifest': 'manifest.json',
+      };
+      const filename = allowedTypes[targetType] || allowedTypes['screenshot-after'];
+
       const root = path.resolve(getPublishEvidenceRoot());
-      const resolved = path.resolve(raw);
-      if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+      const safeJobId = targetJobId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeAttemptId = targetAttemptId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const resolved = path.join(root, safeJobId, safeAttemptId, filename);
+
+      if (!resolved.startsWith(root + path.sep)) {
         return sendError(res, 403, 'Invalid evidence path');
       }
+
       await fs.access(resolved);
       res.sendFile(resolved);
     } catch (error: unknown) {
@@ -778,16 +815,16 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
         '../runtime/resolveMediaLocalPaths'
       );
       const dir = await ensureMediaDir();
-      const ext =
+      const rawExt = (
         path.extname(filename) ||
         (mimeType.includes('png')
           ? '.png'
           : mimeType.includes('webp')
             ? '.webp'
-            : mimeType.includes('gif')
-              ? '.gif'
-              : '.jpg');
-      const storedName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+            : '.jpg')
+      ).toLowerCase();
+      const ext = ['.png', '.jpg', '.webp'].includes(rawExt) ? rawExt : '.jpg';
+      const storedName = `${crypto.randomBytes(16).toString('hex')}${ext}`;
       const abs = path.join(dir, storedName);
       await fs.writeFile(abs, buf);
       const fileUrl = socialMediaPublicPath(storedName);
@@ -809,7 +846,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/media/files/:name', async (req: Request, res: Response) => {
     try {
       const name = path.basename(String(req.params.name || ''));
-      if (!name || name.includes('..') || !/^[a-zA-Z0-9._-]+$/.test(name)) {
+      if (!name || !/^[a-f0-9]{32}\.(png|jpg|webp)$/i.test(name)) {
         return sendError(res, 400, 'Tên file không hợp lệ.');
       }
       const { ensureMediaDir } = await import('../runtime/resolveMediaLocalPaths');

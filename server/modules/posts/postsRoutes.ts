@@ -5,6 +5,7 @@ import type { Post } from '../../../src/types';
 import { parseListQuery, paginateItems, matchesSearchText } from '../../listPagination';
 import {
   accessDefaults,
+  canAccessResource,
   canManageResource,
   scopeCollection,
 } from '../auth/authAccess';
@@ -30,6 +31,20 @@ router.get('/api/posts', (req: Request, res: Response) => {
     return;
   }
   res.json({ status: 'success', data: paginateItems(items, page, limit) });
+});
+
+router.get('/api/posts/:id', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const post = db.posts.find(p => p.id === req.params.id);
+  if (!post) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+    return;
+  }
+  if (!canAccessResource(post, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem bài viết này.' });
+    return;
+  }
+  res.json({ status: 'success', data: post });
 });
 
 router.post('/api/posts', async (req: Request, res: Response) => {

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import {
   createCustomer,
@@ -129,12 +130,19 @@ router.get('/api/public/homepage', async (req: Request, res: Response) => {
   res.json(payload);
 });
 
+let cachedSeoKeywords: { keywords: any; expiresAt: number } | null = null;
+
 router.get('/api/public/seo', async (req: Request, res: Response) => {
+  const now = Date.now();
+  if (cachedSeoKeywords && cachedSeoKeywords.expiresAt > now) {
+    res.json({ status: 'success', data: { keywords: cachedSeoKeywords.keywords } });
+    return;
+  }
   const keywords = buildSiteSeoKeywords(
     getProperties().filter((property: Property) => !['sold', 'hidden'].includes(property.sale_status || 'available')),
     DEFAULT_SEO_KEYWORDS
   );
-  await updateSettings({ seo_keywords: keywords });
+  cachedSeoKeywords = { keywords, expiresAt: now + 5 * 60 * 1000 };
   res.json({ status: 'success', data: { keywords } });
 });
 
@@ -179,10 +187,12 @@ router.get('/api/public/agents/:slug', (req: Request, res: Response) => {
     return;
   }
 
-  const properties = filterPublicProperties(getProperties()).filter((property: Property) => {
-    const creatorId = property.created_by_user_id || property.owner_user_id;
-    return creatorId === user.id;
-  });
+  const properties = filterPublicProperties(
+    getProperties().filter((property: any) => {
+      const creatorId = property.created_by_user_id || property.owner_user_id;
+      return creatorId === user.id;
+    }),
+  );
 
   res.json({ status: 'success', data: { ...profile, properties } });
 });
@@ -232,8 +242,24 @@ router.post('/api/public/track-view', async (req: Request, res: Response) => {
   });
 });
 
+function maskPhone(phone: string): string {
+  const clean = String(phone || '').trim();
+  if (clean.length < 6) return '***';
+  return clean.slice(0, 3) + '****' + clean.slice(-3);
+}
+
+function parseCookie(req: Request, name: string): string | null {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  const match = header.match(new RegExp(`(^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
 router.get('/api/public/chat/history', (req: Request, res: Response) => {
-  const sessionId = String(req.query.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const cookieSessionId = parseCookie(req, 'chat_session_id');
+  const querySessionId = String(req.query.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const sessionId = cookieSessionId || querySessionId;
+
   if (!sessionId) {
     res.status(400).json({ status: 'error', message: 'Thiếu mã phiên trò chuyện.' });
     return;
@@ -251,18 +277,20 @@ router.get('/api/public/chat/history', (req: Request, res: Response) => {
       ? {
           session_id: guest.session_id,
           name: guest.name,
-          phone: guest.phone
+          phone: maskPhone(guest.phone)
         }
       : null
   });
 });
 
 router.post('/api/public/chat/guest', async (req: Request, res: Response) => {
-  const sessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const cookieSessionId = parseCookie(req, 'chat_session_id');
+  const providedSessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const sessionId = providedSessionId || cookieSessionId || crypto.randomBytes(16).toString('base64url');
   const name = String(req.body?.name || '').trim().slice(0, 120);
   const phone = String(req.body?.phone || '').trim().replace(/[^\d+.\-\s]/g, '').slice(0, 40);
 
-  if (!sessionId || !name || !phone) {
+  if (!name || !phone) {
     res.status(400).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.' });
     return;
   }
@@ -284,14 +312,19 @@ router.post('/api/public/chat/guest', async (req: Request, res: Response) => {
       ai_summary: 'Khách guest bắt đầu trò chuyện từ website.',
       lead_score: 35,
       created_at: new Date().toISOString(),
-      company_id: 'comp-da-nang',
-      owner_user_id: 'u-owner',
+      company_id: process.env.DEFAULT_COMPANY_ID || 'comp-da-nang',
+      owner_user_id: process.env.DEFAULT_OWNER_USER_ID || 'user-owner-1',
       assigned_member_ids: []
     } as Customer);
   }
 
   const guest = await upsertPublicChatGuest({ session_id: sessionId, name, phone, customer_id: customerId });
-  res.json({ status: 'success', data: guest });
+  res.cookie('chat_session_id', sessionId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+  res.json({ status: 'success', data: { ...guest, session_id: sessionId } });
 });
 
 router.post('/api/public/contact', validateSchema(publicContactSchema), async (req: Request, res: Response) => {
@@ -334,7 +367,10 @@ router.post('/api/public/contact', validateSchema(publicContactSchema), async (r
 });
 
 router.post('/api/public/chat', async (req: Request, res: Response) => {
-  const { message, sessionId } = req.body;
+  const cookieSessionId = parseCookie(req, 'chat_session_id');
+  const bodySessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const sessionId = bodySessionId || cookieSessionId;
+  const { message } = req.body;
 
   if (!message || !String(message).trim()) {
     res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống.' });
@@ -353,12 +389,13 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
     .reverse()
     .map(item => `${item.role === 'user' ? 'Khách' : 'Lily'}: ${String(item.message || '').slice(0, 600)}`)
     .join('\n');
-  const publicProperties = searchCmsRecords(
+  const rawSearchProperties = searchCmsRecords(
     'properties',
     extractQueryTokens(`${message}\n${recentHistory}`),
     30,
     { availableOnly: true }
   ) as Property[];
+  const publicProperties = filterPublicProperties(rawSearchProperties) as unknown as Property[];
   const normalizedMessage = String(message)
     .toLowerCase()
     .normalize('NFD')
@@ -479,9 +516,10 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
     }
 
     if (isNegotiationQuestion) {
+      const publicContacts = process.env.PUBLIC_CONTACTS || 'Hotline tư vấn';
       const negotiationResponse = recentlyMentionedProperty
-        ? `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Nếu anh/chị thực sự quan tâm ${recentlyMentionedProperty.title}, anh/chị để lại số điện thoại để anh Linh bên em liên hệ trao đổi trực tiếp với chủ và phản hồi ngay cho mình nhé.\n\nAnh Linh: 0905 777 594\nChị Hằng: 0984 755 258`
-        : 'Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Anh/chị cho em xin tên căn đang quan tâm và để lại số điện thoại, bên em sẽ liên hệ chủ rồi phản hồi ngay cho mình nhé.\n\nAnh Linh: 0905 777 594\nChị Hằng: 0984 755 258';
+        ? `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Nếu anh/chị thực sự quan tâm ${recentlyMentionedProperty.title}, anh/chị để lại số điện thoại để bên em liên hệ trao đổi trực tiếp với chủ và phản hồi ngay cho mình nhé.\n\nHotline: ${publicContacts}`
+        : `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Anh/chị cho em xin tên căn đang quan tâm và để lại số điện thoại, bên em sẽ liên hệ chủ rồi phản hồi ngay cho mình nhé.\n\nHotline: ${publicContacts}`;
 
       await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
@@ -548,7 +586,7 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
         'Kết thúc bằng một câu hỏi nhẹ nhàng để tiếp tục tư vấn hoặc mời khách để lại số điện thoại/Zalo, không thúc ép.',
         'Tránh các cụm từ cứng nhắc như "Dựa trên yêu cầu", "gợi ý sản phẩm phù hợp nhất là", "Nếu bạn quan tâm", "vui lòng để lại".',
         'Không lặp lại nguyên văn dữ liệu theo mẫu nhãn "Vị trí:", "Điểm nổi bật:" trừ khi khách yêu cầu bảng thông tin.',
-        'Khi khách trả giá, hỏi bớt, hỏi chốt hoặc hỏi một mức giá có bán không: tuyệt đối không xác nhận có thể thương lượng và không tự cam kết thay chủ. Trả lời ngắn gọn rằng cần liên hệ trực tiếp, rồi cung cấp Anh Linh: 0905 777 594 và Chị Hằng: 0984 755 258.',
+        `Khi khách trả giá, hỏi bớt, hỏi chốt hoặc hỏi một mức giá có bán không: tuyệt đối không xác nhận có thể thương lượng và không tự cam kết thay chủ. Trả lời ngắn gọn rằng cần liên hệ trực tiếp, rồi cung cấp Hotline tư vấn: ${process.env.PUBLIC_CONTACTS || 'Hotline tư vấn'}.`,
         'Có thể dùng emoji làm nhãn thông tin nhưng không lạm dụng.',
         'Format bắt buộc khi có nhiều sản phẩm:',
         'Mở đầu 1-2 câu ngắn.',

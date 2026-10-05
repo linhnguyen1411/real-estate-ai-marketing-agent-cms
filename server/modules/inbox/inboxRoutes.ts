@@ -36,6 +36,36 @@ router.get('/api/inbox', (req: Request, res: Response) => {
   res.json({ status: 'success', data: paginateItems(items, page, limit) });
 });
 
+router.get('/api/inbox/:id', (req: Request, res: Response) => {
+  const db = readDatabase();
+  const msg = db.inbox.find(i => i.id === req.params.id);
+  if (!msg) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    return;
+  }
+  if (!canAccessResource(msg, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem tin nhắn này.' });
+    return;
+  }
+  res.json({ status: 'success', data: msg });
+});
+
+router.put('/api/inbox/:id', async (req: Request, res: Response) => {
+  const db = readDatabase();
+  const index = db.inbox.findIndex(i => i.id === req.params.id);
+  if (index === -1) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    return;
+  }
+  if (!canManageResource(db.inbox[index], req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật tin nhắn này.' });
+    return;
+  }
+  db.inbox[index] = { ...db.inbox[index], ...req.body };
+  await writeDatabase(db);
+  res.json({ status: 'success', data: db.inbox[index] });
+});
+
 // POST /api/ai/generate-reply - Draft reply suggestion for a single message
 router.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
   const { messageId } = req.body;

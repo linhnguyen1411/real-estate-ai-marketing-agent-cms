@@ -292,8 +292,17 @@ export function fetchJobEvidence(jobId: string) {
   return socialRequest<PublishEvidenceEntry[]>(`/api/social/jobs/${jobId}/evidence`);
 }
 
-export function evidenceFileUrl(filePath: string) {
-  return `/api/social/evidence-file${qs({ path: filePath })}`;
+export function evidenceFileUrl(params: { jobId: string; attemptId: string; type: 'screenshot-before' | 'screenshot-after' | 'composer' | 'manifest' } | string) {
+  if (typeof params === 'string') {
+    // Attempt parsing legacy path: e.g. ".../runtime/publish-evidence/<jobId>/<attemptId>/<filename>"
+    const normalized = params.replace(/\\/g, '/');
+    const match = normalized.match(/\/([^/]+)\/([^/]+)\/(screenshot-before|screenshot-after|composer|manifest)/);
+    if (match) {
+      return `/api/social/evidence-file${qs({ jobId: match[1], attemptId: match[2], type: match[3] })}`;
+    }
+    return `/api/social/evidence-file${qs({ evidenceId: params })}`;
+  }
+  return `/api/social/evidence-file${qs(params)}`;
 }
 
 export function fetchJobAttempts(jobId: string) {
