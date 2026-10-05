@@ -105,26 +105,14 @@ export function isPrivateIpv4(host: string): boolean {
   return false;
 }
 
+import { validateUrlStructure, isForbiddenIp } from '../../security/safeFetch';
+
 export function assertSafePublicUrl(rawUrl: string): URL {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`URL không hợp lệ: ${rawUrl}`);
-  }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`Chỉ cho phép http/https: ${rawUrl}`);
-  }
-
+  const parsed = validateUrlStructure(rawUrl);
   const host = parsed.hostname.toLowerCase();
-  if (BLOCKED_HOSTNAMES.has(host) || host.endsWith('.localhost')) {
-    throw new Error(`URL nội bộ bị chặn: ${rawUrl}`);
+  if (isForbiddenIp(host)) {
+    throw new Error(`Private/forbidden IP bị chặn: ${rawUrl}`);
   }
-  if (isPrivateIpv4(host)) {
-    throw new Error(`Private IP bị chặn: ${rawUrl}`);
-  }
-
   return parsed;
 }
 

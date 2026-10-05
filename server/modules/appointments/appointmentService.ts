@@ -80,26 +80,24 @@ export async function createViewingAppointment(
 
   // Dual-write to relational viewing_appointments table if present
   try {
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO viewing_appointments (id, company_id, customer_name, customer_phone, property_id, property_title, appointment_time, status, notes, assigned_staff_id, follow_up_due_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at`,
-      data.id,
-      data.companyId,
-      data.customerName,
-      data.customerPhone,
-      data.propertyId,
-      data.propertyTitle,
-      new Date(data.appointmentTime),
-      data.status,
-      data.notes,
-      data.assignedStaffId,
-      data.followUpDueAt ? new Date(data.followUpDueAt) : null,
-      now,
-      now,
-    );
-  } catch {
-    // Silently continue if relational table not yet created
+    const aptTime = new Date(data.appointmentTime);
+    const followUpTime = data.followUpDueAt ? new Date(data.followUpDueAt) : null;
+    await prisma.$executeRaw`
+      INSERT INTO viewing_appointments (
+        id, company_id, customer_name, customer_phone, property_id,
+        property_title, appointment_time, status, notes, assigned_staff_id,
+        follow_up_due_at, created_at, updated_at
+      ) VALUES (
+        ${data.id}, ${data.companyId}, ${data.customerName}, ${data.customerPhone}, ${data.propertyId},
+        ${data.propertyTitle}, ${aptTime}, ${data.status}, ${data.notes}, ${data.assignedStaffId},
+        ${followUpTime}, ${now}, ${now}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        updated_at = EXCLUDED.updated_at
+    `;
+  } catch (err) {
+    console.warn('[appointments] Optional relational dual-write omitted or failed:', err);
   }
 
   return data;

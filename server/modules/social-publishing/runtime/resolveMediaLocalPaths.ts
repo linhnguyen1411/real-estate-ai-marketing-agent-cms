@@ -6,6 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { safeFetch } from '../../../security/safeFetch';
 
 const CACHE_DIR = path.resolve(process.cwd(), 'runtime', 'tmp', 'social-media-cache');
 
@@ -38,17 +39,20 @@ async function downloadToCache(fileUrl: string): Promise<string> {
   const hit = existing.find(f => f.startsWith(`${hash}.`) || f === hash);
   if (hit) return path.join(CACHE_DIR, hit);
 
-  const probe = await fetch(fileUrl, {
+  const probe = await safeFetch(fileUrl, {
     headers: { Accept: 'image/*,*/*' },
-    redirect: 'follow',
+    maxRedirects: 3,
+    timeoutMs: 8_000,
+    maxSizeBytes: 10 * 1024 * 1024,
+    allowedContentTypes: ['image/'],
   });
   if (!probe.ok) {
     throw new Error(`media_download_failed:${probe.status}:${fileUrl.slice(0, 120)}`);
   }
-  const contentType = probe.headers.get('content-type');
+  const contentType = probe.headers['content-type'];
   const ext = extFromUrlOrType(fileUrl, contentType);
   const dest = path.join(CACHE_DIR, `${hash}${ext}`);
-  const buf = Buffer.from(await probe.arrayBuffer());
+  const buf = await probe.buffer();
   await fs.writeFile(dest, buf);
   return dest;
 }

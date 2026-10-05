@@ -13,20 +13,25 @@ export type FetchLike = (
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 
+import { safeFetch } from '../../security/safeFetch';
+
 function defaultFetch(): FetchLike {
   return async (input, init) => {
-    const res = await fetch(input, {
-      method: init?.method || 'HEAD',
-      redirect: init?.redirect || 'follow',
-      signal: init?.signal,
-      headers: {
-        // Mobile-ish UA helps some CDNs; still no browser automation
-        'User-Agent':
-          'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile Safari/537.36',
-        Accept: 'text/html,*/*',
-      },
-    });
-    return { ok: res.ok, status: res.status, url: res.url };
+    try {
+      const res = await safeFetch(input, {
+        method: init?.method || 'HEAD',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile Safari/537.36',
+          Accept: 'text/html,*/*',
+        },
+        maxRedirects: 3,
+        timeoutMs: 8_000,
+      });
+      return { ok: res.ok, status: res.status, url: res.url };
+    } catch {
+      return { ok: false, status: 0, url: input };
+    }
   };
 }
 

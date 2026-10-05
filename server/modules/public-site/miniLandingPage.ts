@@ -76,7 +76,7 @@ export function renderMiniLandingPage(input: {
   
   <!-- Schema.org JSON-LD Structured Data -->
   <script type="application/ld+json">
-${JSON.stringify(jsonLd, null, 2)}
+${JSON.stringify(jsonLd, null, 2).replace(/</g, '\\u003c')}
   </script>
 
   <link rel="icon" type="image/png" href="${origin}/logo_hl.png" />
@@ -246,8 +246,8 @@ ${JSON.stringify(jsonLd, null, 2)}
             customerName: name,
             customerPhone: phone,
             appointmentTime: new Date(time).toISOString(),
-            propertyId: "${escapeHtml(property.id)}",
-            propertyTitle: "${escapeHtml(title)}",
+            propertyId: ${JSON.stringify(property.id)},
+            propertyTitle: ${JSON.stringify(title)},
             notes: "Đặt qua Fast Mini Landing Page"
           })
         });

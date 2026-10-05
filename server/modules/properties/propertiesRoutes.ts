@@ -18,6 +18,23 @@ import { triggerAutomationEvent } from '../content/triggerAutomationEvent';
 import { resolvePropertyItemTitle } from '../../../src/seo/utils/buildPropertyItemTitle';
 import { slugify } from '../../../src/seo/utils/slugify';
 import { parseQuickPropertyText, generatePropertyJsonLd } from './quickPropertyParser';
+import sanitizeHtml from 'sanitize-html';
+
+export function sanitizeWebsiteHtml(rawHtml: string): string {
+  return sanitizeHtml(rawHtml, {
+    allowedTags: [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'b', 'i', 'strong', 'em', 'strike', 'code',
+      'hr', 'br', 'ul', 'ol', 'li', 'blockquote', 'a', 'span', 'div', 'table', 'thead',
+      'tbody', 'tr', 'th', 'td', 'img'
+    ],
+    allowedAttributes: {
+      a: ['href', 'name', 'target', 'rel'],
+      img: ['src', 'alt', 'title', 'width', 'height'],
+      '*': ['class', 'style']
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  });
+}
 
 function normalizeIncomingPropertyTitle(propData: Record<string, unknown>): string {
   return resolvePropertyItemTitle({
@@ -347,6 +364,9 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
 
   try {
     const content = await generatePropertyMarketingContent(property, undefined, tone);
+    if (content.website) {
+      content.website = sanitizeWebsiteHtml(content.website);
+    }
     property.ai_posts = content;
     
     // Auto populate posts CMS draft if requested or trigger automation representation

@@ -50,6 +50,57 @@ function parseBodyInput(body: Record<string, unknown>): ShortLinkInput {
   };
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const ALLOWED_REDIRECT_DOMAINS = new Set([
+  'bdsdanang.site',
+  'www.bdsdanang.site',
+  'localhost',
+  '127.0.0.1',
+]);
+
+export function validateShortLinkTargetUrl(targetUrl: string, reqOrigin: string): string {
+  const trimmed = String(targetUrl || '').trim();
+  if (!trimmed) throw new Error('Target URL không được để trống.');
+
+  let parsed: URL;
+  try {
+    // Relative URL (e.g. /du-an-sun-group hoặc /tin-tuc/abc)
+    if (trimmed.startsWith('/')) {
+      return trimmed;
+    }
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('Target URL không đúng định dạng.');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Chỉ chấp nhận giao thức http hoặc https.');
+  }
+
+  // Same origin check or allowlist
+  let originHost = '';
+  try {
+    originHost = new URL(reqOrigin).hostname.toLowerCase();
+  } catch {
+    // fallback
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (host === originHost || ALLOWED_REDIRECT_DOMAINS.has(host) || host.endsWith('.bdsdanang.site')) {
+    return parsed.toString();
+  }
+
+  throw new Error(`Tên miền "${host}" không nằm trong danh sách được phép chuyển hướng (chống Open Redirect).`);
+}
+
 export function registerShortLinkRedirect(
   app: Express,
   getProperties: () => Property[],
@@ -59,16 +110,31 @@ export function registerShortLinkRedirect(
     // không phải trang nội dung -> luôn chặn index để tránh Google hiển thị URL rác
     // này trong kết quả tìm kiếm thay vì trang đích thật (property/landing page).
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline';");
     try {
-      const slug = String(req.params.slug || '').trim();
-      const shortLink = await getShortLinkBySlug(slug);
-
-      if (!shortLink || !shortLink.is_active) {
+      const rawSlug = String(req.params.slug || '').trim();
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(rawSlug)) {
+        const safeSlug = escapeHtml(rawSlug);
         res.status(404).type('text/html').send(`
           <!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Link không tồn tại</title></head>
           <body style="font-family:sans-serif;text-align:center;padding:48px;">
             <h1>Link không tồn tại</h1>
-            <p>Short link <strong>/${slug}</strong> không hợp lệ hoặc đã bị tắt.</p>
+            <p>Short link <strong>/${safeSlug}</strong> không hợp lệ hoặc đã bị tắt.</p>
+            <p><a href="/">Về trang chủ</a></p>
+          </body></html>
+        `);
+        return;
+      }
+
+      const shortLink = await getShortLinkBySlug(rawSlug);
+
+      if (!shortLink || !shortLink.is_active) {
+        const safeSlug = escapeHtml(rawSlug);
+        res.status(404).type('text/html').send(`
+          <!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Link không tồn tại</title></head>
+          <body style="font-family:sans-serif;text-align:center;padding:48px;">
+            <h1>Link không tồn tại</h1>
+            <p>Short link <strong>/${safeSlug}</strong> không hợp lệ hoặc đã bị tắt.</p>
             <p><a href="/">Về trang chủ</a></p>
           </body></html>
         `);
@@ -76,11 +142,12 @@ export function registerShortLinkRedirect(
       }
 
       if (shortLink.expires_at && new Date(shortLink.expires_at).getTime() < Date.now()) {
+        const safeSlug = escapeHtml(rawSlug);
         res.status(410).type('text/html').send(`
           <!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Link đã hết hạn</title></head>
           <body style="font-family:sans-serif;text-align:center;padding:48px;">
             <h1>Link đã hết hạn</h1>
-            <p>Short link <strong>/${slug}</strong> không còn hiệu lực.</p>
+            <p>Short link <strong>/${safeSlug}</strong> không còn hiệu lực.</p>
             <p><a href="/">Về trang chủ</a></p>
           </body></html>
         `);
@@ -211,28 +278,45 @@ export function registerShortLinkAdminRoutes(app: Express) {
 
   app.post('/api/admin/short-links', async (req: Request, res: Response) => {
     try {
+      const authUser = (req as any).authUser;
+      if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
+        res.status(403).json({ status: 'error', message: 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền tạo Short link.' });
+        return;
+      }
+
       const input = parseBodyInput(req.body || {});
       if (!input.target_url) {
         res.status(400).json({ status: 'error', message: 'Thiếu target_url.' });
         return;
       }
       const origin = getPublicOrigin(req);
-      const createdBy = (req as any).authUser?.id || undefined;
+      input.target_url = validateShortLinkTargetUrl(input.target_url, origin);
+
+      const createdBy = authUser.id;
       const link = await createShortLink(input, { createdBy, origin, suggestedSlug: input.slug });
       res.json({ status: 'success', data: link });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message || 'Không tạo được short link.' });
+      res.status(400).json({ status: 'error', message: error.message || 'Không tạo được short link.' });
     }
   });
 
   app.patch('/api/admin/short-links/:id', async (req: Request, res: Response) => {
     try {
+      const authUser = (req as any).authUser;
+      if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
+        res.status(403).json({ status: 'error', message: 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền cập nhật Short link.' });
+        return;
+      }
+
       const input = parseBodyInput(req.body || {});
       const origin = getPublicOrigin(req);
+      if (input.target_url) {
+        input.target_url = validateShortLinkTargetUrl(input.target_url, origin);
+      }
       const link = await updateShortLink(req.params.id, input, origin);
       res.json({ status: 'success', data: link });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message || 'Không cập nhật được short link.' });
+      res.status(400).json({ status: 'error', message: error.message || 'Không cập nhật được short link.' });
     }
   });
 

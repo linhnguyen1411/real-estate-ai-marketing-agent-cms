@@ -50,7 +50,7 @@ export function renderDocumentWithSeo(input: RenderDocumentInput): string {
     image ? `<meta name="twitter:image" content="${escapeHtml(image)}" />` : '',
     `<link rel="canonical" href="${escapeHtml(seo.canonical)}" />`,
     ...(input.schemas || []).map(
-      schema => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`,
+      schema => `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`,
     ),
   ].filter(Boolean).join('\n    ');
 
