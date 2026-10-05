@@ -1,7 +1,10 @@
+import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import type { AuthUser } from '../../src/types';
 import { prisma } from '../prisma';
 import { generateText } from '../aiService';
+import { wrapUntrustedData, redactPii, composeSecureSystemPrompt } from '../ai/promptSanitizer';
 import { extractJsonPayload } from './leadAnalysisSchema';
 import { buildCompanyScopeFilter } from './agentDb';
 import {
@@ -12,6 +15,13 @@ import {
   type AgentActionRiskLevel,
   type AgentActionType,
 } from './agentTypes';
+
+const DraftCandidateZodSchema = z.object({
+  actionType: z.string().optional(),
+  draftText: z.string().min(1),
+  rationale: z.string().optional(),
+  riskLevel: z.string().optional(),
+});
 
 const DRAFT_SYSTEM = `Bạn là trợ lý soạn thảo phản hồi BĐS cho CMS nội bộ.
 Nhiệm vụ: đề xuất 1–3 bản nháp ngắn để người dùng duyệt trước khi đăng thủ công.
@@ -57,13 +67,24 @@ async function writeAudit(input: {
   action: string;
   detail?: Record<string, unknown>;
 }) {
+  const detailObj = input.detail ?? {};
+  const payloadToHash = JSON.stringify({
+    proposalId: input.proposalId,
+    action: input.action,
+    detail: detailObj,
+  });
+  const payloadHash = createHash('sha256').update(payloadToHash).digest('hex');
+
   return prisma.agentActionAuditLog.create({
     data: {
       companyId: input.companyId,
       proposalId: input.proposalId,
       actorUserId: input.actorUserId,
       action: input.action,
-      detail: (input.detail ?? {}) as Prisma.InputJsonValue,
+      detail: {
+        ...detailObj,
+        payloadHash,
+      } as Prisma.InputJsonValue,
     },
   });
 }
@@ -138,23 +159,25 @@ export async function generateActionDrafts(input: {
     finding.source.type === 'facebook_group' ? 'comment' : 'follow_up',
   );
   const count = clampCount(input.count);
-  const bodySnippet = (finding.scannedContent?.contentText || finding.summary || '').slice(0, 1200);
+  const rawBodySnippet = (finding.scannedContent?.contentText || finding.summary || '').slice(0, 1200);
+  const safeBodySnippet = wrapUntrustedData(redactPii(rawBodySnippet), 'social_post_snippet');
+  const safeTitle = wrapUntrustedData(redactPii(finding.title), 'finding_title');
 
   const userPrompt = JSON.stringify(
     {
       preferredActionType: preferredType,
       draftCount: count,
       finding: {
-        title: finding.title,
-        summary: finding.summary,
+        title: safeTitle,
+        summary: redactPii(finding.summary),
         score: finding.score,
         sourceName: finding.source.name,
         sourceType: finding.source.type,
         mission: finding.mission?.name ?? null,
         objective: finding.mission?.objective ?? null,
-        authorName: finding.scannedContent?.authorName ?? null,
+        authorName: redactPii(finding.scannedContent?.authorName ?? ''),
         url: finding.scannedContent?.canonicalUrl ?? null,
-        bodySnippet,
+        bodySnippet: safeBodySnippet,
       },
     },
     null,
@@ -162,7 +185,7 @@ export async function generateActionDrafts(input: {
   );
 
   try {
-    const raw = await generateText(DRAFT_SYSTEM, `Tạo draft phản hồi từ finding:\n${userPrompt}`, {
+    const raw = await generateText(composeSecureSystemPrompt(DRAFT_SYSTEM), `Tạo draft phản hồi từ finding:\n${userPrompt}`, {
       temperature: 0.4,
       maxOutputTokens: 1200,
       timeoutMs: 45_000,
@@ -177,8 +200,10 @@ export async function generateActionDrafts(input: {
     const drafts: DraftCandidate[] = [];
     for (const item of list) {
       if (!item || typeof item !== 'object') continue;
-      const row = item as Record<string, unknown>;
-      const draftText = String(row.draftText ?? row.text ?? '').trim();
+      const parseResult = DraftCandidateZodSchema.safeParse(item);
+      if (!parseResult.success) continue;
+      const row = parseResult.data;
+      const draftText = String(row.draftText).trim();
       if (!draftText) continue;
       drafts.push({
         actionType: normalizeActionType(row.actionType, preferredType),

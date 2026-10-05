@@ -1,6 +1,8 @@
+import { wrapUntrustedData, redactPii, composeSecureSystemPrompt } from '../../ai/promptSanitizer';
+
 export const LEAD_ANALYZER_PROMPT_VERSION = 'lead-analyzer@v4-ai-gate-broker';
 
-export const LEAD_ANALYZER_SYSTEM_PROMPT = [
+const BASE_LEAD_ANALYZER_SYSTEM_PROMPT = [
   'Bạn là chuyên gia lọc Qualified Buyer bất động sản Việt Nam (Lead Intelligence).',
   'Chỉ phân tích thông tin CÓ TRONG bài đăng. Không bịa phone/giá/diện tích/khu vực/propertyType.',
   '',
@@ -39,6 +41,8 @@ export const LEAD_ANALYZER_SYSTEM_PROMPT = [
   'Chỉ trả về MỘT JSON object thuần — không markdown.',
 ].join('\n');
 
+export const LEAD_ANALYZER_SYSTEM_PROMPT = composeSecureSystemPrompt(BASE_LEAD_ANALYZER_SYSTEM_PROMPT);
+
 export function buildLeadAnalyzerUserPrompt(input: {
   title: string;
   bodyText: string;
@@ -47,6 +51,8 @@ export function buildLeadAnalyzerUserPrompt(input: {
   positiveKeywords?: string[];
 }): string {
   const keywords = (input.positiveKeywords ?? []).slice(0, 12).join(', ') || '(không có)';
+  const safeTitle = wrapUntrustedData(redactPii(input.title), 'scraped_post_title');
+  const safeBody = wrapUntrustedData(redactPii(input.bodyText), 'scraped_post_body');
 
   return [
     'Phân tích bài đăng và trả JSON theo schema.',
@@ -57,10 +63,11 @@ export function buildLeadAnalyzerUserPrompt(input: {
     input.sourceType ? `Loại nguồn: ${input.sourceType}` : '',
     `Từ khóa tham khảo (không quyết định classification): ${keywords}`,
     '',
-    `Tiêu đề thô: ${input.title}`,
+    'Tiêu đề thô:',
+    safeTitle,
     '',
     'Nội dung:',
-    input.bodyText,
+    safeBody,
   ]
     .filter(Boolean)
     .join('\n');

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { AppSettings } from "../src/types";
 import { getSettings as getSettingsFromDB } from "./dbHelper";
 import {
@@ -7,6 +8,8 @@ import {
   type GatewayProviderId,
   type LegacyProviderName,
 } from "./modules/ai-gateway";
+import { wrapUntrustedData, redactPii, composeSecureSystemPrompt } from "./ai/promptSanitizer";
+import { verifyPropertyContentGuardrail } from "./ai/propertyGuardrail";
 
 type ProviderName = LegacyProviderName;
 
@@ -62,23 +65,26 @@ async function getAppSettings(): Promise<AppSettings> {
 }
 
 function buildSystemInstruction(systemInstruction: string, options: GenerationOptions = {}) {
+  let promptText = '';
   if (options.promptContext === 'editorial') {
-    return [
+    promptText = [
       'Viết tiếng Việt. Chỉ trả về nội dung được yêu cầu — không giải thích thêm, không chain-of-thought.',
       'Không tự bịa số liệu, giá, pháp lý. Không cam kết lợi nhuận.',
       systemInstruction,
     ].join('\n\n');
+  } else {
+    promptText = [
+      "Bạn là AI assistant cho hệ thống CRM/CMS marketing bất động sản Việt Nam.",
+      "Luôn trả lời bằng tiếng Việt tự nhiên, rõ ràng, ngắn gọn, đúng nghiệp vụ.",
+      "Chỉ sử dụng dữ liệu được cung cấp trong prompt; nếu thiếu dữ liệu thì nói rõ phần còn thiếu.",
+      "Không tự bịa giá, pháp lý, vị trí, số điện thoại hoặc cam kết giao dịch.",
+      "Khi được yêu cầu JSON, chỉ trả JSON hợp lệ, không markdown, không giải thích thêm.",
+      "Nếu dùng Ollama model có xu hướng suy luận dài, không in chain-of-thought hoặc nội dung trong thẻ <think>.",
+      "",
+      systemInstruction
+    ].join("\n");
   }
-  return [
-    "Bạn là AI assistant cho hệ thống CRM/CMS marketing bất động sản Việt Nam.",
-    "Luôn trả lời bằng tiếng Việt tự nhiên, rõ ràng, ngắn gọn, đúng nghiệp vụ.",
-    "Chỉ sử dụng dữ liệu được cung cấp trong prompt; nếu thiếu dữ liệu thì nói rõ phần còn thiếu.",
-    "Không tự bịa giá, pháp lý, vị trí, số điện thoại hoặc cam kết giao dịch.",
-    "Khi được yêu cầu JSON, chỉ trả JSON hợp lệ, không markdown, không giải thích thêm.",
-    "Nếu dùng Ollama model có xu hướng suy luận dài, không in chain-of-thought hoặc nội dung trong thẻ <think>.",
-    "",
-    systemInstruction
-  ].join("\n");
+  return composeSecureSystemPrompt(promptText);
 }
 
 function stripThinking(text: string) {
@@ -401,6 +407,19 @@ ${channel === "tiktok" ? "Viết kịch bản 30-45 giây gồm hook, cảnh qua
   }
 }
 
+const MarketingStrategyZodSchema = z.object({
+  target_customer: z.string().min(10),
+  customer_insight: z.string().min(10),
+  campaign_angle: z.string().min(10),
+  creative_concept: z.string().min(10),
+  key_message: z.string().min(10),
+});
+
+const CustomerAnalysisZodSchema = z.object({
+  summary: z.string().min(5),
+  score: z.number().min(0).max(100),
+});
+
 async function generateMarketingStrategy(property: any, tone: string) {
   const fallback = buildFallbackMarketingStrategy(property);
   try {
@@ -422,7 +441,7 @@ ${JSON.stringify({
   legal_status: property.legal_status,
   direction: property.direction,
   road_width: property.road_width,
-  description: property.description,
+  description: wrapUntrustedData(redactPii(property.description || ''), 'property_description'),
   selling_points: property.selling_points
 }, null, 2)}
 
@@ -440,10 +459,13 @@ Trả JSON:
 `,
       { temperature: 0.45, maxOutputTokens: 700, timeoutMs: 90000 }
     );
-    const parsed = JSON.parse(extractJson(raw));
-    if (!Object.keys(fallback).every(key => typeof parsed[key] === "string" && parsed[key].trim().length > 15)) {
+    const parsedObj = JSON.parse(extractJson(raw));
+    const parseResult = MarketingStrategyZodSchema.safeParse(parsedObj);
+    if (!parseResult.success) {
+      console.warn("AI campaign strategy schema validation failed, using grounded fallback:", parseResult.error);
       return fallback;
     }
+    const parsed = parseResult.data;
     const unsupportedClaim = findUnsupportedMarketingClaim(parsed);
     if (unsupportedClaim) {
       console.warn(`AI campaign strategy contained unsupported claim "${unsupportedClaim}", using grounded strategy.`);
@@ -463,15 +485,19 @@ export async function analyzeCustomerWithAI(customer: any): Promise<{ ai_summary
     jsonOnlyInstruction()
   ].join("\n");
 
+  const safeNotes = wrapUntrustedData(redactPii(customer.notes || ''), 'customer_notes');
+  const safeName = redactPii(customer.name || '');
+
   const prompt = `
 Phân tích khách hàng:
-- Tên: ${customer.name}
+- Tên: ${safeName}
 - Nguồn: ${customer.source}
 - Ngân sách: ${customer.budget} tỷ VND
 - Khu vực quan tâm: ${customer.interested_area}
 - Loại hình quan tâm: ${customer.property_type}
 - Trạng thái: ${customer.status}
-- Ghi chú: ${customer.notes}
+- Ghi chú:
+${safeNotes}
 
 Trả đúng schema:
 {
@@ -489,6 +515,14 @@ Quy tắc score:
   try {
     const rawResult = await generateText(systemInstruction, prompt);
     const resultObj = JSON.parse(extractJson(rawResult));
+    const parsed = CustomerAnalysisZodSchema.safeParse(resultObj);
+
+    if (parsed.success) {
+      return {
+        ai_summary: parsed.data.summary,
+        lead_score: Math.max(0, Math.min(100, Math.round(parsed.data.score)))
+      };
+    }
 
     return {
       ai_summary: resultObj.summary || "Khách cần được tư vấn thêm trước khi chốt.",
@@ -515,16 +549,24 @@ export async function generatePropertyMarketingContent(property: any, targetPlat
   ]);
   const imagePrompts = buildMarketingImagePrompts(property, strategy);
   const seo = buildPropertySeo(property);
+  const finalFacebook = appendStandardHashtags(facebook, seo.hashtags);
+  const finalTiktok = appendStandardHashtags(tiktok, seo.hashtags);
+
+  // Content guardrails validation against source DB record
+  const guardrailCheck = verifyPropertyContentGuardrail(property, finalFacebook);
+
   return {
     strategy,
     seo,
-    facebook: appendStandardHashtags(facebook, seo.hashtags),
+    facebook: finalFacebook,
     zalo,
-    tiktok: appendStandardHashtags(tiktok, seo.hashtags),
+    tiktok: finalTiktok,
     website: `<h1>${seo.title}</h1><p>${seo.meta_description}</p><h2>${property.title}</h2><p>${property.description}</p><p>${strategy.key_message}</p>`,
     image_prompts: imagePrompts,
     image_prompt: imagePrompts.facebook,
-    video_prompt: tiktok
+    video_prompt: tiktok,
+    guardrail: guardrailCheck,
+    requires_manual_review: guardrailCheck.requiresManualReview
   };
 }
 
@@ -544,14 +586,16 @@ export async function generateAILiveChatReply(message: string, contextData: { cu
   const topProperties = contextData.properties.slice(0, 5);
   const recentPosts = contextData.posts.slice(0, 5);
 
+  const safeUserQuery = wrapUntrustedData(redactPii(message), 'live_chat_query');
+
   const prompt = `
 Dữ liệu user hiện được phép truy cập:
-- Tổng khách hàng được phép xem: ${contextData.customers.length}. Top khách ưu tiên: ${topCustomers.map(c => `${c.name} | ${c.phone} | ${c.property_type} | ${c.interested_area} | ${c.budget} tỷ | score ${c.lead_score} | ${c.ai_summary}`).join("; ")}
+- Tổng khách hàng được phép xem: ${contextData.customers.length}. Top khách ưu tiên: ${topCustomers.map(c => `${redactPii(c.name)} | ${redactPii(c.phone)} | ${c.property_type} | ${c.interested_area} | ${c.budget} tỷ | score ${c.lead_score} | ${c.ai_summary}`).join("; ")}
 - Tổng bất động sản được phép xem: ${contextData.properties.length}. Sản phẩm tiêu biểu: ${topProperties.map(p => `${p.title} | ${p.location} | ${p.price} tỷ | ${p.area}m2 | ${p.legal_status} | ${p.sale_status === "sold" ? "đã bán" : "đang bán"} | ghi chú: ${p.internal_notes || "không có"}`).join("; ")}
 - Tổng posts được phép xem: ${contextData.posts.length}. Posts gần đây: ${recentPosts.map(p => `[${p.platform}] ${p.title} | ${p.status}`).join("; ")}
 
 Câu hỏi của người dùng:
-${message}
+${safeUserQuery}
 
 Yêu cầu trả lời:
 - Ngắn gọn, có cấu trúc nếu cần.
@@ -569,23 +613,25 @@ export async function generateAIConsultantReply(customerMessage: string, assigne
     "Không cam kết sai về giá, pháp lý, chiết khấu hoặc lợi nhuận."
   ].join("\n");
 
+  const safeCustomerMessage = wrapUntrustedData(redactPii(customerMessage), 'customer_inbox_message');
+
   const contextPrompt = `
 Tin nhắn khách gửi:
-"${customerMessage}"
+${safeCustomerMessage}
 
 Hồ sơ khách liên quan:
-${assignedCustomer ? `- Tên: ${assignedCustomer.name}
+${assignedCustomer ? `- Tên: ${redactPii(assignedCustomer.name)}
 - Ngân sách: ${assignedCustomer.budget} tỷ
 - Khu vực muốn mua: ${assignedCustomer.interested_area}
 - Nhu cầu: ${assignedCustomer.property_type}
-- Ghi chú: ${assignedCustomer.notes}` : "Chưa có hồ sơ khách cụ thể."}
+- Ghi chú: ${wrapUntrustedData(redactPii(assignedCustomer.notes || ''), 'customer_notes')}` : "Chưa có hồ sơ khách cụ thể."}
 
 Bất động sản liên quan:
 ${relatedProperty ? `- Tiêu đề: ${relatedProperty.title}
 - Giá: ${relatedProperty.price} tỷ
 - Pháp lý: ${relatedProperty.legal_status}
 - Vị trí: ${relatedProperty.location}
-- Mô tả: ${relatedProperty.description}` : "Chưa xác định sản phẩm cụ thể."}
+- Mô tả: ${wrapUntrustedData(redactPii(relatedProperty.description || ''), 'property_description')}` : "Chưa xác định sản phẩm cụ thể."}
 
 Hãy chỉ trả về nội dung tin nhắn admin có thể gửi ngay cho khách.
 `;

@@ -73,6 +73,23 @@ export async function captureFacebookDebugArtifact(
 
   const dir = path.resolve(process.cwd(), 'data', 'browser-debug', 'facebook');
   fs.mkdirSync(dir, { recursive: true });
+
+  // Cleanup files older than 24h
+  try {
+    const ttlMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const files = fs.readdirSync(dir);
+    for (const f of files) {
+      const fullPath = path.join(dir, f);
+      const stat = fs.statSync(fullPath);
+      if (now - stat.mtimeMs > ttlMs) {
+        fs.unlinkSync(fullPath);
+      }
+    }
+  } catch {
+    // Ignore cleanup error in non-critical debug flow
+  }
+
   const safe = label.replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 60);
   const file = path.join(dir, `${Date.now()}-${safe}.png`);
 
