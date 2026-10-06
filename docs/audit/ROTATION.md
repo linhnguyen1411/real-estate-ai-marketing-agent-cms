@@ -38,19 +38,32 @@ Tài liệu này hướng dẫn quy trình xoay các khóa bí mật (secrets/to
 
 ---
 
-### 2.2 Xoay `TOKEN_ENCRYPTION_KEY` (AES-256-GCM)
+### 2.2 Xoay `TOKEN_ENCRYPTION_KEY` (AES-256-GCM + HKDF + Key ID)
 
 > [!WARNING]
-> Nếu bạn thay đổi `TOKEN_ENCRYPTION_KEY` mà không giải mã dữ liệu cũ trước đó, các Facebook Access Token đã lưu trong database sẽ không thể giải mã được!
+> Nếu bạn thay đổi `TOKEN_ENCRYPTION_KEY` mà không lưu khóa cũ vào `TOKEN_ENCRYPTION_KEY_PREVIOUS` hoặc không chạy script re-encrypt, các Facebook Access Token và secrets cấu hình đã lưu trong database sẽ không thể giải mã được!
 
-**Quy trình chuẩn:**
-1. Sinh key mới 32 bytes (64 hex characters hoặc 32 base64).
-2. Tạm thời nạp cả 2 key (hoặc chạy script di chuyển):
-   - Đọc các bản ghi đang được mã hóa với key cũ.
-   - Giải mã bằng key cũ.
-   - Mã hóa lại bằng key mới và cập nhật DB.
-3. Cập nhật `TOKEN_ENCRYPTION_KEY` trong `.env` sang key mới.
-4. Restart server: `pm2 restart real-estate-ai-cms`.
+**Quy trình chuẩn Zero-Downtime:**
+1. Sinh key mới 32 bytes (64 hex characters):
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+2. Cập nhật cấu hình môi trường `.env`:
+   - Gán giá trị khóa hiện tại sang `TOKEN_ENCRYPTION_KEY_PREVIOUS="<KHÓA_HIỆN_TẠI>"`.
+   - Cập nhật `TOKEN_ENCRYPTION_KEY="<KHÓA_MỚI_VỪA_SINH>"`.
+3. Chạy script di trú và mã hóa lại toàn bộ secrets sang Key ID mới (`k1`):
+   ```bash
+   # Kiểm tra trước không ghi DB:
+   npx tsx scripts/security/reencrypt-secrets.ts --dry-run
+
+   # Chạy thực tế:
+   npx tsx scripts/security/reencrypt-secrets.ts
+   ```
+4. Restart service:
+   ```bash
+   pm2 restart real-estate-ai-cms
+   ```
+5. Sau khi xác nhận hệ thống ổn định, có thể gỡ bỏ `TOKEN_ENCRYPTION_KEY_PREVIOUS` khỏi `.env`.
 
 ---
 

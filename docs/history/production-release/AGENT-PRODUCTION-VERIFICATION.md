@@ -10,7 +10,7 @@ Decision: **PASS WITH LIMITATIONS**
 
 | Item | Value |
 |------|-------|
-| Host | 112.213.87.124 (`cloudvps87124.superdata.vn`) |
+| Host | `<VPS_HOST>` (`cloudvps-production`) |
 | App dir | `/var/www/real-estate-ai-cms` |
 | PM2 | `real-estate-ai-cms` (PORT 3025) |
 | Node | v20.19.5 |

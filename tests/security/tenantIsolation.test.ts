@@ -195,7 +195,7 @@ describe('P3 Tenant Isolation, RBAC & IDOR Security Gates', () => {
   });
 
   // 10. Gate P3: Route Registry vs RBAC Matrix verification
-  it('10. Gate P3: All critical admin routes are declared in RBAC_PERMISSIONS_MATRIX', () => {
+  it('10. Gate P3: All critical admin routes are declared in RBAC_PERMISSIONS_MATRIX and resolve cleanly', async () => {
     const declaredRoutes = Object.keys(RBAC_PERMISSIONS_MATRIX);
     expect(declaredRoutes).toContain('POST /api/knowledge/reset');
     expect(declaredRoutes).toContain('POST /api/knowledge/import');
@@ -204,6 +204,16 @@ describe('P3 Tenant Isolation, RBAC & IDOR Security Gates', () => {
     expect(declaredRoutes).toContain('GET /api/investor-leads');
     expect(declaredRoutes).toContain('GET /api/users');
     expect(declaredRoutes).toContain('PUT /api/settings');
-    expect(declaredRoutes.length).toBeGreaterThanOrEqual(20);
+    expect(declaredRoutes).toContain('GET /api/executive/snapshot');
+    expect(declaredRoutes).toContain('POST /api/member-permissions/bulk');
+    expect(declaredRoutes).toContain('POST /api/agent/missions/:id/pause');
+    expect(declaredRoutes.length).toBeGreaterThanOrEqual(60);
+
+    // Verify deny-by-default fallback logic
+    const { resolveRequiredRole } = await import('../../server/security/rbac');
+    expect(resolveRequiredRole('GET', '/api/executive/briefing')).toBe('company');
+    expect(resolveRequiredRole('POST', '/api/unknown-internal-route')).toBe('company');
+    expect(resolveRequiredRole('GET', '/api/auth/me')).toBe('member');
+    expect(resolveRequiredRole('GET', '/api/customers')).toBe('member');
   });
 });

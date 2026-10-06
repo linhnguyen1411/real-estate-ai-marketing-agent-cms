@@ -110,6 +110,21 @@ export function createApiAuthGate() {
 
     const db = readDatabase();
     (req as any).authUser = toAuthUser(user, db);
+
+    // Enforce mandatory password change if user.must_change_password is true
+    if (user.must_change_password) {
+      const allowedPaths = ['/api/auth/me', '/auth/me', '/api/auth/profile', '/auth/profile', '/api/auth/change-password', '/auth/change-password'];
+      const currentPath = pathName.startsWith('/api') ? pathName : `/api${pathName}`;
+      if (!allowedPaths.includes(currentPath)) {
+        res.status(403).json({
+          status: 'error',
+          code: 'MUST_CHANGE_PASSWORD',
+          message: 'Bạn phải đổi mật khẩu trước khi tiếp tục sử dụng hệ thống.',
+        });
+        return;
+      }
+    }
+
     next();
   };
 }
@@ -209,6 +224,7 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
     public_slug: nextPublicSlug,
     show_public_profile: nextShowPublic,
     password_hash: nextPasswordHash,
+    must_change_password: newPassword ? false : Boolean(target.must_change_password),
     token_version: nextTokenVersion,
   };
   delete updatedUser.password;

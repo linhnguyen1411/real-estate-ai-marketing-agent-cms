@@ -37,11 +37,11 @@ function runtimeBaseUrl(): string {
 }
 
 function runtimeToken(): string {
-  return (
-    process.env.AGENT_RUNTIME_TOKEN?.trim() ||
-    process.env.AGENT_WORKER_TOKEN?.trim() ||
-    'dev-runtime-token'
-  );
+  const token = process.env.AGENT_RUNTIME_TOKEN?.trim() || process.env.AGENT_WORKER_TOKEN?.trim();
+  if (!token) {
+    throw new Error('[FATAL] AGENT_RUNTIME_TOKEN (hoặc AGENT_WORKER_TOKEN) là bắt buộc và không được để trống.');
+  }
+  return token;
 }
 
 function parseCapabilities(): string[] {

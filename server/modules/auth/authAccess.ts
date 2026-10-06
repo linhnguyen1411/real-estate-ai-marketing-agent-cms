@@ -24,6 +24,7 @@ export function toAuthUser(user: User, db: any): AuthUser {
     agent_tier: resolveAgentTier(user),
     public_slug: publicSlug,
     show_public_profile: user.show_public_profile !== false,
+    must_change_password: Boolean(user.must_change_password),
   };
 }
 

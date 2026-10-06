@@ -1,7 +1,7 @@
 # Agent Production Rollback
 
 Date: 2026-07-13  
-VPS: `root@112.213.87.124` `/var/www/real-estate-ai-cms`  
+VPS: `root@<VPS_HOST>` `/var/www/real-estate-ai-cms`  
 PM2: `real-estate-ai-cms`
 
 ## Fast rollback (feature flags — preferred)

@@ -198,30 +198,84 @@ router.get('/api/public/agents/:slug', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// Public traffic tracking (register early, before static/vite fallbacks)
+// Public traffic tracking with in-memory aggregation & periodic flush
 // ----------------------------------------------------
-router.post('/api/public/track-view', async (req: Request, res: Response) => {
+let pendingSiteViews = 0;
+let lastSiteViewTimestamp: string | null = null;
+const pendingPropertyViews = new Map<string, { count: number; lastViewAt: string }>();
+let flushTimer: NodeJS.Timeout | null = null;
+
+async function flushTrackViews(): Promise<void> {
+  const siteToAdd = pendingSiteViews;
+  const siteTimestamp = lastSiteViewTimestamp;
+  pendingSiteViews = 0;
+  lastSiteViewTimestamp = null;
+
+  const propSnapshot = new Map(pendingPropertyViews);
+  pendingPropertyViews.clear();
+
+  if (siteToAdd > 0) {
+    try {
+      const currentSettings = getSettings();
+      await updateSettings({
+        site_view_count: Number(currentSettings.site_view_count || 0) + siteToAdd,
+        last_site_view_at: siteTimestamp || new Date().toISOString(),
+      } as AppSettings);
+    } catch (err: any) {
+      console.warn('[track-view] Flush site views error:', err?.message || err);
+    }
+  }
+
+  for (const [propId, { count, lastViewAt }] of propSnapshot.entries()) {
+    try {
+      const current = getProperties().find((item: Property) => item.id === propId);
+      if (current) {
+        await updateProperty(propId, {
+          public_view_count: Number(current.public_view_count || 0) + count,
+          last_public_view_at: lastViewAt,
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[track-view] Flush property views (${propId}) error:`, err?.message || err);
+    }
+  }
+}
+
+// Flush interval every 10 seconds (or on process shutdown)
+setInterval(() => {
+  if (pendingSiteViews > 0 || pendingPropertyViews.size > 0) {
+    flushTrackViews().catch(() => undefined);
+  }
+}, 10_000).unref();
+
+router.post('/api/public/track-view', (req: Request, res: Response) => {
   const now = new Date().toISOString();
   const propertyId = String(req.body?.propertyId || '').trim();
   const trackingType = String(req.body?.type || '').trim();
 
-  let settings = getSettings();
-  let property: Property | undefined;
+  const settings = getSettings();
+  let baseSiteViews = Number(settings.site_view_count || 0) + pendingSiteViews;
 
   if (trackingType === 'site' || !propertyId) {
-    settings = await updateSettings({
-      site_view_count: Number(settings.site_view_count || 0) + 1,
-      last_site_view_at: now
-    } as AppSettings);
+    pendingSiteViews += 1;
+    lastSiteViewTimestamp = now;
+    baseSiteViews += 1;
   }
+
+  let propertyResponse: { id: string; public_view_count: number; last_public_view_at: string } | null = null;
 
   if (propertyId) {
     const current = getProperties().find((item: Property) => item.id === propertyId);
     if (current) {
-      property = await updateProperty(propertyId, {
-        public_view_count: Number(current.public_view_count || 0) + 1,
-        last_public_view_at: now
-      }) as Property;
+      const prev = pendingPropertyViews.get(propertyId) || { count: 0, lastViewAt: now };
+      const nextCount = prev.count + 1;
+      pendingPropertyViews.set(propertyId, { count: nextCount, lastViewAt: now });
+
+      propertyResponse = {
+        id: propertyId,
+        public_view_count: Number(current.public_view_count || 0) + nextCount,
+        last_public_view_at: now,
+      };
     }
   }
 
@@ -229,16 +283,10 @@ router.post('/api/public/track-view', async (req: Request, res: Response) => {
     status: 'success',
     data: {
       tracked: true,
-      siteViews: Number(settings.site_view_count || 0),
-      lastSiteViewAt: settings.last_site_view_at,
-      property: property
-        ? {
-            id: property.id,
-            public_view_count: Number(property.public_view_count || 0),
-            last_public_view_at: property.last_public_view_at
-          }
-        : null
-    }
+      siteViews: baseSiteViews,
+      lastSiteViewAt: lastSiteViewTimestamp || settings.last_site_view_at,
+      property: propertyResponse,
+    },
   });
 });
 

@@ -3,7 +3,7 @@
 **Date:** 2026-07-25  
 **Feature commit:** `b7acb7e` — `feat(campaign): introduce campaign workspace as ai sales operating center`  
 **Release commit:** `chore(release): deploy campaign workspace h2.1`  
-**Host:** `bdsdanang.site` / VPS `112.213.87.124`  
+**Host:** `bdsdanang.site` / VPS `<VPS_HOST>`  
 **App path:** `/var/www/real-estate-ai-cms`
 
 ## Objective

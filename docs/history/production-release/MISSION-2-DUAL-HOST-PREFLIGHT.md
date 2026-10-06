@@ -34,7 +34,7 @@ Secrets not printed.
 
 ---
 
-## 2. VPS (`bdsdanang.site` / `112.213.87.124`)
+## 2. VPS (`bdsdanang.site` / `<VPS_HOST>`)
 
 | Check | Result |
 |-------|--------|

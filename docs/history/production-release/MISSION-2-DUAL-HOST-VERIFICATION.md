@@ -24,7 +24,7 @@
 ### VPS
 | Item | Value |
 |------|-------|
-| Host | `bdsdanang.site` / `112.213.87.124` |
+| Host | `bdsdanang.site` / `<VPS_HOST>` |
 | PM2 | `real-estate-ai-cms` **online**, PID **1240500** (post-deploy) |
 | `/api/health` | **200** |
 | Ingest | `AGENT_INGEST_ENABLED=true`, healthy |

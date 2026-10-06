@@ -4,7 +4,7 @@ Date: 2026-07-13
 Branch (local): `feature/ai-employee-platform`  
 Local commit at audit: `ea315cd` (+ large uncommitted working tree with agent pipeline)  
 Production: https://bdsdanang.site  
-VPS: `root@112.213.87.124` → `/var/www/real-estate-ai-cms`
+VPS: `root@<VPS_HOST>` → `/var/www/real-estate-ai-cms`
 
 ---
 

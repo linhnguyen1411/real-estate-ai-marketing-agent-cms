@@ -4,11 +4,11 @@ Five dedicated channels. Each maps to one env var and one Telegram group.
 
 | Channel | Label | Env var | Chat ID |
 |---------|-------|---------|---------|
-| **OPS** | 🤖 AI Ops | `TELEGRAM_OPS_CHAT_ID` | `-5348392375` |
-| **LEAD** | 🎯 LEAD | `TELEGRAM_LEAD_CHAT_ID` | `-5592400378` |
-| **PUBLISH** | 📢 Publishing | `TELEGRAM_PUBLISH_CHAT_ID` | `-5261113042` |
-| **REPORT** | 📊 Daily Reports | `TELEGRAM_REPORT_CHAT_ID` | `-5446190511` |
-| **CRITICAL** | 🚨 Critical Alerts | `TELEGRAM_CRITICAL_CHAT_ID` | `-5132560624` |
+| **OPS** | 🤖 AI Ops | `TELEGRAM_OPS_CHAT_ID` | `<TELEGRAM_OPS_CHAT_ID>` |
+| **LEAD** | 🎯 LEAD | `TELEGRAM_LEAD_CHAT_ID` | `<TELEGRAM_LEAD_CHAT_ID>` |
+| **PUBLISH** | 📢 Publishing | `TELEGRAM_PUBLISH_CHAT_ID` | `<TELEGRAM_PUBLISH_CHAT_ID>` |
+| **REPORT** | 📊 Daily Reports | `TELEGRAM_REPORT_CHAT_ID` | `<TELEGRAM_REPORT_CHAT_ID>` |
+| **CRITICAL** | 🚨 Critical Alerts | `TELEGRAM_CRITICAL_CHAT_ID` | `<TELEGRAM_CRITICAL_CHAT_ID>` |
 
 ## Event routing
 

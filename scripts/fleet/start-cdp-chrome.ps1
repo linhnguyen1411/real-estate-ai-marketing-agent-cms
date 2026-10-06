@@ -66,6 +66,9 @@ $args = @(
   "--user-data-dir=$ProfileDir",
   '--no-first-run',
   '--no-default-browser-check',
+  '--disable-background-networking',
+  '--disable-component-update',
+  '--disable-sync',
   $StartUrl
 )
 

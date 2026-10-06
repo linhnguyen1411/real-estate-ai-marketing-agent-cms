@@ -43,6 +43,7 @@ export interface AuthUser {
   agent_tier?: AgentTier;
   public_slug?: string;
   show_public_profile?: boolean;
+  must_change_password?: boolean;
 }
 
 export interface PublicAgentProfile {

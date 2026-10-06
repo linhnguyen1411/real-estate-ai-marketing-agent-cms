@@ -22,7 +22,7 @@ export const envSchema = z.object({
   AGENT_RUNTIME_TOKEN: z.string().optional(),
   DEFAULT_COMPANY_ID: z.string().default('comp-da-nang'),
   DEFAULT_OWNER_USER_ID: z.string().default('user-owner-1'),
-  PUBLIC_CONTACTS: z.string().default('0905 777 594, 0984 755 258'),
+  PUBLIC_CONTACTS: z.string().optional().default(''),
   TELEGRAM_CONSOLE_ENABLED: z.preprocess(
     v => typeof v === 'string' ? ['1', 'true', 'on', 'yes'].includes(v.toLowerCase()) : Boolean(v),
     z.boolean()
