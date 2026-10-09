@@ -55,4 +55,12 @@ contextBridge.exposeInMainWorld('desktopAgent', {
   reloadTab: (tab: 'facebook' | 'zalo') => {
     ipcRenderer.send('tab:reload', tab);
   },
+
+  launchChromeProfile: (): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('chrome:launch-profile');
+  },
+
+  triggerChromeScroll: () => {
+    ipcRenderer.send('chrome:trigger-scroll');
+  },
 });

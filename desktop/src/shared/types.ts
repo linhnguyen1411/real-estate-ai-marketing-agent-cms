@@ -45,6 +45,7 @@ export interface DesktopAgentStats {
   hotLeadsTotal: number;
   syncedToVpsTotal: number;
   debuggerAttached: boolean;
+  chromeCdpAttached: boolean;
   vpsConnected: boolean;
   activeTab: 'dashboard' | 'facebook' | 'zalo' | 'settings';
 }
@@ -58,4 +59,7 @@ export interface DesktopAgentSettings {
   soundNotification: boolean;
   autoScrollFacebook: boolean;
   autoScrollIntervalSec: number;
+  cdpPort: number;
+  cdpProfileDir: string;
+  cdpAutoLaunch: boolean;
 }

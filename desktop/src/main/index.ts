@@ -11,6 +11,7 @@ import fs from 'fs';
 import { processRawPostToLead } from './pipeline/leadScoringPipeline';
 import { VpsOutboxSync } from './sync/vpsOutboxSync';
 import { FacebookGraphqlDebugger } from './debugger/facebookGraphqlDebugger';
+import { ChromeCdpManager } from './debugger/chromeCdpManager';
 import type {
   ExtractedLeadData,
   DesktopAgentStats,
@@ -23,6 +24,7 @@ let mainWindow: BrowserWindow | null = null;
 let fbView: WebContentsView | null = null;
 let zaloView: WebContentsView | null = null;
 let fbDebugger: FacebookGraphqlDebugger | null = null;
+let chromeCdpManager: ChromeCdpManager | null = null;
 let vpsSync: VpsOutboxSync | null = null;
 let tray: Tray | null = null;
 
@@ -36,6 +38,7 @@ const stats: DesktopAgentStats = {
   hotLeadsTotal: 0,
   syncedToVpsTotal: 0,
   debuggerAttached: false,
+  chromeCdpAttached: false,
   vpsConnected: false,
   activeTab: 'dashboard',
 };
@@ -54,6 +57,9 @@ const defaultSettings: DesktopAgentSettings = {
   soundNotification: true,
   autoScrollFacebook: true,
   autoScrollIntervalSec: 8,
+  cdpPort: 9222,
+  cdpProfileDir: 'runtime/agent-cdp-profile',
+  cdpAutoLaunch: true,
 };
 
 let currentSettings: DesktopAgentSettings = { ...defaultSettings };
@@ -87,6 +93,7 @@ function saveSettings(settings: Partial<DesktopAgentSettings>): DesktopAgentSett
 function broadcastStats(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     stats.debuggerAttached = fbDebugger ? fbDebugger.isAttached() : false;
+    stats.chromeCdpAttached = chromeCdpManager ? chromeCdpManager.isAttached() : false;
     mainWindow.webContents.send('stats:update', stats);
   }
 }
@@ -161,16 +168,13 @@ function setActiveTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void
 
   if (!fbView || !zaloView) return;
 
-  if (tab === 'facebook') {
-    fbView.setVisible(true);
-    zaloView.setVisible(false);
-  } else if (tab === 'zalo') {
+  if (tab === 'zalo') {
     zaloView.setVisible(true);
     fbView.setVisible(false);
   } else {
-    // dashboard or settings
-    fbView.setVisible(false);
+    // For 'dashboard', 'settings', and 'facebook' (CDP monitor HTML view)
     zaloView.setVisible(false);
+    fbView.setVisible(false);
   }
 }
 
@@ -265,11 +269,40 @@ async function createWindow(): Promise<void> {
     }
   });
 
+  // Initialize Chrome CDP Manager (External Google Chrome with old profile)
+  chromeCdpManager = new ChromeCdpManager(
+    {
+      port: currentSettings.cdpPort || 9222,
+      profileDir: currentSettings.cdpProfileDir || 'runtime/agent-cdp-profile',
+      autoLaunch: currentSettings.cdpAutoLaunch ?? true,
+      startUrl: 'https://www.facebook.com/',
+    },
+    (post: FacebookIncomingPost) => {
+      stats.facebookPostsTotal++;
+      const lead = processRawPostToLead('facebook', post.groupName || 'Facebook Group (Chrome)', post.contentText, {
+        externalId: post.externalId,
+        sourceUrl: post.canonicalUrl,
+        authorName: post.authorName,
+        timestamp: post.timestamp,
+      });
+      void handleLeadCaptured(lead);
+    },
+    (connected: boolean) => {
+      stats.chromeCdpAttached = connected;
+      broadcastStats();
+    }
+  );
+  chromeCdpManager.start();
+
   // Load target URLs
   void fbView.webContents.loadURL('https://www.facebook.com');
   void zaloView.webContents.loadURL('https://chat.zalo.me');
 
   mainWindow.on('closed', () => {
+    if (chromeCdpManager) {
+      chromeCdpManager.stop();
+      chromeCdpManager = null;
+    }
     mainWindow = null;
     fbView = null;
     zaloView = null;
@@ -315,6 +348,13 @@ ipcMain.handle('settings:get', () => {
 
 ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSettings>) => {
   const updated = saveSettings(partialSettings);
+  if (chromeCdpManager) {
+    chromeCdpManager.updateConfig({
+      port: updated.cdpPort || 9222,
+      profileDir: updated.cdpProfileDir || 'runtime/agent-cdp-profile',
+      autoLaunch: updated.cdpAutoLaunch ?? true,
+    });
+  }
   if (fbView && updated.autoScrollFacebook !== undefined) {
     fbView.webContents.send(
       'fb:set-auto-scroll',
@@ -323,6 +363,19 @@ ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSe
     );
   }
   return updated;
+});
+
+ipcMain.handle('chrome:launch-profile', () => {
+  if (chromeCdpManager) {
+    return chromeCdpManager.launchChrome();
+  }
+  return { success: false, error: 'Chrome CDP Manager chưa được khởi tạo' };
+});
+
+ipcMain.on('chrome:trigger-scroll', () => {
+  if (chromeCdpManager) {
+    void chromeCdpManager.triggerScroll();
+  }
 });
 
 ipcMain.handle('lead:sync-manual', async (_event, leadId: string) => {
