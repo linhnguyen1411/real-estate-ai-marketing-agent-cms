@@ -45,7 +45,8 @@ export function decryptApiSecret(payload: string | null | undefined): string | n
   if (!payload) return null;
   try {
     return decryptAccessToken(payload);
-  } catch {
+  } catch (err: any) {
+    console.warn(`[HMAC_AUTH] Failed to decrypt API secret payload: ${err?.message || err}`);
     return null;
   }
 }

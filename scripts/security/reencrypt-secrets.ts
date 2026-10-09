@@ -36,7 +36,13 @@ async function main() {
       }
 
       try {
-        const decrypted = decryptAccessToken(currentPayload);
+        let decrypted: string;
+        if (currentPayload.startsWith('v2:') || currentPayload.startsWith('v1:')) {
+          decrypted = decryptAccessToken(currentPayload);
+        } else {
+          // Plaintext token without prefix (legacy unencrypted)
+          decrypted = currentPayload;
+        }
         const newEncrypted = encryptAccessToken(decrypted);
 
         console.log(`[REENCRYPT] Page "${conn.pageName || conn.pageId}": re-encrypting token (${currentPayload.slice(0, 8)}... -> ${newEncrypted.slice(0, 8)}...)`);

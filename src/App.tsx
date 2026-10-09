@@ -64,11 +64,13 @@ import {
   verifyContent,
   invalidateCrmModule,
   cacheInvalidate,
+  onMustChangePassword,
 } from './services/api';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
 import AppProviders from './app/AppProviders';
 import AdminLayout from './app/layouts/AdminLayout';
 import LoginPage, { AuthLoadingScreen } from './features/auth/LoginPage';
+import MustChangePasswordScreen from './features/auth/MustChangePasswordScreen';
 import {
   AGENT_PATH_TO_TAB,
   AGENT_TAB_TO_PATH,
@@ -167,6 +169,7 @@ export default function App() {
   });
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false);
   const [loginEmail, setLoginEmail] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
@@ -253,6 +256,18 @@ export default function App() {
 
     restoreSession();
   }, []);
+
+  useEffect(() => {
+    return onMustChangePassword(() => {
+      setMustChangePassword(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.must_change_password) {
+      setMustChangePassword(true);
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -446,8 +461,12 @@ export default function App() {
     try {
       const session = await login(loginEmail, loginPassword);
       setCurrentUser(session.user);
-      setActiveTab('dashboard');
-      navigate('/admin/dashboard', { replace: true });
+      if (session.user?.must_change_password) {
+        setMustChangePassword(true);
+      } else {
+        setActiveTab('dashboard');
+        navigate('/admin/dashboard', { replace: true });
+      }
     } catch (error: any) {
       setLoginError(error.message || 'Đăng nhập thất bại.');
     } finally {
@@ -604,6 +623,22 @@ export default function App() {
         onEmailChange={setLoginEmail}
         onPasswordChange={setLoginPassword}
         onSubmit={handleLogin}
+      />
+    );
+  }
+
+  if (mustChangePassword) {
+    return (
+      <MustChangePasswordScreen
+        userEmail={currentUser?.email}
+        onSuccess={() => {
+          logout();
+          setCurrentUser(null);
+          setMustChangePassword(false);
+          setLoginPassword('');
+          showToast('Đổi mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.', 'success');
+          navigate('/admin/login', { replace: true });
+        }}
       />
     );
   }

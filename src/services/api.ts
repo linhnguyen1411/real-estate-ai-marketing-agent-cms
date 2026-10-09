@@ -153,6 +153,26 @@ async function parseJsonResponse(response: Response) {
   }
 }
 
+type MustChangePasswordListener = () => void;
+const mustChangePasswordListeners = new Set<MustChangePasswordListener>();
+
+export function onMustChangePassword(listener: MustChangePasswordListener): () => void {
+  mustChangePasswordListeners.add(listener);
+  return () => {
+    mustChangePasswordListeners.delete(listener);
+  };
+}
+
+export function triggerMustChangePassword(): void {
+  for (const listener of mustChangePasswordListeners) {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(path, {
@@ -164,7 +184,14 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
   });
 
-  const json = await parseJsonResponse(response) as ApiResponse<T>;
+  const json = (await parseJsonResponse(response)) as ApiResponse<T> & { code?: string };
+
+  if (response.status === 403 && json?.code === 'MUST_CHANGE_PASSWORD') {
+    triggerMustChangePassword();
+    const err = new Error(json.message || 'Bạn phải đổi mật khẩu trước khi tiếp tục.');
+    (err as any).code = 'MUST_CHANGE_PASSWORD';
+    throw err;
+  }
 
   if (!response.ok || json.status !== 'success') {
     throw new Error(json.message || `API request failed: ${response.status} ${response.statusText}`);

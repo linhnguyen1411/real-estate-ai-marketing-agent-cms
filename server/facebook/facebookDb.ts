@@ -34,7 +34,11 @@ export async function getActivePageAccessToken(pageId?: string): Promise<string 
     where: { pageId: targetPageId, isActive: true },
   });
   if (row?.accessTokenEncrypted) {
-    return decryptAccessToken(row.accessTokenEncrypted);
+    try {
+      return decryptAccessToken(row.accessTokenEncrypted);
+    } catch (err: any) {
+      console.warn(`[FACEBOOK_DB] Failed to decrypt access token for pageId "${targetPageId}": ${err?.message || err}`);
+    }
   }
   if (targetPageId === cfg.pageId && cfg.pageAccessToken) {
     return cfg.pageAccessToken;

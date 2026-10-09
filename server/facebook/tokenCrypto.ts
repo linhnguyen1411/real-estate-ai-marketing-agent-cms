@@ -86,10 +86,11 @@ export function decryptAccessToken(payload: string, context = 'facebook-token'):
     const tag = Buffer.from(tagB64, 'base64');
     const data = Buffer.from(dataB64, 'base64');
 
-    // Try current TOKEN_ENCRYPTION_KEY first
+    // Try current TOKEN_ENCRYPTION_KEY first, then TOKEN_ENCRYPTION_KEY_PREVIOUS, then legacy AUTH_SECRET
     const currentSecret = getEnv().TOKEN_ENCRYPTION_KEY || process.env.TOKEN_ENCRYPTION_KEY;
     const prevSecret = process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
-    const candidates = [currentSecret, prevSecret].filter(Boolean) as string[];
+    const legacyAuthSecret = process.env.AUTH_SECRET;
+    const candidates = [currentSecret, prevSecret, legacyAuthSecret].filter(Boolean) as string[];
 
     for (const secret of candidates) {
       try {

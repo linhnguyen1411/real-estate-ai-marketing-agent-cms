@@ -30,7 +30,8 @@ async function resolvePageAccessToken(channel: SocialChannel): Promise<string | 
   if (typeof encrypted === 'string' && encrypted.trim()) {
     try {
       return decryptAccessToken(encrypted);
-    } catch {
+    } catch (err: any) {
+      console.warn(`[FACEBOOK_PUBLISHER] Failed to decrypt pageAccessTokenEncrypted for channel "${channel.id}": ${err?.message || err}`);
       // fall through
     }
   }

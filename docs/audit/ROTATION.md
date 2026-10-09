@@ -41,7 +41,7 @@ Tài liệu này hướng dẫn quy trình xoay các khóa bí mật (secrets/to
 ### 2.2 Xoay `TOKEN_ENCRYPTION_KEY` (AES-256-GCM + HKDF + Key ID)
 
 > [!WARNING]
-> Nếu bạn thay đổi `TOKEN_ENCRYPTION_KEY` mà không lưu khóa cũ vào `TOKEN_ENCRYPTION_KEY_PREVIOUS` hoặc không chạy script re-encrypt, các Facebook Access Token và secrets cấu hình đã lưu trong database sẽ không thể giải mã được!
+> BẮT BUỘC: Đặt `TOKEN_ENCRYPTION_KEY_PREVIOUS` = khóa cũ TRƯỚC khi xoay để hệ thống giải mã liên tục các token v1/v2 cũ trong quá trình chuyển đổi. Nếu đổi trực tiếp `TOKEN_ENCRYPTION_KEY` mà chưa lưu khóa cũ, toàn bộ Access Token và secrets cấu hình trong database sẽ không thể giải mã được!
 
 **Quy trình chuẩn Zero-Downtime:**
 1. Sinh key mới 32 bytes (64 hex characters):
@@ -49,7 +49,7 @@ Tài liệu này hướng dẫn quy trình xoay các khóa bí mật (secrets/to
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 2. Cập nhật cấu hình môi trường `.env`:
-   - Gán giá trị khóa hiện tại sang `TOKEN_ENCRYPTION_KEY_PREVIOUS="<KHÓA_HIỆN_TẠI>"`.
+   - **BƯỚC BẮT BUỘC TRƯỚC**: Gán giá trị khóa hiện tại sang `TOKEN_ENCRYPTION_KEY_PREVIOUS="<KHÓA_HIỆN_TẠI>"`.
    - Cập nhật `TOKEN_ENCRYPTION_KEY="<KHÓA_MỚI_VỪA_SINH>"`.
 3. Chạy script di trú và mã hóa lại toàn bộ secrets sang Key ID mới (`k1`):
    ```bash

@@ -47,6 +47,56 @@ import {
 } from '../../middleware/rateLimiters';
 import { validateSchema, publicContactSchema } from '../../middleware/validation';
 
+// ----------------------------------------------------
+// Public traffic tracking with in-memory aggregation & periodic flush
+// ----------------------------------------------------
+let pendingSiteViews = 0;
+let lastSiteViewTimestamp: string | null = null;
+const pendingPropertyViews = new Map<string, { count: number; lastViewAt: string }>();
+
+export async function flushTrackViews(): Promise<void> {
+  const siteToAdd = pendingSiteViews;
+  const siteTimestamp = lastSiteViewTimestamp;
+  pendingSiteViews = 0;
+  lastSiteViewTimestamp = null;
+
+  const propSnapshot = new Map(pendingPropertyViews);
+  pendingPropertyViews.clear();
+
+  if (siteToAdd > 0) {
+    try {
+      const currentSettings = getSettings();
+      await updateSettings({
+        site_view_count: Number(currentSettings.site_view_count || 0) + siteToAdd,
+        last_site_view_at: siteTimestamp || new Date().toISOString(),
+      } as AppSettings);
+    } catch (err: any) {
+      console.warn('[track-view] Flush site views error:', err?.message || err);
+    }
+  }
+
+  for (const [propId, { count, lastViewAt }] of propSnapshot.entries()) {
+    try {
+      const current = getProperties().find((item: Property) => item.id === propId);
+      if (current) {
+        await updateProperty(propId, {
+          public_view_count: Number(current.public_view_count || 0) + count,
+          last_public_view_at: lastViewAt,
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[track-view] Flush property views (${propId}) error:`, err?.message || err);
+    }
+  }
+}
+
+// Flush interval every 10 seconds (or on process shutdown)
+setInterval(() => {
+  if (pendingSiteViews > 0 || pendingPropertyViews.size > 0) {
+    flushTrackViews().catch(() => undefined);
+  }
+}, 10_000).unref();
+
 export function createPublicSiteRouter() {
   const router = Router();
 
@@ -197,56 +247,6 @@ router.get('/api/public/agents/:slug', (req: Request, res: Response) => {
   res.json({ status: 'success', data: { ...profile, properties } });
 });
 
-// ----------------------------------------------------
-// Public traffic tracking with in-memory aggregation & periodic flush
-// ----------------------------------------------------
-let pendingSiteViews = 0;
-let lastSiteViewTimestamp: string | null = null;
-const pendingPropertyViews = new Map<string, { count: number; lastViewAt: string }>();
-let flushTimer: NodeJS.Timeout | null = null;
-
-async function flushTrackViews(): Promise<void> {
-  const siteToAdd = pendingSiteViews;
-  const siteTimestamp = lastSiteViewTimestamp;
-  pendingSiteViews = 0;
-  lastSiteViewTimestamp = null;
-
-  const propSnapshot = new Map(pendingPropertyViews);
-  pendingPropertyViews.clear();
-
-  if (siteToAdd > 0) {
-    try {
-      const currentSettings = getSettings();
-      await updateSettings({
-        site_view_count: Number(currentSettings.site_view_count || 0) + siteToAdd,
-        last_site_view_at: siteTimestamp || new Date().toISOString(),
-      } as AppSettings);
-    } catch (err: any) {
-      console.warn('[track-view] Flush site views error:', err?.message || err);
-    }
-  }
-
-  for (const [propId, { count, lastViewAt }] of propSnapshot.entries()) {
-    try {
-      const current = getProperties().find((item: Property) => item.id === propId);
-      if (current) {
-        await updateProperty(propId, {
-          public_view_count: Number(current.public_view_count || 0) + count,
-          last_public_view_at: lastViewAt,
-        });
-      }
-    } catch (err: any) {
-      console.warn(`[track-view] Flush property views (${propId}) error:`, err?.message || err);
-    }
-  }
-}
-
-// Flush interval every 10 seconds (or on process shutdown)
-setInterval(() => {
-  if (pendingSiteViews > 0 || pendingPropertyViews.size > 0) {
-    flushTrackViews().catch(() => undefined);
-  }
-}, 10_000).unref();
 
 router.post('/api/public/track-view', (req: Request, res: Response) => {
   const now = new Date().toISOString();

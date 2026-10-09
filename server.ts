@@ -192,6 +192,15 @@ async function main() {
         console.log('[Server] HTTP connections closed.');
       }
 
+      // 2.5 Flush pending in-memory track-views before disconnecting DB
+      try {
+        const { flushTrackViews } = await import('./server/modules/public-site/publicSiteRoutes');
+        await flushTrackViews();
+        console.log('[Server] Track-view buffer flushed to database.');
+      } catch (flushErr) {
+        console.warn('[Server] Error flushing track-views during shutdown:', flushErr);
+      }
+
       // 3. Disconnect Prisma
       const { prisma } = await import('./server/prisma');
       await prisma.$disconnect();
