@@ -5,6 +5,14 @@
 
 import { ipcRenderer } from 'electron';
 
+try {
+  Object.defineProperty(navigator, 'webdriver', {
+    get: () => undefined,
+  });
+} catch {
+  /* ignore */
+}
+
 console.log('[FB-Preload] Preload script injected into Facebook tab.');
 
 ipcRenderer.on('fb:scroll-down', () => {

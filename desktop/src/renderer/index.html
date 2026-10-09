@@ -123,15 +123,6 @@
     .action-btn:hover {
       background: var(--bg-hover);
     }
-    .action-btn.btn-primary {
-      background: #2563eb;
-      color: #ffffff;
-      border-color: #3b82f6;
-      font-weight: 600;
-    }
-    .action-btn.btn-primary:hover {
-      background: #1d4ed8;
-    }
 
     /* Content Area */
     #content-area {
@@ -286,31 +277,6 @@
       cursor: not-allowed;
     }
 
-    /* Facebook CDP Monitor Panel */
-    .cdp-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-    .cdp-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    .cdp-info-banner {
-      background: #1e3a8a33;
-      border: 1px solid #3b82f666;
-      border-radius: 6px;
-      padding: 12px 16px;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #93c5fd;
-      margin-bottom: 16px;
-    }
-
     /* Settings Screen Form */
     .settings-panel {
       max-width: 650px;
@@ -388,32 +354,27 @@
         📊 Tổng quan
       </button>
       <button class="nav-tab" id="tab-btn-facebook" data-tab="facebook">
-        🌐 Facebook (Chrome Cũ)
+        🌐 Facebook Web
       </button>
       <button class="nav-tab" id="tab-btn-zalo" data-tab="zalo">
         💬 Zalo Web
       </button>
       <button class="nav-tab" id="tab-btn-settings" data-tab="settings">
-        ⚙️ Cài đặt VPS &amp; CDP
+        ⚙️ Cài đặt VPS
       </button>
     </nav>
 
     <div class="top-actions">
-      <div class="status-badge" title="Kết nối Chrome CDP với profile cũ runtime/agent-cdp-profile">
-        <span class="status-dot" id="chrome-cdp-dot"></span>
-        <span id="chrome-cdp-text">Chrome CDP (9222)</span>
+      <div class="status-badge" title="Tình trạng bộ bắt gói tin Facebook GraphQL">
+        <span class="status-dot" id="fb-debugger-dot"></span>
+        <span id="fb-debugger-text">FB Scanner</span>
       </div>
-      <div class="status-badge" title="Outbox sync to VPS production">
+      <div class="status-badge" title="Đồng bộ tự động lên máy chủ VPS">
         <span class="status-dot" id="vps-sync-dot"></span>
         <span id="vps-sync-text">VPS Sync</span>
       </div>
-      <button class="action-btn btn-primary" id="btn-launch-chrome" title="Mở Google Chrome với profile cũ (Facebook đã đăng nhập, không bị Google chặn)">
-        🚀 Mở Chrome Profile Cũ
-      </button>
-      <button class="action-btn" id="btn-scroll-chrome" title="Cuộn trang Facebook trên Chrome">
-        📜 Cuộn FB
-      </button>
-      <button class="action-btn" id="btn-reload" title="Tải lại giao diện">🔄 Tải lại</button>
+      <button class="action-btn" id="btn-scroll-fb" title="Cuộn trang Facebook trong app để tải thêm bài viết">📜 Cuộn FB</button>
+      <button class="action-btn" id="btn-reload" title="Tải lại tab hiện tại">🔄 Tải lại</button>
     </div>
   </header>
 
@@ -423,7 +384,7 @@
     <div id="view-dashboard">
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-title">Quét Facebook (Chrome)</div>
+          <div class="stat-title">Quét Facebook</div>
           <div class="stat-val" id="stat-fb-count">0</div>
         </div>
         <div class="stat-card">
@@ -469,74 +430,8 @@
           <tbody id="leads-table-body">
             <tr>
               <td colspan="8" class="empty-state">
-                Đang chờ tín hiệu mạng từ Chrome Profile Cũ (Facebook) và Zalo Web...<br>
-                <small style="color: #64748b;">(Nhấp nút "🚀 Mở Chrome Profile Cũ" ở góc trên nếu Chrome chưa mở)</small>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Facebook Tab (Chrome CDP Monitor) -->
-    <div id="view-facebook" class="hidden">
-      <div class="cdp-card">
-        <div class="cdp-header">
-          <h2 style="font-size: 18px; display: flex; align-items: center; gap: 8px;">
-            🌐 Giám Sát Facebook (Google Chrome Profile Cũ - Cổng 9222)
-          </h2>
-          <div style="display: flex; gap: 8px;">
-            <button class="action-btn btn-primary" id="btn-fb-open-chrome">🚀 Mở Google Chrome</button>
-            <button class="action-btn" id="btn-fb-scroll">📜 Cuộn Trang Facebook</button>
-          </div>
-        </div>
-
-        <div class="cdp-info-banner">
-          <strong>✓ Giải pháp an toàn tài khoản:</strong> Đăng nhập Facebook bằng tài khoản Google được mở trực tiếp qua Google Chrome chính hãng với Profile cũ (<code>runtime/agent-cdp-profile</code>).<br>
-          Không bao giờ bị Google chặn thông báo <em>"Trình duyệt không an toàn"</em>. Khi bạn lướt xem các nhóm Facebook trên Chrome, Desktop Agent sẽ tự động bắt gói tin ngầm qua cổng 9222, phân loại Cung/Cầu và bắn thông báo Windows Toast khi có Hot Lead.
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px;">
-          <div style="background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="font-size: 11px; color: var(--text-muted);">Trạng thái kết nối:</div>
-            <div style="font-weight: 700; margin-top: 4px;" id="fb-panel-status">Đang kiểm tra...</div>
-          </div>
-          <div style="background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="font-size: 11px; color: var(--text-muted);">Profile Chrome:</div>
-            <div style="font-weight: 600; font-size: 12px; margin-top: 4px;" id="fb-panel-profile">runtime/agent-cdp-profile</div>
-          </div>
-          <div style="background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="font-size: 11px; color: var(--text-muted);">Cổng CDP:</div>
-            <div style="font-weight: 700; margin-top: 4px;" id="fb-panel-port">9222</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-header">
-        <div class="section-title">
-          <span>📥 Bài Viết Facebook Mới Nhất Quét Từ Chrome</span>
-        </div>
-      </div>
-
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 80px;">Nguồn</th>
-              <th style="width: 100px;">Phân loại</th>
-              <th style="width: 70px;">Điểm</th>
-              <th style="width: 120px;">Giá</th>
-              <th style="width: 140px;">Khu vực / Block</th>
-              <th style="width: 110px;">SĐT</th>
-              <th>Nội dung bài viết</th>
-              <th style="width: 100px;">VPS Sync</th>
-            </tr>
-          </thead>
-          <tbody id="fb-leads-table-body">
-            <tr>
-              <td colspan="8" class="empty-state">
-                Chưa bắt được bài viết Facebook nào từ Chrome.<br>
-                Hãy mở Chrome và lướt qua nhóm BĐS Đà Nẵng / Nam Hòa Xuân!
+                Đang chờ tín hiệu mạng từ Facebook Groups và Zalo Web nhúng trong ứng dụng...<br>
+                <small style="color: #64748b;">(Chuyển sang tab Facebook Web hoặc Zalo Web để xem trực tiếp)</small>
               </td>
             </tr>
           </tbody>
@@ -547,29 +442,8 @@
     <!-- Settings Tab -->
     <div id="view-settings" class="hidden">
       <div class="settings-panel">
-        <h2 style="font-size: 18px; margin-bottom: 20px;">⚙️ Cấu hình Chrome CDP &amp; VPS Outbox Sync</h2>
+        <h2 style="font-size: 18px; margin-bottom: 20px;">⚙️ Cấu hình VPS Outbox Sync &amp; Quét Tự Động</h2>
         
-        <h3 style="font-size: 14px; color: #60a5fa; margin-bottom: 12px;">🌐 Google Chrome CDP (Profile Cũ)</h3>
-        <div class="form-group">
-          <label>Cổng kết nối Chrome CDP (Default: 9222):</label>
-          <input type="number" id="setting-cdp-port" class="form-control" value="9222">
-        </div>
-
-        <div class="form-group">
-          <label>Đường dẫn thư mục Profile Chrome cũ:</label>
-          <input type="text" id="setting-cdp-profile" class="form-control" value="runtime/agent-cdp-profile">
-        </div>
-
-        <div class="checkbox-group">
-          <input type="checkbox" id="setting-cdp-autolaunch">
-          <label for="setting-cdp-autolaunch" style="font-size: 13px; cursor: pointer;">
-            Tự động mở Google Chrome với Profile cũ khi bật ứng dụng
-          </label>
-        </div>
-
-        <hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0;">
-
-        <h3 style="font-size: 14px; color: #60a5fa; margin-bottom: 12px;">🚀 Máy Chủ VPS &amp; Thông Báo</h3>
         <div class="form-group">
           <label>Địa chỉ máy chủ VPS (API Base URL):</label>
           <input type="text" id="setting-vps-url" class="form-control" placeholder="https://bdsdanang.site">

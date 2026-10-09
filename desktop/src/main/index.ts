@@ -59,7 +59,7 @@ const defaultSettings: DesktopAgentSettings = {
   autoScrollIntervalSec: 8,
   cdpPort: 9222,
   cdpProfileDir: 'runtime/agent-cdp-profile',
-  cdpAutoLaunch: true,
+  cdpAutoLaunch: false,
 };
 
 let currentSettings: DesktopAgentSettings = { ...defaultSettings };
@@ -168,13 +168,51 @@ function setActiveTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void
 
   if (!fbView || !zaloView) return;
 
-  if (tab === 'zalo') {
+  if (tab === 'facebook') {
+    fbView.setVisible(true);
+    zaloView.setVisible(false);
+  } else if (tab === 'zalo') {
     zaloView.setVisible(true);
     fbView.setVisible(false);
   } else {
-    // For 'dashboard', 'settings', and 'facebook' (CDP monitor HTML view)
-    zaloView.setVisible(false);
+    // For 'dashboard' and 'settings'
     fbView.setVisible(false);
+    zaloView.setVisible(false);
+  }
+}
+
+async function injectSavedFacebookCookies(fbSession: Electron.Session): Promise<void> {
+  const candidates = [
+    path.resolve(process.cwd(), 'runtime', 'session_cookies.json'),
+    path.resolve(__dirname, '../../runtime', 'session_cookies.json'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      try {
+        const cookies: any[] = JSON.parse(fs.readFileSync(p, 'utf8'));
+        for (const c of cookies) {
+          try {
+            await fbSession.cookies.set({
+              url: 'https://www.facebook.com',
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path || '/',
+              secure: c.secure ?? true,
+              httpOnly: c.httpOnly ?? true,
+              sameSite: c.sameSite === 'Strict' ? 'strict' : c.sameSite === 'Lax' ? 'lax' : 'no_restriction',
+              expirationDate: c.expires && c.expires > 0 ? c.expires : undefined,
+            });
+          } catch {
+            /* ignore individual cookie failure */
+          }
+        }
+        console.log(`[FB-Session] Injected ${cookies.length} session cookies from old profile into app.`);
+        break;
+      } catch (err) {
+        console.error('[FB-Session] Error injecting cookies:', err);
+      }
+    }
   }
 }
 
@@ -206,6 +244,9 @@ async function createWindow(): Promise<void> {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   );
 
+  // Inject authenticated cookies from old profile if available
+  await injectSavedFacebookCookies(fbSession);
+
   const zaloSession = session.fromPartition('persist:zalo_agent');
   zaloSession.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -221,6 +262,50 @@ async function createWindow(): Promise<void> {
     },
   });
   mainWindow.contentView.addChildView(fbView);
+
+  // Handle OAuth popups safely inside the app without triggering Google security block
+  fbView.webContents.setWindowOpenHandler(() => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 600,
+        height: 720,
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: 'persist:facebook_agent',
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    };
+  });
+
+  fbView.webContents.on('did-create-window', (childWin) => {
+    childWin.webContents.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    );
+  });
+
+  // Temporarily detach debugger during Google OAuth navigation to prevent detection
+  fbView.webContents.on('will-navigate', (_event, url) => {
+    if (url.includes('accounts.google.com')) {
+      if (fbDebugger && fbDebugger.isAttached()) {
+        fbDebugger.detach();
+        stats.debuggerAttached = false;
+        broadcastStats();
+      }
+    }
+  });
+
+  fbView.webContents.on('did-navigate', (_event, url) => {
+    if (url.includes('facebook.com')) {
+      if (fbDebugger && !fbDebugger.isAttached()) {
+        fbDebugger.attach();
+        stats.debuggerAttached = fbDebugger.isAttached();
+        broadcastStats();
+      }
+    }
+  });
 
   // Initialize Zalo WebContentsView
   zaloView = new WebContentsView({
@@ -402,6 +487,8 @@ if (!gotTheLock) {
       mainWindow.focus();
     }
   });
+
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
   app.whenReady().then(async () => {
     // Optional application menu cleanup
