@@ -1,0 +1,61 @@
+/**
+ * Shared types between Main, Preload, and Renderer for Desktop Agent App.
+ */
+
+export type PostClassification = 'SUPPLY' | 'DEMAND' | 'UNKNOWN';
+
+export interface ExtractedLeadData {
+  id: string;
+  sourceType: 'facebook' | 'zalo';
+  sourceName: string;
+  sourceUrl?: string;
+  authorName?: string;
+  authorPhone?: string;
+  rawText: string;
+  classification: PostClassification;
+  intentScore: number;
+  isHotLead: boolean;
+  askingPrice?: string;
+  locationArea?: string;
+  projectBlock?: string;
+  timestamp: number;
+  syncStatus: 'pending' | 'synced' | 'failed';
+}
+
+export interface ZaloIncomingMessage {
+  groupName: string;
+  senderName: string;
+  senderPhone?: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface FacebookIncomingPost {
+  externalId?: string;
+  groupName?: string;
+  authorName?: string;
+  contentText: string;
+  canonicalUrl?: string;
+  timestamp: number;
+}
+
+export interface DesktopAgentStats {
+  facebookPostsTotal: number;
+  zaloMessagesTotal: number;
+  hotLeadsTotal: number;
+  syncedToVpsTotal: number;
+  debuggerAttached: boolean;
+  vpsConnected: boolean;
+  activeTab: 'dashboard' | 'facebook' | 'zalo' | 'settings';
+}
+
+export interface DesktopAgentSettings {
+  vpsUrl: string;
+  vpsApiKeyId: string;
+  vpsApiSecret: string;
+  autoSyncEnabled: boolean;
+  minHotLeadScore: number;
+  soundNotification: boolean;
+  autoScrollFacebook: boolean;
+  autoScrollIntervalSec: number;
+}
