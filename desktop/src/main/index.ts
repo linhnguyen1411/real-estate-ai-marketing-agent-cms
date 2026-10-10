@@ -50,8 +50,8 @@ function getSettingsFilePath(): string {
 
 const defaultSettings: DesktopAgentSettings = {
   vpsUrl: 'https://bdsdanang.site',
-  vpsApiKeyId: '',
-  vpsApiSecret: '',
+  vpsApiKeyId: 'ak_02c3016bbe087717',
+  vpsApiSecret: 'as_aRM0eTvv6Lxf_j9P1otz4Qwc7SBq6ycN',
   autoSyncEnabled: true,
   minHotLeadScore: 70,
   soundNotification: true,
