@@ -71,8 +71,8 @@ type ChannelChatConfig = Record<NotificationChannel, string>;
 
 function loadChannelChatIds(): ChannelChatConfig {
   return {
-    OPS: String(process.env.TELEGRAM_OPS_CHAT_ID || '').trim(),
-    LEAD: String(process.env.TELEGRAM_LEAD_CHAT_ID || '').trim(),
+    OPS: String(process.env.TELEGRAM_OPS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim(),
+    LEAD: String(process.env.TELEGRAM_LEAD_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim(),
     PUBLISH: String(process.env.TELEGRAM_PUBLISH_CHAT_ID || '').trim(),
     REPORT: String(process.env.TELEGRAM_REPORT_CHAT_ID || '').trim(),
     CRITICAL: String(process.env.TELEGRAM_CRITICAL_CHAT_ID || '').trim(),

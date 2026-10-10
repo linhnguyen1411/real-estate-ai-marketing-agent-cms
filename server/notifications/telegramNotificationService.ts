@@ -213,8 +213,8 @@ export async function notifyFindingIfEligible(input: {
     const settings = input.settings || getSettings();
     // Hard-on: ignore AGENT_TELEGRAM_ENABLED / settings.telegram_enabled / quiet hours.
     // Still requires bot token + chat id; score/classification eligibility still apply unless force.
-    const botToken = String(settings.telegram_bot_token || '').trim();
-    const leadChatId = String(process.env.TELEGRAM_LEAD_CHAT_ID || '').trim();
+    const botToken = String(settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const leadChatId = String(process.env.TELEGRAM_LEAD_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
     if (!botToken || !leadChatId) {
       console.info('[telegram] skip missing_credentials finding=%s', input.findingId);
       return { ok: false, skipped: true, reason: 'missing_credentials' };
@@ -561,12 +561,17 @@ export async function sendTestTelegram(input?: {
 }): Promise<TelegramSendResult> {
   try {
     const settings = input?.settings || getSettings();
-    const botToken = String(settings.telegram_bot_token || '').trim();
-    const opsChatId = String(process.env.TELEGRAM_OPS_CHAT_ID || '').trim();
+    const botToken = String(settings.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const opsChatId = String(
+      process.env.TELEGRAM_OPS_CHAT_ID ||
+      process.env.TELEGRAM_LEAD_CHAT_ID ||
+      process.env.TELEGRAM_CHAT_ID ||
+      ''
+    ).trim();
     if (!botToken || !opsChatId) {
       return {
         ok: false,
-        error: 'Chưa cấu hình telegram_bot_token / TELEGRAM_OPS_CHAT_ID.',
+        error: 'Chưa cấu hình telegram_bot_token / TELEGRAM_OPS_CHAT_ID / TELEGRAM_LEAD_CHAT_ID.',
       };
     }
     const text =
