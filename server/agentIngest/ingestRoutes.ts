@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { getSettings } from '../dbHelper';
 import { prisma } from '../prisma';
 import type { AgentRouteDeps } from '../agent/agentTypes';
@@ -101,6 +102,49 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         capabilities: ['scanned_content_upsert', 'finding_upsert', 'source_upsert', 'mission_workflow'],
       },
     });
+  });
+
+  app.get('/api/agent-ingest/v1/sources', async (req: Request, res: Response) => {
+    if (!isIngestEnabled()) {
+      sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
+      return;
+    }
+    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    if (auth.ok === false) {
+      rejectAuth(res, auth);
+      return;
+    }
+
+    try {
+      const typeFilter = String(req.query.type || '').trim();
+      const where: Prisma.AgentSourceWhereInput = {
+        status: 'active',
+        ...(auth.companyId ? { OR: [{ companyId: auth.companyId }, { companyId: null }] } : {}),
+        ...(typeFilter ? { type: typeFilter } : {}),
+      };
+
+      const sources = await prisma.agentSource.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          companyId: true,
+          name: true,
+          type: true,
+          url: true,
+          status: true,
+          config: true,
+          updatedAt: true,
+        },
+      });
+
+      res.json({
+        status: 'success',
+        data: sources,
+      });
+    } catch (err: unknown) {
+      sendError(res, 500, err instanceof Error ? err.message : 'Lỗi lấy danh sách nguồn.');
+    }
   });
 
   app.post('/api/agent-ingest/v1/findings', async (req: Request, res: Response) => {

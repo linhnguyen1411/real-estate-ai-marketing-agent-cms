@@ -63,4 +63,35 @@ contextBridge.exposeInMainWorld('desktopAgent', {
   triggerChromeScroll: () => {
     ipcRenderer.send('chrome:trigger-scroll');
   },
+
+  // Sources Rotation
+  onSourcesUpdate: (callback: (sources: any[]) => void) => {
+    const subscription = (_event: any, sources: any[]) => callback(sources);
+    ipcRenderer.on('sources:list', subscription);
+    return () => ipcRenderer.removeListener('sources:list', subscription);
+  },
+
+  getSources: (): Promise<any[]> => {
+    return ipcRenderer.invoke('sources:get');
+  },
+
+  refreshSources: (): Promise<any[]> => {
+    return ipcRenderer.invoke('sources:refresh');
+  },
+
+  selectSource: (index: number) => {
+    ipcRenderer.send('sources:select', index);
+  },
+
+  nextSource: () => {
+    ipcRenderer.send('sources:next');
+  },
+
+  prevSource: () => {
+    ipcRenderer.send('sources:prev');
+  },
+
+  toggleAutoRotate: (enabled: boolean) => {
+    ipcRenderer.send('sources:toggle-rotate', enabled);
+  },
 });

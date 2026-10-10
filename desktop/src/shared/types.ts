@@ -39,6 +39,15 @@ export interface FacebookIncomingPost {
   timestamp: number;
 }
 
+export interface AgentSourceItem {
+  id: string;
+  companyId?: string | null;
+  name: string;
+  type: string;
+  url: string;
+  status: string;
+}
+
 export interface DesktopAgentStats {
   facebookPostsTotal: number;
   zaloMessagesTotal: number;
@@ -48,6 +57,12 @@ export interface DesktopAgentStats {
   chromeCdpAttached: boolean;
   vpsConnected: boolean;
   activeTab: 'dashboard' | 'facebook' | 'zalo' | 'settings';
+  activeSourcesTotal: number;
+  currentSourceIndex: number;
+  currentSourceName: string;
+  currentSourceUrl: string;
+  autoRotateSources: boolean;
+  secondsUntilNextRotate: number;
 }
 
 export interface DesktopAgentSettings {
@@ -62,4 +77,6 @@ export interface DesktopAgentSettings {
   cdpPort: number;
   cdpProfileDir: string;
   cdpAutoLaunch: boolean;
+  autoRotateSources: boolean;
+  rotateIntervalMinutes: number;
 }

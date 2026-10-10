@@ -4,7 +4,7 @@
  */
 
 import crypto from 'crypto';
-import type { ExtractedLeadData, DesktopAgentSettings } from '../../shared/types';
+import type { ExtractedLeadData, DesktopAgentSettings, AgentSourceItem } from '../../shared/types';
 
 export class VpsOutboxSync {
   private settings: DesktopAgentSettings;
@@ -116,6 +116,64 @@ export class VpsOutboxSync {
       return { success: true };
     } catch (err: any) {
       lead.syncStatus = 'failed';
+      return { success: false, error: err?.message || String(err) };
+    }
+  }
+
+  async fetchSourcesFromVps(): Promise<{ success: boolean; sources?: AgentSourceItem[]; error?: string }> {
+    const vpsBase = this.settings.vpsUrl.replace(/\/+$/, '');
+    if (!vpsBase) {
+      return { success: false, error: 'VPS URL is empty' };
+    }
+
+    const endpoint = `${vpsBase}/api/agent-ingest/v1/sources?type=facebook_group`;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = crypto.randomBytes(8).toString('hex');
+
+    const headers: Record<string, string> = {
+      'X-Agent-Client': 'HouseAndLifeDesktopAgent/1.0',
+    };
+
+    if (this.settings.vpsApiKeyId && this.settings.vpsApiSecret) {
+      const method = 'GET';
+      const path = '/api/agent-ingest/v1/sources';
+      const bodyHash = crypto.createHash('sha256').update('').digest('hex');
+      const canonicalString = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}`;
+      const signature = crypto
+        .createHmac('sha256', this.settings.vpsApiSecret)
+        .update(canonicalString)
+        .digest('hex');
+
+      headers['X-Agent-Key-Id'] = this.settings.vpsApiKeyId;
+      headers['X-Agent-Timestamp'] = timestamp;
+      headers['X-Agent-Nonce'] = nonce;
+      headers['X-Agent-Signature'] = signature;
+    }
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        return {
+          success: false,
+          error: `HTTP ${response.status}: ${errorText.slice(0, 100) || response.statusText}`,
+        };
+      }
+
+      const json = (await response.json()) as { status?: string; data?: AgentSourceItem[] };
+      const rawSources = Array.isArray(json.data) ? json.data : [];
+      // Filter valid facebook URLs
+      const validSources = rawSources.filter(
+        (s) => s.url && s.url.startsWith('http') && s.url.includes('facebook.com') && s.status === 'active'
+      );
+
+      return { success: true, sources: validSources };
+    } catch (err: any) {
       return { success: false, error: err?.message || String(err) };
     }
   }

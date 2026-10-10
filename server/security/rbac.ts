@@ -300,6 +300,16 @@ export function resolveRequiredRole(method: string, path: string): UserRole {
 export function rbacRouteGuard() {
   return (req: Request, res: Response, next: NextFunction) => {
     const fullPath = `${req.baseUrl || ''}${req.path || ''}`.replace(/\/+$/, '') || '/';
+    // Skip public and machine-to-machine (HMAC/Token) endpoints
+    if (
+      fullPath === '/api/health' ||
+      fullPath.startsWith('/api/public') ||
+      fullPath.startsWith('/api/agent-ingest') ||
+      fullPath.startsWith('/api/agent/runtime') ||
+      fullPath.startsWith('/api/social/media/files')
+    ) {
+      return next();
+    }
     const requiredRole = resolveRequiredRole(req.method, fullPath);
     return requireRole(requiredRole)(req, res, next);
   };

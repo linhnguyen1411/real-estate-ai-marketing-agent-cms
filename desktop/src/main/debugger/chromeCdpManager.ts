@@ -275,6 +275,18 @@ export class ChromeCdpManager {
     console.log('[ChromeCDP] Triggered smooth scroll on Chrome tab.');
   }
 
+  async navigate(url: string): Promise<boolean> {
+    if (!this.isConnected) return false;
+    try {
+      await this.sendCdpCommand('Page.navigate', { url });
+      console.log('[ChromeCDP] Navigated tab to:', url);
+      return true;
+    } catch (err) {
+      console.error('[ChromeCDP] Failed to navigate tab:', err);
+      return false;
+    }
+  }
+
   private async handleNetworkResponse(params: any): Promise<void> {
     const url = params?.response?.url || '';
     if (!url.includes('/api/graphql/') && !url.includes('graphql')) {

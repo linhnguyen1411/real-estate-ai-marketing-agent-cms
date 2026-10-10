@@ -32,7 +32,7 @@ async function main() {
   // Find first active company if any
   const company = await prisma.company.findFirst({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true },
+    select: { id: true },
   });
 
   const { keyId, secret } = generateApiKeyPair();

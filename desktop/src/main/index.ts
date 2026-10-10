@@ -18,6 +18,7 @@ import type {
   DesktopAgentSettings,
   ZaloIncomingMessage,
   FacebookIncomingPost,
+  AgentSourceItem,
 } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -31,6 +32,12 @@ let tray: Tray | null = null;
 // Leads buffer (last 200 items in memory)
 const recentLeads: ExtractedLeadData[] = [];
 
+// Sources rotation state
+let activeSources: AgentSourceItem[] = [];
+let currentSourceIndex = 0;
+let secondsRemaining = 180;
+let rotateTicker: NodeJS.Timeout | null = null;
+
 // Stats state
 const stats: DesktopAgentStats = {
   facebookPostsTotal: 0,
@@ -41,6 +48,12 @@ const stats: DesktopAgentStats = {
   chromeCdpAttached: false,
   vpsConnected: false,
   activeTab: 'dashboard',
+  activeSourcesTotal: 0,
+  currentSourceIndex: 0,
+  currentSourceName: '',
+  currentSourceUrl: '',
+  autoRotateSources: true,
+  secondsUntilNextRotate: 180,
 };
 
 // Settings file path
@@ -50,8 +63,8 @@ function getSettingsFilePath(): string {
 
 const defaultSettings: DesktopAgentSettings = {
   vpsUrl: 'https://bdsdanang.site',
-  vpsApiKeyId: 'ak_02c3016bbe087717',
-  vpsApiSecret: 'as_aRM0eTvv6Lxf_j9P1otz4Qwc7SBq6ycN',
+  vpsApiKeyId: 'ak_4dc59a634b9a2de6',
+  vpsApiSecret: 'as_lW4bqQeyw0izVMscw5giEXYFJp_sy-eD',
   autoSyncEnabled: true,
   minHotLeadScore: 70,
   soundNotification: true,
@@ -60,6 +73,8 @@ const defaultSettings: DesktopAgentSettings = {
   cdpPort: 9222,
   cdpProfileDir: 'runtime/agent-cdp-profile',
   cdpAutoLaunch: false,
+  autoRotateSources: true,
+  rotateIntervalMinutes: 3,
 };
 
 let currentSettings: DesktopAgentSettings = { ...defaultSettings };
@@ -216,6 +231,75 @@ async function injectSavedFacebookCookies(fbSession: Electron.Session): Promise<
   }
 }
 
+async function syncSourcesFromVps(): Promise<AgentSourceItem[]> {
+  if (!vpsSync) return activeSources;
+  try {
+    const res = await vpsSync.fetchSourcesFromVps();
+    if (res.success && Array.isArray(res.sources) && res.sources.length > 0) {
+      activeSources = res.sources;
+      stats.activeSourcesTotal = activeSources.length;
+      stats.vpsConnected = true;
+      console.log(`[Sources] Loaded ${activeSources.length} active Facebook groups from VPS.`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sources:list', activeSources);
+      }
+      broadcastStats();
+      // If we haven't navigated to any source yet, navigate to the first one!
+      if (!stats.currentSourceUrl && activeSources.length > 0) {
+        navigateToSource(0);
+      }
+    } else if (res.error) {
+      console.warn('[Sources] Could not load sources from VPS:', res.error);
+    }
+  } catch (err) {
+    console.error('[Sources] Error syncing sources:', err);
+  }
+  return activeSources;
+}
+
+function navigateToSource(index: number): void {
+  if (!activeSources.length) return;
+  const safeIdx = Math.max(0, Math.min(index, activeSources.length - 1));
+  currentSourceIndex = safeIdx;
+  const source = activeSources[safeIdx];
+  stats.currentSourceIndex = safeIdx;
+  stats.currentSourceName = source.name;
+  stats.currentSourceUrl = source.url;
+  secondsRemaining = (currentSettings.rotateIntervalMinutes || 3) * 60;
+  stats.secondsUntilNextRotate = secondsRemaining;
+  broadcastStats();
+
+  console.log(`[SourceRotator] Switching to source [${safeIdx + 1}/${activeSources.length}]: ${source.name} (${source.url})`);
+
+  if (fbView && !fbView.webContents.isDestroyed()) {
+    void fbView.webContents.loadURL(source.url);
+  }
+  if (chromeCdpManager && chromeCdpManager.isAttached()) {
+    void chromeCdpManager.navigate(source.url);
+  }
+}
+
+function startSourceRotationLoop(): void {
+  if (rotateTicker) clearInterval(rotateTicker);
+  rotateTicker = setInterval(() => {
+    if (!currentSettings.autoRotateSources || activeSources.length <= 1) {
+      return;
+    }
+    secondsRemaining--;
+    stats.secondsUntilNextRotate = Math.max(0, secondsRemaining);
+
+    // Broadcast every 5 seconds or when reaching 0
+    if (secondsRemaining % 5 === 0 || secondsRemaining <= 0) {
+      broadcastStats();
+    }
+
+    if (secondsRemaining <= 0) {
+      const nextIdx = (currentSourceIndex + 1) % activeSources.length;
+      navigateToSource(nextIdx);
+    }
+  }, 1000);
+}
+
 async function createWindow(): Promise<void> {
   loadSettings();
   vpsSync = new VpsOutboxSync(currentSettings);
@@ -328,9 +412,11 @@ async function createWindow(): Promise<void> {
   // Attach internal debugger to Facebook tab
   fbDebugger = new FacebookGraphqlDebugger(fbView.webContents, (post: FacebookIncomingPost) => {
     stats.facebookPostsTotal++;
-    const lead = processRawPostToLead('facebook', post.groupName || 'Facebook Group', post.contentText, {
+    const groupName = post.groupName || stats.currentSourceName || 'Facebook Group';
+    const sourceUrl = post.canonicalUrl || stats.currentSourceUrl || '';
+    const lead = processRawPostToLead('facebook', groupName, post.contentText, {
       externalId: post.externalId,
-      sourceUrl: post.canonicalUrl,
+      sourceUrl,
       authorName: post.authorName,
       timestamp: post.timestamp,
     });
@@ -364,9 +450,11 @@ async function createWindow(): Promise<void> {
     },
     (post: FacebookIncomingPost) => {
       stats.facebookPostsTotal++;
-      const lead = processRawPostToLead('facebook', post.groupName || 'Facebook Group (Chrome)', post.contentText, {
+      const groupName = post.groupName || stats.currentSourceName || 'Facebook Group (Chrome)';
+      const sourceUrl = post.canonicalUrl || stats.currentSourceUrl || '';
+      const lead = processRawPostToLead('facebook', groupName, post.contentText, {
         externalId: post.externalId,
-        sourceUrl: post.canonicalUrl,
+        sourceUrl,
         authorName: post.authorName,
         timestamp: post.timestamp,
       });
@@ -383,7 +471,15 @@ async function createWindow(): Promise<void> {
   void fbView.webContents.loadURL('https://www.facebook.com');
   void zaloView.webContents.loadURL('https://chat.zalo.me');
 
+  // Load Facebook sources from VPS and start rotation loop
+  void syncSourcesFromVps();
+  startSourceRotationLoop();
+
   mainWindow.on('closed', () => {
+    if (rotateTicker) {
+      clearInterval(rotateTicker);
+      rotateTicker = null;
+    }
     if (chromeCdpManager) {
       chromeCdpManager.stop();
       chromeCdpManager = null;
@@ -474,6 +570,36 @@ ipcMain.handle('lead:sync-manual', async (_event, leadId: string) => {
     broadcastStats();
   }
   return res;
+});
+
+// Sources Rotation IPC Handlers
+ipcMain.handle('sources:get', () => activeSources);
+
+ipcMain.handle('sources:refresh', async () => {
+  return await syncSourcesFromVps();
+});
+
+ipcMain.on('sources:select', (_event, index: number) => {
+  navigateToSource(index);
+});
+
+ipcMain.on('sources:next', () => {
+  if (activeSources.length) {
+    navigateToSource((currentSourceIndex + 1) % activeSources.length);
+  }
+});
+
+ipcMain.on('sources:prev', () => {
+  if (activeSources.length) {
+    navigateToSource((currentSourceIndex - 1 + activeSources.length) % activeSources.length);
+  }
+});
+
+ipcMain.on('sources:toggle-rotate', (_event, enabled: boolean) => {
+  currentSettings.autoRotateSources = enabled;
+  stats.autoRotateSources = enabled;
+  saveSettings({ autoRotateSources: enabled });
+  broadcastStats();
 });
 
 // App Lifecycle
