@@ -26,6 +26,9 @@ export class ChromeCdpManager {
   private nextReqId = 100;
   private pendingRequests = new Map<number, (res: any) => void>();
   private pollTimer: NodeJS.Timeout | null = null;
+  private autoScrollTimer: NodeJS.Timeout | null = null;
+  private domScanTimer: NodeJS.Timeout | null = null;
+  private autoScrollIntervalSec = 2.5;
   private seenPosts = new Set<string>();
 
   constructor(
@@ -65,6 +68,8 @@ export class ChromeCdpManager {
   }
 
   private disconnect(): void {
+    this.stopAutoScroll();
+    this.stopDomScanner();
     if (this.ws) {
       try {
         this.ws.close();
@@ -211,8 +216,14 @@ export class ChromeCdpManager {
         this.isConnected = true;
         this.onStatusChange?.(true);
 
-        // Enable Network domain
+        // Enable CDP domains
         this.sendCdpCommand('Network.enable', {});
+        this.sendCdpCommand('Page.enable', {});
+        this.sendCdpCommand('Runtime.enable', {});
+
+        // Start turbo auto-scroll & DOM harvesting
+        this.startAutoScroll();
+        this.startDomScanner();
       };
 
       ws.onmessage = (event) => {
@@ -267,12 +278,124 @@ export class ChromeCdpManager {
     });
   }
 
+  setAutoScrollInterval(sec: number): void {
+    this.autoScrollIntervalSec = Math.max(1, sec);
+    if (this.isConnected) {
+      this.startAutoScroll();
+    }
+  }
+
+  startAutoScroll(): void {
+    this.stopAutoScroll();
+    console.log(`[ChromeCDP] Starting auto-scroll loop (every ${this.autoScrollIntervalSec}s).`);
+    this.autoScrollTimer = setInterval(() => {
+      void this.performAutoScrollAndExpand();
+    }, this.autoScrollIntervalSec * 1000);
+  }
+
+  stopAutoScroll(): void {
+    if (this.autoScrollTimer) {
+      clearInterval(this.autoScrollTimer);
+      this.autoScrollTimer = null;
+    }
+  }
+
+  startDomScanner(): void {
+    this.stopDomScanner();
+    this.domScanTimer = setInterval(() => {
+      void this.scanDomInChrome();
+    }, 2000);
+  }
+
+  stopDomScanner(): void {
+    if (this.domScanTimer) {
+      clearInterval(this.domScanTimer);
+      this.domScanTimer = null;
+    }
+  }
+
+  private async performAutoScrollAndExpand(): Promise<void> {
+    if (!this.isConnected) return;
+    const script = `
+      (function() {
+        try {
+          var btns = document.querySelectorAll('div[role="button"], span');
+          for (var i = 0; i < btns.length; i++) {
+            var t = (btns[i].textContent || '').trim();
+            if (t === 'Xem thêm' || t === 'See more') {
+              btns[i].click();
+            }
+          }
+          window.scrollBy({ top: 1100, behavior: 'smooth' });
+        } catch(e) {}
+      })()
+    `;
+    await this.sendCdpCommand('Runtime.evaluate', { expression: script });
+  }
+
+  private async scanDomInChrome(): Promise<void> {
+    if (!this.isConnected) return;
+    const extractScript = `
+      (function() {
+        try {
+          var reKeywords = /(?:tỷ|ty|triệu|tr|bán|cần mua|tìm mua|cho thuê|cần thuê|đất|nhà|bất động sản|bds|bđs|nam hòa xuân|hòa xuân|đà nẵng|lô|block|b2|m2|liên hệ|sđt|zalo|inbox|chính chủ|cc|mặt tiền|kiệt|đường|hướng|sổ|ngộp|hạ giá|cắt lỗ|căn hộ|chung cư|villa|biệt thự|\\d{9,11})/i;
+          var els = document.querySelectorAll('div[dir="auto"]');
+          var results = [];
+          for (var i = 0; i < els.length; i++) {
+            var txt = (els[i].textContent || '').trim();
+            if (txt.length < 22 || txt.length > 6000) continue;
+            if (!reKeywords.test(txt)) continue;
+
+            var container = els[i].closest('div[role="feed"] > div') || els[i].closest('div[data-pagelet*="FeedUnit"]') || els[i].parentElement;
+            var author = 'Facebook User';
+            var link = '';
+            if (container) {
+              var aEl = container.querySelector('a[role="link"] strong, a[role="link"] span, h2, h3');
+              if (aEl && aEl.textContent) author = aEl.textContent.trim();
+              var lEl = container.querySelector('a[href*="/posts/"], a[href*="/permalink/"], a[href*="facebook.com/groups/"]');
+              if (lEl && lEl.href) link = lEl.href;
+            }
+            results.push({ text: txt, author: author, link: link });
+          }
+          return JSON.stringify(results.slice(0, 30));
+        } catch(e) {
+          return "[]";
+        }
+      })()
+    `;
+    const res = await this.sendCdpCommand('Runtime.evaluate', {
+      expression: extractScript,
+      returnByValue: true,
+    });
+    const val = res?.result?.value;
+    if (val && typeof val === 'string' && val.length > 5) {
+      try {
+        const posts = JSON.parse(val);
+        if (Array.isArray(posts)) {
+          for (const p of posts) {
+            const key = p.text.slice(0, 80);
+            if (this.seenPosts.has(key)) continue;
+            this.seenPosts.add(key);
+            if (this.seenPosts.size > 2000) {
+              const first = this.seenPosts.values().next().value;
+              if (first) this.seenPosts.delete(first);
+            }
+            this.onPostCaptured({
+              authorName: p.author || 'Facebook User (Chrome)',
+              contentText: p.text,
+              canonicalUrl: p.link || undefined,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      } catch {}
+    }
+  }
+
   async triggerScroll(): Promise<void> {
     if (!this.isConnected) return;
-    await this.sendCdpCommand('Runtime.evaluate', {
-      expression: 'window.scrollBy({ top: 600, behavior: "smooth" })',
-    });
-    console.log('[ChromeCDP] Triggered smooth scroll on Chrome tab.');
+    await this.performAutoScrollAndExpand();
+    console.log('[ChromeCDP] Triggered manual scroll on Chrome tab.');
   }
 
   async navigate(url: string): Promise<boolean> {
@@ -280,6 +403,10 @@ export class ChromeCdpManager {
     try {
       await this.sendCdpCommand('Page.navigate', { url });
       console.log('[ChromeCDP] Navigated tab to:', url);
+      // Wait 1.5s after navigation and perform immediate DOM scan
+      setTimeout(() => {
+        void this.scanDomInChrome();
+      }, 1500);
       return true;
     } catch (err) {
       console.error('[ChromeCDP] Failed to navigate tab:', err);
@@ -358,12 +485,12 @@ export class ChromeCdpManager {
   }
 
   private isUsefulPost(text: string): boolean {
-    if (text.length < 35 || text.length > 5000) return false;
+    if (text.length < 22 || text.length > 6000) return false;
     const noise = /^(https?:|Ảnh của |People |Bình luận đã|Người đóng góp|Like |Thích |Xem thêm)/i;
     if (noise.test(text)) return false;
 
     const reKeywords =
-      /(?:tỷ|ty|triệu|bán|cần mua|tìm mua|cho thuê|cần thuê|đất|nhà|bất động sản|nam hòa xuân|hòa xuân|đà nẵng|lô|block|b2|m2|liên hệ|sđt|zalo|inbox|\d{9,11})/i;
+      /(?:tỷ|ty|triệu|tr|bán|cần mua|tìm mua|cho thuê|cần thuê|đất|nhà|bất động sản|bds|bđs|nam hòa xuân|hòa xuân|đà nẵng|lô|block|b2|m2|liên hệ|sđt|zalo|inbox|chính chủ|cc|mặt tiền|kiệt|đường|hướng|sổ|ngộp|hạ giá|cắt lỗ|căn hộ|chung cư|villa|biệt thự|\d{9,11})/i;
     return reKeywords.test(text);
   }
 

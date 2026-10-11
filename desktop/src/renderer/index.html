@@ -469,7 +469,14 @@
             <a id="current-source-url" class="source-url-link" href="#" target="_blank">https://facebook.com</a>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 4px; background: #0f172a; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border);">
+              <span style="font-size: 11px; color: var(--text-muted); margin-right: 4px;">⚡ Tốc độ:</span>
+              <button class="filter-btn active" id="btn-speed-turbo" style="padding: 2px 7px; font-size: 11px;" title="Siêu tốc: 45 giây/nhóm, cuộn 2s/lần">🚀 45s (Turbo)</button>
+              <button class="filter-btn" id="btn-speed-fast" style="padding: 2px 7px; font-size: 11px;" title="Nhanh: 90 giây/nhóm, cuộn 3s/lần">⚡ 90s</button>
+              <button class="filter-btn" id="btn-speed-standard" style="padding: 2px 7px; font-size: 11px;" title="Tiêu chuẩn: 3 phút/nhóm, cuộn 5s/lần">☕ 3p</button>
+            </div>
+
             <div style="font-size: 13px; background: #0f172a; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);">
               ⏳ Đổi nhóm sau: <span id="countdown-timer" style="color: #fbbf24; font-weight: 700;">--:--</span>
             </div>
@@ -588,8 +595,17 @@
         </div>
 
         <div class="form-group">
+          <label>Chế độ tốc độ quét Facebook:</label>
+          <select id="setting-speed-mode" class="form-control">
+            <option value="turbo">🚀 Siêu tốc (Turbo: 45 giây/nhóm, cuộn trang 2 giây/lần)</option>
+            <option value="fast">⚡ Nhanh (Fast: 90 giây/nhóm, cuộn trang 3 giây/lần)</option>
+            <option value="standard">☕ Tiêu chuẩn (Standard: 3 phút/nhóm, cuộn trang 5 giây/lần)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label>Thời gian quét mỗi nhóm Facebook trước khi chuyển (phút):</label>
-          <input type="number" id="setting-rotate-interval" class="form-control" min="1" max="60" value="3">
+          <input type="number" id="setting-rotate-interval" class="form-control" min="1" max="60" value="1">
         </div>
 
         <div style="margin-top: 24px; display: flex; gap: 12px; align-items: center;">

@@ -138,12 +138,12 @@ export class FacebookGraphqlDebugger {
   }
 
   private isUsefulPost(text: string): boolean {
-    if (text.length < 35 || text.length > 5000) return false;
+    if (text.length < 22 || text.length > 6000) return false;
     const noise = /^(https?:|Ảnh của |People |Bình luận đã|Người đóng góp|Like |Thích |Xem thêm)/i;
     if (noise.test(text)) return false;
 
-    // Real estate indicator keywords
-    const reKeywords = /(?:tỷ|ty|triệu|bán|cần mua|tìm mua|cho thuê|cần thuê|đất|nhà|bất động sản|nam hòa xuân|hòa xuân|đà nẵng|lô|block|b2|m2|liên hệ|sđt|zalo|inbox|\d{9,11})/i;
+    // Real estate indicator keywords (comprehensive Vietnamese slang & abbreviations)
+    const reKeywords = /(?:tỷ|ty|triệu|tr|bán|cần mua|tìm mua|cho thuê|cần thuê|đất|nhà|bất động sản|bds|bđs|nam hòa xuân|hòa xuân|đà nẵng|lô|block|b2|m2|liên hệ|sđt|zalo|inbox|chính chủ|cc|mặt tiền|kiệt|đường|hướng|sổ|ngộp|hạ giá|cắt lỗ|căn hộ|chung cư|villa|biệt thự|\d{9,11})/i;
     return reKeywords.test(text);
   }
 

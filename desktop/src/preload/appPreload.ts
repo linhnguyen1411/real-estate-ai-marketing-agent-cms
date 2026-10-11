@@ -94,4 +94,8 @@ contextBridge.exposeInMainWorld('desktopAgent', {
   toggleAutoRotate: (enabled: boolean) => {
     ipcRenderer.send('sources:toggle-rotate', enabled);
   },
+
+  setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => {
+    ipcRenderer.send('speed:set', mode);
+  },
 });

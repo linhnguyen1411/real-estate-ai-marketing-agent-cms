@@ -20,6 +20,7 @@ interface DesktopAgentAPI {
   nextSource: () => void;
   prevSource: () => void;
   toggleAutoRotate: (enabled: boolean) => void;
+  setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => void;
 }
 
 declare global {
@@ -59,6 +60,12 @@ const selectSourcesDropdown = document.getElementById('select-sources-dropdown')
 const btnPrevSource = document.getElementById('btn-prev-source')!;
 const btnNextSource = document.getElementById('btn-next-source')!;
 const btnRefreshSources = document.getElementById('btn-refresh-sources')!;
+
+// Speed Controls
+const btnSpeedTurbo = document.getElementById('btn-speed-turbo')!;
+const btnSpeedFast = document.getElementById('btn-speed-fast')!;
+const btnSpeedStandard = document.getElementById('btn-speed-standard')!;
+const settingSpeedMode = document.getElementById('setting-speed-mode') as HTMLSelectElement;
 
 // Tab Switching
 function switchTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void {
@@ -188,10 +195,21 @@ function updateStatsUI(stats: any): void {
     toggleAutoRotateEl.checked = !!stats.autoRotateSources;
   }
 
+  if (stats.scanSpeedMode) {
+    updateSpeedUI(stats.scanSpeedMode);
+  }
+
   if (typeof stats.currentSourceIndex === 'number' && stats.currentSourceIndex !== currentSourceIdx) {
     currentSourceIdx = stats.currentSourceIndex;
     selectSourcesDropdown.value = String(currentSourceIdx);
   }
+}
+
+function updateSpeedUI(mode: 'turbo' | 'fast' | 'standard'): void {
+  btnSpeedTurbo.classList.toggle('active', mode === 'turbo');
+  btnSpeedFast.classList.toggle('active', mode === 'fast');
+  btnSpeedStandard.classList.toggle('active', mode === 'standard');
+  if (settingSpeedMode) settingSpeedMode.value = mode;
 }
 
 function formatRow(lead: any): string {
@@ -333,6 +351,28 @@ window.desktopAgent.onSourcesUpdate((sources: any[]) => {
   renderSourcesDropdown(sources, currentSourceIdx);
 });
 
+// Speed Button Listeners
+btnSpeedTurbo?.addEventListener('click', () => {
+  window.desktopAgent.setScanSpeed('turbo');
+  updateSpeedUI('turbo');
+});
+
+btnSpeedFast?.addEventListener('click', () => {
+  window.desktopAgent.setScanSpeed('fast');
+  updateSpeedUI('fast');
+});
+
+btnSpeedStandard?.addEventListener('click', () => {
+  window.desktopAgent.setScanSpeed('standard');
+  updateSpeedUI('standard');
+});
+
+settingSpeedMode?.addEventListener('change', () => {
+  const mode = settingSpeedMode.value as any;
+  window.desktopAgent.setScanSpeed(mode);
+  updateSpeedUI(mode);
+});
+
 // Settings Handlers
 async function loadSettingsUI(): Promise<void> {
   const s = await window.desktopAgent.getSettings();
@@ -343,13 +383,16 @@ async function loadSettingsUI(): Promise<void> {
   (document.getElementById('setting-sound') as HTMLInputElement).checked = !!s.soundNotification;
   (document.getElementById('setting-auto-scroll') as HTMLInputElement).checked = !!s.autoScrollFacebook;
   (document.getElementById('setting-scroll-interval') as HTMLInputElement).value = String(
-    s.autoScrollIntervalSec || 8
+    s.autoScrollIntervalSec || 2
   );
   (document.getElementById('setting-auto-rotate-sources') as HTMLInputElement).checked =
     s.autoRotateSources !== false;
   (document.getElementById('setting-rotate-interval') as HTMLInputElement).value = String(
-    s.rotateIntervalMinutes || 3
+    s.rotateIntervalMinutes || 1
   );
+  if (settingSpeedMode) {
+    settingSpeedMode.value = s.scanSpeedMode || 'turbo';
+  }
 }
 
 document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
@@ -361,10 +404,11 @@ document.getElementById('btn-save-settings')?.addEventListener('click', async ()
     soundNotification: (document.getElementById('setting-sound') as HTMLInputElement).checked,
     autoScrollFacebook: (document.getElementById('setting-auto-scroll') as HTMLInputElement).checked,
     autoScrollIntervalSec:
-      parseInt((document.getElementById('setting-scroll-interval') as HTMLInputElement).value, 10) || 8,
+      parseInt((document.getElementById('setting-scroll-interval') as HTMLInputElement).value, 10) || 2,
     autoRotateSources: (document.getElementById('setting-auto-rotate-sources') as HTMLInputElement).checked,
     rotateIntervalMinutes:
-      parseInt((document.getElementById('setting-rotate-interval') as HTMLInputElement).value, 10) || 3,
+      parseInt((document.getElementById('setting-rotate-interval') as HTMLInputElement).value, 10) || 1,
+    scanSpeedMode: (settingSpeedMode?.value as any) || 'turbo',
   };
 
   await window.desktopAgent.saveSettings(partial);

@@ -48,6 +48,8 @@ export interface AgentSourceItem {
   status: string;
 }
 
+export type ScanSpeedMode = 'turbo' | 'fast' | 'standard';
+
 export interface DesktopAgentStats {
   facebookPostsTotal: number;
   zaloMessagesTotal: number;
@@ -63,6 +65,7 @@ export interface DesktopAgentStats {
   currentSourceUrl: string;
   autoRotateSources: boolean;
   secondsUntilNextRotate: number;
+  scanSpeedMode: ScanSpeedMode;
 }
 
 export interface DesktopAgentSettings {
@@ -79,4 +82,6 @@ export interface DesktopAgentSettings {
   cdpAutoLaunch: boolean;
   autoRotateSources: boolean;
   rotateIntervalMinutes: number;
+  rotateIntervalSec?: number;
+  scanSpeedMode?: ScanSpeedMode;
 }

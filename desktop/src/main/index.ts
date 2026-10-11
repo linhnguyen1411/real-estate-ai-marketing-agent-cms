@@ -35,7 +35,7 @@ const recentLeads: ExtractedLeadData[] = [];
 // Sources rotation state
 let activeSources: AgentSourceItem[] = [];
 let currentSourceIndex = 0;
-let secondsRemaining = 180;
+let secondsRemaining = 45;
 let rotateTicker: NodeJS.Timeout | null = null;
 
 // Stats state
@@ -53,7 +53,8 @@ const stats: DesktopAgentStats = {
   currentSourceName: '',
   currentSourceUrl: '',
   autoRotateSources: true,
-  secondsUntilNextRotate: 180,
+  secondsUntilNextRotate: 45,
+  scanSpeedMode: 'turbo',
 };
 
 // Settings file path
@@ -69,13 +70,46 @@ const defaultSettings: DesktopAgentSettings = {
   minHotLeadScore: 70,
   soundNotification: true,
   autoScrollFacebook: true,
-  autoScrollIntervalSec: 8,
+  autoScrollIntervalSec: 2,
   cdpPort: 9222,
   cdpProfileDir: 'runtime/agent-cdp-profile',
   cdpAutoLaunch: false,
   autoRotateSources: true,
-  rotateIntervalMinutes: 3,
+  rotateIntervalMinutes: 1,
+  rotateIntervalSec: 45,
+  scanSpeedMode: 'turbo',
 };
+
+function getChronologicalGroupUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (u.pathname.includes('/groups/')) {
+      if (!u.searchParams.has('sorting_setting')) {
+        u.searchParams.set('sorting_setting', 'CHRONOLOGICAL');
+      }
+      return u.toString();
+    }
+  } catch {}
+  return url;
+}
+
+function getEffectiveRotateIntervalSec(): number {
+  if (currentSettings.rotateIntervalSec && currentSettings.rotateIntervalSec > 0) {
+    return currentSettings.rotateIntervalSec;
+  }
+  if (currentSettings.scanSpeedMode === 'turbo') return 45;
+  if (currentSettings.scanSpeedMode === 'fast') return 90;
+  if (currentSettings.scanSpeedMode === 'standard') return 180;
+  return (currentSettings.rotateIntervalMinutes || 1) * 60;
+}
+
+function getEffectiveScrollIntervalSec(): number {
+  if (currentSettings.scanSpeedMode === 'turbo') return 2;
+  if (currentSettings.scanSpeedMode === 'fast') return 3;
+  if (currentSettings.scanSpeedMode === 'standard') return 5;
+  return currentSettings.autoScrollIntervalSec || 2;
+}
 
 let currentSettings: DesktopAgentSettings = { ...defaultSettings };
 
@@ -262,20 +296,22 @@ function navigateToSource(index: number): void {
   const safeIdx = Math.max(0, Math.min(index, activeSources.length - 1));
   currentSourceIndex = safeIdx;
   const source = activeSources[safeIdx];
+  const targetUrl = getChronologicalGroupUrl(source.url);
+
   stats.currentSourceIndex = safeIdx;
   stats.currentSourceName = source.name;
-  stats.currentSourceUrl = source.url;
-  secondsRemaining = (currentSettings.rotateIntervalMinutes || 3) * 60;
+  stats.currentSourceUrl = targetUrl;
+  secondsRemaining = getEffectiveRotateIntervalSec();
   stats.secondsUntilNextRotate = secondsRemaining;
   broadcastStats();
 
-  console.log(`[SourceRotator] Switching to source [${safeIdx + 1}/${activeSources.length}]: ${source.name} (${source.url})`);
+  console.log(`[SourceRotator] Switching to source [${safeIdx + 1}/${activeSources.length}]: ${source.name} (${targetUrl})`);
 
   if (fbView && !fbView.webContents.isDestroyed()) {
-    void fbView.webContents.loadURL(source.url);
+    void fbView.webContents.loadURL(targetUrl);
   }
   if (chromeCdpManager && chromeCdpManager.isAttached()) {
-    void chromeCdpManager.navigate(source.url);
+    void chromeCdpManager.navigate(targetUrl);
   }
 }
 
@@ -435,7 +471,7 @@ async function createWindow(): Promise<void> {
       fbView?.webContents.send(
         'fb:set-auto-scroll',
         true,
-        currentSettings.autoScrollIntervalSec || 8
+        getEffectiveScrollIntervalSec()
       );
     }
   });
@@ -527,6 +563,44 @@ ipcMain.handle('settings:get', () => {
   return currentSettings;
 });
 
+ipcMain.on('fb:dom-post-captured', (_event, post: { authorName?: string; contentText: string; canonicalUrl?: string; timestamp: number }) => {
+  stats.facebookPostsTotal++;
+  const groupName = stats.currentSourceName || 'Facebook Group';
+  const sourceUrl = post.canonicalUrl || stats.currentSourceUrl || '';
+  const lead = processRawPostToLead('facebook', groupName, post.contentText, {
+    sourceUrl,
+    authorName: post.authorName,
+    timestamp: post.timestamp,
+  });
+  void handleLeadCaptured(lead);
+});
+
+ipcMain.on('speed:set', (_event, mode: 'turbo' | 'fast' | 'standard') => {
+  currentSettings.scanSpeedMode = mode;
+  stats.scanSpeedMode = mode;
+  if (mode === 'turbo') {
+    currentSettings.rotateIntervalSec = 45;
+    currentSettings.autoScrollIntervalSec = 2;
+  } else if (mode === 'fast') {
+    currentSettings.rotateIntervalSec = 90;
+    currentSettings.autoScrollIntervalSec = 3;
+  } else {
+    currentSettings.rotateIntervalSec = 180;
+    currentSettings.autoScrollIntervalSec = 5;
+  }
+  saveSettings(currentSettings);
+  secondsRemaining = getEffectiveRotateIntervalSec();
+  stats.secondsUntilNextRotate = secondsRemaining;
+
+  if (fbView) {
+    fbView.webContents.send('fb:set-auto-scroll', true, getEffectiveScrollIntervalSec());
+  }
+  if (chromeCdpManager) {
+    chromeCdpManager.setAutoScrollInterval(getEffectiveScrollIntervalSec());
+  }
+  broadcastStats();
+});
+
 ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSettings>) => {
   const updated = saveSettings(partialSettings);
   if (chromeCdpManager) {
@@ -535,12 +609,13 @@ ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSe
       profileDir: updated.cdpProfileDir || 'runtime/agent-cdp-profile',
       autoLaunch: updated.cdpAutoLaunch ?? true,
     });
+    chromeCdpManager.setAutoScrollInterval(getEffectiveScrollIntervalSec());
   }
   if (fbView && updated.autoScrollFacebook !== undefined) {
     fbView.webContents.send(
       'fb:set-auto-scroll',
       updated.autoScrollFacebook,
-      updated.autoScrollIntervalSec || 8
+      getEffectiveScrollIntervalSec()
     );
   }
   return updated;
