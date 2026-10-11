@@ -73,6 +73,10 @@ function extractPostsFromDom(): void {
         }
       }
 
+      if (!permalink && window.location.href && !window.location.href.includes('/checkpoint')) {
+        permalink = window.location.href;
+      }
+
       ipcRenderer.send('fb:dom-post-captured', {
         authorName,
         contentText: text,

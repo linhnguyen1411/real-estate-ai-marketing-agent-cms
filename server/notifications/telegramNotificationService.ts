@@ -360,7 +360,7 @@ export async function notifyFindingIfEligible(input: {
     });
     const sourceUrlFinal = sourceProv.url; // fail closed — no openPostHint bypass
 
-    const text = formatSalesActionCard({
+    let text = formatSalesActionCard({
       findingId: finding.id,
       acquisition: acq,
       sales,
@@ -452,11 +452,20 @@ export async function notifyFindingIfEligible(input: {
       const mobile = candidates
         .map(u => (u ? toMobileFriendlyFacebookUrl(u) || u : null))
         .filter((u): u is string => Boolean(u) && !isDegradedFacebookUrl(u));
-      // Source must be a solid post permalink — never group-home / login wall
+      // 1. Prefer solid post permalink
+      const solid = mobile.find(
+        u =>
+          isSolidFacebookPermalink(u) &&
+          isTrustedContentUrl(u, {
+            agentSourceName: finding.source?.name,
+            platform: sourceProv.platform,
+          }),
+      );
+      if (solid) return solid;
+      // 2. Fallback to any trusted candidate URL (group URL / post link)
       return (
         mobile.find(
           u =>
-            isSolidFacebookPermalink(u) &&
             isTrustedContentUrl(u, {
               agentSourceName: finding.source?.name,
               platform: sourceProv.platform,
@@ -465,7 +474,52 @@ export async function notifyFindingIfEligible(input: {
       );
     };
 
-    const sourceButtonUrl = pickSourceButtonUrl(openPost, sourceUrlFinal, links.rawPostUrl);
+    const sourceButtonUrl = pickSourceButtonUrl(
+      openPost,
+      sourceUrlFinal,
+      openGroup,
+      finding.source?.url,
+      finding.scannedContent?.canonicalUrl,
+      links.rawPostUrl,
+      links.groupUrl,
+    );
+
+    const effectiveSourceUrl =
+      sourceButtonUrl ||
+      sourceUrlFinal ||
+      openPost ||
+      openGroup ||
+      finding.source?.url ||
+      finding.scannedContent?.canonicalUrl ||
+      null;
+
+    if (effectiveSourceUrl && effectiveSourceUrl !== sourceUrlFinal) {
+      text = formatSalesActionCard({
+        findingId: finding.id,
+        acquisition: acq,
+        sales,
+        confidencePct,
+        role: roleResolved,
+        classification: finding.classification,
+        actorName: finding.personName,
+        propertyType: finding.propertyType,
+        location: finding.primaryLocation,
+        budgetMin: finding.budgetMin,
+        budgetMax: finding.budgetMax,
+        areaLabel: formatAreaLabel(finding.extractedData),
+        timeline: acq?.timeline,
+        extractedData: finding.extractedData,
+        agentSourceName: finding.source?.name,
+        agentSourceType: finding.source?.type,
+        sourceUrl: effectiveSourceUrl,
+        title: finding.title,
+        needSummary: finding.needSummary,
+        summary: finding.summary,
+        hasPhone: Boolean(finding.primaryPhone),
+        phone: finding.primaryPhone,
+        whyReasons: acq?.intent.reasons,
+      });
+    }
 
     replyMarkup = salesActionCardKeyboard({
       findingId: finding.id,

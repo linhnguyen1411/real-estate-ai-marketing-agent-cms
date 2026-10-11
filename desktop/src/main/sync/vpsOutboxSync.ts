@@ -37,8 +37,10 @@ export class VpsOutboxSync {
         url: lead.sourceUrl || '',
       },
       scannedContent: {
-        content: lead.rawText,
+        canonicalUrl: lead.sourceUrl || '',
         url: lead.sourceUrl || '',
+        contentText: lead.rawText,
+        content: lead.rawText,
         authorName: lead.authorName || '',
       },
       finding: {
@@ -64,6 +66,11 @@ export class VpsOutboxSync {
           projectBlock: lead.projectBlock,
           source: {
             postUrl: lead.sourceUrl,
+            permalink: lead.sourceUrl,
+            canonicalUrl: lead.sourceUrl,
+            url: lead.sourceUrl,
+            groupUrl: lead.sourceUrl,
+            groupName: lead.sourceName || 'Facebook Group',
             authorName: lead.authorName,
           },
         },

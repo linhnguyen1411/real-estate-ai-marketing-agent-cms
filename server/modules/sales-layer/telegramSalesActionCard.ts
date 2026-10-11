@@ -13,6 +13,7 @@ import {
   buildLeadNeed,
   buildSalesActionCardViewModel,
   formatDisplayPhone,
+  isTrustedContentUrl,
   resolveSourceProvenance,
   stripInternalPollution,
   toTelUri,
@@ -447,8 +448,16 @@ export function formatSalesActionCard(input: SalesActionCardInput): string {
   if (vm.phone) {
     lines.push('', '📞 Phone', vm.phone);
   }
+  const effectiveSourceUrl =
+    vm.sourceUrl || (input.sourceUrl && isTrustedContentUrl(input.sourceUrl) ? input.sourceUrl : null);
   if (sourceLabel) {
-    lines.push('', '📂 Source', sourceLabel);
+    if (effectiveSourceUrl) {
+      lines.push('', '📂 Source', `${sourceLabel}\n🔗 ${effectiveSourceUrl}`);
+    } else {
+      lines.push('', '📂 Source', sourceLabel);
+    }
+  } else if (effectiveSourceUrl) {
+    lines.push('', '📂 Source', `🔗 ${effectiveSourceUrl}`);
   }
 
   lines.push('', `🎯 BUYER CONFIDENCE: ${vm.confidence}%`);

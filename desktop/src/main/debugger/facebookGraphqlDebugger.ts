@@ -152,6 +152,21 @@ export class FacebookGraphqlDebugger {
     const end = Math.min(body.length, index + 4000);
     const window = body.slice(start, end);
 
+    let groupId: string | null = null;
+    const groupPatterns = [
+      /"groupID"\s*:\s*"(\d{5,})"/,
+      /"group_id"\s*:\s*"(\d{5,})"/,
+      /groups\/([a-zA-Z0-9._-]+)/,
+      /"group":\s*\{\s*"id":\s*"(\d{5,})"/,
+    ];
+    for (const gp of groupPatterns) {
+      const gm = window.match(gp);
+      if (gm) {
+        groupId = gm[1];
+        break;
+      }
+    }
+
     const patterns = [
       /"post_id"\s*:\s*"(\d{8,})"/,
       /"legacy_story_id"\s*:\s*"(\d{8,})"/,
@@ -164,9 +179,12 @@ export class FacebookGraphqlDebugger {
       const m = window.match(pat);
       if (m) {
         const id = m[1];
+        const permalink = groupId
+          ? `https://www.facebook.com/groups/${groupId}/posts/${id}`
+          : `https://www.facebook.com/posts/${id}`;
         return {
           postId: id,
-          permalink: `https://www.facebook.com/${id}`,
+          permalink,
         };
       }
     }

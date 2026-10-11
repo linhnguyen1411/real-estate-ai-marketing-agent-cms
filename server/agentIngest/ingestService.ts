@@ -264,8 +264,8 @@ async function upsertScannedContent(input: {
 }): Promise<{ id: string; created: boolean }> {
   const client = asDb(input.db);
   const sc = input.payload.scannedContent || {};
-  const canonicalUrl = String(sc.canonicalUrl || '').trim();
-  const contentText = String(sc.contentText || '').trim();
+  const canonicalUrl = String(sc.canonicalUrl || (sc as any).url || '').trim();
+  const contentText = String(sc.contentText || (sc as any).content || '').trim();
   if (!canonicalUrl && !contentText) {
     input.warnings.push('scanned_content_empty');
   }
@@ -765,7 +765,9 @@ export async function ingestFindingPayload(input: {
         findingId: persisted.findingId,
         score: persisted.findingScore,
         title: persisted.findingTitle,
-        canonicalUrl: input.payload.scannedContent?.canonicalUrl,
+        canonicalUrl:
+          input.payload.scannedContent?.canonicalUrl ||
+          (input.payload.scannedContent as any)?.url,
         sourceId: persisted.sourceId,
       }).catch(() => undefined);
 
