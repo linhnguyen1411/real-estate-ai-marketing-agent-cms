@@ -7,7 +7,7 @@ interface DesktopAgentAPI {
   onStatsUpdate: (cb: (stats: any) => void) => () => void;
   onLogMessage: (cb: (log: any) => void) => () => void;
   onSourcesUpdate: (cb: (sources: any[]) => void) => () => void;
-  switchTab: (tab: 'dashboard' | 'facebook' | 'zalo' | 'settings') => void;
+  switchTab: (tab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings') => void;
   getStats: () => Promise<any>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<any>;
@@ -21,6 +21,14 @@ interface DesktopAgentAPI {
   prevSource: () => void;
   toggleAutoRotate: (enabled: boolean) => void;
   setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => void;
+
+  // Publishing & Inventory
+  fetchInventory: () => Promise<{ success: boolean; properties?: any[]; error?: string }>;
+  generateAiPost: (params: { propertyId?: string; propertyData?: any; tone?: string }) => Promise<{ success: boolean; data?: { facebook: string; zalo?: string }; error?: string }>;
+  startPublishQueue: (config: any) => Promise<{ success: boolean; error?: string }>;
+  stopPublishQueue: () => Promise<void>;
+  openGroupAndPrepare: (params: { groupUrl: string; postText: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  onPublishProgress: (callback: (status: any) => void) => () => void;
 }
 
 declare global {
@@ -31,12 +39,18 @@ declare global {
 
 const leadsList: any[] = [];
 let currentFilter: 'all' | 'hot' | 'supply' | 'demand' = 'all';
-let currentTab: 'dashboard' | 'facebook' | 'zalo' | 'settings' = 'dashboard';
+let currentTab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings' = 'dashboard';
 let activeSourcesList: any[] = [];
 let currentSourceIdx = 0;
 
+// Publisher state
+let inventoryList: any[] = [];
+let selectedProperty: any = null;
+const selectedGroupUrls = new Set<string>();
+
 // Elements
 const viewDashboard = document.getElementById('view-dashboard')!;
+const viewPublisher = document.getElementById('view-publisher');
 const viewSettings = document.getElementById('view-settings')!;
 const leadsTableBody = document.getElementById('leads-table-body')!;
 
@@ -68,7 +82,7 @@ const btnSpeedStandard = document.getElementById('btn-speed-standard')!;
 const settingSpeedMode = document.getElementById('setting-speed-mode') as HTMLSelectElement;
 
 // Tab Switching
-function switchTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void {
+function switchTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings'): void {
   currentTab = tab;
   document.querySelectorAll('.nav-tab').forEach((el) => {
     el.classList.toggle('active', el.getAttribute('data-tab') === tab);
@@ -76,13 +90,22 @@ function switchTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void {
 
   if (tab === 'dashboard') {
     viewDashboard.classList.remove('hidden');
+    viewPublisher?.classList.add('hidden');
     viewSettings.classList.add('hidden');
+  } else if (tab === 'publisher') {
+    viewDashboard.classList.add('hidden');
+    viewPublisher?.classList.remove('hidden');
+    viewSettings.classList.add('hidden');
+    if (inventoryList.length === 0) void loadInventory();
+    renderPublisherGroups();
   } else if (tab === 'settings') {
     viewDashboard.classList.add('hidden');
+    viewPublisher?.classList.add('hidden');
     viewSettings.classList.remove('hidden');
   } else {
     // 'facebook' or 'zalo' (embedded WebContentsView shown)
     viewDashboard.classList.add('hidden');
+    viewPublisher?.classList.add('hidden');
     viewSettings.classList.add('hidden');
   }
 
@@ -432,3 +455,355 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.warn('Failed to load initial sources:', err);
   }
 });
+
+// ==========================================
+// PUBLISHER & INVENTORY LOGIC
+// ==========================================
+
+const inventoryListContainer = document.getElementById('inventory-list-container')!;
+const inventoryCountEl = document.getElementById('inventory-count')!;
+const inventorySearchInput = document.getElementById('inventory-search-input') as HTMLInputElement;
+const btnRefreshInventory = document.getElementById('btn-refresh-inventory')!;
+
+const bannerPropertyName = document.getElementById('banner-property-name')!;
+const bannerPropertyPrice = document.getElementById('banner-property-price')!;
+const publisherToneSelect = document.getElementById('publisher-tone-select') as HTMLSelectElement;
+const btnGenAiPost = document.getElementById('btn-gen-ai-post')!;
+const publisherPostContent = document.getElementById('publisher-post-content') as HTMLTextAreaElement;
+const charCountBadge = document.getElementById('char-count-badge')!;
+
+const publisherGroupsGrid = document.getElementById('publisher-groups-grid')!;
+const selectedGroupsCountTag = document.getElementById('selected-groups-count-tag')!;
+const btnSelectAllGroups = document.getElementById('btn-select-all-groups')!;
+const btnDeselectAllGroups = document.getElementById('btn-deselect-all-groups')!;
+const btnRefreshPubGroups = document.getElementById('btn-refresh-pub-groups')!;
+
+const publishIntervalSec = document.getElementById('publish-interval-sec') as HTMLInputElement;
+const publishModeSelect = document.getElementById('publish-mode-select') as HTMLSelectElement;
+const btnStartPublish = document.getElementById('btn-start-publish')!;
+const btnStopPublish = document.getElementById('btn-stop-publish')!;
+const publishStatusBox = document.getElementById('publish-status-box')!;
+const publishStatusMsg = document.getElementById('publish-status-msg')!;
+const publishCountdown = document.getElementById('publish-countdown')!;
+const publishQueueBody = document.getElementById('publish-queue-body')!;
+
+function formatPriceNumber(val?: number | string): string {
+  if (!val) return 'Thỏa thuận';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num) || num <= 0) return 'Thỏa thuận';
+  if (num >= 1_000_000_000) {
+    return `${(num / 1_000_000_000).toFixed(2).replace(/\.00$/, '')} Tỷ`;
+  }
+  if (num >= 1_000_000) {
+    return `${(num / 1_000_000).toFixed(0)} Triệu`;
+  }
+  return `${num.toLocaleString('vi-VN')} đ`;
+}
+
+async function loadInventory(): Promise<void> {
+  if (!inventoryListContainer) return;
+  inventoryListContainer.innerHTML = '<div class="empty-state" style="padding: 20px 10px; font-size: 12px;">Đang tải danh sách từ VPS...</div>';
+  try {
+    const res = await window.desktopAgent.fetchInventory();
+    if (res.success && Array.isArray(res.properties)) {
+      inventoryList = res.properties;
+      if (inventoryCountEl) inventoryCountEl.textContent = String(inventoryList.length);
+      renderInventoryList(inventoryList);
+    } else {
+      inventoryListContainer.innerHTML = `<div class="empty-state" style="color: #f87171; padding: 20px 10px; font-size: 12px;">Lỗi: ${res.error || 'Không thể tải giỏ hàng'}</div>`;
+    }
+  } catch (err: any) {
+    inventoryListContainer.innerHTML = `<div class="empty-state" style="color: #f87171; padding: 20px 10px; font-size: 12px;">Lỗi kết nối VPS: ${err.message}</div>`;
+  }
+}
+
+function renderInventoryList(list: any[]): void {
+  if (!inventoryListContainer) return;
+  inventoryListContainer.innerHTML = '';
+  if (list.length === 0) {
+    inventoryListContainer.innerHTML = '<div class="empty-state" style="padding: 20px 10px; font-size: 12px;">Không tìm thấy sản phẩm nào</div>';
+    return;
+  }
+
+  list.forEach((item) => {
+    const card = document.createElement('div');
+    card.className = `property-card ${selectedProperty?.id === item.id ? 'selected' : ''}`;
+    
+    const code = item.property_code || item.property_code_id || 'BĐS';
+    const title = item.title || item.name || 'Bất động sản không tên';
+    const priceStr = formatPriceNumber(item.price);
+    const areaStr = item.area ? `${item.area} m²` : '';
+    const locationStr = item.location || item.address || item.district || 'Đà Nẵng';
+    const statusStr = item.sale_status === 'available' ? '🟢 Còn hàng' : item.sale_status || '';
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="prop-badge">Mã: ${code}</span>
+        <span style="font-size: 11px; color: #94a3b8;">${statusStr}</span>
+      </div>
+      <div class="prop-title">${title}</div>
+      <div class="prop-meta">
+        <span>${priceStr}</span>
+        <span>${areaStr}</span>
+      </div>
+      <div class="prop-location">📍 ${locationStr}</div>
+    `;
+
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.property-card').forEach((c) => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectInventoryItem(item);
+    });
+
+    inventoryListContainer.appendChild(card);
+  });
+}
+
+function selectInventoryItem(item: any): void {
+  selectedProperty = item;
+  if (bannerPropertyName) {
+    bannerPropertyName.textContent = `${item.property_code ? `[${item.property_code}] ` : ''}${item.title || item.name || 'BĐS'}`;
+  }
+  if (bannerPropertyPrice) {
+    bannerPropertyPrice.textContent = formatPriceNumber(item.price);
+  }
+}
+
+// Search Inventory filter
+inventorySearchInput?.addEventListener('input', () => {
+  const query = inventorySearchInput.value.toLowerCase().trim();
+  if (!query) {
+    renderInventoryList(inventoryList);
+    return;
+  }
+  const filtered = inventoryList.filter((item) => {
+    const text = `${item.title || ''} ${item.property_code || ''} ${item.location || ''} ${item.address || ''} ${item.project_name || ''}`.toLowerCase();
+    return text.includes(query);
+  });
+  renderInventoryList(filtered);
+});
+
+btnRefreshInventory?.addEventListener('click', () => {
+  void loadInventory();
+});
+
+// AI Generation Trigger
+btnGenAiPost?.addEventListener('click', async () => {
+  if (!selectedProperty) {
+    alert('Vui lòng click chọn 1 sản phẩm từ danh sách Giỏ hàng bên trái trước!');
+    return;
+  }
+
+  const tone = publisherToneSelect?.value || 'professional';
+  const originalHtml = btnGenAiPost.innerHTML;
+  btnGenAiPost.setAttribute('disabled', 'true');
+  btnGenAiPost.innerHTML = '<span>⏳ Đang tạo tin AI...</span>';
+
+  try {
+    const res = await window.desktopAgent.generateAiPost({
+      propertyId: selectedProperty.id,
+      propertyData: selectedProperty,
+      tone,
+    });
+
+    if (res.success && res.data?.facebook) {
+      publisherPostContent.value = res.data.facebook;
+      updateCharCount();
+    } else {
+      alert(`Không thể tạo tin đăng bằng AI: ${res.error || 'Lỗi không xác định từ VPS'}`);
+    }
+  } catch (err: any) {
+    alert(`Lỗi kết nối máy chủ AI: ${err.message}`);
+  } finally {
+    btnGenAiPost.removeAttribute('disabled');
+    btnGenAiPost.innerHTML = originalHtml;
+  }
+});
+
+function updateCharCount(): void {
+  if (charCountBadge && publisherPostContent) {
+    charCountBadge.textContent = `${publisherPostContent.value.length} ký tự`;
+  }
+}
+publisherPostContent?.addEventListener('input', updateCharCount);
+
+// Group Selection Logic
+function renderPublisherGroups(): void {
+  if (!publisherGroupsGrid) return;
+  publisherGroupsGrid.innerHTML = '';
+
+  const groups = activeSourcesList.filter((s) => !s.platform || s.platform === 'facebook' || (s.url && s.url.includes('facebook')));
+  if (groups.length === 0) {
+    publisherGroupsGrid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; padding: 20px; font-size: 12px;">Chưa có nhóm Facebook nào từ danh sách nguồn của VPS</div>';
+    if (selectedGroupsCountTag) selectedGroupsCountTag.textContent = 'Đã chọn 0 nhóm';
+    return;
+  }
+
+  // Mặc định chọn tất cả nếu chưa có selection nào
+  if (selectedGroupUrls.size === 0) {
+    groups.forEach((g) => {
+      if (g.url) selectedGroupUrls.add(g.url);
+    });
+  }
+
+  groups.forEach((g, idx) => {
+    const item = document.createElement('label');
+    item.className = 'group-item';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = selectedGroupUrls.has(g.url);
+
+    chk.addEventListener('change', () => {
+      if (chk.checked) {
+        selectedGroupUrls.add(g.url);
+      } else {
+        selectedGroupUrls.delete(g.url);
+      }
+      updateSelectedGroupsBadge();
+    });
+
+    const info = document.createElement('div');
+    info.style.overflow = 'hidden';
+    info.style.textOverflow = 'ellipsis';
+    info.style.whiteSpace = 'nowrap';
+    info.innerHTML = `<strong>${g.name || `Nhóm ${idx + 1}`}</strong><br><span style="font-size: 10px; color: #94a3b8;">${g.url || ''}</span>`;
+
+    item.appendChild(chk);
+    item.appendChild(info);
+    publisherGroupsGrid.appendChild(item);
+  });
+
+  updateSelectedGroupsBadge();
+}
+
+function updateSelectedGroupsBadge(): void {
+  if (selectedGroupsCountTag) {
+    selectedGroupsCountTag.textContent = `Đã chọn ${selectedGroupUrls.size} nhóm`;
+  }
+}
+
+btnSelectAllGroups?.addEventListener('click', () => {
+  activeSourcesList.forEach((g) => {
+    if (g.url) selectedGroupUrls.add(g.url);
+  });
+  renderPublisherGroups();
+});
+
+btnDeselectAllGroups?.addEventListener('click', () => {
+  selectedGroupUrls.clear();
+  renderPublisherGroups();
+});
+
+btnRefreshPubGroups?.addEventListener('click', async () => {
+  btnRefreshPubGroups.textContent = '...';
+  try {
+    const srcs = await window.desktopAgent.refreshSources();
+    activeSourcesList = srcs;
+    renderPublisherGroups();
+  } finally {
+    btnRefreshPubGroups.textContent = '🔄 Tải nguồn';
+  }
+});
+
+// Publish Queue Trigger & Real-time Progress
+btnStartPublish?.addEventListener('click', async () => {
+  const content = publisherPostContent?.value.trim();
+  if (!content) {
+    alert('Vui lòng nhập hoặc gen bằng AI nội dung bài đăng trước khi bắt đầu!');
+    return;
+  }
+
+  if (selectedGroupUrls.size === 0) {
+    alert('Vui lòng chọn ít nhất 1 nhóm Facebook để đăng bài!');
+    return;
+  }
+
+  const intervalSec = parseInt(publishIntervalSec?.value, 10) || 45;
+  const mode = (publishModeSelect?.value as 'auto' | 'review') || 'auto';
+
+  const chosenGroups = activeSourcesList
+    .filter((g) => selectedGroupUrls.has(g.url))
+    .map((g, idx) => ({
+      id: g.id || `grp_${idx}`,
+      name: g.name || `Nhóm FB ${idx + 1}`,
+      url: g.url,
+    }));
+
+  const res = await window.desktopAgent.startPublishQueue({
+    groups: chosenGroups,
+    postContent: content,
+    intervalSeconds: intervalSec,
+    mode,
+    propertyId: selectedProperty?.id,
+  });
+
+  if (!res.success) {
+    alert(`Không thể bắt đầu: ${res.error || 'Lỗi không xác định'}`);
+    return;
+  }
+
+  if (publishStatusBox) publishStatusBox.style.display = 'block';
+  if (btnStartPublish) btnStartPublish.style.display = 'none';
+  if (btnStopPublish) btnStopPublish.style.display = 'inline-flex';
+});
+
+btnStopPublish?.addEventListener('click', async () => {
+  await window.desktopAgent.stopPublishQueue();
+  if (btnStartPublish) btnStartPublish.style.display = 'inline-flex';
+  if (btnStopPublish) btnStopPublish.style.display = 'none';
+});
+
+// Listener for real-time publishing status
+window.desktopAgent.onPublishProgress((status: any) => {
+  if (publishStatusBox) publishStatusBox.style.display = 'block';
+
+  if (!status.isRunning) {
+    if (btnStartPublish) btnStartPublish.style.display = 'inline-flex';
+    if (btnStopPublish) btnStopPublish.style.display = 'none';
+  } else {
+    if (btnStartPublish) btnStartPublish.style.display = 'none';
+    if (btnStopPublish) btnStopPublish.style.display = 'inline-flex';
+  }
+
+  if (publishStatusMsg) {
+    publishStatusMsg.textContent = status.logMessage || (status.isRunning ? 'Đang tiến hành đăng bài...' : 'Đã kết thúc');
+  }
+
+  if (publishCountdown) {
+    publishCountdown.textContent = status.secondsUntilNext > 0 ? `${status.secondsUntilNext}s` : '--';
+  }
+
+  if (publishQueueBody && Array.isArray(status.queue)) {
+    publishQueueBody.innerHTML = '';
+    status.queue.forEach((item: any, idx: number) => {
+      const tr = document.createElement('tr');
+      const tagClass =
+        item.status === 'success'
+          ? 'queue-success'
+          : item.status === 'posting'
+          ? 'queue-posting'
+          : item.status === 'failed'
+          ? 'queue-failed'
+          : 'queue-pending';
+
+      const tagText =
+        item.status === 'success'
+          ? '✓ Đã đăng'
+          : item.status === 'posting'
+          ? '⏳ Đang đăng'
+          : item.status === 'failed'
+          ? '✕ Thất bại'
+          : 'Đang chờ';
+
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td><strong>${item.groupName}</strong></td>
+        <td><span class="queue-status-tag ${tagClass}">${tagText}</span></td>
+        <td style="font-size: 11px; color: ${item.status === 'failed' ? '#f87171' : 'var(--text-muted)'};">${item.error || item.postedAt || '--'}</td>
+      `;
+      publishQueueBody.appendChild(tr);
+    });
+  }
+});
+

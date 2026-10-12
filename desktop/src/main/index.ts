@@ -12,6 +12,7 @@ import { processRawPostToLead } from './pipeline/leadScoringPipeline';
 import { VpsOutboxSync } from './sync/vpsOutboxSync';
 import { FacebookGraphqlDebugger } from './debugger/facebookGraphqlDebugger';
 import { ChromeCdpManager } from './debugger/chromeCdpManager';
+import { FacebookGroupPublisher } from './publisher/facebookGroupPublisher';
 import type {
   ExtractedLeadData,
   DesktopAgentStats,
@@ -19,6 +20,7 @@ import type {
   ZaloIncomingMessage,
   FacebookIncomingPost,
   AgentSourceItem,
+  ActiveTab,
 } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -27,6 +29,7 @@ let zaloView: WebContentsView | null = null;
 let fbDebugger: FacebookGraphqlDebugger | null = null;
 let chromeCdpManager: ChromeCdpManager | null = null;
 let vpsSync: VpsOutboxSync | null = null;
+let publisher: FacebookGroupPublisher | null = null;
 let tray: Tray | null = null;
 
 // Leads buffer (last 200 items in memory)
@@ -211,7 +214,7 @@ async function handleLeadCaptured(lead: ExtractedLeadData): Promise<void> {
   broadcastStats();
 }
 
-function setActiveTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void {
+function setActiveTab(tab: ActiveTab): void {
   stats.activeTab = tab;
   broadcastStats();
 
@@ -224,7 +227,7 @@ function setActiveTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'settings'): void
     zaloView.setVisible(true);
     fbView.setVisible(false);
   } else {
-    // For 'dashboard' and 'settings'
+    // For 'dashboard', 'settings', and 'publisher'
     fbView.setVisible(false);
     zaloView.setVisible(false);
   }
@@ -503,6 +506,17 @@ async function createWindow(): Promise<void> {
   );
   chromeCdpManager.start();
 
+  // Initialize Facebook Group Publisher
+  publisher = new FacebookGroupPublisher(
+    () => fbView,
+    (tab) => setActiveTab(tab)
+  );
+  publisher.setOnProgress((progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('publisher:progress', progress);
+    }
+  });
+
   // Load target URLs
   void fbView.webContents.loadURL('https://www.facebook.com');
   void zaloView.webContents.loadURL('https://chat.zalo.me');
@@ -520,6 +534,10 @@ async function createWindow(): Promise<void> {
       chromeCdpManager.stop();
       chromeCdpManager = null;
     }
+    if (publisher) {
+      publisher.stopQueue();
+      publisher = null;
+    }
     mainWindow = null;
     fbView = null;
     zaloView = null;
@@ -527,7 +545,7 @@ async function createWindow(): Promise<void> {
 }
 
 // IPC Handlers
-ipcMain.on('tab:switch', (_event, tab: 'dashboard' | 'facebook' | 'zalo' | 'settings') => {
+ipcMain.on('tab:switch', (_event, tab: ActiveTab) => {
   setActiveTab(tab);
 });
 
@@ -675,6 +693,32 @@ ipcMain.on('sources:toggle-rotate', (_event, enabled: boolean) => {
   stats.autoRotateSources = enabled;
   saveSettings({ autoRotateSources: enabled });
   broadcastStats();
+});
+
+// Publisher & Inventory Handlers
+ipcMain.handle('inventory:fetch', async () => {
+  if (!vpsSync) return { success: false, error: 'VPS Sync chưa được kết nối' };
+  return vpsSync.fetchPropertiesFromVps();
+});
+
+ipcMain.handle('publisher:generate-ai', async (_e, params) => {
+  if (!vpsSync) return { success: false, error: 'VPS Sync chưa được kết nối' };
+  return vpsSync.generatePostFromVps(params);
+});
+
+ipcMain.handle('publisher:start-queue', async (_e, config) => {
+  if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
+  return publisher.startQueue(config);
+});
+
+ipcMain.handle('publisher:stop-queue', async () => {
+  if (publisher) publisher.stopQueue();
+  return { success: true };
+});
+
+ipcMain.handle('publisher:open-group-prepare', async (_e, { groupUrl, postText }) => {
+  if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
+  return publisher.openGroupAndPrepare(groupUrl, postText);
 });
 
 // App Lifecycle

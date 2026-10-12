@@ -50,6 +50,8 @@ export interface AgentSourceItem {
 
 export type ScanSpeedMode = 'turbo' | 'fast' | 'standard';
 
+export type ActiveTab = 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings';
+
 export interface DesktopAgentStats {
   facebookPostsTotal: number;
   zaloMessagesTotal: number;
@@ -58,7 +60,7 @@ export interface DesktopAgentStats {
   debuggerAttached: boolean;
   chromeCdpAttached: boolean;
   vpsConnected: boolean;
-  activeTab: 'dashboard' | 'facebook' | 'zalo' | 'settings';
+  activeTab: ActiveTab;
   activeSourcesTotal: number;
   currentSourceIndex: number;
   currentSourceName: string;
@@ -85,3 +87,55 @@ export interface DesktopAgentSettings {
   rotateIntervalSec?: number;
   scanSpeedMode?: ScanSpeedMode;
 }
+
+export interface InventoryProperty {
+  id: string;
+  title: string;
+  type: string;
+  transaction_type?: string;
+  location: string;
+  area: number;
+  price: number;
+  legal_status?: string;
+  direction?: string;
+  road_width?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  description?: string;
+  selling_points?: string[];
+  project_name?: string;
+  block?: string;
+  lot?: string;
+  sale_status?: string;
+  images?: string;
+  gallery_images?: string[];
+  created_at?: string;
+}
+
+export type PublishStatus = 'idle' | 'pending' | 'posting' | 'success' | 'failed';
+
+export interface PublishQueueItem {
+  id: string;
+  groupId: string;
+  groupName: string;
+  groupUrl: string;
+  status: PublishStatus;
+  message?: string;
+  postedAt?: number;
+}
+
+export interface PublishSessionConfig {
+  propertyId: string;
+  propertyTitle: string;
+  postContent: string;
+  groups: AgentSourceItem[];
+  intervalSeconds: number;
+  mode: 'auto' | 'review';
+}
+
+export interface GeneratePostRequest {
+  propertyId?: string;
+  propertyData?: Partial<InventoryProperty>;
+  tone?: string;
+}
+

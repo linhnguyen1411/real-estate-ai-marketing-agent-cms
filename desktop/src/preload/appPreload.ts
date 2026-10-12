@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('desktopAgent', {
   },
 
   // Actions
-  switchTab: (tab: 'dashboard' | 'facebook' | 'zalo' | 'settings') => {
+  switchTab: (tab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings') => {
     ipcRenderer.send('tab:switch', tab);
   },
 
@@ -97,5 +97,32 @@ contextBridge.exposeInMainWorld('desktopAgent', {
 
   setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => {
     ipcRenderer.send('speed:set', mode);
+  },
+
+  // Publishing & Inventory
+  fetchInventory: (): Promise<{ success: boolean; properties?: any[]; error?: string }> => {
+    return ipcRenderer.invoke('inventory:fetch');
+  },
+
+  generateAiPost: (params: any): Promise<{ success: boolean; data?: { facebook: string; zalo?: string }; error?: string }> => {
+    return ipcRenderer.invoke('publisher:generate-ai', params);
+  },
+
+  startPublishQueue: (config: any): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('publisher:start-queue', config);
+  },
+
+  stopPublishQueue: (): Promise<void> => {
+    return ipcRenderer.invoke('publisher:stop-queue');
+  },
+
+  openGroupAndPrepare: (params: { groupUrl: string; postText: string }): Promise<{ success: boolean; message?: string; error?: string }> => {
+    return ipcRenderer.invoke('publisher:open-group-prepare', params);
+  },
+
+  onPublishProgress: (callback: (status: any) => void) => {
+    const subscription = (_event: any, status: any) => callback(status);
+    ipcRenderer.on('publisher:progress', subscription);
+    return () => ipcRenderer.removeListener('publisher:progress', subscription);
   },
 });

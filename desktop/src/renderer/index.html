@@ -394,6 +394,219 @@
       padding: 40px;
       color: var(--text-muted);
     }
+
+    /* Publisher Layout */
+    .publisher-layout {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 20px;
+      height: calc(100vh - 90px);
+    }
+    .inventory-column {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 100%;
+      overflow: hidden;
+    }
+    .inventory-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .inventory-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 4px;
+    }
+    .property-card {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      user-select: none;
+    }
+    .property-card:hover {
+      border-color: #60a5fa;
+      background: #172554;
+    }
+    .property-card.selected {
+      border-color: var(--primary);
+      background: #1e3a8a;
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    .prop-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      background: #334155;
+      color: #93c5fd;
+      display: inline-block;
+      width: fit-content;
+    }
+    .prop-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      line-height: 1.35;
+    }
+    .prop-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #34d399;
+      font-weight: 700;
+    }
+    .prop-location {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Publisher Right Panel */
+    .publisher-workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      height: 100%;
+      padding-right: 6px;
+    }
+    .workspace-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .section-headline {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .composer-textarea {
+      width: 100%;
+      min-height: 190px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .composer-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .group-selection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 6px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .group-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      background: #1e293b;
+      cursor: pointer;
+      font-size: 12px;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .group-item:hover {
+      background: #334155;
+    }
+    .group-item input {
+      accent-color: var(--primary);
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+    .btn-ai-gen {
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+    .btn-ai-gen:hover {
+      opacity: 0.9;
+    }
+    .btn-publish-now {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+    .btn-publish-now:hover {
+      background: #059669;
+    }
+    .btn-publish-stop {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-publish-stop:hover {
+      background: #dc2626;
+    }
+    .queue-status-tag {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .queue-pending { background: #334155; color: #cbd5e1; }
+    .queue-posting { background: #854d0e; color: #fde047; }
+    .queue-success { background: #064e3b; color: #34d399; }
+    .queue-failed { background: #7f1d1d; color: #f87171; }
   </style>
 </head>
 <body>
@@ -407,6 +620,9 @@
     <nav class="nav-tabs">
       <button class="nav-tab active" id="tab-btn-dashboard" data-tab="dashboard">
         📊 Tổng quan
+      </button>
+      <button class="nav-tab" id="tab-btn-publisher" data-tab="publisher">
+        📢 Đăng bài AI
       </button>
       <button class="nav-tab" id="tab-btn-facebook" data-tab="facebook">
         🌐 Facebook Web
@@ -538,6 +754,155 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Publisher Tab -->
+    <div id="view-publisher" class="hidden">
+      <div class="publisher-layout">
+        <!-- Cột trái: Quét & Danh sách Giỏ hàng BĐS -->
+        <aside class="inventory-column">
+          <div class="inventory-header">
+            <div>
+              <div style="font-size: 14px; font-weight: 700; color: #f8fafc;">Giỏ Hàng VPS</div>
+              <div style="font-size: 11px; color: var(--text-muted);"><span id="inventory-count">0</span> sản phẩm sẵn sàng</div>
+            </div>
+            <button class="action-btn" id="btn-refresh-inventory" title="Quét lại giỏ hàng từ máy chủ VPS" style="font-size: 12px; padding: 4px 8px;">
+              🔄 Quét lại
+            </button>
+          </div>
+
+          <input type="text" id="inventory-search-input" class="form-control" placeholder="🔍 Tìm theo tên, mã, vị trí..." style="font-size: 12px; padding: 6px 10px;">
+
+          <div id="inventory-list-container" class="inventory-list">
+            <div class="empty-state" style="padding: 20px 10px; font-size: 12px;">
+              Đang tải danh sách giỏ hàng từ VPS...
+            </div>
+          </div>
+        </aside>
+
+        <!-- Cột phải: Soạn thảo AI & Lên lịch đăng nhóm Facebook -->
+        <section class="publisher-workspace">
+          <!-- Card 1: Tạo nội dung bằng AI -->
+          <div class="workspace-section">
+            <div class="section-headline">
+              <span>✍️ Soạn Thảo Tin Đăng Bằng Trí Tuệ Nhân Tạo (AI)</span>
+            </div>
+
+            <div id="selected-property-banner" style="background: #0f172a; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="color: var(--text-muted);">Sản phẩm đang chọn:</span>
+                <strong id="banner-property-name" style="color: #60a5fa; margin-left: 6px;">Chưa chọn BĐS nào từ giỏ hàng</strong>
+              </div>
+              <div id="banner-property-price" style="color: #34d399; font-weight: 700;">--</div>
+            </div>
+
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 12px; color: var(--text-muted);">Giọng điệu (Tone):</label>
+                <select id="publisher-tone-select" class="form-control" style="width: auto; padding: 5px 10px; font-size: 12px;">
+                  <option value="professional">💎 Chuyên nghiệp, Đẳng cấp đầu tư</option>
+                  <option value="urgent">🔥 Hot deal, Gấp, Fomo chốt nhanh</option>
+                  <option value="friendly">🤝 Thân thiện, Tâm sự tư vấn</option>
+                  <option value="engaging">🎯 Giật tít, Tương tác thảo luận</option>
+                </select>
+              </div>
+
+              <button class="btn-ai-gen" id="btn-gen-ai-post">
+                <span>✨ Gen tin đăng bằng AI</span>
+              </button>
+            </div>
+
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
+                <span>Nội dung bài đăng Facebook:</span>
+                <span id="char-count-badge">0 ký tự</span>
+              </div>
+              <textarea id="publisher-post-content" class="composer-textarea" placeholder="Nội dung bài viết sẽ được AI tự động sinh tại đây hoặc bạn có thể tự soạn thảo trực tiếp..."></textarea>
+            </div>
+          </div>
+
+          <!-- Card 2: Chọn danh sách Nhóm Facebook -->
+          <div class="workspace-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div class="section-headline">
+                <span>👥 Chọn Danh Sách Nhóm Facebook Để Đăng</span>
+                <span class="tag" id="selected-groups-count-tag" style="background: #1e3a8a; color: #93c5fd; font-size: 11px;">Đã chọn 0 nhóm</span>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="filter-btn" id="btn-select-all-groups" style="padding: 4px 8px; font-size: 11px;">Chọn tất cả</button>
+                <button class="filter-btn" id="btn-deselect-all-groups" style="padding: 4px 8px; font-size: 11px;">Bỏ chọn</button>
+                <button class="action-btn" id="btn-refresh-pub-groups" style="padding: 4px 8px; font-size: 11px;" title="Cập nhật nguồn từ VPS">🔄 Tải nguồn</button>
+              </div>
+            </div>
+
+            <div id="publisher-groups-grid" class="group-selection-grid">
+              <div class="empty-state" style="grid-column: 1 / -1; padding: 20px; font-size: 12px;">
+                Đang tải danh sách nhóm Facebook từ VPS...
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Lên lịch & Bắt đầu Đăng bài -->
+          <div class="workspace-section">
+            <div class="section-headline">
+              <span>🚀 Lên Lịch &amp; Tiến Hành Đăng Bài</span>
+            </div>
+
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: #0f172a; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--border);">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 12px; color: var(--text-muted);">Giãn cách chống checkpoint:</label>
+                <input type="number" id="publish-interval-sec" class="form-control" min="15" max="300" value="45" style="width: 80px; padding: 4px 8px; font-size: 12px; text-align: center;">
+                <span style="font-size: 12px; color: var(--text-muted);">giây</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 12px; color: var(--text-muted);">Chế độ:</label>
+                <select id="publish-mode-select" class="form-control" style="width: auto; padding: 4px 8px; font-size: 12px;">
+                  <option value="auto">🤖 Tự động hoàn toàn (Điền &amp; Bấm Đăng)</option>
+                  <option value="review">👀 Mở nhóm &amp; Điền sẵn (Kiểm duyệt thủ công)</option>
+                </select>
+              </div>
+
+              <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button class="btn-publish-now" id="btn-start-publish">
+                  <span>🚀 Bắt đầu đăng ngay</span>
+                </button>
+                <button class="btn-publish-stop" id="btn-stop-publish" style="display: none;">
+                  <span>⏹️ Dừng tiến trình</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Khung log tiến độ thời gian thực -->
+            <div id="publish-status-box" style="display: none; background: #0f172a; border: 1px solid #3b82f6; border-radius: 6px; padding: 12px 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 13px; font-weight: 600; color: #60a5fa; display: flex; align-items: center; gap: 8px;">
+                  <span class="source-pulse"></span>
+                  <span id="publish-status-msg">Đang chuẩn bị đăng bài...</span>
+                </div>
+                <div style="font-size: 12px; color: #fbbf24;">
+                  Chuyển nhóm tiếp theo sau: <strong id="publish-countdown">--s</strong>
+                </div>
+              </div>
+
+              <div class="table-container" style="max-height: 180px; margin-top: 8px;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 40px;">#</th>
+                      <th>Tên nhóm Facebook</th>
+                      <th style="width: 120px;">Trạng thái</th>
+                      <th>Chi tiết / Lỗi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="publish-queue-body">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 

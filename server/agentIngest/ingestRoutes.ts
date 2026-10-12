@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import { getSettings } from '../dbHelper';
+import { getSettings, readDatabase } from '../dbHelper';
+import { generatePropertyMarketingContent } from '../aiService';
 import { prisma } from '../prisma';
 import type { AgentRouteDeps } from '../agent/agentTypes';
 import { canManageAgentConfig } from '../agent/agentDb';
@@ -144,6 +145,95 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       });
     } catch (err: unknown) {
       sendError(res, 500, err instanceof Error ? err.message : 'Lỗi lấy danh sách nguồn.');
+    }
+  });
+
+  app.get('/api/agent-ingest/v1/properties', async (req: Request, res: Response) => {
+    if (!isIngestEnabled()) {
+      sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
+      return;
+    }
+    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    if (auth.ok === false) {
+      rejectAuth(res, auth);
+      return;
+    }
+
+    try {
+      const db = readDatabase();
+      const allProps = Array.isArray(db.properties) ? db.properties : [];
+      const properties = allProps
+        .filter((p: any) => p && p.sale_status !== 'hidden')
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          type: p.type,
+          transaction_type: p.transaction_type || 'Bán',
+          location: p.location,
+          area: p.area,
+          price: p.price,
+          legal_status: p.legal_status,
+          direction: p.direction,
+          road_width: p.road_width,
+          bedrooms: p.bedrooms,
+          bathrooms: p.bathrooms,
+          description: p.description,
+          selling_points: p.selling_points || [],
+          project_name: p.project_name,
+          block: p.block,
+          lot: p.lot,
+          sale_status: p.sale_status || 'available',
+          images: p.images,
+          gallery_images: p.gallery_images || [],
+          created_at: p.created_at,
+        }));
+
+      res.json({
+        status: 'success',
+        data: properties,
+      });
+    } catch (err: unknown) {
+      sendError(res, 500, err instanceof Error ? err.message : 'Lỗi lấy giỏ hàng BĐS.');
+    }
+  });
+
+  app.post('/api/agent-ingest/v1/generate-post', async (req: Request, res: Response) => {
+    if (!isIngestEnabled()) {
+      sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
+      return;
+    }
+    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    if (auth.ok === false) {
+      rejectAuth(res, auth);
+      return;
+    }
+
+    try {
+      const body = req.body || {};
+      const propertyId = String(body.propertyId || '').trim();
+      let property = body.propertyData;
+      if (!property && propertyId) {
+        const db = readDatabase();
+        property = (db.properties || []).find((p: any) => p.id === propertyId);
+      }
+      if (!property) {
+        sendError(res, 404, 'Không tìm thấy thông tin bất động sản.');
+        return;
+      }
+
+      const customTone = typeof body.tone === 'string' ? body.tone : undefined;
+      const marketing = await generatePropertyMarketingContent(property, 'facebook', customTone);
+      res.json({
+        status: 'success',
+        data: {
+          facebook: marketing.facebook,
+          zalo: marketing.zalo,
+          strategy: marketing.strategy,
+          seo: marketing.seo,
+        },
+      });
+    } catch (err: unknown) {
+      sendError(res, 500, err instanceof Error ? err.message : 'Lỗi tạo bài đăng bằng AI.');
     }
   });
 
