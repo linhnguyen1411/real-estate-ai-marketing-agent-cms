@@ -44,10 +44,10 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
   app.use(compression({ level: 6 }));
   app.use(cacheControlMiddleware);
 
-  // 5. Default 1mb JSON body limit (dedicated route limits apply locally)
+  // 5. JSON body limit (10mb to safely support lead payloads and agent data)
   app.use(
     express.json({
-      limit: '1mb',
+      limit: '10mb',
       verify: (req, _res, buf) => {
         const url = req.url || '';
         if (url.startsWith('/webhooks/facebook') || url.startsWith('/api/agent-ingest/')) {

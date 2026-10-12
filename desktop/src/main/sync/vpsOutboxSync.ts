@@ -253,7 +253,27 @@ export class VpsOutboxSync {
     }
 
     const endpoint = `${vpsBase}/api/agent-ingest/v1/generate-post`;
-    const bodyString = JSON.stringify(req);
+    
+    // Đảm bảo payload chỉ chứa text metadata, không chứa ảnh base64 gây lỗi 413
+    const cleanPropertyData = req.propertyData ? { ...req.propertyData } : undefined;
+    if (cleanPropertyData) {
+      delete (cleanPropertyData as any).images;
+      delete (cleanPropertyData as any).gallery_images;
+      delete (cleanPropertyData as any).imageUrls;
+      delete (cleanPropertyData as any).image;
+      if (typeof cleanPropertyData.description === 'string') {
+        cleanPropertyData.description = cleanPropertyData.description
+          .replace(/data:image\/[^;]+;base64,[^"'\s)]+/g, '')
+          .slice(0, 3000);
+      }
+    }
+
+    const payload = {
+      propertyId: req.propertyId,
+      propertyData: cleanPropertyData,
+      tone: req.tone,
+    };
+    const bodyString = JSON.stringify(payload);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = crypto.randomBytes(8).toString('hex');
 

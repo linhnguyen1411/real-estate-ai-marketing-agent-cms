@@ -787,12 +787,30 @@ btnGenAiPost?.addEventListener('click', async () => {
   const tone = publisherToneSelect?.value || 'professional';
   const originalHtml = btnGenAiPost.innerHTML;
   btnGenAiPost.setAttribute('disabled', 'true');
-  btnGenAiPost.innerHTML = '<span>⏳ Đang tạo tin AI...</span>';
+  const textOnlyData = {
+    id: selectedProperty.id,
+    title: selectedProperty.title,
+    type: selectedProperty.type,
+    transaction_type: selectedProperty.transaction_type,
+    location: selectedProperty.location,
+    area: selectedProperty.area,
+    price: selectedProperty.price,
+    legal_status: selectedProperty.legal_status,
+    direction: selectedProperty.direction,
+    road_width: selectedProperty.road_width,
+    bedrooms: selectedProperty.bedrooms,
+    bathrooms: selectedProperty.bathrooms,
+    selling_points: selectedProperty.selling_points,
+    project_name: selectedProperty.project_name,
+    block: selectedProperty.block,
+    lot: selectedProperty.lot,
+    description: (selectedProperty.description || '').replace(/data:image\/[^;]+;base64,[^"'\s)]+/g, '').slice(0, 2500),
+  };
 
   try {
     const res = await window.desktopAgent.generateAiPost({
       propertyId: selectedProperty.id,
-      propertyData: selectedProperty,
+      propertyData: textOnlyData,
       tone,
     });
 

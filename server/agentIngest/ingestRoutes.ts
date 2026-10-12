@@ -260,10 +260,13 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
     try {
       const body = req.body || {};
       const propertyId = String(body.propertyId || '').trim();
-      let property = body.propertyData;
-      if (!property && propertyId) {
+      let property = null;
+      if (propertyId) {
         const db = readDatabase();
         property = (db.properties || []).find((p: any) => p.id === propertyId);
+      }
+      if (!property && body.propertyData) {
+        property = body.propertyData;
       }
       if (!property) {
         sendError(res, 404, 'Không tìm thấy thông tin bất động sản.');
