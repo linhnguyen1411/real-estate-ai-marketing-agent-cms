@@ -109,6 +109,7 @@ export interface InventoryProperty {
   sale_status?: string;
   images?: string;
   gallery_images?: string[];
+  imageUrls?: string[];
   created_at?: string;
 }
 
@@ -131,6 +132,7 @@ export interface PublishSessionConfig {
   groups: AgentSourceItem[];
   intervalSeconds: number;
   mode: 'auto' | 'review';
+  imageUrls?: string[];
 }
 
 export interface GeneratePostRequest {

@@ -5,7 +5,7 @@
  * scores leads, displays Windows Toast notifications, and syncs to VPS.
  */
 
-import { app, BrowserWindow, WebContentsView, ipcMain, Notification, session, Menu, Tray } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Notification, session, Menu, Tray, shell, clipboard, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { processRawPostToLead } from './pipeline/leadScoringPipeline';
@@ -716,9 +716,48 @@ ipcMain.handle('publisher:stop-queue', async () => {
   return { success: true };
 });
 
-ipcMain.handle('publisher:open-group-prepare', async (_e, { groupUrl, postText }) => {
+ipcMain.handle('publisher:open-group-prepare', async (_e, { groupUrl, postText, imageUrls }) => {
   if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
-  return publisher.openGroupAndPrepare(groupUrl, postText);
+  return publisher.openGroupAndPrepare(groupUrl, postText, imageUrls);
+});
+
+ipcMain.handle('publisher:copy-image', async (_e, imageUrl: string) => {
+  try {
+    if (!imageUrl) return { success: false, error: 'URL ảnh trống' };
+    let buffer: Buffer | null = null;
+    if (imageUrl.startsWith('data:image')) {
+      const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
+      buffer = Buffer.from(base64Data, 'base64');
+    } else {
+      const res = await fetch(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!res.ok) return { success: false, error: `Lỗi tải ảnh (${res.status})` };
+      const arr = await res.arrayBuffer();
+      buffer = Buffer.from(arr);
+    }
+    if (buffer) {
+      const img = nativeImage.createFromBuffer(buffer);
+      clipboard.writeImage(img);
+      return { success: true };
+    }
+    return { success: false, error: 'Không thể tạo hình ảnh từ dữ liệu' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('publisher:download-images', async (_e, imageUrls: string[]) => {
+  if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
+  try {
+    const downloaded = await publisher.downloadImages(imageUrls);
+    if (downloaded.length > 0) {
+      const dir = path.dirname(downloaded[0]);
+      await shell.openPath(dir);
+      return { success: true, count: downloaded.length, folderPath: dir };
+    }
+    return { success: false, error: 'Không có ảnh nào được tải thành công' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 });
 
 // App Lifecycle

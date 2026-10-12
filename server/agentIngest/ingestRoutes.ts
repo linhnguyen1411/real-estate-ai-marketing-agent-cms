@@ -185,6 +185,55 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
           sale_status: p.sale_status || 'available',
           images: p.images,
           gallery_images: p.gallery_images || [],
+          imageUrls: (() => {
+            const list: string[] = [];
+            const addUrl = (url: unknown) => {
+              if (typeof url !== 'string') return;
+              const trimmed = url.trim();
+              if (!trimmed) return;
+              if (trimmed.startsWith('data:image')) {
+                list.push(trimmed);
+                return;
+              }
+              if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                list.push(trimmed);
+              } else if (trimmed.startsWith('/')) {
+                list.push(`https://bdsdanang.site${trimmed}`);
+              }
+            };
+
+            // 1. Cover / main image
+            if (p.images) {
+              try {
+                if (p.images.startsWith('[') && p.images.endsWith(']')) {
+                  const parsed = JSON.parse(p.images);
+                  if (Array.isArray(parsed)) parsed.forEach(addUrl);
+                } else if (p.images.includes(',')) {
+                  p.images.split(',').forEach(addUrl);
+                } else {
+                  addUrl(p.images);
+                }
+              } catch {
+                addUrl(p.images);
+              }
+            }
+            if (p.image) addUrl(p.image);
+
+            // 2. Gallery images
+            if (Array.isArray(p.gallery_images)) {
+              p.gallery_images.forEach(addUrl);
+            }
+
+            // 3. Regex extract images in description or rich_description
+            const desc = `${p.description || ''} ${p.rich_description || ''}`;
+            const imgRegex = /(?:src=["']|!\[.*?\]\()(https?:\/\/[^"'\s\)]+\.(?:jpg|jpeg|png|webp|gif|avif))/gi;
+            let match;
+            while ((match = imgRegex.exec(desc)) !== null) {
+              if (match[1]) addUrl(match[1]);
+            }
+
+            return Array.from(new Set(list));
+          })(),
           created_at: p.created_at,
         }));
 

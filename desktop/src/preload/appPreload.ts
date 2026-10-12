@@ -116,8 +116,16 @@ contextBridge.exposeInMainWorld('desktopAgent', {
     return ipcRenderer.invoke('publisher:stop-queue');
   },
 
-  openGroupAndPrepare: (params: { groupUrl: string; postText: string }): Promise<{ success: boolean; message?: string; error?: string }> => {
+  openGroupAndPrepare: (params: { groupUrl: string; postText: string; imageUrls?: string[] }): Promise<{ success: boolean; message?: string; error?: string }> => {
     return ipcRenderer.invoke('publisher:open-group-prepare', params);
+  },
+
+  copyImageToClipboard: (imageUrl: string): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('publisher:copy-image', imageUrl);
+  },
+
+  downloadImagesToFolder: (imageUrls: string[]): Promise<{ success: boolean; count?: number; folderPath?: string; error?: string }> => {
+    return ipcRenderer.invoke('publisher:download-images', imageUrls);
   },
 
   onPublishProgress: (callback: (status: any) => void) => {

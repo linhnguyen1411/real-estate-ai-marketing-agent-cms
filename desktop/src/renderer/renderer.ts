@@ -27,7 +27,9 @@ interface DesktopAgentAPI {
   generateAiPost: (params: { propertyId?: string; propertyData?: any; tone?: string }) => Promise<{ success: boolean; data?: { facebook: string; zalo?: string }; error?: string }>;
   startPublishQueue: (config: any) => Promise<{ success: boolean; error?: string }>;
   stopPublishQueue: () => Promise<void>;
-  openGroupAndPrepare: (params: { groupUrl: string; postText: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  openGroupAndPrepare: (params: { groupUrl: string; postText: string; imageUrls?: string[] }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  copyImageToClipboard: (imageUrl: string) => Promise<{ success: boolean; error?: string }>;
+  downloadImagesToFolder: (imageUrls: string[]) => Promise<{ success: boolean; count?: number; folderPath?: string; error?: string }>;
   onPublishProgress: (callback: (status: any) => void) => () => void;
 }
 
@@ -478,6 +480,17 @@ const btnSelectAllGroups = document.getElementById('btn-select-all-groups')!;
 const btnDeselectAllGroups = document.getElementById('btn-deselect-all-groups')!;
 const btnRefreshPubGroups = document.getElementById('btn-refresh-pub-groups')!;
 
+// Property Images Elements & State
+let currentPropertyImages: string[] = [];
+const selectedImageUrls = new Set<string>();
+
+const selectedImagesCountTag = document.getElementById('selected-images-count-tag')!;
+const propertyImagesGrid = document.getElementById('property-images-grid')!;
+const btnSelectAllImages = document.getElementById('btn-select-all-images')!;
+const btnDeselectAllImages = document.getElementById('btn-deselect-all-images')!;
+const btnCopyFirstImage = document.getElementById('btn-copy-first-image')!;
+const btnDownloadSelectedImages = document.getElementById('btn-download-selected-images')!;
+
 const publishIntervalSec = document.getElementById('publish-interval-sec') as HTMLInputElement;
 const publishModeSelect = document.getElementById('publish-mode-select') as HTMLSelectElement;
 const btnStartPublish = document.getElementById('btn-start-publish')!;
@@ -498,6 +511,180 @@ function formatPriceNumber(val?: number | string): string {
     return `${(num / 1_000_000).toFixed(0)} Triệu`;
   }
   return `${num.toLocaleString('vi-VN')} đ`;
+}
+
+function extractPropertyImages(item: any): string[] {
+  if (!item) return [];
+  const list: string[] = [];
+  const addUrl = (url: unknown) => {
+    if (typeof url !== 'string') return;
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith('data:image')) {
+      list.push(trimmed);
+      return;
+    }
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      list.push(trimmed);
+    } else if (trimmed.startsWith('/')) {
+      list.push(`https://bdsdanang.site${trimmed}`);
+    }
+  };
+
+  // 1. imageUrls nếu server đã bóc sẵn
+  if (Array.isArray(item.imageUrls)) {
+    item.imageUrls.forEach(addUrl);
+  }
+
+  // 2. images
+  if (item.images) {
+    try {
+      if (typeof item.images === 'string' && item.images.startsWith('[') && item.images.endsWith(']')) {
+        const parsed = JSON.parse(item.images);
+        if (Array.isArray(parsed)) parsed.forEach(addUrl);
+      } else if (typeof item.images === 'string' && item.images.includes(',')) {
+        item.images.split(',').forEach(addUrl);
+      } else {
+        addUrl(item.images);
+      }
+    } catch {
+      addUrl(item.images);
+    }
+  }
+
+  // 3. gallery_images
+  if (Array.isArray(item.gallery_images)) {
+    item.gallery_images.forEach(addUrl);
+  }
+
+  // 4. image
+  if (item.image) addUrl(item.image);
+
+  // 5. description regex
+  const desc = `${item.description || ''} ${item.rich_description || ''}`;
+  const imgRegex = /(?:src=["']|!\[.*?\]\()(https?:\/\/[^"'\s\)]+\.(?:jpg|jpeg|png|webp|gif|avif))/gi;
+  let match;
+  while ((match = imgRegex.exec(desc)) !== null) {
+    if (match[1]) addUrl(match[1]);
+  }
+
+  return Array.from(new Set(list));
+}
+
+function updateSelectedImagesBadge(): void {
+  if (selectedImagesCountTag) {
+    selectedImagesCountTag.textContent = `Đã chọn ${selectedImageUrls.size}/${currentPropertyImages.length} ảnh`;
+  }
+}
+
+function renderPropertyImages(images: string[]): void {
+  if (!propertyImagesGrid) return;
+  propertyImagesGrid.innerHTML = '';
+  currentPropertyImages = images;
+  selectedImageUrls.clear();
+
+  if (images.length === 0) {
+    propertyImagesGrid.innerHTML = `
+      <div class="empty-state" style="grid-column: 1 / -1; padding: 16px; font-size: 12px; color: var(--text-muted);">
+        Bất động sản này không có hình ảnh nào đính kèm trong cơ sở dữ liệu.
+      </div>
+    `;
+    updateSelectedImagesBadge();
+    return;
+  }
+
+  // Mặc định chọn tất cả
+  images.forEach((img) => selectedImageUrls.add(img));
+
+  images.forEach((imgUrl, idx) => {
+    const card = document.createElement('div');
+    card.className = `image-card ${selectedImageUrls.has(imgUrl) ? 'selected' : ''}`;
+
+    const img = document.createElement('img');
+    img.src = imgUrl;
+    img.alt = `Ảnh BĐS ${idx + 1}`;
+    img.loading = 'lazy';
+    img.onerror = () => {
+      img.src = 'https://placehold.co/150x110?text=L%E1%BB%97i+%E1%BA%A3nh';
+    };
+
+    // Checkbox container
+    const checkBadge = document.createElement('div');
+    checkBadge.className = 'image-check-badge';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = selectedImageUrls.has(imgUrl);
+
+    const toggleCheck = (checked: boolean) => {
+      chk.checked = checked;
+      if (checked) {
+        selectedImageUrls.add(imgUrl);
+        card.classList.add('selected');
+      } else {
+        selectedImageUrls.delete(imgUrl);
+        card.classList.remove('selected');
+      }
+      updateSelectedImagesBadge();
+    };
+
+    chk.addEventListener('change', (e) => {
+      e.stopPropagation();
+      toggleCheck(chk.checked);
+    });
+
+    checkBadge.appendChild(chk);
+
+    // Label tag
+    const orderTag = document.createElement('div');
+    orderTag.className = 'image-order-tag';
+    orderTag.textContent = idx === 0 ? 'Bìa' : `#${idx + 1}`;
+
+    // Action buttons on hover
+    const actions = document.createElement('div');
+    actions.className = 'image-card-actions';
+
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'btn-img-mini';
+    btnCopy.title = 'Copy ảnh này vào clipboard';
+    btnCopy.textContent = '📋';
+    btnCopy.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btnCopy.textContent = '⏳';
+      const res = await window.desktopAgent.copyImageToClipboard(imgUrl);
+      if (res.success) {
+        btnCopy.textContent = '✓';
+        setTimeout(() => { btnCopy.textContent = '📋'; }, 1500);
+      } else {
+        alert(`Không copy được ảnh: ${res.error}`);
+        btnCopy.textContent = '📋';
+      }
+    });
+
+    const btnOpen = document.createElement('button');
+    btnOpen.className = 'btn-img-mini';
+    btnOpen.title = 'Xem ảnh kích thước lớn';
+    btnOpen.textContent = '🔍';
+    btnOpen.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.open(imgUrl, '_blank');
+    });
+
+    actions.appendChild(btnCopy);
+    actions.appendChild(btnOpen);
+
+    card.appendChild(img);
+    card.appendChild(checkBadge);
+    card.appendChild(orderTag);
+    card.appendChild(actions);
+
+    card.addEventListener('click', () => {
+      toggleCheck(!chk.checked);
+    });
+
+    propertyImagesGrid.appendChild(card);
+  });
+
+  updateSelectedImagesBadge();
 }
 
 async function loadInventory(): Promise<void> {
@@ -567,6 +754,9 @@ function selectInventoryItem(item: any): void {
   if (bannerPropertyPrice) {
     bannerPropertyPrice.textContent = formatPriceNumber(item.price);
   }
+  // Bóc tách và render danh sách ảnh
+  const images = extractPropertyImages(item);
+  renderPropertyImages(images);
 }
 
 // Search Inventory filter
@@ -706,6 +896,67 @@ btnRefreshPubGroups?.addEventListener('click', async () => {
   }
 });
 
+// Image Actions Listeners
+btnSelectAllImages?.addEventListener('click', () => {
+  currentPropertyImages.forEach((img) => selectedImageUrls.add(img));
+  document.querySelectorAll('.image-card').forEach((c) => {
+    c.classList.add('selected');
+    const chk = c.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    if (chk) chk.checked = true;
+  });
+  updateSelectedImagesBadge();
+});
+
+btnDeselectAllImages?.addEventListener('click', () => {
+  selectedImageUrls.clear();
+  document.querySelectorAll('.image-card').forEach((c) => {
+    c.classList.remove('selected');
+    const chk = c.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    if (chk) chk.checked = false;
+  });
+  updateSelectedImagesBadge();
+});
+
+btnCopyFirstImage?.addEventListener('click', async () => {
+  const chosen = Array.from(selectedImageUrls);
+  if (chosen.length === 0) {
+    alert('Vui lòng tick chọn ít nhất 1 ảnh để copy!');
+    return;
+  }
+  const originalText = btnCopyFirstImage.textContent;
+  btnCopyFirstImage.textContent = '⏳ Đang copy...';
+  try {
+    const res = await window.desktopAgent.copyImageToClipboard(chosen[0]);
+    if (res.success) {
+      alert('✓ Đã copy ảnh bìa vào Clipboard hệ thống!\nBạn có thể chuyển sang tab Facebook và nhấn Ctrl + V để dán trực tiếp vào bài viết.');
+    } else {
+      alert(`Không thể copy ảnh: ${res.error || 'Lỗi không xác định'}`);
+    }
+  } finally {
+    btnCopyFirstImage.textContent = originalText;
+  }
+});
+
+btnDownloadSelectedImages?.addEventListener('click', async () => {
+  const chosen = Array.from(selectedImageUrls);
+  if (chosen.length === 0) {
+    alert('Vui lòng tick chọn ít nhất 1 ảnh để tải về!');
+    return;
+  }
+  const originalText = btnDownloadSelectedImages.textContent;
+  btnDownloadSelectedImages.textContent = '⏳ Đang tải...';
+  try {
+    const res = await window.desktopAgent.downloadImagesToFolder(chosen);
+    if (res.success) {
+      alert(`✓ Đã tải thành công ${res.count} ảnh vào thư mục máy tính!\nĐã tự động mở thư mục chứa ảnh để bạn kiểm tra.`);
+    } else {
+      alert(`Lỗi tải ảnh: ${res.error || 'Không tải được ảnh'}`);
+    }
+  } finally {
+    btnDownloadSelectedImages.textContent = originalText;
+  }
+});
+
 // Publish Queue Trigger & Real-time Progress
 btnStartPublish?.addEventListener('click', async () => {
   const content = publisherPostContent?.value.trim();
@@ -730,12 +981,16 @@ btnStartPublish?.addEventListener('click', async () => {
       url: g.url,
     }));
 
+  const chosenImages = Array.from(selectedImageUrls);
+
   const res = await window.desktopAgent.startPublishQueue({
     groups: chosenGroups,
     postContent: content,
     intervalSeconds: intervalSec,
     mode,
     propertyId: selectedProperty?.id,
+    propertyTitle: selectedProperty?.title || 'BĐS',
+    imageUrls: chosenImages,
   });
 
   if (!res.success) {

@@ -3,7 +3,10 @@
  * Handles DOM injection into Facebook Group composer, scheduling, and anti-checkpoint queue.
  */
 
-import { WebContentsView } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { app, clipboard, nativeImage, WebContentsView } from 'electron';
 import type { PublishQueueItem, PublishSessionConfig } from '../../shared/types';
 
 export class FacebookGroupPublisher {
@@ -11,6 +14,7 @@ export class FacebookGroupPublisher {
   private currentQueue: PublishQueueItem[] = [];
   private activeConfig: PublishSessionConfig | null = null;
   private timer: NodeJS.Timeout | null = null;
+  private downloadedImagePaths: string[] = [];
   private onProgressCallback?: (status: {
     isRunning: boolean;
     queue: PublishQueueItem[];
@@ -46,7 +50,61 @@ export class FacebookGroupPublisher {
     return this.isRunning;
   }
 
-  startQueue(config: PublishSessionConfig): { success: boolean; error?: string } {
+  async downloadImages(urls: string[]): Promise<string[]> {
+    const downloaded: string[] = [];
+    if (!urls || urls.length === 0) return downloaded;
+
+    const tempDir = path.join(os.tmpdir(), 'realestate_publish_images');
+    try {
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+    } catch {
+      // ignore
+    }
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      if (!url || typeof url !== 'string') continue;
+
+      try {
+        if (url.startsWith('data:image')) {
+          // Handle base64
+          const matches = url.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+          if (matches) {
+            const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+            const buffer = Buffer.from(matches[2], 'base64');
+            const filePath = path.join(tempDir, `img_${Date.now()}_${i}.${ext}`);
+            fs.writeFileSync(filePath, buffer);
+            downloaded.push(filePath);
+          }
+          continue;
+        }
+
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!res.ok) continue;
+          const arrayBuffer = await res.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+
+          let ext = 'jpg';
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('png')) ext = 'png';
+          else if (contentType.includes('webp')) ext = 'webp';
+
+          const filePath = path.join(tempDir, `img_${Date.now()}_${i}.${ext}`);
+          fs.writeFileSync(filePath, buffer);
+          downloaded.push(filePath);
+        }
+      } catch (err) {
+        console.warn(`[Publisher] Failed to download image ${url}:`, err);
+      }
+    }
+
+    return downloaded;
+  }
+
+  async startQueue(config: PublishSessionConfig): Promise<{ success: boolean; error?: string }> {
     if (this.isRunning) {
       return { success: false, error: 'Tiến trình đăng bài đang chạy dở.' };
     }
@@ -67,6 +125,20 @@ export class FacebookGroupPublisher {
     }));
 
     this.isRunning = true;
+
+    // Tải trước các hình ảnh đã chọn nếu có
+    if (config.imageUrls && config.imageUrls.length > 0) {
+      this.broadcast(0, 0, undefined, `Đang tải ${config.imageUrls.length} hình ảnh về bộ đệm...`);
+      try {
+        this.downloadedImagePaths = await this.downloadImages(config.imageUrls);
+        this.broadcast(0, 0, undefined, `Đã tải thành công ${this.downloadedImagePaths.length} hình ảnh.`);
+      } catch (err) {
+        console.warn('[Publisher] Pre-downloading images failed:', err);
+      }
+    } else {
+      this.downloadedImagePaths = [];
+    }
+
     this.processNext(0);
     return { success: true };
   }
@@ -104,7 +176,12 @@ export class FacebookGroupPublisher {
     item.status = 'posting';
     this.broadcast(index, 0, item.groupUrl, `Đang xử lý nhóm [${index + 1}/${this.currentQueue.length}]: ${item.groupName}...`);
 
-    const result = await this.publishSingleGroup(item.groupUrl, this.activeConfig.postContent, this.activeConfig.mode === 'auto');
+    const result = await this.publishSingleGroup(
+      item.groupUrl,
+      this.activeConfig.postContent,
+      this.activeConfig.mode === 'auto',
+      this.downloadedImagePaths
+    );
 
     if (result.success) {
       item.status = 'success';
@@ -143,7 +220,8 @@ export class FacebookGroupPublisher {
   async publishSingleGroup(
     groupUrl: string,
     postText: string,
-    autoClickPost: boolean
+    autoClickPost: boolean,
+    imagePaths?: string[]
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     const fbView = this.getFbView();
     if (!fbView || fbView.webContents.isDestroyed()) {
@@ -211,13 +289,48 @@ export class FacebookGroupPublisher {
           document.execCommand('insertText', false, text);
           box.dispatchEvent(new Event('input', { bubbles: true }));
 
-          await sleep(2000);
+          await sleep(1500);
 
-          if (!clickPost) {
-            return { ok: true, mode: 'review', message: 'Đã điền sẵn nội dung bài đăng. Bạn có thể kiểm tra và bấm Đăng.' };
+          return { ok: true, composerReady: true };
+        })(${JSON.stringify(postText)}, ${autoClickPost});
+      `;
+
+      const result = await fbView.webContents.executeJavaScript(injectScript);
+      if (!result || !result.ok) {
+        return { success: false, error: result?.error || 'Không thể điền nội dung vào Facebook.' };
+      }
+
+      // 3. Đính kèm hình ảnh nếu có qua Clipboard Paste
+      if (imagePaths && imagePaths.length > 0) {
+        try {
+          for (const imgPath of imagePaths) {
+            if (fs.existsSync(imgPath)) {
+              const image = nativeImage.createFromPath(imgPath);
+              if (!image.isEmpty()) {
+                clipboard.writeImage(image);
+                fbView.webContents.paste();
+                await new Promise((r) => setTimeout(r, 2000));
+              }
+            }
           }
+        } catch (imgErr) {
+          console.warn('[Publisher] Error pasting images into composer:', imgErr);
+        }
+      }
 
-          // 3. Tìm và nhấn nút Đăng
+      // Nếu chỉ ở chế độ Review (kiểm duyệt thủ công)
+      if (!autoClickPost) {
+        return {
+          success: true,
+          message: `Đã điền bài viết${imagePaths && imagePaths.length > 0 ? ` kèm ${imagePaths.length} ảnh` : ''}. Bạn có thể kiểm tra và bấm Đăng.`,
+        };
+      }
+
+      // 4. Nếu chế độ Auto, chờ 2s và nhấn nút Đăng
+      await new Promise((r) => setTimeout(r, 2500));
+      const clickPostScript = `
+        (async function() {
+          function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
           const dialog = document.querySelector('div[role="dialog"]') || document;
           const dialogButtons = dialog.querySelectorAll('div[role="button"], button');
           let postBtn = null;
@@ -237,25 +350,33 @@ export class FacebookGroupPublisher {
             }
             postBtn.click();
             await sleep(3500);
-            return { ok: true, mode: 'auto', message: 'Đã nhấn Đăng thành công.' };
+            return { ok: true, message: 'Đã nhấn Đăng thành công.' };
           }
 
           return { ok: false, error: 'Không tìm thấy nút Đăng trong khung soạn thảo.' };
-        })(${JSON.stringify(postText)}, ${autoClickPost});
+        })();
       `;
 
-      const result = await fbView.webContents.executeJavaScript(injectScript);
-      if (result && result.ok) {
-        return { success: true, message: result.message };
+      const postResult = await fbView.webContents.executeJavaScript(clickPostScript);
+      if (postResult && postResult.ok) {
+        return { success: true, message: postResult.message };
       }
-      return { success: false, error: result?.error || 'Không thể điền nội dung vào Facebook.' };
+      return { success: false, error: postResult?.error || 'Lỗi khi nhấn Đăng bài.' };
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) };
     }
   }
 
-  async openGroupAndPrepare(groupUrl: string, postText: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async openGroupAndPrepare(
+    groupUrl: string,
+    postText: string,
+    imageUrls?: string[]
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     this.switchTabCallback('facebook');
-    return this.publishSingleGroup(groupUrl, postText, false);
+    let localPaths: string[] = [];
+    if (imageUrls && imageUrls.length > 0) {
+      localPaths = await this.downloadImages(imageUrls);
+    }
+    return this.publishSingleGroup(groupUrl, postText, false, localPaths);
   }
 }
