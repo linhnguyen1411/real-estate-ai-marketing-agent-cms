@@ -1,6 +1,7 @@
 /**
  * Facebook Group Auto-Publisher Engine for Desktop Agent App.
  * Handles DOM injection into Facebook Group composer, scheduling, and anti-checkpoint queue.
+ * Fixed: Preserves multiline formatting, paragraphs, emojis, and line-breaks on Facebook DraftJS/Lexical.
  */
 
 import * as fs from 'fs';
@@ -69,7 +70,6 @@ export class FacebookGroupPublisher {
 
       try {
         if (url.startsWith('data:image')) {
-          // Handle base64
           const matches = url.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
           if (matches) {
             const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
@@ -229,17 +229,17 @@ export class FacebookGroupPublisher {
     }
 
     try {
-      // 1. Navigate to Group URL
+      // 1. Điều hướng tới nhóm Facebook
       await fbView.webContents.loadURL(groupUrl);
-      // Wait for React DOM to hydrate
+      // Chờ React hydration
       await new Promise((r) => setTimeout(r, 4000));
 
-      // 2. Inject Composer Script
-      const injectScript = `
-        (async function(text, clickPost) {
+      // 2. Mở hộp thoại soạn thảo & Focus vào editor box
+      const prepareComposerScript = `
+        (async function() {
           function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-          // 1. Tìm nút mở hộp thoại tạo bài viết
+          // Tìm nút mở hộp thoại tạo bài viết
           let composerBtn = null;
           const buttons = document.querySelectorAll('div[role="button"]');
           for (const b of buttons) {
@@ -268,7 +268,7 @@ export class FacebookGroupPublisher {
             await sleep(2500);
           }
 
-          // 2. Tìm khung soạn thảo contenteditable
+          // Tìm khung soạn thảo contenteditable
           let box = document.querySelector('div[role="dialog"] div[role="textbox"][contenteditable="true"]');
           if (!box) {
             box = document.querySelector('div[role="dialog"] [contenteditable="true"]');
@@ -282,34 +282,82 @@ export class FacebookGroupPublisher {
           }
 
           box.focus();
-          await sleep(500);
+          await sleep(400);
 
-          // Xóa nội dung cũ và nhập text mới vào DraftJS
+          // Xóa toàn bộ nội dung cũ
           document.execCommand('selectAll', false, null);
-          document.execCommand('insertText', false, text);
-          box.dispatchEvent(new Event('input', { bubbles: true }));
+          document.execCommand('delete', false, null);
+          await sleep(200);
 
-          await sleep(1500);
-
-          return { ok: true, composerReady: true };
-        })(${JSON.stringify(postText)}, ${autoClickPost});
+          return { ok: true, ready: true };
+        })();
       `;
 
-      const result = await fbView.webContents.executeJavaScript(injectScript);
-      if (!result || !result.ok) {
-        return { success: false, error: result?.error || 'Không thể điền nội dung vào Facebook.' };
+      const prepRes = await fbView.webContents.executeJavaScript(prepareComposerScript);
+      if (!prepRes || !prepRes.ok) {
+        return { success: false, error: prepRes?.error || 'Không thể mở khung soạn thảo Facebook.' };
       }
 
-      // 3. Đính kèm hình ảnh nếu có qua Clipboard Paste
+      // 3. ĐIỀN NỘI DUNG VỚI ĐỊNH DẠNG XUỐNG DÒNG (NATIVE CLIPBOARD PASTE)
+      // Ghi text nguyên bản (chứa \n, \r\n) vào clipboard hệ thống
+      clipboard.writeText(postText);
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Gọi lệnh paste native của Chromium vào textbox đang focus
+      fbView.webContents.paste();
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // 4. Kiểm tra nội dung & Fallback chia dòng nếu paste bị chặn
+      const verifyAndFallbackScript = `
+        (async function(rawText) {
+          function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+          let box = document.querySelector('div[role="dialog"] div[role="textbox"][contenteditable="true"]') ||
+                    document.querySelector('div[role="dialog"] [contenteditable="true"]') ||
+                    document.querySelector('div[role="textbox"][contenteditable="true"]');
+          if (!box) return { ok: false, error: 'Mất focus khung soạn thảo.' };
+
+          const currentText = (box.innerText || box.textContent || '').trim();
+
+          // Nếu text trống hoặc chưa được paste
+          if (!currentText || currentText.length < 5) {
+            box.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+
+            // Chèn từng dòng kèm insertParagraph để giữ chuẩn ngắt dòng
+            const lines = rawText.split(/\\r?\\n/);
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.length > 0) {
+                document.execCommand('insertText', false, line);
+              }
+              if (i < lines.length - 1) {
+                document.execCommand('insertParagraph', false);
+              }
+            }
+            box.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(1000);
+          }
+
+          return { ok: true };
+        })(${JSON.stringify(postText)});
+      `;
+
+      await fbView.webContents.executeJavaScript(verifyAndFallbackScript);
+
+      // 5. Đính kèm hình ảnh nếu có qua Clipboard Paste
       if (imagePaths && imagePaths.length > 0) {
         try {
+          await new Promise((r) => setTimeout(r, 1000));
           for (const imgPath of imagePaths) {
             if (fs.existsSync(imgPath)) {
               const image = nativeImage.createFromPath(imgPath);
               if (!image.isEmpty()) {
                 clipboard.writeImage(image);
+                await new Promise((r) => setTimeout(r, 200));
                 fbView.webContents.paste();
-                await new Promise((r) => setTimeout(r, 2000));
+                // Chờ Facebook upload và gắn ảnh
+                await new Promise((r) => setTimeout(r, 2500));
               }
             }
           }
@@ -318,15 +366,18 @@ export class FacebookGroupPublisher {
         }
       }
 
-      // Nếu chỉ ở chế độ Review (kiểm duyệt thủ công)
+      // Khôi phục lại postText vào clipboard để người dùng có thể dán lại bất kỳ lúc nào
+      clipboard.writeText(postText);
+
+      // Nếu ở chế độ Review (kiểm duyệt thủ công)
       if (!autoClickPost) {
         return {
           success: true,
-          message: `Đã điền bài viết${imagePaths && imagePaths.length > 0 ? ` kèm ${imagePaths.length} ảnh` : ''}. Bạn có thể kiểm tra và bấm Đăng.`,
+          message: `Đã điền bài viết chuẩn định dạng${imagePaths && imagePaths.length > 0 ? ` kèm ${imagePaths.length} ảnh` : ''}. Bạn có thể kiểm tra và bấm Đăng.`,
         };
       }
 
-      // 4. Nếu chế độ Auto, chờ 2s và nhấn nút Đăng
+      // 6. Nếu chế độ Auto, chờ 2.5s và nhấn nút Đăng
       await new Promise((r) => setTimeout(r, 2500));
       const clickPostScript = `
         (async function() {
