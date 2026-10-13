@@ -476,7 +476,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   }, [chatSessionId]);
 
   React.useEffect(() => {
-    if (!guestProfile) return;
+    if (!guestProfile || !chatOpen) return;
     const timer = window.setInterval(() => {
       fetch(`/api/public/chat/history?sessionId=${encodeURIComponent(chatSessionId)}`)
         .then(readJsonResponse)
@@ -489,9 +489,9 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           }
         })
         .catch(() => undefined);
-    }, 3000);
+    }, 5000);
     return () => window.clearInterval(timer);
-  }, [chatSessionId, guestProfile]);
+  }, [chatSessionId, guestProfile, chatOpen]);
 
   React.useEffect(() => {
     if (!chatOpen) return;
@@ -798,6 +798,13 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           setGuestError(json.message || 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
           return;
         }
+        if (response.status === 429) {
+          setChatMessages(prev => [...prev, {
+            role: 'model',
+            content: json.message || 'Bạn gửi tin nhắn hơi nhanh, vui lòng đợi vài giây rồi thử lại nhé.'
+          }]);
+          return;
+        }
         throw new Error(json.message || 'Không thể gửi tin nhắn.');
       }
       if (json.aiPaused) {
@@ -807,10 +814,12 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
       if (answer) {
         setChatMessages(prev => [...prev, { role: 'model', content: answer }]);
       }
-    } catch (error) {
+    } catch (error: any) {
       setChatMessages(prev => [...prev, {
         role: 'model',
-        content: 'Kết nối AI đang bận. Anh/chị có thể bấm Zalo/Facebook để được tư vấn ngay.'
+        content: error?.message?.includes('quá nhanh')
+          ? error.message
+          : 'Kết nối AI đang bận. Anh/chị có thể bấm Zalo/Facebook để được tư vấn ngay.'
       }]);
     } finally {
       setChatLoading(false);

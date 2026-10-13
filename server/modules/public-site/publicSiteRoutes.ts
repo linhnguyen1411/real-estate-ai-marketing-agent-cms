@@ -43,7 +43,8 @@ import {
 
 import {
   publicApiRateLimiter,
-  publicChatRateLimiter,
+  publicChatSendRateLimiter,
+  publicChatHistoryRateLimiter,
 } from '../../middleware/rateLimiters';
 import { validateSchema, publicContactSchema } from '../../middleware/validation';
 
@@ -102,8 +103,6 @@ export function createPublicSiteRouter() {
 
   // Rate limiter for general public endpoints
   router.use('/api/public', publicApiRateLimiter);
-  // Dedicated rate limiter for public AI chat
-  router.use('/api/public/chat', publicChatRateLimiter);
 
 router.get('/api/public/properties', (req: Request, res: Response) => {
   const portfolioSlug = String(
@@ -303,7 +302,7 @@ function parseCookie(req: Request, name: string): string | null {
   return match ? decodeURIComponent(match[2]) : null;
 }
 
-router.get('/api/public/chat/history', (req: Request, res: Response) => {
+router.get('/api/public/chat/history', publicChatHistoryRateLimiter, (req: Request, res: Response) => {
   const cookieSessionId = parseCookie(req, 'chat_session_id');
   const querySessionId = String(req.query.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const sessionId = cookieSessionId || querySessionId;
@@ -414,7 +413,7 @@ router.post('/api/public/contact', validateSchema(publicContactSchema), async (r
   }
 });
 
-router.post('/api/public/chat', async (req: Request, res: Response) => {
+router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, res: Response) => {
   const cookieSessionId = parseCookie(req, 'chat_session_id');
   const bodySessionId = String(req.body?.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const sessionId = bodySessionId || cookieSessionId;

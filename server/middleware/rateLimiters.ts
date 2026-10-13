@@ -22,10 +22,10 @@ export const loginRateLimiter = rateLimit({
   },
 });
 
-// 2. Public API general rate limit: 30 requests per minute per IP
+// 2. Public API general rate limit: 120 requests per minute per IP
 export const publicApiRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
@@ -36,16 +36,33 @@ export const publicApiRateLimiter = rateLimit({
   },
 });
 
-// 3. Public Chat rate limit: 10 requests per minute per IP
-export const publicChatRateLimiter = rateLimit({
+// 3. Public Chat send rate limit: 30 requests per minute per IP (AI generation protection)
+export const publicChatSendRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
     res.status(429).json({
       status: 'error',
       message: 'Bạn đang gửi tin nhắn quá nhanh. Vui lòng đợi trong giây lát.',
+    });
+  },
+});
+
+// Alias for backwards compatibility
+export const publicChatRateLimiter = publicChatSendRateLimiter;
+
+// 3b. Public Chat history poll rate limit: 120 requests per minute per IP
+export const publicChatHistoryRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      status: 'error',
+      message: 'Yêu cầu tải lịch sử chat vượt quá giới hạn. Vui lòng đợi giây lát.',
     });
   },
 });
