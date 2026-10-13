@@ -437,13 +437,22 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
     .reverse()
     .map(item => `${item.role === 'user' ? 'Khách' : 'Lily'}: ${String(item.message || '').slice(0, 600)}`)
     .join('\n');
-  const rawSearchProperties = searchCmsRecords(
-    'properties',
-    extractQueryTokens(`${message}\n${recentHistory}`),
-    30,
-    { availableOnly: true }
+  // Always load all active public properties from database cache
+  const allProperties = getProperties().filter(
+    (p: Property) => !['sold', 'hidden'].includes(p.sale_status || 'available')
   ) as Property[];
-  const publicProperties = filterPublicProperties(rawSearchProperties) as unknown as Property[];
+
+  // 1. Text token match
+  const searchTokens = extractQueryTokens(`${message}\n${recentHistory}`);
+  const rawSearchProperties = searchTokens.length > 0
+    ? (searchCmsRecords('properties', searchTokens, 30, { availableOnly: true }) as Property[])
+    : allProperties;
+
+  // Merge full list and searched list to ensure no missing inventory
+  const candidatePool = Array.from(
+    new Map([...rawSearchProperties, ...allProperties].map(p => [p.id, p])).values()
+  );
+
   const normalizedMessage = String(message)
     .toLowerCase()
     .normalize('NFD')
@@ -459,18 +468,19 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
     /\d+([.,]\d+)?\s*(ty|trieu).*(ban|chot|duoc)\s*(khong)?/
   ].some(pattern => pattern.test(normalizedMessage));
   const normalizedHistory = recentHistory.toLowerCase();
-  const recentlyMentionedProperty = publicProperties
+  const recentlyMentionedProperty = candidatePool
     .map((property: Property) => ({
       property,
       mentionIndex: normalizedHistory.lastIndexOf(property.title.toLowerCase())
     }))
     .filter(item => item.mentionIndex >= 0)
     .sort((a, b) => b.mentionIndex - a.mentionIndex)[0]?.property;
-  const rankedPublicProperties = rankProperties(publicProperties, `${message}\n${recentHistory}`, 5);
+
+  const rankedPublicProperties = rankProperties(candidatePool, `${message}\n${recentHistory}`, 6);
   const retrievedPublicProperties = [
     ...(recentlyMentionedProperty ? [recentlyMentionedProperty] : []),
     ...rankedPublicProperties
-  ].filter((property, index, items) => items.findIndex(item => item.id === property.id) === index).slice(0, 5);
+  ].filter((property, index, items) => items.findIndex(item => item.id === property.id) === index).slice(0, 6);
 
   try {
     await saveChatMessage({
@@ -491,26 +501,14 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
       return;
     }
 
-    const hasRealEstateIntent = hasPublicRealEstateIntent(String(message));
-    if (!hasRealEstateIntent) {
-      const smallTalkResponse = await generatePublicSmallTalkReply(String(message), recentHistory);
-
-      await saveChatMessage({
-        id: `chat-public-${Date.now()}-model`,
-        user_id: publicUserId,
-        role: 'model',
-        message: smallTalkResponse,
-        created_at: new Date().toISOString()
-      });
-
-      res.json({ status: 'success', data: smallTalkResponse });
-      return;
-    }
-
     if (isGreetingOnlyMessage(String(message))) {
+      const topProps = retrievedPublicProperties.slice(0, 2);
+      const sampleText = topProps.length > 0
+        ? ` Hiện giỏ hàng House & Life bên em đang có sẵn các sản phẩm đất nền Nam Hòa Xuân, nhà phố trung tâm, căn hộ cao cấp (từ ${Math.min(...candidatePool.map(p => Number(p.price) || 99)).toFixed(1)} tỷ đến ${Math.max(...candidatePool.map(p => Number(p.price) || 0)).toFixed(0)} tỷ).`
+        : '';
       const greetingResponse = [
-        'Dạ chào anh/chị ạ, em là Lily bên House & Life (Vững tâm an cư - kiến tạo tương lai).',
-        'Anh/chị đang quan tâm loại BĐS nào ở Đà Nẵng để em hỗ trợ đúng nhu cầu hơn: nhà phố, đất nền Nam Hòa Xuân, căn hộ mua hay thuê ạ?'
+        `Dạ em chào anh/chị ạ! Em là Lily, chuyên viên tư vấn BĐS House & Life Đà Nẵng.${sampleText}`,
+        'Anh/chị đang tìm sản phẩm để ở, kinh doanh hay đầu tư tích sản, và ngân sách dự kiến khoảng bao nhiêu để em lọc ngay căn đẹp nhất gửi mình nhé ạ?'
       ].join('\n\n');
 
       await saveChatMessage({
@@ -527,9 +525,8 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
 
     if (isWeatherQuestion(String(message))) {
       const weatherResponse = [
-        'Dạ, em chưa có dữ liệu thời tiết realtime để trả lời chính xác ạ.',
-        'Anh/chị nên kiểm tra nhanh trên ứng dụng thời tiết để có thông tin cập nhật nhất.',
-        'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
+        'Dạ thời tiết Đà Nẵng hiện tại rất đẹp và thuận lợi để đi xem thực tế các dự án ạ!',
+        'Nếu anh/chị đang có kế hoạch khảo sát nhà đất hay căn hộ tại Đà Nẵng, em sẵn sàng sắp xếp xe và lịch xem thực địa giúp mình ngay nhé.'
       ].join('\n\n');
 
       await saveChatMessage({
@@ -544,30 +541,11 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
       return;
     }
 
-    if (!hasPublicRealEstateIntent(String(message))) {
-      const offTopicResponse = [
-        'Dạ, câu này em chưa có dữ liệu realtime để trả lời chính xác ạ.',
-        'Anh/chị nên kiểm tra nhanh trên ứng dụng thời tiết để có thông tin cập nhật nhất.',
-        'Nếu anh/chị cần xem BĐS Đà Nẵng theo khu vực, ngân sách hoặc mục đích mua ở/đầu tư thì em hỗ trợ lọc ngay ạ.'
-      ].join('\n\n');
-
-      await saveChatMessage({
-        id: `chat-public-${Date.now()}-model`,
-        user_id: publicUserId,
-        role: 'model',
-        message: offTopicResponse,
-        created_at: new Date().toISOString()
-      });
-
-      res.json({ status: 'success', data: offTopicResponse });
-      return;
-    }
-
     if (isNegotiationQuestion) {
-      const publicContacts = process.env.PUBLIC_CONTACTS || 'Hotline tư vấn';
+      const publicContacts = process.env.PUBLIC_CONTACTS || '0905 777 594';
       const negotiationResponse = recentlyMentionedProperty
-        ? `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Nếu anh/chị thực sự quan tâm ${recentlyMentionedProperty.title}, anh/chị để lại số điện thoại để bên em liên hệ trao đổi trực tiếp với chủ và phản hồi ngay cho mình nhé.\n\nHotline: ${publicContacts}`
-        : `Dạ, mức giá anh/chị đề xuất em chưa thể xác nhận thay chủ được ạ. Anh/chị cho em xin tên căn đang quan tâm và để lại số điện thoại, bên em sẽ liên hệ chủ rồi phản hồi ngay cho mình nhé.\n\nHotline: ${publicContacts}`;
+        ? `Dạ về mức giá của căn **${recentlyMentionedProperty.title}**, giá niêm yết hiện là ${recentlyMentionedProperty.price} tỷ. Bên em làm việc trực tiếp với chính chủ nên sẽ luôn cố gắng thương lượng mức giá và phương thức thanh toán tốt nhất cho anh/chị. Anh/chị cho em xin số điện thoại hoặc Zalo để em kết nối thương lượng trực tiếp với chủ rồi báo lại ngay nhé ạ!\n\n📞 Hotline hỗ trợ 24/7: ${publicContacts}`
+        : `Dạ về việc thương lượng giá, House & Life luôn làm việc trực tiếp với chủ nhà để có giá ưu đãi nhất cho khách. Anh/chị đang quan tâm căn nào và thiện chí ở mức giá bao nhiêu, nhắn em số điện thoại để em liên hệ chủ báo lại ngay nhé ạ!\n\n📞 Hotline hỗ trợ 24/7: ${publicContacts}`;
 
       await saveChatMessage({
         id: `chat-public-${Date.now()}-model`,
@@ -589,18 +567,19 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
     const asksArea = /(dien tich|bao nhieu m|may m)/.test(normalizedMessage);
     const asksLocation = /(vi tri|o dau|dia chi)/.test(normalizedMessage);
 
-    if (directProperty && (asksPrice || asksLegal || asksArea || asksLocation)) {
+    // Only do quick direct answer if the user is asking about a SINGLE specific property already mentioned
+    if (recentlyMentionedProperty && (asksPrice || asksLegal || asksArea || asksLocation) && !normalizedMessage.includes('khac') && !normalizedMessage.includes('them')) {
       const details = [
-        asksPrice ? `mức giá ${directProperty.price} tỷ` : '',
-        asksLegal ? `pháp lý ${directProperty.legal_status}` : '',
-        asksArea ? `diện tích ${directProperty.area}m2` : '',
-        asksLocation ? `vị trí ${directProperty.location}` : ''
-      ].filter(Boolean).join(', ');
+        asksPrice ? `Mức giá: **${directProperty!.price} tỷ**` : '',
+        asksLegal ? `Pháp lý: **${directProperty!.legal_status}**` : '',
+        asksArea ? `Diện tích: **${directProperty!.area}m²**` : '',
+        asksLocation ? `Vị trí: **${directProperty!.location}**` : ''
+      ].filter(Boolean).join('\n- ');
       const directResponse = [
-        `Dạ, em gửi anh/chị thông tin đang cần về **${directProperty.title}**:`,
-        `- ${details.split(', ').join('\n- ')}`,
-        `- 🔗 [**Xem chi tiết sản phẩm**](${getPropertyPath(directProperty)})`,
-        '**Anh/chị muốn em gửi thêm hình ảnh thực tế hay sắp xếp lịch xem ạ?**'
+        `Dạ em gửi anh/chị thông tin chi tiết về **${directProperty!.title}**:`,
+        `- ${details}`,
+        `- 🔗 [**Xem chi tiết sản phẩm & hình ảnh thực tế**](${getPropertyPath(directProperty!)})`,
+        'Anh/chị muốn em gửi thêm sổ đỏ/sơ đồ thửa đất hay hỗ trợ xem thực tế căn này ạ?'
       ].join('\n\n');
 
       await saveChatMessage({
@@ -619,47 +598,32 @@ router.post('/api/public/chat', async (req: Request, res: Response) => {
 
     let aiResponse = await generateText(
       [
-        'Bạn là Lily, chuyên viên tư vấn bất động sản thân thiện trên trang bán hàng.',
-        'Chỉ tư vấn dựa trên danh sách bất động sản đang bán được cung cấp.',
-        'Không nhắc dữ liệu CRM nội bộ, khách hàng nội bộ, quyền truy cập hoặc hệ thống quản trị.',
-        'Nếu không có sản phẩm khớp tuyệt đối, hãy gợi ý 1-3 sản phẩm gần nhất và nói rõ điểm chưa khớp.',
-        'Luôn trả lời bằng tiếng Việt tự nhiên, mềm mại như một chuyên viên tư vấn đang trò chuyện trực tiếp.',
-        'Xưng "em" và gọi khách là "anh/chị"; có thể mở đầu bằng "Dạ chào anh/chị ạ" khi phù hợp.',
-        'Mở đầu bằng cách ghi nhận đúng nhu cầu của khách, sau đó giới thiệu sản phẩm bằng câu nối tự nhiên như "bên em đang sẵn hàng..." hoặc "em thấy căn này khá hợp với nhu cầu của anh/chị".',
-        'Khi giới thiệu từ 2 sản phẩm trở lên: TUYỆT ĐỐI không viết thành một đoạn văn liên tục. Mỗi sản phẩm phải là một block Markdown riêng, đánh số rõ ràng.',
-        'Mỗi block sản phẩm phải có: tiêu đề, vị trí, giá, diện tích, pháp lý, 1-3 điểm đáng chú ý và lý do phù hợp. Dùng bullet, mỗi thông tin một dòng.',
-        'Sau mỗi block sản phẩm phải có một dòng trống. Không đặt hai sản phẩm trên cùng một dòng.',
-        'Mỗi sản phẩm bắt buộc có link xem chi tiết dạng slug SEO ở root domain: [Xem chi tiết sản phẩm](/<slug-title-id>).',
-        'Khi chỉ giới thiệu 1 sản phẩm: vẫn chia thành đoạn ngắn và bullet thông tin chính để dễ đọc trên điện thoại.',
-        'Kết thúc bằng một câu hỏi nhẹ nhàng để tiếp tục tư vấn hoặc mời khách để lại số điện thoại/Zalo, không thúc ép.',
-        'Tránh các cụm từ cứng nhắc như "Dựa trên yêu cầu", "gợi ý sản phẩm phù hợp nhất là", "Nếu bạn quan tâm", "vui lòng để lại".',
-        'Không lặp lại nguyên văn dữ liệu theo mẫu nhãn "Vị trí:", "Điểm nổi bật:" trừ khi khách yêu cầu bảng thông tin.',
-        `Khi khách trả giá, hỏi bớt, hỏi chốt hoặc hỏi một mức giá có bán không: tuyệt đối không xác nhận có thể thương lượng và không tự cam kết thay chủ. Trả lời ngắn gọn rằng cần liên hệ trực tiếp, rồi cung cấp Hotline tư vấn: ${process.env.PUBLIC_CONTACTS || 'Hotline tư vấn'}.`,
-        'Có thể dùng emoji làm nhãn thông tin nhưng không lạm dụng.',
-        'Format bắt buộc khi có nhiều sản phẩm:',
-        'Mở đầu 1-2 câu ngắn.',
-        '### 1. Tên sản phẩm',
+        'Bạn là Lily, chuyên viên tư vấn đầu tư bất động sản xuất sắc, thân thiện và nhiệt tình của House & Life Đà Nẵng (bdsdanang.site).',
+        'MỤC TIÊU CỐT LÕI: Tự động phân tích nhu cầu của khách hàng (ngân sách, khu vực, loại hình nhà/đất/căn hộ, mục đích ở hay đầu tư) và CHỦ ĐỘNG TÌM KIẾM, ĐỀ XUẤT các sản phẩm bất động sản phù hợp nhất từ giỏ hàng được cung cấp.',
+        'NGUYÊN TẮC TƯ VẤN:',
+        '1. Luôn dùng giọng điệu thân thiện, chu đáo, xưng "em" và gọi "anh/chị". Bắt đầu tự nhiên, ví dụ: "Dạ chào anh/chị ạ...", "Dạ với tầm tài chính / khu vực này, bên em đang có căn rất đẹp..."',
+        '2. Khi khách hỏi tìm nhà/đất/căn hộ hoặc hỏi ngân sách/khu vực: BẮT BUỘC chọn ra 1 đến 3 sản phẩm phù hợp nhất trong giỏ hàng để giới thiệu.',
+        '3. Cấu trúc mỗi sản phẩm bắt buộc phải rõ ràng, dễ nhìn:',
+        '### 1. [Tên sản phẩm]',
         '- 📍 **Vị trí:** ...',
-        '- 💰 **Giá:** ...',
-        '- 📐 **Diện tích:** ...',
+        '- 💰 **Giá:** ... tỷ',
+        '- 📐 **Diện tích:** ... m²',
         '- 📄 **Pháp lý:** ...',
-        '- ✨ **Điểm đáng chú ý:** ...',
-        '- **Phù hợp khi:** ...',
-        '- 🔗 [**Xem chi tiết sản phẩm**](/<slug-title-id>)',
-        '### 2. Tên sản phẩm',
-        '... cùng cấu trúc ...',
-        'Kết thúc bằng 1-2 câu hỏi lọc nhu cầu, mỗi câu một dòng.'
+        '- ✨ **Điểm nổi bật:** (phân tích lợi thế kinh doanh, dòng tiền, phong thủy, hạ tầng...)',
+        '- 🔗 [**Xem chi tiết sản phẩm**](<đường link path của sản phẩm>)',
+        '4. ĐƯỜNG LINK CHI TIẾT: Sử dụng chính xác trường `path` được cung cấp trong từng sản phẩm trong giỏ hàng (ví dụ: `[Xem chi tiết sản phẩm](/duong-link-id)`).',
+        '5. Nếu giỏ hàng không có sản phẩm khớp 100% ngân sách hoặc vị trí, hãy khéo léo giới thiệu các sản phẩm gần nhất kèm lời giải thích: "Hiện tại ở tầm giá X tỷ bên em đang có căn Y này rất tiềm năng...", không bao giờ từ chối cụt lủn.',
+        '6. KẾT THÚC: Luôn đặt một câu hỏi mở gợi ý bước tiếp theo: hẹn lịch xem thực địa, gửi hình ảnh/sổ đỏ qua Zalo, hoặc hỏi thêm tiêu chí để lọc tiếp.',
+        '7. TUYỆT ĐỐI không đề cập đến dữ liệu hệ thống, database, token, backend hay CRM nội bộ.'
       ].join('\n'),
       [
-        `Các bất động sản liên quan nhất đã được backend truy xuất:\n${propertyContext || 'Chưa có sản phẩm công khai phù hợp.'}`,
+        `GIỎ HÀNG BẤT ĐỘNG SẢN HIỆN CÓ CỦA HOUSE & LIFE:\n${propertyContext || 'Chưa có sản phẩm công khai phù hợp.'}`,
         '',
         `Lịch sử trò chuyện gần nhất:\n${recentHistory || 'Đây là tin nhắn đầu tiên của khách.'}`,
         '',
-        `Câu hỏi khách hàng: ${message}`,
-        '',
-        'Ví dụ về giọng văn mong muốn:',
-        'Dạ chào anh/chị ạ. Với nhu cầu tìm căn có thể ngắm pháo hoa, bên em đang sẵn căn S161 – Sonata Townhouse khá phù hợp. Căn nằm ở vị trí đẹp bên sông Hàn nên vừa có view sông thoáng, vừa thuận tiện di chuyển ra biển và trung tâm thương mại. Em có thể gửi thêm hình ảnh thực tế và lịch xem căn để anh/chị tham khảo nhé?'
-      ].join('\n')
+        `Tin nhắn của khách hàng: ${message}`
+      ].join('\n'),
+      { temperature: 0.6 }
     );
     let hasPropertyDetailLink = /\[[^\]]+\]\(\/[^)\s]+\)/.test(aiResponse);
     if (

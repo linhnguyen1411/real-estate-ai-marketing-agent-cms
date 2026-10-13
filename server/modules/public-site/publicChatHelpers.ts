@@ -11,13 +11,33 @@ export function normalizeText(value: unknown) {
 }
 
 export function extractQueryTokens(message: string) {
-  const tokens = normalizeText(message)
+  const normalized = normalizeText(message);
+  // Expand common real estate abbreviations & colloquial phrases
+  const expanded = normalized
+    .replace(/\bmt\b/g, 'mat tien')
+    .replace(/\bdt\b/g, 'dien tich')
+    .replace(/\bnhk\b/g, 'nam hoa xuan')
+    .replace(/\bhx\b/g, 'hoa xuan')
+    .replace(/\bsh\b/g, 'shophouse');
+
+  const rawTokens = expanded
     .split(/[^a-z0-9]+/i)
     .filter(token => token.length >= 2 && ![
-      'toi', 'minh', 'can', 'tim', 'cho', 'hoi', 've', 'co', 'khong', 'duoc', 'gia',
-      'nha', 'dat', 'bds', 'bat', 'dong', 'san', 'anh', 'chi', 'em', 'muon'
+      'toi', 'minh', 'can', 'tim', 'cho', 'hoi', 've', 'co', 'khong', 'duoc',
+      'anh', 'chi', 'em', 'muon', 'chao', 'alo', 'ban', 'nhe', 'nha', 'a'
     ].includes(token));
-  return Array.from(new Set(tokens)).slice(0, 20);
+
+  // Also include 2-word n-grams for locations/types like "nam hoa xuan", "can ho", "mat tien"
+  const ngrams: string[] = [];
+  const words = expanded.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < words.length - 1; i++) {
+    const pair = `${words[i]} ${words[i + 1]}`;
+    if (['nam hoa', 'hoa xuan', 'can ho', 'dat nen', 'nha pho', 'mat tien', 'shophouse', 'song han', 'cam le', 'son tra', 'ngu hanh', 'phong ngu', 'so hong'].some(k => pair.includes(k))) {
+      ngrams.push(pair);
+    }
+  }
+
+  return Array.from(new Set([...ngrams, ...rawTokens])).slice(0, 25);
 }
 
 export function extractBudget(message: string) {
@@ -35,7 +55,10 @@ export function extractBudget(message: string) {
 export function textScore(record: any, tokens: string[]) {
   if (!tokens.length) return 0;
   const haystack = normalizeText(JSON.stringify(record));
-  return tokens.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
+  return tokens.reduce((score, token) => {
+    if (token.includes(' ') && haystack.includes(token)) return score + 4;
+    return score + (haystack.includes(token) ? 1 : 0);
+  }, 0);
 }
 
 export function detectQueryIntent(message: string) {
@@ -115,7 +138,9 @@ export function compactProperty(property: Property) {
     legal_status: property.legal_status,
     direction: property.direction,
     road_width: property.road_width,
+    project_name: property.project_name || '',
     sale_status: property.sale_status || 'available',
+    path: getPropertyPath(property),
     description: String(property.rich_description || property.description || '').slice(0, 700),
     selling_points: (property.selling_points || []).slice(0, 6),
   };
@@ -140,16 +165,58 @@ export function compactCustomer(customer: Customer) {
 export function rankProperties(properties: Property[], message: string, limit = 5) {
   const tokens = extractQueryTokens(message);
   const budget = extractBudget(message);
+  const normalizedMsg = normalizeText(message);
 
   return properties
     .map(property => {
       const tokenScore = textScore(compactProperty(property), tokens);
-      const budgetDistance = budget ? Math.abs(Number(property.price) - budget) : 0;
-      const withinBudget = budget ? Number(property.price) <= budget * 1.15 : true;
-      const availableBonus = property.sale_status === 'sold' ? -20 : 2;
+      const propPrice = Number(property.price);
+      let budgetScore = 0;
+      if (budget && Number.isFinite(propPrice) && propPrice > 0) {
+        const diffRatio = Math.abs(propPrice - budget) / budget;
+        if (diffRatio <= 0.15) {
+          budgetScore = 20; // Very close to budget
+        } else if (diffRatio <= 0.35) {
+          budgetScore = 10;
+        } else if (propPrice <= budget) {
+          budgetScore = 8;
+        } else {
+          budgetScore = -Math.min(diffRatio * 15, 25);
+        }
+      }
+
+      // Check type match (đất nền, nhà phố, căn hộ, biệt thự, shophouse)
+      let typeScore = 0;
+      const propType = normalizeText(property.type || '');
+      if (
+        (normalizedMsg.includes('dat') && (propType.includes('dat') || propType.includes('nen'))) ||
+        (normalizedMsg.includes('nha') && (propType.includes('nha') || propType.includes('pho'))) ||
+        (normalizedMsg.includes('can ho') && propType.includes('can ho')) ||
+        (normalizedMsg.includes('chung cu') && propType.includes('can ho')) ||
+        (normalizedMsg.includes('shophouse') && propType.includes('shophouse'))
+      ) {
+        typeScore = 15;
+      }
+
+      // Check location match (hòa xuân, sơn trà, hải châu, cẩm lệ, ngũ hành sơn, sông hàn)
+      let locScore = 0;
+      const propLoc = normalizeText(`${property.location || ''} ${property.project_name || ''}`);
+      if (
+        (normalizedMsg.includes('hoa xuan') && propLoc.includes('hoa xuan')) ||
+        (normalizedMsg.includes('son tra') && propLoc.includes('son tra')) ||
+        (normalizedMsg.includes('hai chau') && propLoc.includes('hai chau')) ||
+        (normalizedMsg.includes('cam le') && propLoc.includes('cam le')) ||
+        (normalizedMsg.includes('ngu hanh son') && propLoc.includes('ngu hanh son')) ||
+        (normalizedMsg.includes('song han') && propLoc.includes('song han')) ||
+        (normalizedMsg.includes('sonata') && propLoc.includes('sonata'))
+      ) {
+        locScore = 15;
+      }
+
+      const availableBonus = property.sale_status === 'sold' ? -50 : 5;
       return {
         property,
-        score: tokenScore * 12 + (withinBudget ? 4 : -budgetDistance * 3) + availableBonus
+        score: tokenScore * 10 + budgetScore + typeScore + locScore + availableBonus
       };
     })
     .sort((a, b) => b.score - a.score)
