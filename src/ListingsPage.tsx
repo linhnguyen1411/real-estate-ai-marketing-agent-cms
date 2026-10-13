@@ -312,8 +312,29 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
 
 export default function ListingsPage({ properties, propertySlug, projectDisplayOrder }: ListingsPageProps) {
   const navigate = useNavigate();
-  const location = useLocation();
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
+  const chatScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const isAtBottomRef = React.useRef<boolean>(true);
+  const prevMessagesLengthRef = React.useRef<number>(1);
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'smooth') => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTo({
+        top: chatScrollRef.current.scrollHeight,
+        behavior,
+      });
+    } else if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior, block: 'end' });
+    }
+    isAtBottomRef.current = true;
+  }, []);
+
+  const handleChatScroll = React.useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isAtBottomRef.current = distanceFromBottom <= 60;
+  }, []);
   const [chatSessionId] = useState(() => {
     const existing = localStorage.getItem(PUBLIC_CHAT_SESSION_KEY);
     if (existing) return existing;
@@ -455,10 +476,13 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         }
 
         if (Array.isArray(json.data) && json.data.length > 0) {
-          setChatMessages(json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
+          const loaded = json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
             role: item.role,
             content: item.message
-          })));
+          }));
+          setChatMessages(loaded);
+          prevMessagesLengthRef.current = loaded.length;
+          isAtBottomRef.current = true;
         }
       })
       .catch(() => {
@@ -482,10 +506,19 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         .then(readJsonResponse)
         .then(json => {
           if (Array.isArray(json.data)) {
-            setChatMessages(json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
+            const incoming = json.data.map((item: { role: 'user' | 'model'; message: string }) => ({
               role: item.role,
               content: item.message
-            })));
+            }));
+            setChatMessages(prev => {
+              if (prev.length === incoming.length) {
+                const isIdentical = prev.every((msg, idx) =>
+                  msg.role === incoming[idx]?.role && msg.content === incoming[idx]?.content
+                );
+                if (isIdentical) return prev;
+              }
+              return incoming;
+            });
           }
         })
         .catch(() => undefined);
@@ -493,13 +526,43 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     return () => window.clearInterval(timer);
   }, [chatSessionId, guestProfile, chatOpen]);
 
+  // Khi mở chat hoặc refresh: scroll xuống cuối để xem tin mới nhất
+  React.useEffect(() => {
+    if (chatOpen) {
+      isAtBottomRef.current = true;
+      const timer = window.setTimeout(() => {
+        scrollToBottom('auto');
+      }, 60);
+      return () => window.clearTimeout(timer);
+    }
+  }, [chatOpen, scrollToBottom]);
+
+  // Khi có tin nhắn mới: CHỈ tự động scroll nếu người dùng đang đứng ở đáy
   React.useEffect(() => {
     if (!chatOpen) return;
-    const timer = window.setTimeout(() => {
-      chatEndRef.current?.scrollIntoView({ block: 'end' });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [chatMessages, chatLoading, chatOpen]);
+    const currentLen = chatMessages.length;
+    const prevLen = prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = currentLen;
+
+    if (currentLen > prevLen) {
+      if (isAtBottomRef.current) {
+        const timer = window.setTimeout(() => {
+          scrollToBottom('smooth');
+        }, 50);
+        return () => window.clearTimeout(timer);
+      }
+    }
+  }, [chatMessages, chatOpen, scrollToBottom]);
+
+  // Khi Lily đang gõ/tải: chỉ scroll theo nếu người dùng đang ở đáy
+  React.useEffect(() => {
+    if (chatLoading && chatOpen && isAtBottomRef.current) {
+      const timer = window.setTimeout(() => {
+        scrollToBottom('smooth');
+      }, 50);
+      return () => window.clearTimeout(timer);
+    }
+  }, [chatLoading, chatOpen, scrollToBottom]);
 
   React.useEffect(() => {
     const trackingKey = 'real_estate_site_view_tracked';
@@ -784,6 +847,8 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     setChatMessages(prev => [...prev, { role: 'user', content: message }]);
     setChatInput('');
     setChatLoading(true);
+    isAtBottomRef.current = true;
+    window.setTimeout(() => scrollToBottom('smooth'), 30);
 
     try {
       const response = await fetch('/api/public/chat', {
@@ -1372,7 +1437,11 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 Đổi thông tin
               </button>
             </div>
-            <div className="h-[50vh] max-h-80 min-h-64 space-y-3 overflow-y-auto bg-slate-50 p-4 app-scroll">
+            <div
+              ref={chatScrollRef}
+              onScroll={handleChatScroll}
+              className="h-[50vh] max-h-80 min-h-64 space-y-3 overflow-y-auto bg-slate-50 p-4 app-scroll"
+            >
               {chatMessages.map((message, index) => (
                 <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[82%] rounded-lg px-3 py-2 text-sm leading-6 ${
