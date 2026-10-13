@@ -3,8 +3,22 @@ import type { Property } from '../types';
 const CARD_FALLBACK =
   'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=800&q=75';
 
+function getPropertyFirstImage(property?: Property): string {
+  if (!property) return '';
+  if (property.gallery_images?.[0] && typeof property.gallery_images[0] === 'string') {
+    return property.gallery_images[0];
+  }
+  if (Array.isArray(property.images) && typeof property.images[0] === 'string') {
+    return property.images[0];
+  }
+  if (typeof property.images === 'string') {
+    return property.images;
+  }
+  return '';
+}
+
 function hasEmbeddedImage(property: Property) {
-  const first = property.gallery_images?.[0] || property.images || '';
+  const first = getPropertyFirstImage(property);
   return first.startsWith('data:image/') || Boolean(property.id);
 }
 
@@ -13,25 +27,32 @@ export function getPropertyThumbnailUrl(property?: Property, index = 0): string 
   if (property.id && hasEmbeddedImage(property)) {
     return `/property-images/${encodeURIComponent(property.id)}/${index}.jpg`;
   }
-  return property.gallery_images?.[index] || property.images || CARD_FALLBACK;
+  const candidate = property.gallery_images?.[index] ||
+    (Array.isArray(property.images) ? property.images[index] : property.images) ||
+    CARD_FALLBACK;
+  return typeof candidate === 'string' ? candidate : CARD_FALLBACK;
 }
 
 export function getPropertyGalleryUrls(property: Property): string[] {
-  const count = property.gallery_images?.length || (property.images ? 1 : 0);
+  const count = property.gallery_images?.length ||
+    (Array.isArray(property.images) ? property.images.length : (property.images ? 1 : 0));
   if (property.id && count > 0 && hasEmbeddedImage(property)) {
     return Array.from({ length: Math.max(count, 1) }, (_, index) =>
       getPropertyThumbnailUrl(property, index),
     );
   }
   if (property.gallery_images?.length) return property.gallery_images;
-  if (property.images) return [property.images];
+  if (Array.isArray(property.images) && property.images.length > 0) return property.images;
+  if (typeof property.images === 'string' && property.images) return [property.images];
   return [CARD_FALLBACK];
 }
 
 function hasEmbeddedImageData(property: Property) {
+  const first = getPropertyFirstImage(property);
   return (
-    property.gallery_images?.some(image => image.startsWith('data:image/')) ||
-    property.images?.startsWith('data:image/')
+    property.gallery_images?.some(image => typeof image === 'string' && image.startsWith('data:image/')) ||
+    (Array.isArray(property.images) && property.images.some(img => typeof img === 'string' && img.startsWith('data:image/'))) ||
+    first.startsWith('data:image/')
   );
 }
 

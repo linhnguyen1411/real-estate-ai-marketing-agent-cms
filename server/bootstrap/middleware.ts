@@ -25,11 +25,11 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com'],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-          connectSrc: ["'self'", 'https:', 'wss:', 'ws:'],
+          connectSrc: ["'self'", 'https:', 'wss:', 'ws:', 'https://www.googletagmanager.com', 'https://*.google-analytics.com'],
           frameSrc: ["'self'", 'https://www.youtube.com', 'https://www.google.com'],
         },
       },

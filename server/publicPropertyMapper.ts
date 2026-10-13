@@ -14,7 +14,8 @@ export interface PublicPropertyDTO {
   legal_status?: string;
   description?: string;
   rich_description?: string;
-  images?: string[];
+  images?: string;
+  gallery_images?: string[];
   features?: string[];
   selling_points?: string[];
   project_name?: string;
@@ -35,6 +36,13 @@ export interface PublicPropertyDTO {
 
 export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
   const stripped = stripPropertyImagesForApi(property);
+  const primaryImage = typeof stripped.images === 'string'
+    ? stripped.images
+    : (Array.isArray(stripped.images) ? stripped.images[0] : (stripped.gallery_images?.[0] || ''));
+  const gallery = Array.isArray(stripped.gallery_images)
+    ? stripped.gallery_images
+    : (Array.isArray(stripped.images) ? stripped.images : (primaryImage ? [primaryImage] : []));
+
   // Strict allowlist: explicitly exclude internal fields
   const dto: PublicPropertyDTO = {
     id: stripped.id,
@@ -48,7 +56,8 @@ export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
     legal_status: stripped.legal_status,
     description: stripped.description,
     rich_description: stripped.rich_description,
-    images: stripped.images ? [stripped.images] : [],
+    images: primaryImage,
+    gallery_images: gallery,
     selling_points: stripped.selling_points,
     project_name: stripped.project_name,
     road_width: stripped.road_width,
