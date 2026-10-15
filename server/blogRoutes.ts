@@ -124,7 +124,20 @@ function mapPostBody(body: Record<string, any>) {
   };
 }
 
+import { requirePermission } from './modules/rbac';
+
 export function registerBlogAdminRoutes(app: Express) {
+  const requireBlogAdmin = requirePermission('seo_blog.admin');
+  app.use([
+    '/api/blog/upload-cover',
+    '/api/blog/upload-content-image',
+    '/api/blog/ai-drafts',
+    '/api/blog/ai-assist',
+    '/api/blog/import-markdown',
+    '/api/blog/posts/import-markdown',
+    '/api/blog/posts/suggest',
+    '/api/admin/blog',
+  ], requireBlogAdmin);
   app.post('/api/blog/upload-cover', async (req: Request, res: Response) => {
     try {
       const image = String(req.body?.image || '').trim();

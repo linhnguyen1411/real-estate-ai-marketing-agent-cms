@@ -20,10 +20,10 @@ describe('P1.3 Password Security & Credential Hygiene', () => {
     expect(validatePasswordPolicy('SafePassword2026!#', 'member@alpha.vn').valid).toBe(true);
   });
 
-  it('2. Correctly hashes and verifies password using scrypt', async () => {
+  it('2. Correctly hashes and verifies password using argon2id', async () => {
     const raw = 'SuperSecurePass2026!';
     const hashed = await hashPassword(raw);
-    expect(hashed.startsWith('scrypt$')).toBe(true);
+    expect(hashed.startsWith('$argon2id$')).toBe(true);
 
     const valid = await verifyPassword(raw, hashed);
     expect(valid).toBe(true);
@@ -32,7 +32,7 @@ describe('P1.3 Password Security & Credential Hygiene', () => {
     expect(invalid).toBe(false);
   });
 
-  it('3. Transparently upgrades legacy plaintext password on successful login', async () => {
+  it('3. Transparently upgrades legacy plaintext password on successful login to argon2id', async () => {
     // User owner in test helper initially has plaintext password 'mocked-hash-password'
     const loginRes = await request(ctx.app)
       .post('/api/auth/login')
@@ -42,12 +42,12 @@ describe('P1.3 Password Security & Credential Hygiene', () => {
     expect(loginRes.body.status).toBe('success');
     expect(loginRes.body.data.token).toBeDefined();
 
-    // Verify DB in-memory cache: password deleted, password_hash created with scrypt
+    // Verify DB in-memory cache: password deleted, password_hash created with argon2id
     const db = readDatabase();
     const ownerUser = db.users.find(u => u.id === 'user-owner-1');
     expect(ownerUser?.password).toBeUndefined();
     expect(ownerUser?.password_hash).toBeDefined();
-    expect(ownerUser?.password_hash?.startsWith('scrypt$')).toBe(true);
+    expect(ownerUser?.password_hash?.startsWith('$argon2id$')).toBe(true);
   });
 
   it('4. Case-insensitive email authentication: uppercase/lowercase both login', async () => {

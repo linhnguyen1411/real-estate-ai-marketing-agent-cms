@@ -19,12 +19,14 @@ import {
   upsertDecisionRule,
 } from '../store';
 import type { DecisionRule } from '../types';
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerDecisionCenterRoutes(app: Express): void {
+  app.use('/api/decision-center', requirePermission('agent.runtime'));
   app.get('/api/decision-center/snapshot', async (_req: Request, res: Response) => {
     try {
       res.json({ status: 'success', data: await buildDecisionSnapshot() });

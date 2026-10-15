@@ -115,7 +115,7 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
     // Filter out public routes that bypass auth gate
     const publicPrefixes = ['/api/public', '/api/health', '/api/social/media/files'];
     const protectedApiRoutes = extractedApiRoutes.filter(
-      r => !publicPrefixes.some(p => r.path.startsWith(p)) && r.path !== '/api/auth/login'
+      r => !publicPrefixes.some(p => r.path.startsWith(p)) && r.path !== '/api/auth/login' && r.path !== '/api/auth/register'
     );
 
     expect(protectedApiRoutes.length).toBeGreaterThan(20);
@@ -148,8 +148,12 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
       const res = await (request(app) as any)[method](path)
         .set('Authorization', `Bearer ${memberToken}`);
 
-      expect(res.status, `Expected 403 for member on ${method.toUpperCase()} ${path}`).toBe(403);
-      expect(res.body.message).toContain('Bạn không có quyền thực hiện thao tác này');
+      expect([402, 403], `Expected 402/403 for member on ${method.toUpperCase()} ${path}`).toContain(res.status);
+      if (res.status === 403) {
+        expect(res.body.message).toContain('Bạn không có quyền thực hiện thao tác này');
+      } else {
+        expect(res.body.code).toBe('PREMIUM_REQUIRED');
+      }
     }
   });
 

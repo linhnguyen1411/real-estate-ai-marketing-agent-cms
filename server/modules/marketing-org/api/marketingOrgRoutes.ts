@@ -10,12 +10,14 @@ import {
   formatMarketingBriefing,
 } from '../marketingService';
 import { buildWeeklyContentCalendar } from '../contentCalendar';
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerMarketingOrgRoutes(app: Express): void {
+  app.use('/api/marketing-org', requirePermission('agent.sources'));
   app.get('/api/marketing-org/snapshot', async (req: Request, res: Response) => {
     try {
       const companyId =

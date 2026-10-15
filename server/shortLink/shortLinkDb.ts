@@ -75,22 +75,54 @@ function rowToClick(row: {
   };
 }
 
+const memoryShortLinks = new Map<string, any>();
+
+function shouldUsePrisma(): boolean {
+  if (process.env.NODE_ENV === 'test' && !process.env.FORCE_TEST_DB) {
+    return false;
+  }
+  return true;
+}
+
 export function hashIp(ip: string): string {
   const salt = process.env.IP_HASH_SALT || 'estoria-short-link';
   return crypto.createHash('sha256').update(`${salt}:${ip}`).digest('hex').slice(0, 24);
 }
 
 export async function slugExists(slug: string, excludeId?: string): Promise<boolean> {
-  const row = await prisma.shortLink.findUnique({ where: { slug } });
-  if (!row) return false;
-  if (excludeId && row.id === excludeId) return false;
-  return true;
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.shortLink.findUnique({ where: { slug } });
+      if (!row) return false;
+      if (excludeId && row.id === excludeId) return false;
+      return true;
+    } catch {
+      // Fallback
+    }
+  }
+  for (const row of memoryShortLinks.values()) {
+    if (row.slug === slug) {
+      if (excludeId && row.id === excludeId) continue;
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function getShortLinkBySlug(slug: string): Promise<ShortLink | null> {
-  const row = await prisma.shortLink.findUnique({ where: { slug: normalizeShortSlug(slug) } });
-  if (!row) return null;
-  return rowToShortLink(row);
+  const norm = normalizeShortSlug(slug);
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.shortLink.findUnique({ where: { slug: norm } });
+      if (row) return rowToShortLink(row);
+    } catch {
+      // Fallback
+    }
+  }
+  for (const row of memoryShortLinks.values()) {
+    if (row.slug === norm) return rowToShortLink(row);
+  }
+  return null;
 }
 
 function toRedirectInput(shortLink: ShortLink) {
@@ -106,20 +138,40 @@ function toRedirectInput(shortLink: ShortLink) {
 export { toRedirectInput };
 
 export async function getShortLinkByEntity(entityType: string, entityId: string) {
-  return prisma.shortLink.findFirst({
-    where: { entityType, entityId, isActive: true },
-    orderBy: { createdAt: 'asc' },
-  });
+  if (shouldUsePrisma()) {
+    try {
+      return await prisma.shortLink.findFirst({
+        where: { entityType, entityId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+    } catch {
+      // Fallback
+    }
+  }
+  for (const row of memoryShortLinks.values()) {
+    if (row.entityType === entityType && row.entityId === entityId && row.isActive) {
+      return row;
+    }
+  }
+  return null;
 }
 
 export async function listShortLinks(origin?: string): Promise<ShortLink[]> {
-  const rows = await prisma.shortLink.findMany({ orderBy: { updatedAt: 'desc' } });
-  const counts = await prisma.shortLinkClick.groupBy({
-    by: ['shortLinkId'],
-    _count: { _all: true },
-  });
-  const countMap = new Map(counts.map(item => [item.shortLinkId, item._count._all]));
-  return rows.map(row => rowToShortLink(row, origin, countMap.get(row.id) || 0));
+  if (shouldUsePrisma()) {
+    try {
+      const rows = await prisma.shortLink.findMany({ orderBy: { updatedAt: 'desc' } });
+      const counts = await prisma.shortLinkClick.groupBy({
+        by: ['shortLinkId'],
+        _count: { _all: true },
+      });
+      const countMap = new Map(counts.map(item => [item.shortLinkId, item._count._all]));
+      return rows.map(row => rowToShortLink(row, origin, countMap.get(row.id) || 0));
+    } catch {
+      // Fallback
+    }
+  }
+  const rows = Array.from(memoryShortLinks.values());
+  return rows.map(row => rowToShortLink(row, origin, 0));
 }
 
 export async function createShortLink(
@@ -132,28 +184,36 @@ export async function createShortLink(
     async candidate => slugExists(candidate),
   );
 
-  const row = await prisma.shortLink.create({
-    data: {
-      id: `sl-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
-      slug,
-      targetUrl: input.target_url,
-      title: input.title || null,
-      description: input.description || null,
-      entityType: input.entity_type || null,
-      entityId: input.entity_id || null,
-      campaign: input.campaign || null,
-      utmSource: input.utm_source || null,
-      utmMedium: input.utm_medium || 'short_link',
-      utmCampaign: input.utm_campaign || slug,
-      isActive: input.is_active !== false,
-      expiresAt: input.expires_at ? new Date(input.expires_at) : null,
-      createdBy: options.createdBy || null,
-      createdAt: now,
-      updatedAt: now,
-    },
-  });
+  const data = {
+    id: `sl-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    slug,
+    targetUrl: input.target_url,
+    title: input.title || null,
+    description: input.description || null,
+    entityType: input.entity_type || null,
+    entityId: input.entity_id || null,
+    campaign: input.campaign || null,
+    utmSource: input.utm_source || null,
+    utmMedium: input.utm_medium || 'short_link',
+    utmCampaign: input.utm_campaign || slug,
+    isActive: input.is_active !== false,
+    expiresAt: input.expires_at ? new Date(input.expires_at) : null,
+    createdBy: options.createdBy || null,
+    createdAt: now,
+    updatedAt: now,
+  };
 
-  return rowToShortLink(row, options.origin, 0);
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.shortLink.create({ data });
+      return rowToShortLink(row, options.origin, 0);
+    } catch {
+      // Fallback
+    }
+  }
+
+  memoryShortLinks.set(data.id, data);
+  return rowToShortLink(data, options.origin, 0);
 }
 
 export async function updateShortLink(

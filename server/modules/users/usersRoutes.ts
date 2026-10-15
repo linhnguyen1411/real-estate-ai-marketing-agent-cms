@@ -3,7 +3,7 @@ import { readDatabase, upsertUser, upsertCmsRecord, writeDatabase } from '../../
 import type { AuthUser, Property, User } from '../../../src/types';
 import type { AgentTier } from '../../../src/utils/agentTier';
 import { clearCacheKey } from '../../cache/publicCache';
-import { getAuthUser, scopeCollection, toPublicUser } from '../auth/authAccess';
+import { getAuthUser, scopeCollection, toPublicUser, toSafeUser } from '../auth/authAccess';
 import { hashPassword, validatePasswordPolicy } from '../auth/password';
 import { applyPropertyHashtagSeo, syncSiteSeoKeywords } from '../public-site/seoKeywords';
 import { validateSchema, createUserSchema, updateUserSchema } from '../../middleware/validation';
@@ -55,7 +55,7 @@ export function createUsersRouter() {
 router.get('/api/users', (req: Request, res: Response) => {
   if (!canManageUsers(req, res)) return;
   const db = readDatabase();
-  const list = scopeUsers(db.users || [], req).map(toPublicUser);
+  const list = scopeUsers(db.users || [], req).map(toSafeUser);
   res.json({ status: 'success', data: list });
 });
 
@@ -96,7 +96,7 @@ router.post('/api/users', validateSchema(createUserSchema), async (req: Request,
   }
 
   const company_id = authUser.role === 'owner'
-    ? (body.company_id || (role === 'owner' ? undefined : authUser.company_id || 'comp-da-nang'))
+    ? (body.company_id || (role === 'owner' ? undefined : authUser.company_id))
     : authUser.company_id;
 
   const password_hash = await hashPassword(plainPassword);
@@ -109,11 +109,12 @@ router.post('/api/users', validateSchema(createUserSchema), async (req: Request,
     role,
     company_id,
     status: body.status === 'inactive' ? 'inactive' : 'active',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    token_version: 1,
   };
 
   const savedUser = await upsertUser(newUser);
-  res.json({ status: 'success', data: toPublicUser(savedUser) });
+  res.json({ status: 'success', data: toSafeUser(savedUser) });
 });
 
 router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Request, res: Response) => {
@@ -204,7 +205,8 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   }
 
   let nextPasswordHash = target.password_hash;
-  if (body.password) {
+  const passwordChanged = Boolean(body.password);
+  if (passwordChanged) {
     const plainPass = String(body.password).trim();
     const policy = validatePasswordPolicy(plainPass, nextEmail);
     if (!policy.valid) {
@@ -213,6 +215,11 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
     }
     nextPasswordHash = await hashPassword(plainPass);
   }
+
+  const roleChanged = nextRole !== target.role;
+  const statusChanged = nextStatus !== target.status;
+  const shouldBumpToken = passwordChanged || roleChanged || statusChanged;
+  const nextTokenVersion = shouldBumpToken ? (target.token_version ?? 1) + 1 : (target.token_version ?? 1);
 
   const updatedTarget: User = {
     ...target,
@@ -223,11 +230,12 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
     company_id: nextCompanyId,
     status: nextStatus,
     agent_tier: nextAgentTier,
+    token_version: nextTokenVersion,
   };
   delete updatedTarget.password;
 
   const savedUser = await upsertUser(updatedTarget, target.version);
-  res.json({ status: 'success', data: toPublicUser(savedUser) });
+  res.json({ status: 'success', data: toSafeUser(savedUser) });
 });
 
 type MemberPermissionCollection = 'customers' | 'properties' | 'posts';

@@ -19,6 +19,8 @@ import { resolvePropertyItemTitle } from '../../../src/seo/utils/buildPropertyIt
 import { slugify } from '../../../src/seo/utils/slugify';
 import { parseQuickPropertyText, generatePropertyJsonLd } from './quickPropertyParser';
 import sanitizeHtml from 'sanitize-html';
+import { validateSchema, propertyCreateSchema } from '../../middleware/validation';
+import { requirePermission } from '../rbac/rbacMiddleware';
 
 export function sanitizeWebsiteHtml(rawHtml: string): string {
   return sanitizeHtml(rawHtml, {
@@ -169,6 +171,7 @@ router.get('/api/properties', (req: Request, res: Response) => {
           location: item.location || 'Nam Hòa Xuân, Đà Nẵng',
           slug: generatedSlug,
         }),
+        listing_source: item.listing_source || 'broker',
         ...accessDefaults(req, item),
       };
       const saved = await upsertCmsRecord('properties', newProp);
@@ -191,9 +194,18 @@ router.get('/api/properties', (req: Request, res: Response) => {
   router.post('/api/admin/properties/batch-import', handleBatchImport);
   router.post('/api/properties/batch-import', handleBatchImport);
 
-router.post('/api/properties', async (req: Request, res: Response) => {
+router.post('/api/properties', validateSchema(propertyCreateSchema), async (req: Request, res: Response) => {
   const db = readDatabase();
   const propData = req.body;
+
+  const listingSource = propData.listing_source;
+  if (!listingSource || (listingSource !== 'broker' && listingSource !== 'owner')) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Vui lòng chọn nguồn tin bất động sản: Môi giới (broker) hoặc Chính chủ (owner).',
+    });
+    return;
+  }
   
   const now = new Date().toISOString();
   const authUser = getAuthUser(req);
@@ -205,6 +217,7 @@ router.post('/api/properties', async (req: Request, res: Response) => {
     created_by_user_id: authUser.id,
     title: normalizedTitle,
     slug: generatedSlug,
+    listing_source: listingSource,
     seo_title: propData.seo_title || `${normalizedTitle} | House & Life`,
     meta_description: propData.meta_description || `${normalizedTitle} tại Đà Nẵng.`,
     transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
@@ -288,22 +301,35 @@ router.put('/api/properties/:id', async (req: Request, res: Response) => {
     return;
   }
 
+  const authUser = getAuthUser(req);
+  const isSuperAdmin = authUser.role === 'owner';
+  const existingProp = db.properties[index];
+
   const mergedBody = { ...req.body };
+  delete mergedBody.created_by_user_id;
+  if (!isSuperAdmin) {
+    delete mergedBody.owner_user_id;
+    delete mergedBody.company_id;
+  }
+
   if (mergedBody.title != null || mergedBody.type != null || mergedBody.project_name != null) {
     mergedBody.title = normalizeIncomingPropertyTitle({
-      ...db.properties[index],
+      ...existingProp,
       ...mergedBody,
     });
   }
 
   const updatedProperty = applyPropertyHashtagSeo({
-    ...db.properties[index],
+    ...existingProp,
     ...mergedBody,
+    owner_user_id: isSuperAdmin && mergedBody.owner_user_id ? mergedBody.owner_user_id : (existingProp.owner_user_id || authUser.id),
+    company_id: isSuperAdmin && mergedBody.company_id !== undefined ? mergedBody.company_id : existingProp.company_id,
     created_by_user_id:
-      db.properties[index].created_by_user_id
-      || db.properties[index].owner_user_id,
-    public_view_count: mergedBody.public_view_count ?? db.properties[index].public_view_count ?? 0,
-    last_public_view_at: mergedBody.last_public_view_at ?? db.properties[index].last_public_view_at,
+      existingProp.created_by_user_id
+      || existingProp.owner_user_id
+      || authUser.id,
+    public_view_count: mergedBody.public_view_count ?? existingProp.public_view_count ?? 0,
+    last_public_view_at: mergedBody.last_public_view_at ?? existingProp.last_public_view_at,
     updated_at: new Date().toISOString(),
   });
 
@@ -338,6 +364,90 @@ router.delete('/api/properties/:id', async (req: Request, res: Response) => {
   clearCacheKey('public-properties');
   clearCacheKey('public-homepage');
   res.json({ status: 'success', data: savedHidden, message: 'Soft deleted property.' });
+});
+
+// POST /api/properties/:id/distribute - Team lead distributes property to approved team members
+router.post('/api/properties/:id/distribute', requirePermission('property.distribute'), async (req: Request, res: Response) => {
+  const db = readDatabase();
+  const property = db.properties.find((p) => p.id === req.params.id);
+  if (!property) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản.' });
+    return;
+  }
+
+  const teamId = req.teamId;
+  if (!teamId) {
+    res.status(403).json({ status: 'error', message: 'Bạn phải là Team Lead để phân phối giỏ hàng.' });
+    return;
+  }
+
+  const { memberIds } = req.body || {};
+  if (!Array.isArray(memberIds) || memberIds.length === 0) {
+    res.status(400).json({ status: 'error', message: 'Vui lòng chọn ít nhất một thành viên để phân phối.' });
+    return;
+  }
+
+  // Verify that all memberIds are approved members of this team
+  const { getTeamMembers, createPropertyAssignment } = await import('../rbac/rbacRepository');
+  const teamMembers = await getTeamMembers(teamId);
+  const approvedMemberIds = new Set(
+    teamMembers.filter((m) => m.status === 'approved').map((m) => m.userId)
+  );
+
+  for (const mId of memberIds) {
+    if (!approvedMemberIds.has(mId)) {
+      res.status(400).json({
+        status: 'error',
+        message: `Thành viên (${mId}) chưa được duyệt (approved) vào team hoặc không thuộc team của bạn.`,
+      });
+      return;
+    }
+  }
+
+  const authUser = getAuthUser(req);
+  const assignments: any[] = [];
+  for (const mId of memberIds) {
+    const assignment = await createPropertyAssignment({
+      propertyId: property.id,
+      assignedBy: authUser.id,
+      assignedTo: mId,
+    });
+    assignments.push(assignment);
+  }
+
+  // Append new assigned member ids (deduplicated)
+  const currentAssigned = new Set(property.assigned_member_ids || []);
+  for (const mId of memberIds) {
+    currentAssigned.add(mId);
+  }
+  property.assigned_member_ids = Array.from(currentAssigned);
+  property.updated_at = new Date().toISOString();
+
+  const savedProperty = await upsertCmsRecord('properties', property, property.version);
+  res.json({
+    status: 'success',
+    message: `Đã phân phối giỏ hàng cho ${memberIds.length} thành viên thành công.`,
+    data: savedProperty,
+    assignments,
+  });
+});
+
+// GET /api/properties/:id/assignments - Distribution audit history
+router.get('/api/properties/:id/assignments', async (req: Request, res: Response) => {
+  const db = readDatabase();
+  const property = db.properties.find((p) => p.id === req.params.id);
+  if (!property) {
+    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản.' });
+    return;
+  }
+  if (!canAccessResource(property, req)) {
+    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem thông tin này.' });
+    return;
+  }
+
+  const { getPropertyAssignments } = await import('../rbac/rbacRepository');
+  const assignments = await getPropertyAssignments(property.id);
+  res.json({ status: 'success', data: assignments });
 });
 
 // POST /api/ai/generate-content

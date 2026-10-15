@@ -8,6 +8,7 @@ import {
   listViewingAppointments,
   updateViewingAppointment,
 } from './appointmentService';
+import { requirePermission } from '../rbac';
 
 export function createAppointmentRouter() {
   const router = Router();
@@ -44,6 +45,7 @@ export function createAppointmentRouter() {
   });
 
   // Admin endpoint: Lấy danh sách lịch hẹn
+  router.use('/api/appointments', requirePermission('appointments.manage'));
   router.get('/api/appointments', async (req: Request, res: Response) => {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;

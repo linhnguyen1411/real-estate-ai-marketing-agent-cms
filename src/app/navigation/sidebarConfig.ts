@@ -42,24 +42,11 @@ export const SEO_SUBMENU: NavItemConfig[] = [
 ];
 
 export const AGENT_SUBMENU: NavItemConfig[] = [
-  { id: 'agent-dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/admin/agents' },
   { id: 'agent-sources', label: 'Nguồn', icon: Globe, path: '/admin/agents/sources', badgeKey: 'sources' },
-  { id: 'agent-missions', label: 'Mission', icon: Sparkles, path: '/admin/agents/missions' },
-  { id: 'agent-jobs', label: 'Jobs', icon: Clock, path: '/admin/agents/jobs', badgeKey: 'jobs' },
-  { id: 'agent-publishing', label: 'Lịch đăng', icon: CalendarDays, path: '/admin/agents/publishing' },
-  { id: 'agent-publishing-drafts', label: 'Bản nháp', icon: FilePenLine, path: '/admin/agents/publishing/drafts' },
-  { id: 'agent-publishing-channels', label: 'Kênh đăng', icon: Share2, path: '/admin/agents/publishing/channels' },
-  { id: 'agent-publishing-history', label: 'Lịch sử đăng', icon: History, path: '/admin/agents/publishing/history' },
-  { id: 'agent-publishing-campaigns', label: 'Campaign', icon: Megaphone, path: '/admin/agents/publishing/campaigns' },
-  { id: 'agent-contents', label: 'Nội dung quét', icon: ScanSearch, path: '/admin/agents/contents' },
-  { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch, path: '/admin/agents/findings', badgeKey: 'leadIntelligence' },
-  { id: 'agent-external-inventory', label: 'Giỏ hàng ngoài', icon: Package, path: '/admin/agents/external-inventory', badgeKey: 'externalInventory' },
-  { id: 'agent-proposals', label: 'Duyệt phản hồi', icon: ClipboardCheck, path: '/admin/agents/proposals' },
-  { id: 'agent-spam', label: 'Spam Control', icon: ShieldCheck, path: '/admin/agents/spam' },
-  { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare, path: '/admin/agents/notifications', badgeKey: 'notifications' },
-  { id: 'agent-sessions', label: 'Sessions', icon: Cpu, path: '/admin/agents/sessions' },
   { id: 'agent-runtime', label: 'Runtime', icon: Activity, path: '/admin/agents/runtime' },
   { id: 'agent-reports', label: 'Báo cáo', icon: FileBarChart, path: '/admin/agents/reports' },
+  { id: 'agent-notifications', label: 'Thông báo', icon: MessageSquare, path: '/admin/agents/notifications', badgeKey: 'notifications' },
+  { id: 'agent-findings', label: 'Lead Intelligence', icon: FileSearch, path: '/admin/agents/findings', badgeKey: 'leadIntelligence' },
 ];
 
 export function buildPrimaryNavItems(): NavItemConfig[] {
@@ -82,6 +69,8 @@ export function buildPrimaryNavItems(): NavItemConfig[] {
 export function buildSecondaryNavItems(opts: {
   canManageWebsiteChat: boolean;
   canManageCmsUsers: boolean;
+  canManageTeam?: boolean;
+  canManageRbac?: boolean;
   websiteChatBadge?: number;
   chatHistoryBadge?: number;
   usersBadge?: number;
@@ -94,6 +83,12 @@ export function buildSecondaryNavItems(opts: {
       : []),
     { id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badgeKey: 'chatHistory' },
     { id: 'automations', label: 'Automation AI Center', icon: Cpu },
+    ...(opts.canManageTeam
+      ? [{ id: 'team', label: 'Quản lý Team', icon: Users }]
+      : []),
+    ...(opts.canManageRbac
+      ? [{ id: 'rbac', label: 'Phân quyền & Gói', icon: ShieldCheck }]
+      : []),
     ...(opts.canManageCmsUsers
       ? [{ id: 'users', label: 'User & Permission', icon: ShieldCheck, badgeKey: 'users' as const }]
       : []),

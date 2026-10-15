@@ -137,7 +137,10 @@ function getRequestUser(req: Request): AuthUser | null {
   return ((req as Request & { authUser?: AuthUser }).authUser) || null;
 }
 
+import { requirePermission } from './modules/rbac';
+
 export function registerInvestorLeadAdminRoutes(app: import('express').Express) {
+  app.use('/api/investor-leads', requirePermission('investor_leads'));
   app.get('/api/investor-leads', async (req: Request, res: Response) => {
     const includeConverted =
       req.query.includeConverted === '1' ||

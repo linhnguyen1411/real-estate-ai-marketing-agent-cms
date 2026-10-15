@@ -9,12 +9,14 @@ import {
   listExecutiveDrilldown,
 } from '../executiveService';
 import { prisma } from '../../../prisma';
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerExecutiveDashboardRoutes(app: Express): void {
+  app.use('/api/executive', requirePermission('agent.reports'));
   app.get('/api/executive/snapshot', async (_req: Request, res: Response) => {
     try {
       res.json({ status: 'success', data: await buildExecutiveSnapshot() });

@@ -751,7 +751,7 @@ ipcMain.handle('publisher:copy-image', async (_e, imageUrl: string) => {
     }
     if (buffer) {
       const img = nativeImage.createFromBuffer(buffer);
-      clipboard.writeImage(img);
+      (clipboard as any).writeImage(img);
       return { success: true };
     }
     return { success: false, error: 'Không thể tạo hình ảnh từ dữ liệu' };

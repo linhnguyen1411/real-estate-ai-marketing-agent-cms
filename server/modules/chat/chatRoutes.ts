@@ -72,8 +72,13 @@ export function assertCanManageChatSession(req: Request, res: Response, sessionU
   return true;
 }
 
+import { requirePermission } from '../rbac';
+
 export function createChatRouter() {
   const router = Router();
+
+  router.use('/api/chat/guests', requirePermission('website_chat'));
+  router.use(['/api/ai/chat', '/api/chat/history', '/api/chat/sessions'], requirePermission('chatbot.use'));
 
 router.get('/api/ai/status', async (req: Request, res: Response) => {
   try {

@@ -353,7 +353,7 @@ export class FacebookGroupPublisher {
             if (fs.existsSync(imgPath)) {
               const image = nativeImage.createFromPath(imgPath);
               if (!image.isEmpty()) {
-                clipboard.writeImage(image);
+                (clipboard as any).writeImage(image);
                 await new Promise((r) => setTimeout(r, 200));
                 fbView.webContents.paste();
                 // Chờ Facebook upload và gắn ảnh

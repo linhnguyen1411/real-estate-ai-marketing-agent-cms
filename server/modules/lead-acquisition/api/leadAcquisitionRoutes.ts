@@ -24,12 +24,14 @@ const STAGES: LeadPipelineStage[] = [
 ];
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerLeadAcquisitionRoutes(app: Express): void {
+  app.use('/api/lead-acquisition', requirePermission('agent.sources'));
   app.get('/api/lead-acquisition/metrics', async (req: Request, res: Response) => {
     try {
       const companyId =

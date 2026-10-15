@@ -22,11 +22,14 @@ import {
   workspaceTelegramMarkup,
 } from '../campaignWorkspace';
 
+import { requirePermission } from '../../rbac';
+
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerPlanningRoutes(app: Express): void {
+  app.use('/api/planning', requirePermission('agent.runtime'));
   app.post('/api/planning/campaigns/resolve-asset', async (req: Request, res: Response) => {
     try {
       const body = (req.body || {}) as Record<string, unknown>;

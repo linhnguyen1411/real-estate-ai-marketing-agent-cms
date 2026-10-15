@@ -8,21 +8,114 @@ import {
   getAuthUser,
   signToken,
   toAuthUser,
+  toSafeUser,
   verifyToken,
 } from './authAccess';
 
 import {
   hashPassword,
+  needsRehash,
   validatePasswordPolicy,
   verifyPassword,
   verifyPlaintextLegacy,
 } from './password';
 
-import { loginRateLimiter } from '../../middleware/rateLimiters';
-import { validateSchema, loginSchema, updateProfileSchema } from '../../middleware/validation';
+import { loginRateLimiter, registerRateLimiter, recordFailedLogin, clearLoginFailures } from '../../middleware/rateLimiters';
+import { validateSchema, loginSchema, registerSchema, updateProfileSchema } from '../../middleware/validation';
 
 export function createAuthLoginRouter() {
   const router = Router();
+
+router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSchema), async (req: Request, res: Response) => {
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  const referralCode = req.body?.referralCode ? String(req.body.referralCode).trim().toUpperCase() : undefined;
+
+  // 1. Password policy
+  const policyResult = validatePasswordPolicy(password);
+  if (!policyResult.valid) {
+    res.status(400).json({ status: 'error', message: policyResult.message });
+    return;
+  }
+
+  const db = readDatabase();
+  // 2. Uniqueness check
+  const existing = (db.users || []).find((u: any) => u.email?.trim().toLowerCase() === email);
+  if (existing) {
+    res.status(400).json({ status: 'error', message: 'Email đã được sử dụng.' });
+    return;
+  }
+
+  // 3. Referral code validation & Team binding
+  let targetTeam: any = null;
+  if (referralCode) {
+    const { getTeamByReferralCode, createTeam } = await import('../rbac/rbacRepository');
+    targetTeam = await getTeamByReferralCode(referralCode);
+    if (!targetTeam) {
+      // Check if user has this referral code to initialize their team
+      const referrer = (db.users || []).find((u: any) => (u.referral_code || '').toUpperCase() === referralCode);
+      if (referrer) {
+        targetTeam = await createTeam({
+          id: `team-${referrer.id}`,
+          leadUserId: referrer.id,
+          referralCode: referralCode,
+          isPlatformRoot: referrer.role === 'owner',
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    if (!targetTeam) {
+      res.status(400).json({ status: 'error', message: 'Mã giới thiệu không hợp lệ.' });
+      return;
+    }
+  }
+
+  // 4. Create user
+  const { generateReferralCode } = await import('../rbac/rbacRepository');
+  const userReferralCode = generateReferralCode();
+  const passwordHash = await hashPassword(password);
+  const now = new Date().toISOString();
+
+  const newUser: User = {
+    id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name,
+    email,
+    password_hash: passwordHash,
+    role: 'member',
+    status: 'active',
+    referral_code: userReferralCode,
+    token_version: 1,
+    created_at: now,
+  };
+
+  const savedUser = await upsertUser(newUser);
+
+  // 5. Add to team if registered with code
+  if (targetTeam) {
+    const { createTeamMember } = await import('../rbac/rbacRepository');
+    await createTeamMember({
+      teamId: targetTeam.id,
+      userId: savedUser.id,
+      status: 'pending',
+      approvedBy: null,
+      joinedAt: new Date(),
+    });
+  }
+
+  const authUser = toAuthUser(savedUser, db);
+  const token = signToken(authUser);
+
+  res.json({
+    status: 'success',
+    message: 'Đăng ký tài khoản thành công.',
+    data: {
+      token,
+      user: toSafeUser(savedUser),
+    },
+  });
+});
 
 router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), async (req: Request, res: Response) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -39,6 +132,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
   );
 
   if (!user) {
+    recordFailedLogin(email);
     res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
     return;
   }
@@ -47,21 +141,31 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
 
   if (user.password_hash) {
     isValid = await verifyPassword(plainPassword, user.password_hash);
-  } else if (user.password) {
-    isValid = verifyPlaintextLegacy(plainPassword, user.password);
-    if (isValid) {
-      // Automatic transparent upgrade: hash password, write password_hash, delete plaintext password
+    if (isValid && needsRehash(user.password_hash)) {
+      // Automatic transparent upgrade from scrypt to argon2id
       const newHash = await hashPassword(plainPassword);
       user.password_hash = newHash;
       delete user.password;
-      await upsertUser(user);
+      await upsertUser(user, user.version);
+    }
+  } else if (user.password) {
+    isValid = verifyPlaintextLegacy(plainPassword, user.password);
+    if (isValid) {
+      // Automatic transparent upgrade: hash password (argon2id), write password_hash, delete plaintext password
+      const newHash = await hashPassword(plainPassword);
+      user.password_hash = newHash;
+      delete user.password;
+      await upsertUser(user, user.version);
     }
   }
 
   if (!isValid) {
+    recordFailedLogin(email);
     res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
     return;
   }
+
+  clearLoginFailures(email);
 
   const authUser = toAuthUser(user, db);
   res.json({ status: 'success', data: { token: signToken(authUser), user: authUser } });
@@ -78,6 +182,14 @@ export function createApiAuthGate() {
     pathName === '/health' ||
     pathName === '/planning/health' ||
     pathName === '/auth/login' ||
+    pathName === '/auth/register' ||
+    pathName === '/api/auth/register' ||
+    pathName === '/license/activate' ||
+    pathName === '/api/license/activate' ||
+    pathName === '/license/heartbeat' ||
+    pathName === '/api/license/heartbeat' ||
+    pathName === '/license/refresh-token' ||
+    pathName === '/api/license/refresh-token' ||
     pathName.startsWith('/public/') ||
     pathName.startsWith('/agent-ingest/') ||
     // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
@@ -132,8 +244,26 @@ export function createApiAuthGate() {
 export function createAuthMeRouter() {
   const router = Router();
 
-router.get('/api/auth/me', (req: Request, res: Response) => {
-  res.json({ status: 'success', data: getAuthUser(req) });
+router.get('/api/auth/me', async (req: Request, res: Response) => {
+  const authUser = getAuthUser(req);
+  try {
+    const { resolvePermissions } = await import('../rbac');
+    const resolved = await resolvePermissions(authUser as any);
+    res.json({
+      status: 'success',
+      data: {
+        ...authUser,
+        roleKey: resolved.roleKey,
+        teamId: resolved.teamId,
+        isPlatformRootTeam: resolved.isPlatformRootTeam,
+        isTeamLead: resolved.isTeamLead,
+        permissions: resolved.permissions,
+        entitlements: Array.from(resolved.activeEntitlementFeatures),
+      },
+    });
+  } catch {
+    res.json({ status: 'success', data: authUser });
+  }
 });
 
 router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req: Request, res: Response) => {

@@ -65,7 +65,10 @@ export function registerFacebookWebhookRoutes(app: import('express').Express) {
   });
 }
 
+import { requirePermission } from './modules/rbac';
+
 export function registerFacebookAdminRoutes(app: import('express').Express) {
+  app.use(['/api/admin/facebook', '/api/facebook'], requirePermission('fb_inbox'));
   app.get('/api/admin/facebook/test-connection', async (_req: Request, res: Response) => {
     try {
       const result = await testFacebookPageConnection();

@@ -25,12 +25,35 @@ export function toAuthUser(user: User, db: any): AuthUser {
     public_slug: publicSlug,
     show_public_profile: user.show_public_profile !== false,
     must_change_password: Boolean(user.must_change_password),
+    referral_code: user.referral_code,
   };
 }
 
-export function toPublicUser(user: User): Omit<User, 'password' | 'password_hash'> {
-  const { password, password_hash, ...safeUser } = user;
-  return safeUser;
+export function toSafeUser(user: any): Record<string, any> {
+  if (!user) return null as any;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    company_id: user.company_id,
+    phone: user.phone || '',
+    avatar_url: user.avatar_url || '',
+    bio: user.bio || '',
+    agent_tier: resolveAgentTier(user),
+    public_slug: user.public_slug,
+    show_public_profile: user.show_public_profile !== false,
+    status: user.status || 'active',
+    referral_code: user.referral_code,
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+    must_change_password: Boolean(user.must_change_password),
+    token_version: user.token_version ?? 1,
+  };
+}
+
+export function toPublicUser(user: User): any {
+  return toSafeUser(user);
 }
 
 export function toPublicAgentProfile(user: User, db: any, propertyCount = 0): any {
@@ -116,9 +139,34 @@ export function getAuthUser(req: Request): AuthUser {
   return (req as any).authUser;
 }
 
-export function scopeCollection<T extends { company_id?: string; owner_user_id?: string; assigned_member_ids?: string[] }>(items: T[], req: Request): T[] {
+export function scopeCollection<T extends { company_id?: string; owner_user_id?: string; created_by_user_id?: string; team_id?: string; assigned_member_ids?: string[] }>(items: T[], req: Request): T[] {
   const user = getAuthUser(req);
-  if (user.role === 'owner') return items;
+  if (!user) return [];
+
+  // RBAC scope-based filtering
+  if (req.scope) {
+    if (req.scope === 'all') return items;
+    if (req.scope === 'team') {
+      return items.filter(item => {
+        if (req.teamId && item.team_id === req.teamId) return true;
+        const owner = item.owner_user_id || item.created_by_user_id;
+        if (owner === user.id) return true;
+        if (Array.isArray(item.assigned_member_ids) && item.assigned_member_ids.includes(user.id)) return true;
+        if (user.company_id && item.company_id === user.company_id) return true;
+        return false;
+      });
+    }
+    if (req.scope === 'own') {
+      return items.filter(item => {
+        const owner = item.owner_user_id || item.created_by_user_id;
+        return owner === user.id;
+      });
+    }
+    return []; // none
+  }
+
+  // Legacy role-based fallback
+  if (user.role === 'owner' || (user.role as string) === 'super_admin') return items;
   if (user.role === 'company') {
     // Deny-by-default: record must have company_id and match user's company_id
     return items.filter(item => Boolean(item.company_id) && item.company_id === user.company_id);
@@ -129,10 +177,30 @@ export function scopeCollection<T extends { company_id?: string; owner_user_id?:
   });
 }
 
-export function canAccessResource(resource: { company_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
+export function canAccessResource(resource: { company_id?: string; owner_user_id?: string; created_by_user_id?: string; team_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
   if (!resource) return false;
   const user = getAuthUser(req);
-  if (user.role === 'owner') return true;
+  if (!user) return false;
+
+  // RBAC scope check
+  if (req.scope) {
+    if (req.scope === 'all') return true;
+    if (req.scope === 'team') {
+      if (req.teamId && resource.team_id === req.teamId) return true;
+      const owner = resource.owner_user_id || resource.created_by_user_id;
+      if (owner === user.id) return true;
+      if (Array.isArray(resource.assigned_member_ids) && resource.assigned_member_ids.includes(user.id)) return true;
+      if (user.company_id && resource.company_id === user.company_id) return true;
+      return false;
+    }
+    if (req.scope === 'own') {
+      const owner = resource.owner_user_id || resource.created_by_user_id;
+      return owner === user.id;
+    }
+    return false;
+  }
+
+  if (user.role === 'owner' || (user.role as string) === 'super_admin') return true;
   // Deny-by-default: missing company_id is only accessible by owner
   if (!resource.company_id) return false;
 
@@ -142,10 +210,30 @@ export function canAccessResource(resource: { company_id?: string; assigned_memb
   return resource.company_id === user.company_id && (resource.assigned_member_ids || []).includes(user.id);
 }
 
-export function canManageResource(resource: { company_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
+export function canManageResource(resource: { company_id?: string; owner_user_id?: string; created_by_user_id?: string; team_id?: string; assigned_member_ids?: string[] } | undefined, req: Request): boolean {
   if (!resource) return false;
   const user = getAuthUser(req);
-  if (user.role === 'owner') return true;
+  if (!user) return false;
+
+  // RBAC scope check
+  if (req.scope) {
+    if (req.scope === 'all') return true;
+    if (req.scope === 'team') {
+      if (req.teamId && resource.team_id === req.teamId) return true;
+      const owner = resource.owner_user_id || resource.created_by_user_id;
+      if (owner === user.id) return true;
+      if (Array.isArray(resource.assigned_member_ids) && resource.assigned_member_ids.includes(user.id)) return true;
+      if (user.company_id && resource.company_id === user.company_id) return true;
+      return false;
+    }
+    if (req.scope === 'own') {
+      const owner = resource.owner_user_id || resource.created_by_user_id;
+      return owner === user.id;
+    }
+    return false;
+  }
+
+  if (user.role === 'owner' || (user.role as string) === 'super_admin') return true;
   // Deny-by-default: missing company_id is only manageable by owner
   if (!resource.company_id) return false;
 
@@ -157,11 +245,27 @@ export function canManageResource(resource: { company_id?: string; assigned_memb
 
 export function accessDefaults(req: Request, body: any = {}) {
   const user = getAuthUser(req);
-  const defaultCompanyId = process.env.DEFAULT_COMPANY_ID || getEnv().DEFAULT_COMPANY_ID || 'comp-da-nang';
-  const company_id = user.role === 'owner' ? (body.company_id || defaultCompanyId) : user.company_id;
+  const isSuperAdmin = user.role === 'owner' || (user.role as string) === 'super_admin';
+
+  // Never trust company_id from body for non-super_admin; remove hardcoded comp-da-nang
+  const company_id = isSuperAdmin
+    ? (body.company_id !== undefined ? body.company_id : user.company_id)
+    : user.company_id;
+
+  // Never trust owner_user_id or created_by_user_id from body for non-super_admin
+  const owner_user_id = isSuperAdmin && body.owner_user_id ? body.owner_user_id : user.id;
+  const created_by_user_id = user.id;
+
+  // Team ID & listing source
+  const team_id = body.team_id || req.teamId;
+  const listing_source = body.listing_source || 'broker';
+
   return {
     company_id,
-    owner_user_id: user.role === 'company' ? user.id : body.owner_user_id || user.id,
+    owner_user_id,
+    created_by_user_id,
+    team_id,
+    listing_source,
     assigned_member_ids: user.role === 'member' ? [user.id] : (Array.isArray(body.assigned_member_ids) ? body.assigned_member_ids : [])
   };
 }

@@ -37,8 +37,10 @@ switch ($Action) {
   }
   'stop' {
     & $pgCtl -D $clusterData stop
+    exit $LASTEXITCODE
   }
   'status' {
     & $pgCtl -D $clusterData status
+    exit $LASTEXITCODE
   }
 }

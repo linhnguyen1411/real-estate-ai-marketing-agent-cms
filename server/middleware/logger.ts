@@ -42,12 +42,16 @@ export const httpLogger = pinoHttp({
     return 'info';
   },
   serializers: {
-    req: (req) => ({
-      id: req.id,
-      method: req.method,
-      url: req.url,
-      path: (req as any).path,
-    }),
+    req: (req) => {
+      const rawUrl = req.url || '';
+      const cleanUrl = rawUrl.split('?')[0];
+      return {
+        id: req.id,
+        method: req.method,
+        url: cleanUrl,
+        path: (req as any).path || cleanUrl,
+      };
+    },
     res: (res) => ({
       statusCode: res.statusCode,
     }),

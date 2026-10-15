@@ -1,10 +1,17 @@
 import crypto from 'crypto';
+import argon2 from 'argon2';
+
+const ARGON2_OPTIONS = {
+  type: (argon2.argon2id ?? 2) as 0 | 1 | 2,
+  memoryCost: 65536, // 64 MB
+  timeCost: 3,
+  parallelism: 1,
+  raw: false as const,
+};
 
 const SCRYPT_N = 32768; // 2^15
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
-const KEY_LEN = 32;
-const SALT_LEN = 16;
 
 // List of at least 20 common weak passwords to reject
 export const COMMON_PASSWORDS = new Set([
@@ -70,54 +77,51 @@ export function validatePasswordPolicy(password: string, email?: string): Passwo
 }
 
 export async function hashPassword(plainText: string): Promise<string> {
-  const salt = crypto.randomBytes(SALT_LEN);
-  return new Promise((resolve, reject) => {
-    crypto.scrypt(
-      plainText,
-      salt,
-      KEY_LEN,
-      { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 64 * 1024 * 1024 },
-      (err, derivedKey) => {
-        if (err) return reject(err);
-        const saltB64 = salt.toString('base64');
-        const hashB64 = derivedKey.toString('base64');
-        resolve(`scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${saltB64}$${hashB64}`);
-      }
-    );
-  });
+  const res = await argon2.hash(plainText, ARGON2_OPTIONS);
+  return res as string;
 }
 
 export async function verifyPassword(plainText: string, storedHash: string): Promise<boolean> {
   if (!plainText || !storedHash) return false;
 
-  const parts = storedHash.split('$');
-  if (parts.length !== 6 || parts[0] !== 'scrypt') {
-    return false;
+  // 1. Argon2 verification (primary standard)
+  if (storedHash.startsWith('$argon2')) {
+    try {
+      return await argon2.verify(storedHash, plainText);
+    } catch {
+      return false;
+    }
   }
 
-  const N = parseInt(parts[1], 10);
-  const r = parseInt(parts[2], 10);
-  const p = parseInt(parts[3], 10);
-  const salt = Buffer.from(parts[4], 'base64');
-  const expectedHash = Buffer.from(parts[5], 'base64');
+  // 2. Legacy scrypt verification (backward compatibility for existing database hashes)
+  const parts = storedHash.split('$');
+  if (parts.length === 6 && parts[0] === 'scrypt') {
+    const N = parseInt(parts[1], 10);
+    const r = parseInt(parts[2], 10);
+    const p = parseInt(parts[3], 10);
+    const salt = Buffer.from(parts[4], 'base64');
+    const expectedHash = Buffer.from(parts[5], 'base64');
 
-  return new Promise((resolve) => {
-    crypto.scrypt(
-      plainText,
-      salt,
-      expectedHash.length,
-      { N, r, p, maxmem: 64 * 1024 * 1024 },
-      (err, derivedKey) => {
-        if (err) return resolve(false);
-        if (derivedKey.length !== expectedHash.length) return resolve(false);
-        try {
-          resolve(crypto.timingSafeEqual(derivedKey, expectedHash));
-        } catch {
-          resolve(false);
+    return new Promise((resolve) => {
+      crypto.scrypt(
+        plainText,
+        salt,
+        expectedHash.length,
+        { N, r, p, maxmem: 64 * 1024 * 1024 },
+        (err, derivedKey) => {
+          if (err) return resolve(false);
+          if (derivedKey.length !== expectedHash.length) return resolve(false);
+          try {
+            resolve(crypto.timingSafeEqual(derivedKey, expectedHash));
+          } catch {
+            resolve(false);
+          }
         }
-      }
-    );
-  });
+      );
+    });
+  }
+
+  return false;
 }
 
 export function verifyPlaintextLegacy(plainText: string, legacyPassword: string): boolean {
@@ -133,11 +137,8 @@ export function verifyPlaintextLegacy(plainText: string, legacyPassword: string)
 }
 
 export function needsRehash(storedHash: string): boolean {
-  if (!storedHash || !storedHash.startsWith('scrypt$')) return true;
-  const parts = storedHash.split('$');
-  if (parts.length !== 6) return true;
-  const N = parseInt(parts[1], 10);
-  const r = parseInt(parts[2], 10);
-  const p = parseInt(parts[3], 10);
-  return N !== SCRYPT_N || r !== SCRYPT_R || p !== SCRYPT_P;
+  if (!storedHash || !storedHash.startsWith('$argon2id$')) {
+    return true;
+  }
+  return argon2.needsRehash(storedHash, ARGON2_OPTIONS);
 }

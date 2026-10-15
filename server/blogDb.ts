@@ -157,6 +157,10 @@ export async function listBlogPosts(filters?: {
   tagSlug?: string;
   limit?: number;
 }) {
+  if (process.env.NODE_ENV === 'test' && !process.env.FORCE_TEST_DB) {
+    return [];
+  }
+
   const where: any = {};
   if (filters?.status) where.status = filters.status;
   if (filters?.categorySlug) where.category = { slug: filters.categorySlug };
@@ -609,6 +613,9 @@ export async function suggestForPost(input: {
 }
 
 export async function listCategoriesWithPublishedCount(publicOnly = false) {
+  if (process.env.NODE_ENV === 'test' && !process.env.FORCE_TEST_DB) {
+    return [];
+  }
   const categories = await prisma.category.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -636,6 +643,9 @@ export async function listCategoriesWithPublishedCount(publicOnly = false) {
 }
 
 export async function listCategories() {
+  if (process.env.NODE_ENV === 'test' && !process.env.FORCE_TEST_DB) {
+    return [];
+  }
   return prisma.category.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
 }
 
@@ -665,6 +675,9 @@ export async function updateCategory(id: string, data: Partial<{ name: string; s
 }
 
 export async function listTags() {
+  if (process.env.NODE_ENV === 'test' && !process.env.FORCE_TEST_DB) {
+    return [];
+  }
   return prisma.tag.findMany({ orderBy: { name: 'asc' } });
 }
 

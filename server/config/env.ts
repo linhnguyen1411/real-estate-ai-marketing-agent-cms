@@ -15,6 +15,10 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
   TOKEN_ENCRYPTION_KEY: z.string().min(32, 'TOKEN_ENCRYPTION_KEY must be at least 32 characters'),
+  FACEBOOK_TOKEN_ENCRYPTION_KEY: z.preprocess(
+    v => (typeof v === 'string' && !v.trim() ? undefined : v),
+    z.string().min(32, 'FACEBOOK_TOKEN_ENCRYPTION_KEY must be at least 32 characters').optional()
+  ),
   AGENT_ENABLED: z.preprocess(
     v => typeof v === 'string' ? !['0', 'false', 'off', 'no'].includes(v.toLowerCase()) : Boolean(v),
     z.boolean()
@@ -52,12 +56,26 @@ export const envSchema = z.object({
       message: 'TELEGRAM_ALLOWED_USER_IDS must not be empty when TELEGRAM_CONSOLE_ENABLED is true',
     });
   }
-  if (data.NODE_ENV === 'production' && data.AGENT_ENABLED) {
+  if (data.NODE_ENV === 'production') {
+    if (!data.AUTH_SECRET || data.AUTH_SECRET.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AUTH_SECRET'],
+        message: 'AUTH_SECRET must be at least 32 characters in production',
+      });
+    }
     if (!data.AGENT_RUNTIME_TOKEN || data.AGENT_RUNTIME_TOKEN.length < 32) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['AGENT_RUNTIME_TOKEN'],
-        message: 'AGENT_RUNTIME_TOKEN must be at least 32 characters in production when AGENT_ENABLED=true',
+        message: 'AGENT_RUNTIME_TOKEN must be at least 32 characters in production',
+      });
+    }
+    if (!data.TOKEN_ENCRYPTION_KEY || data.TOKEN_ENCRYPTION_KEY.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TOKEN_ENCRYPTION_KEY'],
+        message: 'TOKEN_ENCRYPTION_KEY must be at least 32 characters in production',
       });
     }
   }
@@ -91,6 +109,7 @@ export function validateEnv(customEnv: Record<string, string | undefined> = proc
     const errorDetails = result.error.issues
       .map(issue => `  - [${issue.path.join('.')}]: ${issue.message}`)
       .join('\n');
+    console.error(`[FATAL] Environment validation failed:\n${errorDetails}`);
     throw new Error(`[FATAL] Environment validation failed:\n${errorDetails}`);
   }
 
@@ -98,6 +117,9 @@ export function validateEnv(customEnv: Record<string, string | undefined> = proc
   // Sync back validated ephemeral secrets to process.env so dependent modules access them
   process.env.AUTH_SECRET = cachedEnv.AUTH_SECRET;
   process.env.TOKEN_ENCRYPTION_KEY = cachedEnv.TOKEN_ENCRYPTION_KEY;
+  if (cachedEnv.FACEBOOK_TOKEN_ENCRYPTION_KEY) {
+    process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY = cachedEnv.FACEBOOK_TOKEN_ENCRYPTION_KEY;
+  }
   if (cachedEnv.AGENT_RUNTIME_TOKEN) {
     process.env.AGENT_RUNTIME_TOKEN = cachedEnv.AGENT_RUNTIME_TOKEN;
   }

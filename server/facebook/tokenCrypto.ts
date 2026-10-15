@@ -6,14 +6,20 @@ export const PREVIOUS_KID = 'k0';
 
 function getMasterSecret(kid: string): string {
   if (kid === CURRENT_KID) {
-    const key = getEnv().TOKEN_ENCRYPTION_KEY || process.env.TOKEN_ENCRYPTION_KEY;
+    const key =
+      process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY ||
+      getEnv().FACEBOOK_TOKEN_ENCRYPTION_KEY ||
+      getEnv().TOKEN_ENCRYPTION_KEY ||
+      process.env.TOKEN_ENCRYPTION_KEY;
     if (!key) {
-      throw new Error('Missing TOKEN_ENCRYPTION_KEY environment variable');
+      throw new Error('Missing FACEBOOK_TOKEN_ENCRYPTION_KEY / TOKEN_ENCRYPTION_KEY environment variable');
     }
     return key;
   }
   if (kid === PREVIOUS_KID) {
-    const prev = process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
+    const prev =
+      process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY_PREVIOUS ||
+      process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
     if (!prev) {
       throw new Error('Missing TOKEN_ENCRYPTION_KEY_PREVIOUS environment variable for kid k0');
     }
@@ -86,11 +92,16 @@ export function decryptAccessToken(payload: string, context = 'facebook-token'):
     const tag = Buffer.from(tagB64, 'base64');
     const data = Buffer.from(dataB64, 'base64');
 
-    // Try current TOKEN_ENCRYPTION_KEY first, then TOKEN_ENCRYPTION_KEY_PREVIOUS, then legacy AUTH_SECRET
-    const currentSecret = getEnv().TOKEN_ENCRYPTION_KEY || process.env.TOKEN_ENCRYPTION_KEY;
-    const prevSecret = process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
-    const legacyAuthSecret = process.env.AUTH_SECRET;
-    const candidates = [currentSecret, prevSecret, legacyAuthSecret].filter(Boolean) as string[];
+    // Try current FACEBOOK_TOKEN_ENCRYPTION_KEY / TOKEN_ENCRYPTION_KEY first, then PREVIOUS. NEVER fallback to AUTH_SECRET.
+    const currentSecret =
+      process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY ||
+      getEnv().FACEBOOK_TOKEN_ENCRYPTION_KEY ||
+      getEnv().TOKEN_ENCRYPTION_KEY ||
+      process.env.TOKEN_ENCRYPTION_KEY;
+    const prevSecret =
+      process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY_PREVIOUS ||
+      process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
+    const candidates = [currentSecret, prevSecret].filter(Boolean) as string[];
 
     for (const secret of candidates) {
       try {

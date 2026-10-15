@@ -13,6 +13,7 @@ import {
 } from '../salesService';
 import { SALES_PIPELINE_STAGES, type SalesPipelineStage } from '../types';
 import type { LearningOutcome } from '../../lead-acquisition/types';
+import { requirePermission } from '../../rbac';
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
 
@@ -21,6 +22,7 @@ function sendError(res: Response, status: number, message: string) {
 }
 
 export function registerSalesLayerRoutes(app: Express): void {
+  app.use('/api/sales', requirePermission('lead.intel'));
   app.get('/api/sales/metrics', async (req: Request, res: Response) => {
     try {
       const companyId =

@@ -9,12 +9,14 @@ import {
   getGatewayHealth,
   listGatewayProviders,
 } from '../gateway';
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerAiGatewayRoutes(app: Express): void {
+  app.use('/api/ai-gateway', requirePermission('agent.runtime'));
   app.get('/api/ai-gateway/health', async (_req: Request, res: Response) => {
     try {
       const data = await getGatewayHealth();

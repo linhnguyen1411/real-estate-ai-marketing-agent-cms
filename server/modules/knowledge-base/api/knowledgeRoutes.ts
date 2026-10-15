@@ -43,12 +43,14 @@ import {
   upsertConcept,
 } from '../store';
 import type { KnowledgeConcept } from '../types';
+import { requirePermission } from '../../rbac';
 
 function sendError(res: Response, status: number, message: string) {
   res.status(status).json({ status: 'error', message });
 }
 
 export function registerKnowledgeBaseRoutes(app: Express): void {
+  app.use('/api/knowledge', requirePermission('agent.sources'));
   app.get('/api/knowledge/snapshot', async (_req, res) => {
     try {
       res.json({ status: 'success', data: await buildKnowledgeSnapshot() });

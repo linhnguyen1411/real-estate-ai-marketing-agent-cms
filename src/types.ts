@@ -26,6 +26,7 @@ export interface User {
   public_slug?: string;
   show_public_profile?: boolean;
   status: 'active' | 'inactive';
+  referral_code?: string;
   created_at: string;
 }
 
@@ -44,6 +45,13 @@ export interface AuthUser {
   public_slug?: string;
   show_public_profile?: boolean;
   must_change_password?: boolean;
+  referral_code?: string;
+  roleKey?: string;
+  teamId?: string;
+  isPlatformRootTeam?: boolean;
+  isTeamLead?: boolean;
+  permissions?: Record<string, any>;
+  entitlements?: string[];
 }
 
 export interface PublicAgentProfile {
@@ -153,7 +161,17 @@ export interface Property {
   owner_user_id?: string;
   created_by_user_id?: string;
   assigned_member_ids?: string[];
+  team_id?: string;
+  listing_source?: 'broker' | 'owner';
   created_at?: string;
+}
+
+export interface PropertyAssignment {
+  id: string;
+  property_id: string;
+  assigned_by: string;
+  assigned_to: string;
+  assigned_at: string;
 }
 
 export interface Post {

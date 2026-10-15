@@ -45,7 +45,11 @@ import { createInboxRouter } from '../modules/inbox/inboxRoutes';
 import { createChatRouter } from '../modules/chat/chatRoutes';
 import { createContentRouter } from '../modules/content/contentRoutes';
 import { createAppointmentRouter } from '../modules/appointments/appointmentRoutes';
+import { createTeamRouter } from '../modules/team/teamRoutes';
+import { createRbacAdminRouter } from '../modules/rbac/rbacAdminRoutes';
+import { createLicenseRouter } from '../modules/license/licenseRoutes';
 import { rbacRouteGuard } from '../security/rbac';
+import { denyByDefaultGuard } from '../modules/rbac';
 
 export type MountRoutesOptions = {
   facebookGraphLegacyEnabled: boolean;
@@ -141,6 +145,7 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   }
 
   app.use('/api', createApiAuthGate());
+  app.use('/api', denyByDefaultGuard());
   app.use('/api', rbacRouteGuard());
   app.use(createAuthMeRouter());
 
@@ -204,6 +209,9 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   app.use(createContentRouter({ agentEnabled: AGENT_ENABLED }));
   app.use(createAppointmentRouter());
   app.use(createSeoPublicRouter());
+  app.use(createTeamRouter());
+  app.use(createRbacAdminRouter());
+  app.use(createLicenseRouter());
 
   // Global safe error handler (prevents leaking internal stack traces in production)
   app.use(globalErrorHandler);

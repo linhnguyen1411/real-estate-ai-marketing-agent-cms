@@ -35,14 +35,14 @@ async function main() {
 
   console.log(`[HASH-PASSWORDS] Total users found: ${totalUsers}`);
   console.log(`[HASH-PASSWORDS] Users with plaintext password: ${plaintextUsersCount}`);
-  console.log(`[HASH-PASSWORDS] Users already hashed (scrypt): ${alreadyHashedCount}`);
+  console.log(`[HASH-PASSWORDS] Users already hashed: ${alreadyHashedCount}`);
 
   for (const user of users) {
     if (user.password) {
       const plaintext = String(user.password);
       const newHash = await hashPassword(plaintext);
 
-      console.log(`[HASH-PASSWORDS] Migrating user "${user.email}" (${user.id})...`);
+      console.log(`[HASH-PASSWORDS] Migrating user "${user.email}" (${user.id}) to argon2id...`);
       migratedCount++;
 
       if (!isDryRun) {
@@ -57,7 +57,7 @@ async function main() {
   console.log(`\n=================== BÁO CÁO KẾT QUẢ ===================`);
   console.log(`  Tổng số tài khoản: ${totalUsers}`);
   console.log(`  Số tài khoản plaintext trước khi chạy: ${plaintextUsersCount}`);
-  console.log(`  Số tài khoản đã băm (scrypt): ${isDryRun ? 0 : migratedCount}`);
+  console.log(`  Số tài khoản đã băm (argon2id): ${isDryRun ? 0 : migratedCount}`);
   console.log(`  Số tài khoản còn plaintext sau khi chạy: ${isDryRun ? plaintextUsersCount : 0}`);
   console.log(`  Trạng thái must_change_password: ${isDryRun ? 'Chưa áp dụng (dry-run)' : 'Đã bật bắt buộc đổi mật khẩu'}`);
   console.log(`========================================================\n`);

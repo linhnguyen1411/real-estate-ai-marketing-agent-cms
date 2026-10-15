@@ -99,6 +99,8 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   'GET /api/blog/categories',
   'GET /api/blog/tags',
   'GET /api/blog/authors',
+  'GET /api/properties/:id/assignments',
+  'POST /api/license/download-trial',
 ];
 
 /**
@@ -245,6 +247,27 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   // Agent Missions Control: company+
   'POST /api/agent/missions/:id/pause': 'company',
   'POST /api/agent/missions/:id/activate': 'company',
+
+  // Team management (team lead / company / owner)
+  'GET /api/team/members': 'company',
+  'PATCH /api/team/members/:userId': 'company',
+  'POST /api/team/rotate-referral-code': 'company',
+  'GET /api/team/permissions': 'company',
+  'PUT /api/team/permissions': 'company',
+
+  // Property distribution
+  'POST /api/properties/:id/distribute': 'company',
+
+  // RBAC Matrix and Entitlements (owner only)
+  'GET /api/rbac/matrix': 'owner',
+  'PUT /api/rbac/matrix': 'owner',
+  'GET /api/entitlements': 'owner',
+  'POST /api/entitlements': 'owner',
+  'DELETE /api/entitlements/:id': 'owner',
+
+  // License Management (owner only)
+  'GET /api/admin/licenses': 'owner',
+  'POST /api/admin/licenses/:id/revoke': 'owner',
 };
 
 /**
@@ -306,7 +329,10 @@ export function rbacRouteGuard() {
       fullPath.startsWith('/api/public') ||
       fullPath.startsWith('/api/agent-ingest') ||
       fullPath.startsWith('/api/agent/runtime') ||
-      fullPath.startsWith('/api/social/media/files')
+      fullPath.startsWith('/api/social/media/files') ||
+      fullPath === '/api/license/activate' ||
+      fullPath === '/api/license/heartbeat' ||
+      fullPath === '/api/license/refresh-token'
     ) {
       return next();
     }

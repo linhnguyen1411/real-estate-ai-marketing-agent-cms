@@ -78,3 +78,19 @@ export const publicChatGuestSchema = z.object({
   name: z.string().trim().optional(),
   phone: z.string().trim().optional(),
 });
+
+// 7. Auth Register schema
+export const registerSchema = z.object({
+  name: z.string().trim().min(2, 'Tên người dùng phải có ít nhất 2 ký tự.'),
+  email: z.string().trim().email('Email không đúng định dạng.'),
+  password: z.string().min(10, 'Mật khẩu phải có ít nhất 10 ký tự.'),
+  referralCode: z.string().trim().optional(),
+});
+
+// 8. Property Create schema
+export const propertyCreateSchema = z.object({
+  title: z.string().trim().min(3, 'Tiêu đề bất động sản phải có ít nhất 3 ký tự.').optional(),
+  listing_source: z.enum(['broker', 'owner'], {
+    message: 'Vui lòng chọn nguồn tin bất động sản: Môi giới (broker) hoặc Chính chủ (owner).',
+  }),
+}).passthrough();
