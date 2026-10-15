@@ -21,6 +21,7 @@ interface DesktopAgentAPI {
   prevSource: () => void;
   toggleAutoRotate: (enabled: boolean) => void;
   setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => void;
+  openExternalUrl: (url: string) => void;
 
   // Publishing & Inventory
   fetchInventory: () => Promise<{ success: boolean; properties?: any[]; error?: string }>;
@@ -270,6 +271,12 @@ function formatRow(lead: any): string {
 
   const snippet = lead.rawText.length > 130 ? `${lead.rawText.slice(0, 130)}...` : lead.rawText;
 
+  let sourceLink = '<span style="color:#64748b;font-size:12px;">-</span>';
+  if (lead.sourceUrl) {
+    const safeUrl = String(lead.sourceUrl).replace(/"/g, '&quot;');
+    sourceLink = `<a href="javascript:void(0)" onclick="openSourceUrl('${safeUrl}')" class="source-url-link" style="color:#60a5fa;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="${safeUrl}">🔗 Mở link</a>`;
+  }
+
   return `
     <tr>
       <td>${srcTag}</td>
@@ -279,6 +286,7 @@ function formatRow(lead: any): string {
       <td>${blockStr}</td>
       <td>${phoneStr}</td>
       <td title="${lead.rawText.replace(/"/g, '&quot;')}">${snippet}</td>
+      <td>${sourceLink}</td>
       <td>${syncBtn}</td>
     </tr>
   `;
@@ -296,7 +304,7 @@ function renderTable(): void {
   if (filtered.length === 0) {
     leadsTableBody.innerHTML = `
       <tr>
-        <td colspan="8" class="empty-state">
+        <td colspan="9" class="empty-state">
           Chưa có bài viết nào phù hợp bộ lọc hiện tại.
         </td>
       </tr>
@@ -306,6 +314,15 @@ function renderTable(): void {
 
   leadsTableBody.innerHTML = filtered.map(formatRow).join('');
 }
+
+// Global openSourceUrl Callback
+(window as any).openSourceUrl = (url: string) => {
+  if (url && window.desktopAgent?.openExternalUrl) {
+    window.desktopAgent.openExternalUrl(url);
+  } else if (url) {
+    window.open(url, '_blank');
+  }
+};
 
 // Global Manual Sync Callback
 (window as any).manualSync = async (leadId: string) => {

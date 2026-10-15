@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld('desktopAgent', {
     ipcRenderer.send('chrome:trigger-scroll');
   },
 
+  openExternalUrl: (url: string) => {
+    ipcRenderer.send('url:open-external', url);
+  },
+
   // Sources Rotation
   onSourcesUpdate: (callback: (sources: any[]) => void) => {
     const subscription = (_event: any, sources: any[]) => callback(sources);

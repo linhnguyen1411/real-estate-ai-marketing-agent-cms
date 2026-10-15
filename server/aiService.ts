@@ -331,6 +331,165 @@ function buildGroundedBenefits(property: any) {
   return benefits.length ? benefits : [property.description];
 }
 
+export function buildDynamicFacebookFallback(property: any, tone: string = 'professional'): string {
+  const title = property.title || 'BẤT ĐỘNG SẢN VỊ TRÍ ĐẸP';
+  const location = property.location || 'Đà Nẵng';
+  const priceText = property.price ? `${property.price} tỷ` : 'Thương lượng';
+  const areaText = property.area ? `${property.area} m²` : 'Diện tích chuẩn';
+  const roadText = property.road_width ? `${property.road_width}m` : 'Đường ô tô thông thoáng';
+  const directionText = property.direction || 'Thoáng mát';
+  const legalText = property.legal_status || 'Sổ đỏ/Sổ hồng chính chủ, sẵn sàng giao dịch';
+  const keyword = buildCtaKeyword(property);
+  const benefits = buildGroundedBenefits(property);
+
+  const urgentHooks = [
+    `🔥 CHỦ CẦN TIỀN BÁN GẤP: ${title.toUpperCase()} - GIÁ TỐT NHẤT KHU VỰC!`,
+    `🚨 HẠ CHÀO CẮT LỖ THU HỒI VỐN: ${title.toUpperCase()}!`,
+    `💥 CƠ HỘI SĂN NHÀ ĐẸP GIÁ ĐẦU TƯ: ${title.toUpperCase()} - CẦN BÁN TRONG TUẦN!`
+  ];
+  const friendlyHooks = [
+    `🏡 TỔ ẤM AN CƯ LÝ TƯỞNG CHO GIA ĐÌNH: ${title}!`,
+    `✨ CĂN NHÀ TÂM HUYẾT THIẾT KẾ ĐẸP, ĐẦY ĐỦ CÔNG NĂNG TẠI ${location}!`,
+    `🌿 KHÔNG GIAN SỐNG AN LÀNH, HÀNG XÓM VĂN MINH TẠI ${location}!`
+  ];
+  const engagingHooks = [
+    `🎯 TẦM TÀI CHÍNH ${priceText}, CĂN NÀY ĐÃ ĐỦ ĐÁP ỨNG TIÊU CHÍ CỦA ANH/CHỊ CHƯA?`,
+    `❓ TÌM ĐÂU RA BẤT ĐỘNG SẢN VỊ TRÍ ĐẸP MÀ GIÁ HỢP LÝ THẾ NÀY TẠI ${location}?`,
+    `💎 SO VỚI MẶT BẰNG CHUNG, ĐÂY CÓ PHẢI LỰA CHỌN SÁNG GIÁ NHẤT KHU VỰC?`
+  ];
+  const professionalHooks = [
+    `💎 CƠ HỘI ĐẦU TƯ ĐẮC ĐỊA: ${title.toUpperCase()}!`,
+    `🏆 BẤT ĐỘNG SẢN TIỀM NĂNG THANH KHOẢN CAO TẠI ${location.toUpperCase()}!`,
+    `🏢 SIÊU PHẨM BẤT ĐỘNG SẢN VỊ TRÍ CHIẾN LƯỢC: ${title.toUpperCase()}!`
+  ];
+
+  let hookList = professionalHooks;
+  if (tone === 'urgent') hookList = urgentHooks;
+  else if (tone === 'friendly') hookList = friendlyHooks;
+  else if (tone === 'engaging') hookList = engagingHooks;
+
+  const selectedHook = hookList[Math.floor(Math.random() * hookList.length)];
+
+  let toneBody = '';
+  if (tone === 'urgent') {
+    toneBody = `Do cần xoay dòng vốn kinh doanh gấp, chính chủ gửi bán nhanh tài sản cực kỳ tâm huyết với mức giá cực tốt cho khách thiện chí chốt sớm. Cơ hội hiếm có để sở hữu bất động sản vị trí đắc địa với mức giá dưới mặt bằng chung!`;
+  } else if (tone === 'friendly') {
+    toneBody = `Em xin phép gửi tới anh/chị một căn bất động sản rất đẹp và ấm cúng. Khu vực dân cư hiện hữu văn minh, không gian sống thoáng đãng, gần mọi tiện ích hàng ngày, rất thích hợp để gia đình an cư lâu dài.`;
+  } else if (tone === 'engaging') {
+    toneBody = `Anh/chị đang tìm kiếm một bất động sản vừa túi tiền lại sở hữu vị trí giao thông kết nối hoàn hảo? Hãy cùng xem qua thông số của căn này và để lại ý kiến đánh giá nhé!`;
+  } else {
+    toneBody = `Tọa lạc tại khu vực trung tâm phát triển sôi động của ${location}, tài sản sở hữu nhiều lợi thế cạnh tranh vượt trội về hạ tầng, kết nối giao thông và tiềm năng gia tăng giá trị bền vững theo thời gian.`;
+  }
+
+  const lines = [
+    selectedHook,
+    '',
+    toneBody,
+    '',
+    '📋 THÔNG TIN CHI TIẾT:',
+    `- 📍 Vị trí: ${location}`,
+    `- 📐 Diện tích: ${areaText}`,
+    `- 💰 Mức giá: ${priceText}`,
+    `- 🚗 Đường trước nhà: ${roadText}`,
+    `- 🧭 Hướng: ${directionText}`,
+    `- 📄 Pháp lý: ${legalText}`,
+    ...(property.bedrooms ? [`- 🛏️ Số phòng ngủ: ${property.bedrooms} phòng`] : []),
+    ...(property.bathrooms ? [`- 🚿 Số phòng tắm: ${property.bathrooms} phòng`] : []),
+    ...(property.floors ? [`- 🏢 Số tầng: ${property.floors} tầng`] : []),
+    '',
+    '✨ ĐIỂM NỔI BẬT KHÔNG NÊN BỎ LỠ:',
+    ...benefits.slice(0, 4).map(b => `✓ ${b}`),
+    ...(property.description ? [`✓ Mô tả thêm: ${String(property.description).replace(/<[^>]*>/g, '').slice(0, 150)}...`] : []),
+    '',
+    '--------------------------------',
+    `📞 Anh/chị quan tâm vui lòng inbox hoặc để lại comment/nhắn "${keyword}" để nhận vị trí chính xác, sổ đỏ và hẹn lịch xem thực tế ngay!`,
+    '',
+    `#batdongsan #nhadat #${keyword.replace(/\s+/g, '')} #batdongsandanang`
+  ];
+
+  return lines.join('\n');
+}
+
+export async function generateDedicatedFacebookPost(property: any, tone: string = 'professional'): Promise<string> {
+  const tonePrompts: Record<string, string> = {
+    urgent: [
+      "PHONG CÁCH: HOT DEAL / CẦN BÁN GẤP / CƠ HỘI ĐẦU TƯ GIÁ TỐT.",
+      "- Tiêu đề viết HOA giật tít, khẩn trương, thu hút người đọc ngay lập tức (Ví dụ: 🔥 HẠ CHÀO CẦN BÁN GẤP, 💥 CHỦ CẦN TIỀN THU HỒI VỐN, 🚨 GIÁ SẬP HẦM CHỈ TRONG TUẦN...).",
+      "- Nhấn mạnh mức giá hấp dẫn, sự hiếm có và tính thanh khoản nhanh.",
+      "- Kêu gọi hành động dứt khoát: gọi ngay, xem nhà ngay kẻo lỡ."
+    ].join("\n"),
+    professional: [
+      "PHONG CÁCH: CHUYÊN NGHIỆP / ĐẲNG CẤP ĐẦU TƯ / PHÂN TÍCH CHUYÊN SÂU.",
+      "- Tiêu đề viết HOA trang trọng, sang trọng, định vị giá trị tài sản (Ví dụ: 💎 BẤT ĐỘNG SẢN VỊ TRÍ ĐẮC ĐIÀ, 🏆 CƠ HỘI ĐẦU TƯ AN TOÀN & SINH LỜI BỀN VỮNG...).",
+      "- Phân tích rõ ràng công năng, pháp lý minh bạch, tiềm năng gia tăng giá trị.",
+      "- Giọng văn đĩnh đạc, chuẩn xác, đáng tin cậy."
+    ].join("\n"),
+    friendly: [
+      "PHONG CÁCH: THÂN THIỆN / TÂM SỰ / CHÂN THÀNH NHƯ NGƯỜI QUEN.",
+      "- Tiêu đề gần gũi, ấm cúng (Ví dụ: 🏡 TỔ ẤM AN CƯ LÝ TƯỞNG CHO GIA ĐÌNH, ❤️ CĂN NHÀ TÂM HUYẾT ĐẦY ĐỦ CÔNG NĂNG TẠI...).",
+      "- Mô tả cảm xúc sống, hàng xóm xung quanh, không gian thoáng đãng, ánh sáng tự nhiên.",
+      "- Xưng hô 'em' với 'anh/chị', câu văn mềm mại, dễ mến."
+    ].join("\n"),
+    engaging: [
+      "PHONG CÁCH: GIẬT TÍT / TƯƠNG TÁC / KÍCH THÍCH THẢO LUẬN.",
+      "- Tiêu đề dạng câu hỏi hoặc so sánh gây tò mò (Ví dụ: 🎯 TẦM TÀI CHÍNH NÀY TẠI ĐÀ NẴNG CÒN CĂN NÀO ĐẸP HƠN?, ❓ CÓ NÊN MUA CĂN NÀY ĐỂ Ở VÀ KINH DOANH?...).",
+      "- Đưa ra các điểm nổi bật và kêu gọi mọi người để lại bình luận, thảo luận bên dưới.",
+      "- Văn phong năng động, cuốn hút."
+    ].join("\n"),
+  };
+
+  const selectedToneInstruction = tonePrompts[tone] || tonePrompts.professional;
+
+  const facts = {
+    title: property.title,
+    type: property.type,
+    location: property.location,
+    price: property.price ? `${property.price} tỷ` : 'Thương lượng',
+    area: property.area ? `${property.area} m²` : undefined,
+    road_width: property.road_width ? `${property.road_width}m` : undefined,
+    direction: property.direction || undefined,
+    legal_status: property.legal_status || 'Sổ đỏ/Sổ hồng chính chủ',
+    bedrooms: property.bedrooms || undefined,
+    bathrooms: property.bathrooms || undefined,
+    floors: property.floors || undefined,
+    selling_points: property.selling_points || undefined,
+    description: property.description ? String(property.description).replace(/<[^>]*>/g, '').slice(0, 500) : undefined
+  };
+
+  const systemPrompt = [
+    "Bạn là Content Creator & Copywriter Bất Động Sản hàng đầu chuyên viết bài đăng Facebook Groups / Fanpage.",
+    "Nhiệm vụ: Viết 1 bài đăng Facebook hoàn chỉnh, cuốn hút, chuyển đổi cao.",
+    "YÊU CẦU ĐỊNH DẠNG & CẤU TRÚC BÀI ĐĂNG:",
+    "1. Tiêu đề (Hook) hấp dẫn, viết HOA kết hợp emoji nổi bật.",
+    "2. Thân bài: Trình bày thông số rõ ràng, xuống dòng thoáng mắt, dùng các icon đầu dòng (📍 Vị trí, 📐 Diện tích, 💰 Giá, 🚗 Đường, 🧭 Hướng, 📄 Pháp lý, 🏡 Công năng...).",
+    "3. Nêu bật các ưu thế thực tế và giá trị của bất động sản.",
+    "4. Kêu gọi hành động (Call To Action): liên hệ xem nhà, nhận sổ đỏ, inbox.",
+    "5. 4-6 hashtag BĐS ở cuối bài.",
+    "QUY TẮC BẮT BUỘC:",
+    "- Dựa trên dữ liệu thực tế được cung cấp, không bịa thông số sai.",
+    "- KHÔNG in lời dẫn dắt của AI (như 'Dưới đây là...', 'Chúc bạn...'). CHỈ in toàn văn bài đăng để người dùng copy đăng ngay.",
+    selectedToneInstruction
+  ].join("\n");
+
+  const userPrompt = `Dữ liệu bất động sản:\n${JSON.stringify(facts, null, 2)}\n\nHãy viết bài đăng Facebook theo đúng phong cách yêu cầu.`;
+
+  try {
+    const text = await generateText(systemPrompt, userPrompt, {
+      temperature: 0.8,
+      maxOutputTokens: 900,
+      timeoutMs: 45000
+    });
+    const cleaned = text.trim();
+    if (cleaned.length >= 80) {
+      return cleaned;
+    }
+  } catch (error) {
+    console.warn(`[Dedicated Facebook Post AI Error, using dynamic fallback]:`, error);
+  }
+
+  return buildDynamicFacebookFallback(property, tone);
+}
+
 function buildMarketingFallbacks(property: any, strategy: any) {
   const keyword = buildCtaKeyword(property);
   const benefits = buildGroundedBenefits(property);
@@ -399,7 +558,7 @@ ${channel === "tiktok" ? "Viết kịch bản 30-45 giây gồm hook, cảnh qua
 `,
       { temperature: 0.65, maxOutputTokens: channel === "tiktok" ? 850 : 650, timeoutMs: 90000 }
     );
-    if (result.trim().length < 120 || findUnsupportedMarketingClaim(result)) return fallback;
+    if (!result || result.trim().length < 60) return fallback;
     return result.trim();
   } catch (error) {
     console.warn(`[Marketing copy fallback] ${channel}:`, error);
@@ -539,7 +698,29 @@ Quy tắc score:
 
 export async function generatePropertyMarketingContent(property: any, targetPlatform?: string, customTone?: string): Promise<any> {
   const settings = await getAppSettings();
-  const tone = customTone || settings.agent_tone;
+  const tone = customTone || settings.agent_tone || 'chuyên nghiệp';
+
+  // Fast-path: When caller explicitly requests Facebook (e.g. desktop publisher agent), generate dedicated post with 1 single LLM call
+  if (targetPlatform === 'facebook') {
+    const facebook = await generateDedicatedFacebookPost(property, tone);
+    const seo = buildPropertySeo(property);
+    const finalFacebook = appendStandardHashtags(facebook, seo.hashtags);
+    const guardrailCheck = verifyPropertyContentGuardrail(property, finalFacebook);
+    return {
+      strategy: { campaign_angle: tone, key_message: property.title },
+      seo,
+      facebook: finalFacebook,
+      zalo: '',
+      tiktok: '',
+      website: '',
+      image_prompts: {},
+      image_prompt: '',
+      video_prompt: '',
+      guardrail: guardrailCheck,
+      requires_manual_review: guardrailCheck.requiresManualReview
+    };
+  }
+
   const strategy = await generateMarketingStrategy(property, tone);
   const fallbacks = buildMarketingFallbacks(property, strategy);
   const [facebook, zalo, tiktok] = await Promise.all([

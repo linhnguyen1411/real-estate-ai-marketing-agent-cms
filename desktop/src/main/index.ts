@@ -171,8 +171,9 @@ function showHotLeadNotification(lead: ExtractedLeadData): void {
   const prefix = lead.classification === 'SUPPLY' ? '🟢 [BÁN/CUNG]' : lead.classification === 'DEMAND' ? '🔴 [MUA/CẦU]' : '⚪ [BĐS]';
   const price = lead.askingPrice ? ` | Giá: ${lead.askingPrice}` : '';
   const phone = lead.authorPhone ? ` | SĐT: ${lead.authorPhone}` : '';
+  const sourceLine = lead.sourceUrl ? `\n🔗 Link: ${lead.sourceUrl.slice(0, 75)}` : '';
   const title = `🔥 HOT LEAD BĐS (${lead.sourceType.toUpperCase()} - Điểm: ${lead.intentScore})`;
-  const body = `${prefix}${price}${phone}\n${lead.rawText.slice(0, 110)}...`;
+  const body = `${prefix}${price}${phone}${sourceLine}\n${lead.rawText.slice(0, 85)}...`;
 
   const notif = new Notification({
     title,
@@ -181,6 +182,11 @@ function showHotLeadNotification(lead: ExtractedLeadData): void {
   });
 
   notif.on('click', () => {
+    if (lead.sourceUrl) {
+      shell.openExternal(lead.sourceUrl).catch((err) => {
+        console.error('[Notification] Error opening source URL:', err);
+      });
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -563,9 +569,18 @@ ipcMain.on('fb:trigger-scroll', () => {
   }
 });
 
+ipcMain.on('url:open-external', (_event, url: string) => {
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    shell.openExternal(url).catch((err) => {
+      console.error('[OpenExternal] Error opening url:', url, err);
+    });
+  }
+});
+
 ipcMain.on('zalo:new-message', (_event, message: ZaloIncomingMessage) => {
   stats.zaloMessagesTotal++;
   const lead = processRawPostToLead('zalo', message.groupName, message.content, {
+    sourceUrl: 'https://chat.zalo.me',
     senderPhone: message.senderPhone,
     authorName: message.senderName,
   });
