@@ -952,13 +952,6 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           </div>
 
           <div className="hidden shrink-0 items-center gap-2 lg:flex">
-            <a href={`tel:${phoneNumber}`} className="btn-outline px-3 py-2 text-xs">
-              Gọi tư vấn
-            </a>
-            <a href="#contact" className="btn-cta px-3 py-2 text-xs">
-              Nhận danh sách đầu tư
-            </a>
-            <div className="h-4 w-px bg-invest-border mx-1" />
             <Link
               to="/dang-nhap"
               className="inline-flex items-center gap-1.5 rounded-lg border border-invest-border px-3 py-2 text-xs font-semibold text-invest-text hover:border-invest-blue hover:text-invest-blue transition-colors"
