@@ -23,21 +23,23 @@ export function extractQueryTokens(message: string) {
   const rawTokens = expanded
     .split(/[^a-z0-9]+/i)
     .filter(token => token.length >= 2 && ![
-      'toi', 'minh', 'can', 'tim', 'cho', 'hoi', 've', 'co', 'khong', 'duoc',
-      'anh', 'chi', 'em', 'muon', 'chao', 'alo', 'ban', 'nhe', 'nha', 'a'
+      'toi', 'can', 'tim', 'cho', 'hoi', 've', 'co', 'khong', 'duoc',
+      'anh', 'chi', 'em', 'muon', 'chao', 'alo', 'ban', 'nhe', 'a'
     ].includes(token));
 
-  // Also include 2-word n-grams for locations/types like "nam hoa xuan", "can ho", "mat tien"
+  // Also include 2-word and 3-word n-grams for proper locations, streets, and names
   const ngrams: string[] = [];
   const words = expanded.split(/\s+/).filter(Boolean);
   for (let i = 0; i < words.length - 1; i++) {
     const pair = `${words[i]} ${words[i + 1]}`;
-    if (['nam hoa', 'hoa xuan', 'can ho', 'dat nen', 'nha pho', 'mat tien', 'shophouse', 'song han', 'cam le', 'son tra', 'ngu hanh', 'phong ngu', 'so hong'].some(k => pair.includes(k))) {
-      ngrams.push(pair);
-    }
+    ngrams.push(pair);
+  }
+  for (let i = 0; i < words.length - 2; i++) {
+    const triplet = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+    ngrams.push(triplet);
   }
 
-  return Array.from(new Set([...ngrams, ...rawTokens])).slice(0, 25);
+  return Array.from(new Set([...ngrams, ...rawTokens])).slice(0, 35);
 }
 
 export function extractBudget(message: string) {
@@ -167,6 +169,7 @@ export function rankProperties(properties: Property[], message: string, limit = 
   const tokens = extractQueryTokens(message);
   const budget = extractBudget(message);
   const normalizedMsg = normalizeText(message);
+  const isGeneralListingQuery = /(gio hang|danh sach|tat ca|co nhung|bds|san pham|can nao|lo nao|cho toi xem)/.test(normalizedMsg);
 
   return properties
     .map(property => {
@@ -176,9 +179,9 @@ export function rankProperties(properties: Property[], message: string, limit = 
       if (budget && Number.isFinite(propPrice) && propPrice > 0) {
         const diffRatio = Math.abs(propPrice - budget) / budget;
         if (diffRatio <= 0.15) {
-          budgetScore = 20; // Very close to budget
+          budgetScore = 25; // Very close to budget
         } else if (diffRatio <= 0.35) {
-          budgetScore = 10;
+          budgetScore = 12;
         } else if (propPrice <= budget) {
           budgetScore = 8;
         } else {
@@ -199,26 +202,46 @@ export function rankProperties(properties: Property[], message: string, limit = 
         typeScore = 15;
       }
 
-      // Check location match (hòa xuân, sơn trà, hải châu, cẩm lệ, ngũ hành sơn, sông hàn)
+      // Check location & street match dynamically
       let locScore = 0;
       const propLoc = normalizeText(`${property.location || ''} ${property.project_name || ''}`);
-      if (
-        (normalizedMsg.includes('hoa xuan') && propLoc.includes('hoa xuan')) ||
-        (normalizedMsg.includes('son tra') && propLoc.includes('son tra')) ||
-        (normalizedMsg.includes('hai chau') && propLoc.includes('hai chau')) ||
-        (normalizedMsg.includes('cam le') && propLoc.includes('cam le')) ||
-        (normalizedMsg.includes('ngu hanh son') && propLoc.includes('ngu hanh son')) ||
-        (normalizedMsg.includes('song han') && propLoc.includes('song han')) ||
-        (normalizedMsg.includes('sonata') && propLoc.includes('sonata'))
-      ) {
-        locScore = 15;
+      if (propLoc) {
+        const locWords = propLoc.split(/\s+/).filter(w => w.length >= 3);
+        for (const lw of locWords) {
+          if (normalizedMsg.includes(lw)) {
+            locScore += 12;
+          }
+        }
+      }
+
+      // Direct multi-word phrase matching on haystack (title, location, project_name, rich_description)
+      const haystack = normalizeText(`${property.title || ''} ${property.location || ''} ${property.project_name || ''} ${property.rich_description || property.description || ''}`);
+      let phraseScore = 0;
+      const msgWords = normalizedMsg.split(/[^a-z0-9]+/i).filter(w => w.length >= 2);
+      for (let len = Math.min(msgWords.length, 4); len >= 2; len--) {
+        for (let i = 0; i <= msgWords.length - len; i++) {
+          const phrase = msgWords.slice(i, i + len).join(' ');
+          if (haystack.includes(phrase)) {
+            phraseScore += len * 20; // 3-word match = 60 pts, 2-word match = 40 pts
+          }
+        }
       }
 
       const availableBonus = property.sale_status === 'sold' ? -50 : 5;
+      const totalScore = tokenScore * 10 + phraseScore + budgetScore + typeScore + locScore + availableBonus;
+
       return {
         property,
-        score: tokenScore * 10 + budgetScore + typeScore + locScore + availableBonus
+        score: totalScore,
+        tokenScore,
+        phraseScore,
+        locScore,
+        typeScore,
       };
+    })
+    .filter(item => {
+      // Must have actual matching signal or be an explicit listing request
+      return item.phraseScore > 0 || item.tokenScore > 0 || item.locScore > 0 || isGeneralListingQuery;
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)

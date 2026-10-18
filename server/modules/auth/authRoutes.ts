@@ -255,6 +255,8 @@ export function createApiAuthGate() {
     pathName === '/license/refresh-token' ||
     pathName === '/api/license/refresh-token' ||
     pathName.startsWith('/public/') ||
+    pathName.startsWith('/chat/guest') ||
+    pathName.startsWith('/chat/public') ||
     pathName.startsWith('/agent-ingest/') ||
     // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
     pathName.startsWith('/agent/runtime/') ||

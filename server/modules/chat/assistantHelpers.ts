@@ -7,6 +7,7 @@ import {
   detectQueryIntent,
   extractBudget,
   extractQueryTokens,
+  normalizeText,
   rankProperties,
   textScore,
 } from '../public-site/publicChatHelpers';
@@ -16,11 +17,19 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
   const budget = extractBudget(message);
   const intent = detectQueryIntent(message);
   const customers = scopeCollection<Customer>(db.customers, req);
-  const properties = scopeCollection<Property>(db.properties, req);
+  const user = getAuthUser(req);
+
+  // Giỏ hàng BĐS (listings) là danh mục công khai trên toàn hệ sinh thái bdsdanang.site.
+  // Mọi người dùng / chuyên viên tư vấn đều có thể tra cứu thông tin giỏ hàng để tư vấn cho khách.
+  const activeProperties: Property[] = (db.properties || []).filter((p: Property) => {
+    if (p.sale_status !== 'hidden') return true;
+    const owner = p.owner_user_id || p.created_by_user_id;
+    return owner === user?.id || user?.role === 'owner';
+  });
+
   const posts = scopeCollection<Post>(db.posts, req);
   const inbox = scopeCollection<InboxMessage>(db.inbox, req);
   const automations = scopeCollection<AutomationTask>(db.automations, req);
-  const user = getAuthUser(req);
   const generatedContents = (db.generated_contents || []).filter((item: any) => {
     if (user.role === 'owner') return true;
     return item.company_id === user.company_id;
@@ -34,7 +43,13 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
     })
     .map(entry => entry.item);
 
-  const propertyMatches = intent === 'knowledge' ? [] : rankProperties(properties, message, intent === 'properties' ? 5 : 2).map(compactProperty);
+  let propertyMatches = rankProperties(activeProperties, message, 5).map(compactProperty);
+  if (propertyMatches.length === 0 && /(gio hang|danh sach|bat dong san|bds|dang ban|san pham|tat ca)/.test(normalizeText(message))) {
+    propertyMatches = activeProperties
+      .filter((p: Property) => p.sale_status === 'available')
+      .slice(0, 5)
+      .map(compactProperty);
+  }
   const customerMatches = intent === 'knowledge' ? [] : rank(customers, (a: Customer, b: Customer) => (b.lead_score || 0) - (a.lead_score || 0))
     .slice(0, intent === 'customers' ? 5 : 2)
     .map(compactCustomer);
@@ -74,7 +89,7 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
       role: user.role,
       company_id: user.company_id,
       totalCustomers: customers.length,
-      totalProperties: properties.length,
+      totalProperties: activeProperties.length,
       totalPosts: posts.length,
       totalInbox: inbox.length,
       totalAutomations: automations.length,

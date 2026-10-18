@@ -573,18 +573,24 @@ router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, 
           '1. Ưu tiên tuyệt đối thông tin được cung cấp trong RAG_KNOWLEDGE bên dưới.',
           '2. Không tự suy diễn quy trình, chính sách hoặc mức phí.',
           '3. Cung cấp đường dẫn markdown link chính xác nếu có trong tài liệu (ví dụ: [Đăng nhập](/dang-nhap), [Cổng tìm kiếm BĐS công khai](/bat-dong-san), [Danh sách Bất động sản](/admin#properties), [Hồ sơ cá nhân](/admin#profile), v.v.).',
-          '4. Giọng điệu ấm áp, xưng "em Lily" hoặc "em", gọi người dùng là "anh/chị" hoặc "bạn".'
+          '4. Giọng điệu ấm áp, xưng "em Lily" hoặc "em", gọi người dùng là "anh/chị" hoặc "bạn".',
+          '5. Nếu câu hỏi có liên quan đến bất động sản hoặc địa điểm cụ thể và có DANH_SACH_BDS_LIEN_QUAN, hãy chủ động giới thiệu chi tiết sản phẩm phù hợp (vị trí, giá, diện tích, pháp lý) kèm link [Xem chi tiết sản phẩm](...) tương ứng.'
         ].join('\n');
+
+        const matchingPropsContext = retrievedPublicProperties.length > 0
+          ? `DANH_SACH_BDS_LIEN_QUAN:\n${JSON.stringify(retrievedPublicProperties.map(compactProperty), null, 2)}`
+          : '';
 
         const contextParts = [
           ragKnowledge.formattedContext ? `RAG_KNOWLEDGE:\n${ragKnowledge.formattedContext}` : '',
+          matchingPropsContext,
           '',
           `Lịch sử trò chuyện gần nhất:\n${recentHistory || 'Chưa có lịch sử.'}`,
           '',
           `Câu hỏi của người dùng: ${message}`
         ].filter(Boolean).join('\n');
 
-        knowledgeResponse = await generateText(knowledgePrompt, contextParts, { temperature: 0.2 });
+        knowledgeResponse = await generateText(knowledgePrompt, contextParts, { temperature: 0.3 });
       } catch (err: any) {
         console.warn('Public AI knowledge query fallback to RAG chunk:', err.message);
         if (ragKnowledge.chunks.length > 0) {
