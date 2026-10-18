@@ -333,27 +333,143 @@ body {
   color: #0f172a !important;
 }
 
-.theme-light .bg-slate-950 {
-  background-color: #ffffff !important;
-  color: #0f172a;
-}
-
+/* Primary Card & Surface Backgrounds */
+.theme-light .bg-slate-950,
+.theme-light .bg-slate-950\/95,
+.theme-light .bg-slate-950\/90,
+.theme-light .bg-slate-950\/80,
+.theme-light .bg-slate-950\/70,
+.theme-light .bg-slate-950\/60,
 .theme-light .bg-slate-900,
-.theme-light .bg-slate-900\/40,
-.theme-light .bg-slate-900\/50,
-.theme-light .bg-slate-900\/60,
+.theme-light .bg-slate-900\/95,
+.theme-light .bg-slate-900\/90,
+.theme-light .bg-slate-900\/80,
 .theme-light .bg-slate-900\/70,
-.theme-light .bg-slate-900\/80 {
+.theme-light .bg-slate-900\/60,
+.theme-light .bg-slate-850 {
   background-color: #ffffff !important;
   color: #0f172a;
 }
 
+/* Secondary / Nested Sub-Card Blocks */
+.theme-light .bg-slate-950\/50,
+.theme-light .bg-slate-950\/40,
+.theme-light .bg-slate-950\/30,
+.theme-light .bg-slate-950\/20,
+.theme-light .bg-slate-900\/50,
+.theme-light .bg-slate-900\/40,
+.theme-light .bg-slate-900\/35,
+.theme-light .bg-slate-900\/30,
+.theme-light .bg-slate-900\/20,
+.theme-light .bg-slate-900\/10 {
+  background-color: #f8fafc !important;
+  color: #0f172a;
+}
+
+/* Neutral Buttons, Chips & Badges */
+.theme-light .bg-slate-800,
+.theme-light .bg-slate-800\/90,
+.theme-light .bg-slate-800\/80,
+.theme-light .bg-slate-800\/70,
+.theme-light .bg-slate-800\/60,
+.theme-light .bg-slate-800\/50,
+.theme-light .bg-slate-800\/40 {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Tinted Cards & Banners */
+.theme-light .bg-rose-950\/10,
+.theme-light .bg-rose-950\/20 {
+  background-color: #fff1f2 !important;
+}
+
+.theme-light .bg-emerald-950\/10,
+.theme-light .bg-emerald-950\/20 {
+  background-color: #f0fdf4 !important;
+}
+
+.theme-light .bg-amber-950\/10,
+.theme-light .bg-amber-950\/20 {
+  background-color: #fffbeb !important;
+}
+
+.theme-light .bg-blue-950\/10,
+.theme-light .bg-blue-950\/20,
+.theme-light .bg-blue-950\/40 {
+  background-color: #eff6ff !important;
+}
+
+/* Gradient Cards (e.g. Executive Summary) */
+.theme-light .from-slate-950,
+.theme-light .from-slate-900,
+.theme-light .from-slate-900\/80,
+.theme-light .from-slate-900\/70,
+.theme-light .from-slate-900\/50 {
+  --tw-gradient-from: #ffffff var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #f8fafc var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+.theme-light .to-slate-950,
+.theme-light .to-slate-900,
+.theme-light .to-slate-900\/70,
+.theme-light .to-slate-900\/50,
+.theme-light .to-slate-900\/80 {
+  --tw-gradient-to: #f1f5f9 var(--tw-gradient-to-position) !important;
+}
+
+/* Card Borders & Dividers */
+.theme-light .border-slate-950,
+.theme-light .border-slate-950\/80,
+.theme-light .border-slate-950\/60,
+.theme-light .border-slate-950\/50,
 .theme-light .border-slate-900,
+.theme-light .border-slate-900\/80,
+.theme-light .border-slate-900\/60,
+.theme-light .border-slate-900\/50,
 .theme-light .border-slate-800,
-.theme-light .border-slate-700 {
+.theme-light .border-slate-800\/80,
+.theme-light .border-slate-800\/60,
+.theme-light .border-slate-800\/50,
+.theme-light .border-slate-700,
+.theme-light .border-slate-700\/60,
+.theme-light .border-slate-700\/50 {
   border-color: #e2e8f0 !important;
 }
 
+.theme-light .divide-slate-950 > :not([hidden]) ~ :not([hidden]),
+.theme-light .divide-slate-900 > :not([hidden]) ~ :not([hidden]),
+.theme-light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+.theme-light .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* Card Elevation & Crisp Shadow */
+.theme-light .rounded-2xl.border,
+.theme-light .rounded-xl.border {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.03);
+}
+
+/* Hover States */
+.theme-light .hover\:bg-slate-950:hover,
+.theme-light .hover\:bg-slate-900:hover,
+.theme-light .hover\:bg-slate-900\/80:hover,
+.theme-light .hover\:bg-slate-900\/60:hover,
+.theme-light .hover\:bg-slate-850:hover,
+.theme-light .hover\:bg-slate-800:hover,
+.theme-light .hover\:bg-slate-700:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.theme-light .hover\:border-slate-800:hover,
+.theme-light .hover\:border-slate-700:hover,
+.theme-light .hover\:border-slate-600:hover {
+  border-color: #cbd5e1 !important;
+}
+
+/* General Text Contrast */
 .theme-light .text-white {
   color: #0f172a !important;
 }
@@ -374,16 +490,83 @@ body {
   color: #64748b !important;
 }
 
+.theme-light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* PRESERVE WHITE TEXT ON COLORED BUTTONS, BADGES, AND CHIPS */
+.theme-light [class*="bg-rose-"] .text-white,
+.theme-light [class*="bg-rose-"].text-white,
+.theme-light [class*="bg-emerald-"] .text-white,
+.theme-light [class*="bg-emerald-"].text-white,
+.theme-light [class*="bg-blue-"] .text-white,
+.theme-light [class*="bg-blue-"].text-white,
+.theme-light [class*="bg-indigo-"] .text-white,
+.theme-light [class*="bg-indigo-"].text-white,
+.theme-light [class*="bg-violet-"] .text-white,
+.theme-light [class*="bg-violet-"].text-white,
+.theme-light [class*="bg-amber-"] .text-white,
+.theme-light [class*="bg-amber-"].text-white,
+.theme-light [class*="bg-red-"] .text-white,
+.theme-light [class*="bg-red-"].text-white,
+.theme-light [class*="bg-green-"] .text-white,
+.theme-light [class*="bg-green-"].text-white,
+.theme-light [class*="bg-sky-"] .text-white,
+.theme-light [class*="bg-sky-"].text-white,
+.theme-light [class*="bg-black"].text-white,
+.theme-light [class*="bg-black/"] .text-white,
+.theme-light [class*="bg-black/"].text-white,
+.theme-light [class*="from-amber-500"] .text-white,
+.theme-light [class*="from-amber-500"].text-white,
+.theme-light .btn-cta,
+.theme-light .btn-cta *,
+.theme-light [class*="btn-"] .text-white {
+  color: #ffffff !important;
+}
+
+/* Form Controls */
 .theme-light input,
 .theme-light select,
 .theme-light textarea {
   background-color: #ffffff !important;
   color: #0f172a !important;
   border-color: #cbd5e1 !important;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.theme-light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
 }
 
 .theme-light input::placeholder,
 .theme-light textarea::placeholder {
   color: #94a3b8 !important;
+}
+
+/* Table Headers & Rows inside Cards */
+.theme-light thead,
+.theme-light thead tr,
+.theme-light thead th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light tbody tr {
+  border-color: #e2e8f0 !important;
+  background-color: #ffffff;
+}
+
+.theme-light tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Modals & Dialog Card Surfaces */
+.theme-light [role="dialog"],
+.theme-light [class*="z-50"] [class*="bg-slate-950"],
+.theme-light [class*="z-50"] [class*="bg-slate-900"] {
+  background-color: #ffffff !important;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.15) !important;
 }
 
