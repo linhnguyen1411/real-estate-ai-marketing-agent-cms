@@ -24,7 +24,7 @@ Write-Host "SAFE DEPLOY - prisma migrate deploy only (NO db push)" -ForegroundCo
 
 if (-not $SkipBackup) {
   Write-Host "==> backup:prod" -ForegroundColor Cyan
-  & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "backup-prod.ps1")
+  & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "backup-prod.ps1") -HostName $HostName -DownloadLocal
   if ($LASTEXITCODE -ne 0) { throw "backup failed" }
 }
 
@@ -36,7 +36,7 @@ if (-not $SkipLint) {
 
 Write-Host "==> Create archive" -ForegroundColor Cyan
 if (Test-Path $localArchive) { Remove-Item $localArchive -Force }
-# Exclude only root runtime *data* dirs — never exclude server/**/runtime source modules.
+# Exclude only root runtime *data* dirs, local DB, installer builds, archives — never exclude server/**/runtime source modules.
 tar -czf $ArchiveName `
   --exclude=.git `
   --exclude=node_modules `
@@ -44,7 +44,19 @@ tar -czf $ArchiveName `
   --exclude=.env `
   --exclude=.env.* `
   --exclude=*.log `
+  --exclude=*.tar.gz `
+  --exclude=*.zip `
   --exclude=db.json `
+  --exclude=scratch `
+  --exclude=scratch/** `
+  --exclude=.dev `
+  --exclude=.dev/** `
+  --exclude=desktop/dist `
+  --exclude=desktop/dist/** `
+  --exclude=./runtime/local-pg `
+  --exclude=./runtime/local-pg/** `
+  --exclude=./runtime/installer-build `
+  --exclude=./runtime/installer-build/** `
   --exclude=./runtime/agent-browser-profile `
   --exclude=./runtime/agent-cdp-profile `
   --exclude=./runtime/agent-vps-heartbeat-profile `

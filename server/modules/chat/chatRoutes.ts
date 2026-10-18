@@ -13,6 +13,7 @@ import {
 import { generateText, getAIProviderStatus, getAiStatusBriefingText } from '../../aiService';
 import { getAuthUser } from '../auth/authAccess';
 import { buildAssistantDbContext, buildAssistantFallback } from './assistantHelpers';
+import { retrieveRagKnowledge, buildOfficialSystemPrompt } from './ragKnowledgeService';
 
 export async function deleteChatSessionHandler(req: Request, res: Response) {
   const sessionUserId = decodeURIComponent(String(req.params.sessionUserId || '').trim());
@@ -119,29 +120,32 @@ router.post('/api/ai/chat', async (req: Request, res: Response) => {
 
     const dbContext = buildAssistantDbContext(db, req, String(message));
     const serializedDbContext = JSON.stringify(dbContext, null, 2);
-    console.log(`[INTERNAL RETRIEVAL] intent=${dbContext.query.intent} properties=${dbContext.properties.length} customers=${dbContext.customers.length} contextChars=${serializedDbContext.length}`);
+    const ragKnowledge = retrieveRagKnowledge(String(message), 4);
+    console.log(`[INTERNAL RETRIEVAL] intent=${dbContext.query.intent} properties=${dbContext.properties.length} customers=${dbContext.customers.length} ragChunks=${ragKnowledge.chunks.length} contextChars=${serializedDbContext.length}`);
+
+    const systemPrompt = buildOfficialSystemPrompt({
+      userRole: user.role,
+      roleKey: user.roleKey,
+      isPlatformRootTeam: Boolean(user.isPlatformRootTeam),
+    });
+
     let aiResponse: string;
 
     try {
-      aiResponse = await generateText(
-        [
-          'Bạn là AI assistant nội bộ cho CMS bất động sản.',
-          'Bạn đang trả lời user đã đăng nhập và chỉ được dùng dữ liệu trong DB_CONTEXT.',
-          'Không được bịa dữ liệu ngoài DB_CONTEXT. Nếu không có kết quả, nói rõ không tìm thấy trong phạm vi quyền hiện tại.',
-          'Khi user hỏi tìm kiếm/lọc/so sánh, hãy nêu dữ liệu cụ thể: tên khách, số điện thoại, tên BĐS, giá, trạng thái, bài đăng.',
-          'Trả lời tiếng Việt, ngắn gọn, có bullet nếu có nhiều kết quả.'
-        ].join('\n'),
-        [
-          `DB_CONTEXT:\n${serializedDbContext}`,
-          '',
-          `CHAT_HISTORY:\n${recentHistory || 'Chưa có lịch sử trò chuyện.'}`,
-          '',
-          `USER_QUESTION:\n${message}`
-        ].join('\n')
-      );
+      const promptSections = [
+        ragKnowledge.formattedContext ? `RAG_KNOWLEDGE:\n${ragKnowledge.formattedContext}` : '',
+        '',
+        `DB_CONTEXT:\n${serializedDbContext}`,
+        '',
+        `CHAT_HISTORY:\n${recentHistory || 'Chưa có lịch sử trò chuyện.'}`,
+        '',
+        `USER_QUESTION:\n${message}`
+      ].filter(Boolean);
+
+      aiResponse = await generateText(systemPrompt, promptSections.join('\n'));
     } catch (aiError: any) {
-      console.error('CMS assistant AI failed, using DB fallback:', aiError.message || aiError);
-      aiResponse = buildAssistantFallback(dbContext);
+      console.error('CMS assistant AI failed, using DB/RAG fallback:', aiError.message || aiError);
+      aiResponse = buildAssistantFallback(dbContext, ragKnowledge);
     }
 
     await saveChatMessage({

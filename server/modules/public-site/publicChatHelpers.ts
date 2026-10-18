@@ -63,8 +63,9 @@ export function textScore(record: any, tokens: string[]) {
 
 export function detectQueryIntent(message: string) {
   const normalized = normalizeText(message);
+  if (/(dang tin|tao tin|lam sao|huong dan|cach|quy dinh|chinh sach|tai tool|desktop tool|phan quyen|vai tro|referral|ma gioi thieu|duyet|thanh vien|pending|dang ky|cai dat|license|key|ho tro|website|web nay|san nay|bdsdanang)/.test(normalized)) return 'knowledge';
   if (/(khach|lead|crm|so dien thoai|phone)/.test(normalized)) return 'customers';
-  if (/(bai dang|post|content|facebook|zalo|tiktok|website)/.test(normalized)) return 'posts';
+  if (/(bai dang|post|content|facebook|zalo|tiktok)/.test(normalized)) return 'posts';
   if (/(inbox|tin nhan|phan hoi)/.test(normalized)) return 'inbox';
   if (/(automation|tu dong|kich ban)/.test(normalized)) return 'automations';
   return 'properties';

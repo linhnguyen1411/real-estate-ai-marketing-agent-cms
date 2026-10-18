@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import compression from 'compression';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import helmet from 'helmet';
 import { cacheControlMiddleware, createPublicStaticOptions } from '../middleware/staticAssets';
@@ -70,6 +71,14 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
   const publicAssetsPath = path.join(process.cwd(), 'public');
   app.get('/favicon.ico', (_req: Request, res: Response) => {
     res.sendFile(path.join(publicAssetsPath, 'logo_hl.png'));
+  });
+  app.get('/downloads/HouseAndLife-Agent-Setup.exe', (_req: Request, res: Response) => {
+    const exePath = path.join(publicAssetsPath, 'downloads/HouseAndLife-Agent-Setup.exe');
+    if (fs.existsSync(exePath)) {
+      res.download(exePath, 'HouseAndLife-Agent-Setup.exe');
+    } else {
+      res.status(404).json({ status: 'error', message: 'Tệp cài đặt House & Life Agent chưa sẵn sàng.' });
+    }
   });
   app.use(express.static(publicAssetsPath, createPublicStaticOptions()));
 

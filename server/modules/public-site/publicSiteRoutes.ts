@@ -32,6 +32,7 @@ import { DEFAULT_SEO_KEYWORDS } from './seoKeywords';
 import { getPropertyPath } from './propertyPaths';
 import {
   compactProperty,
+  detectQueryIntent,
   extractQueryTokens,
   formatPublicPropertySuggestions,
   generatePublicSmallTalkReply,
@@ -40,6 +41,7 @@ import {
   isWeatherQuestion,
   rankProperties,
 } from './publicChatHelpers';
+import { retrieveRagKnowledge } from '../chat/ragKnowledgeService';
 
 import {
   publicApiRateLimiter,
@@ -555,6 +557,59 @@ router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, 
       });
 
       res.json({ status: 'success', data: negotiationResponse });
+      return;
+    }
+
+    const queryIntent = detectQueryIntent(String(message));
+    if (queryIntent === 'knowledge') {
+      const ragKnowledge = retrieveRagKnowledge(String(message), 3);
+      let knowledgeResponse: string;
+      try {
+        const knowledgePrompt = [
+          'Bạn là Lily, trợ lý AI tư vấn chính thức của hệ sinh thái bdsdanang.site (House & Life Đà Nẵng).',
+          'Bạn đang hỗ trợ một khách hàng hoặc thành viên trên cổng thông tin trực tuyến.',
+          'Nhiệm vụ: Trả lời câu hỏi của người dùng một cách chính xác, thân thiện, lịch sự và hướng dẫn từng bước (nếu hỏi cách làm).',
+          'NGUYÊN TẮC:',
+          '1. Ưu tiên tuyệt đối thông tin được cung cấp trong RAG_KNOWLEDGE bên dưới.',
+          '2. Không tự suy diễn quy trình, chính sách hoặc mức phí.',
+          '3. Cung cấp đường dẫn markdown link chính xác nếu có trong tài liệu (ví dụ: [Đăng nhập](/dang-nhap), [Cổng tìm kiếm BĐS công khai](/bat-dong-san), [Danh sách Bất động sản](/admin#properties), [Hồ sơ cá nhân](/admin#profile), v.v.).',
+          '4. Giọng điệu ấm áp, xưng "em Lily" hoặc "em", gọi người dùng là "anh/chị" hoặc "bạn".'
+        ].join('\n');
+
+        const contextParts = [
+          ragKnowledge.formattedContext ? `RAG_KNOWLEDGE:\n${ragKnowledge.formattedContext}` : '',
+          '',
+          `Lịch sử trò chuyện gần nhất:\n${recentHistory || 'Chưa có lịch sử.'}`,
+          '',
+          `Câu hỏi của người dùng: ${message}`
+        ].filter(Boolean).join('\n');
+
+        knowledgeResponse = await generateText(knowledgePrompt, contextParts, { temperature: 0.2 });
+      } catch (err: any) {
+        console.warn('Public AI knowledge query fallback to RAG chunk:', err.message);
+        if (ragKnowledge.chunks.length > 0) {
+          const topChunk = ragKnowledge.chunks[0];
+          knowledgeResponse = [
+            `Dạ em Lily gửi anh/chị thông tin từ hướng dẫn của bdsdanang.site (${topChunk.sectionTitle}):`,
+            '',
+            topChunk.content.slice(0, 1000),
+            '',
+            '📌 Anh/chị cần hỗ trợ thêm vui lòng nhắn lại để em hướng dẫn chi tiết nhé ạ!'
+          ].join('\n');
+        } else {
+          knowledgeResponse = 'Dạ em chào anh/chị, hiện tại em chưa tìm thấy thông tin chính xác về nội dung này trên hệ thống. Anh/chị có thể liên hệ trực tiếp hotline hoặc Quản trị viên để được hỗ trợ tốt nhất nhé ạ!';
+        }
+      }
+
+      await saveChatMessage({
+        id: `chat-public-${Date.now()}-model`,
+        user_id: publicUserId,
+        role: 'model',
+        message: knowledgeResponse,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ status: 'success', data: knowledgeResponse });
       return;
     }
 

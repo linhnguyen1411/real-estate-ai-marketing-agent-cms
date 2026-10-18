@@ -49,8 +49,8 @@ async function countBuyers(
   const { readAcquisitionProfile } = await import('../lead-acquisition');
   const rows = await prisma.agentFinding.findMany({
     where: {
-      status: { notIn: ['duplicate'] },
-      updatedAt: to ? { gte: from, lt: to } : { gte: from },
+      status: { notIn: ['duplicate', 'dismissed'] },
+      createdAt: to ? { gte: from, lt: to } : { gte: from },
     },
     select: { extractedData: true, source: { select: { name: true } } },
     take: 4000,
@@ -84,7 +84,7 @@ async function buyerCampaignShare(from: Date): Promise<{
 }> {
   const { readAcquisitionProfile } = await import('../lead-acquisition');
   const rows = await prisma.agentFinding.findMany({
-    where: { status: { notIn: ['duplicate'] }, updatedAt: { gte: from } },
+    where: { status: { notIn: ['duplicate', 'dismissed'] }, createdAt: { gte: from } },
     select: { extractedData: true },
     take: 4000,
   });
@@ -134,12 +134,17 @@ function buildSummary(input: {
   expectedTy: number | null;
   aiStatus: string;
 }): string {
-  const campaign = input.campaign || 'chiến dịch hiện tại';
+  const campPart = input.campaign
+    ? `Chiến dịch: ${input.campaign}.`
+    : 'Hệ thống chưa có chiến dịch tiếp thị nào đang chạy.';
   const rev =
     input.expectedTy != null && input.expectedTy > 0
-      ? `${input.expectedTy} tỷ`
-      : 'chưa ước lượng';
-  return `Hôm nay AI đang tập trung chiến dịch ${campaign}. Đã phát hiện ${input.buyers} buyer tiềm năng, ${input.followUp} khách cần follow-up, ${input.drafts} bài đang chờ duyệt và doanh thu kỳ vọng đạt ${rev}. Trạng thái AI: ${input.aiStatus}.`;
+      ? `${input.expectedTy} tỷ VND`
+      : '0 tỷ VND';
+  const buyerPart = input.buyers > 0
+    ? `Đã phát hiện ${input.buyers} buyer tiềm năng hôm nay`
+    : 'Hôm nay chưa có buyer mới';
+  return `Executive Summary: ${campPart} ${buyerPart}, ${input.followUp} khách hàng cần follow-up, ${input.drafts} nội dung chờ duyệt. Doanh thu dự kiến: ${rev}. Trạng thái AI: ${input.aiStatus}.`;
 }
 
 export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboard> {
@@ -276,67 +281,6 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
   const failed24h = agentCounts?.jobsFailed24h ?? 0;
   const publishRetry = opsSnap?.publisher?.retry ?? publishFailed;
 
-  let aiStatus: 'Working' | 'Attention' | 'Degraded' | 'Offline' = 'Working';
-  if (machinesOnline === 0) aiStatus = 'Offline';
-  else if (
-    (fleetHealth != null && fleetHealth < 60) ||
-    (machinesOnline != null && machinesOffline > machinesOnline)
-  ) {
-    aiStatus = 'Degraded';
-  } else if (failed24h > 0 || publishRetry > 0) aiStatus = 'Attention';
-  else aiStatus = 'Working';
-
-  const knowledgeCoverage = knowledge?.coveragePercent ?? null;
-  const marketingHealth = marketing?.health?.healthScore ?? null;
-  const businessHealth =
-    Math.round(
-      ((fleetHealth ?? 90) * 0.35 +
-        (knowledgeCoverage ?? 90) * 0.35 +
-        (marketingHealth ?? 90) * 0.3) *
-        10,
-    ) / 10;
-
-  const confidence =
-    Math.round(
-      ((knowledgeCoverage ?? 80) * 0.45 +
-        Math.min(100, pct(decision?.qualified ?? 0, Math.max(decision?.scanned ?? 1, 1)) * 2) *
-          0.25 +
-        businessHealth * 0.3) *
-        10,
-    ) / 10;
-
-  const namedCampaign =
-    campaigns.find(c => !['completed', 'rejected'].includes(c.status))?.name ||
-    sales?.byCampaign?.find(c => c.name && c.name !== 'Unmatched')?.name ||
-    (campaignShare.topName && campaignShare.topName !== 'Unmatched' ? campaignShare.topName : null) ||
-    marketing?.packs?.[0]?.seedTopic ||
-    null;
-  const currentCampaign = namedCampaign;
-
-  const activeCampaigns = campaigns.filter(c => !['completed', 'rejected'].includes(c.status));
-  const { deriveCampaignHealth } = await import('../planning');
-  const campHealth = activeCampaigns.map(c => ({
-    name: c.name,
-    health: deriveCampaignHealth(c),
-  }));
-  const criticalCamps = campHealth.filter(c => c.health.level === 'critical');
-  const warningCamps = campHealth.filter(c => c.health.level === 'warning');
-
-  const avg7dBuyers = buyers7d / 7;
-  const avgPrev7dBuyers = buyersPrev7d / 7;
-  const goalTarget = Math.max(
-    20,
-    Math.ceil((avgPrev7dBuyers > 0 ? avgPrev7dBuyers : avg7dBuyers) * 1.5) || 20,
-  );
-  const todayGoal = {
-    label: 'Buyer',
-    current: buyersTodayAny,
-    target: goalTarget,
-  };
-
-  const expectedRevenueTy = sales?.expectedRevenueTy ?? null;
-  const pipelineTy = sales?.pipelineValueTy ?? null;
-
   const runningStatuses = new Set([
     'researching',
     'mission_planning',
@@ -352,6 +296,93 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
     if (c.status === 'waiting_approval') campWaiting += 1;
     else if (runningStatuses.has(c.status)) campRunning += 1;
   }
+
+  let aiStatus: 'Working' | 'Attention' | 'Degraded' | 'Offline' = 'Working';
+  if (machinesOnline === 0 && (opsSnap?.fleet?.machinesTotal ?? 0) > 0) {
+    aiStatus = 'Offline';
+  } else if (
+    (fleetHealth != null && fleetHealth < 60) ||
+    (machinesOnline != null && machinesOffline > machinesOnline)
+  ) {
+    aiStatus = 'Degraded';
+  } else if (failed24h > 0 || publishRetry > 0) {
+    aiStatus = 'Attention';
+  } else {
+    aiStatus = 'Working';
+  }
+
+  const activeCampaigns = campaigns.filter(c => !['completed', 'rejected'].includes(c.status));
+  const { deriveCampaignHealth } = await import('../planning');
+  const campHealth = activeCampaigns.map(c => ({
+    name: c.name,
+    health: deriveCampaignHealth(c),
+  }));
+  const criticalCamps = campHealth.filter(c => c.health.level === 'critical');
+  const warningCamps = campHealth.filter(c => c.health.level === 'warning');
+
+  // Real Business Health strictly calculated from DB operational pillars:
+  const pubSuccessRate = published7d + failed24h > 0
+    ? pct(published7d, published7d + failed24h)
+    : 100;
+  const realKnowledgeCov = knowledge?.coveragePercent ?? (knowledgePendingCount === 0 ? 100 : Math.max(0, 100 - knowledgePendingCount * 10));
+  const knowledgeCoverage = realKnowledgeCov;
+  const activeCampCount = activeCampaigns.length;
+  const healthyCamps = campHealth.filter(c => c.health.level === 'healthy').length;
+  const campHealthRate = activeCampCount > 0 ? pct(healthyCamps, activeCampCount) : 100;
+  const leadHealthRate = sales?.detected ? Math.min(100, Math.round((sales.qualified / Math.max(sales.detected, 1)) * 100)) : 80;
+
+  const businessHealth = Math.round(
+    (pubSuccessRate * 0.25 + realKnowledgeCov * 0.25 + campHealthRate * 0.25 + leadHealthRate * 0.25) * 10
+  ) / 10;
+
+  const confidence = Math.round(
+    (realKnowledgeCov * 0.4 +
+      Math.min(100, pct(decision?.qualified ?? 0, Math.max(decision?.scanned ?? 1, 1)) * 2) * 0.3 +
+      businessHealth * 0.3) * 10
+  ) / 10;
+
+  const runningCamp = campaigns.find(c => runningStatuses.has(c.status));
+  const currentCampaign = runningCamp ? runningCamp.name : null;
+
+  const avg7dBuyers = buyers7d / 7;
+  const avgPrev7dBuyers = buyersPrev7d / 7;
+  const goalTarget = avgPrev7dBuyers > 0 || avg7dBuyers > 0
+    ? Math.max(5, Math.ceil((avgPrev7dBuyers > 0 ? avgPrev7dBuyers : avg7dBuyers) * 1.5))
+    : 10;
+  const todayGoal = {
+    label: 'Buyer',
+    current: buyersTodayAny,
+    target: goalTarget,
+  };
+
+  const { readDatabase } = await import('../../dbHelper');
+  const db = readDatabase();
+  const crmCustomers = db.customers || [];
+
+  let pipelineTy = 0;
+  let expectedRevenueTy = 0;
+  let followUp = 0;
+
+  for (const c of crmCustomers) {
+    const rawBudget = Number(c.budget) || 0;
+    const budgetTy = rawBudget > 1000 ? rawBudget / 1e9 : rawBudget;
+    const stage = String(c.pipelineStage || c.status || 'new').toLowerCase();
+
+    if (stage === 'lost' || stage === 'archived' || stage === 'inactive') continue;
+
+    if (stage === 'contract' || stage === 'negotiating' || stage === 'interested') {
+      pipelineTy += budgetTy;
+      const prob = stage === 'contract' ? 0.8 : stage === 'negotiating' ? 0.5 : 0.2;
+      expectedRevenueTy += budgetTy * prob;
+    }
+
+    if (c.needsFollowUp || c.status === 'urgent' || c.status === 'hot') {
+      followUp += 1;
+    }
+  }
+
+  pipelineTy = Math.round(pipelineTy * 10) / 10;
+  expectedRevenueTy = Math.round(expectedRevenueTy * 10) / 10;
 
   const draftCount = (status: string) =>
     draftGroups.find(g => g.status === status)?._count._all ?? 0;
@@ -387,7 +418,6 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
     publishedToday ||
     (opsSnap?.publisher?.publishedToday ?? 0);
 
-  const followUp = sales?.needFollowUp ?? 0;
   const knowledgePending = knowledgePendingCount || 0;
 
   const buyerY = trendFrom(buyersTodayAny, buyersYesterdayAny);
@@ -498,36 +528,36 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
   }
   if (campaignShare.topName && campaignShare.topName !== 'Unmatched' && campaignShare.total > 0) {
     insights.push(
-      `Campaign ${campaignShare.topName} tạo ${campaignShare.sharePct}% buyer hôm nay.`,
+      `Chiến dịch "${campaignShare.topName}" mang lại ${campaignShare.sharePct}% buyer tiềm năng hôm nay.`,
     );
-  } else if (namedCampaign && campaignShare.total > 0) {
+  } else if (currentCampaign && campaignShare.total > 0) {
     insights.push(
-      `Đang thu ${campaignShare.total} buyer hôm nay — chiến dịch trọng tâm: ${namedCampaign}.`,
+      `Đang thu thập ${campaignShare.total} buyer hôm nay — chiến dịch trọng tâm: ${currentCampaign}.`,
     );
   }
   if (feedback?.weekly?.topSource) {
-    insights.push(`Nguồn "${feedback.weekly.topSource}" ROI / hiệu suất cao nhất tuần này.`);
+    insights.push(`Nguồn "${feedback.weekly.topSource}" mang lại hiệu suất tốt nhất tuần này.`);
   }
   if (feedback?.weekly?.worstSource) {
-    insights.push(`Nguồn "${feedback.weekly.worstSource}" đang kéo thấp hiệu suất — nên giảm scan.`);
+    insights.push(`Nguồn "${feedback.weekly.worstSource}" hiệu suất thấp — nên tối ưu hóa hoặc giảm tần suất quét.`);
   }
-  if (marketing?.trends?.[0]?.topic) {
-    insights.push(`Xu hướng: ${marketing.trends[0].topic} đang nổi.`);
-  }
-  if (marketing?.health?.recommendation) {
-    insights.push(marketing.health.recommendation);
+  if (marketing?.trends?.[0]?.topic && marketing.trends[0].topic.length >= 3) {
+    insights.push(`Xu hướng thị trường: Khu vực/Dự án "${marketing.trends[0].topic}" nhận được nhiều quan tâm.`);
   }
   if (knowledgeCoverage != null) {
-    insights.push(`Knowledge Coverage đang ở ${knowledgeCoverage}%.`);
+    insights.push(`Độ phủ Knowledge Base đạt ${knowledgeCoverage}%.`);
   }
   if (byChannel.facebook + byChannel.threads + byChannel.instagram + byChannel.tiktok > 0) {
     const topCh = Object.entries(byChannel).sort((a, b) => b[1] - a[1])[0];
     if (topCh && topCh[1] > 0) {
-      insights.push(`Kênh ${topCh[0]} dẫn đầu publish hôm nay (${topCh[1]} bài).`);
+      insights.push(`Kênh ${topCh[0]} dẫn đầu nội dung publish hôm nay (${topCh[1]} bài).`);
     }
   }
+  if (pipelineTy != null && pipelineTy > 0) {
+    insights.push(`Tổng giá trị pipeline tiềm năng từ cơ sở dữ liệu: ${pipelineTy} tỷ VND.`);
+  }
   if (!insights.length) {
-    insights.push('Chưa đủ tín hiệu để phân tích sâu — tiếp tục thu thập buyer và publish.');
+    insights.push('Hệ thống đang đồng bộ dữ liệu thị trường và khách hàng từ database.');
   }
 
   const recommendations: RecommendationAction[] = [];

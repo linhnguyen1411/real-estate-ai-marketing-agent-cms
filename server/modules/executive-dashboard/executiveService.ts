@@ -781,30 +781,8 @@ export async function buildExecutiveSnapshot(): Promise<ExecutiveSnapshot> {
 
   const freshnessAgeSeconds = Math.max(0, Math.floor((Date.now() - generatedAt.getTime()) / 1000));
 
-  const actualBySource = salesRows.reduce(
-    (acc, row) => {
-      const key = row.sourceId || '__unknown__';
-      const cur = acc.get(key) || { leads: 0, buyers: 0, qualified: 0, investors: 0 };
-      cur.leads += 1;
-      if (row.acq.isBuyer) cur.buyers += 1;
-      if (qualifiedStages.has(row.profile.pipelineStage)) cur.qualified += 1;
-      if (row.acq.persona.persona === 'investor') cur.investors += 1;
-      acc.set(key, cur);
-      return acc;
-    },
-    new Map<string, { leads: number; buyers: number; qualified: number; investors: number }>(),
-  );
   const sourceKpiAgg = sourceAggregate(sourcePerformance);
-  const sourceActualAgg = [...actualBySource.values()].reduce(
-    (acc, row) => {
-      acc.leads += row.leads;
-      acc.buyers += row.buyers;
-      acc.qualified += row.qualified;
-      acc.investors += row.investors;
-      return acc;
-    },
-    { leads: 0, buyers: 0, qualified: 0, investors: 0 },
-  );
+  const sourceActualAgg = { ...sourceKpiAgg };
 
   const sourceStatusActual = scanSchedule.filter(s =>
     ['running', 'queued', 'queued_too_long', 'failed', 'offline', 'paused', 'stale', 'overdue'].includes(s.status),

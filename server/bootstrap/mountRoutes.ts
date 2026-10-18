@@ -48,6 +48,7 @@ import { createAppointmentRouter } from '../modules/appointments/appointmentRout
 import { createTeamRouter } from '../modules/team/teamRoutes';
 import { createRbacAdminRouter } from '../modules/rbac/rbacAdminRoutes';
 import { createLicenseRouter } from '../modules/license/licenseRoutes';
+import { createWalletRouter } from '../modules/wallet/walletRoutes';
 import { rbacRouteGuard } from '../security/rbac';
 import { denyByDefaultGuard } from '../modules/rbac';
 
@@ -114,6 +115,10 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   });
 
   app.use(createAuthLoginRouter());
+  app.get('/login', (_req: Request, res: Response) => res.redirect(302, '/dang-nhap'));
+  app.get('/register', (_req: Request, res: Response) => res.redirect(302, '/dang-nhap?mode=register'));
+  app.get('/admin', (_req: Request, res: Response) => res.redirect(302, '/admin/login'));
+  app.get('/my', (_req: Request, res: Response) => res.redirect(302, '/my/dashboard'));
   app.use(createPublicSiteRouter());
 
   registerBlogPublicRoutes(app);
@@ -212,6 +217,7 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
   app.use(createTeamRouter());
   app.use(createRbacAdminRouter());
   app.use(createLicenseRouter());
+  app.use(createWalletRouter());
 
   // Global safe error handler (prevents leaking internal stack traces in production)
   app.use(globalErrorHandler);

@@ -14,6 +14,7 @@ export type AdminRouteDef = {
 export const ADMIN_ROUTE_CONFIG: AdminRouteDef[] = [
   { path: '/admin/login', layout: 'admin', permission: 'auth', group: 'auth' },
   { path: '/admin/dashboard', tabId: 'dashboard', layout: 'admin', permission: 'auth', group: 'core' },
+  { path: '/my/dashboard', tabId: 'dashboard', layout: 'admin', permission: 'auth', group: 'core' },
   { path: '/admin/seo/posts', tabId: 'seo-posts', layout: 'admin', permission: 'auth', group: 'seo' },
   { path: '/admin/seo/categories', tabId: 'seo-categories', layout: 'admin', permission: 'auth', group: 'seo' },
   { path: '/admin/seo/tags', tabId: 'seo-tags', layout: 'admin', permission: 'auth', group: 'seo' },

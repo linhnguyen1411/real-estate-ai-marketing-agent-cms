@@ -63,6 +63,45 @@ export function hashLicenseKey(rawKey: string): string {
 }
 
 /**
+ * Generate formatted PEM certificate string for Desktop Agent
+ */
+export function generateLicensePem(params: {
+  licenseKey: string;
+  userId: string;
+  userEmail?: string;
+  plan?: string;
+  expiresAt?: string | Date;
+  maxDevices?: number;
+}): string {
+  const payload = {
+    iss: 'HouseAndLife-Agent-Authority',
+    sub: params.userId,
+    email: params.userEmail || 'agent@houseandlife.com',
+    licenseKey: params.licenseKey,
+    plan: (params.plan || 'trial').toUpperCase(),
+    maxDevices: params.maxDevices || 1,
+    expiresAt: params.expiresAt
+      ? new Date(params.expiresAt).toISOString()
+      : new Date(Date.now() + 3 * 86400_000).toISOString(),
+    issuedAt: new Date().toISOString(),
+  };
+  const jsonStr = JSON.stringify(payload);
+  const signature = crypto.createHmac('sha256', SECRET).update(jsonStr).digest('hex');
+  const base64Body = Buffer.from(JSON.stringify({ ...payload, sig: signature })).toString('base64');
+  const wrapped = base64Body.match(/.{1,64}/g)?.join('\n') || base64Body;
+
+  return [
+    '-----BEGIN AGENT LICENSE CERTIFICATE-----',
+    `License-Key: ${params.licenseKey}`,
+    `Subject: ${params.userEmail || params.userId}`,
+    `Plan: ${(params.plan || 'trial').toUpperCase()}`,
+    `Expires: ${payload.expiresAt}`,
+    wrapped,
+    '-----END AGENT LICENSE CERTIFICATE-----',
+  ].join('\n');
+}
+
+/**
  * Sign a device token (HMAC-SHA256)
  */
 export function signDeviceToken(payload: DeviceTokenPayload): string {

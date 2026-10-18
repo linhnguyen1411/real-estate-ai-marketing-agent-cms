@@ -140,7 +140,14 @@ async function loadCacheFromPostgres() {
   db.users = users
     .map((row) => {
       const data = (row.data as Record<string, unknown>) || {};
-      return { ...data, id: data.id || row.id };
+      return {
+        ...data,
+        id: data.id || row.id,
+        role: row.role || (data.role as string),
+        email: row.email || (data.email as string),
+        status: row.status || (data.status as string),
+        password_hash: row.passwordHash || (data.password_hash as string) || (data.password as string),
+      };
     })
     .filter((u) => Boolean(u.id));
 

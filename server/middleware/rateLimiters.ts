@@ -66,6 +66,10 @@ export function clearLoginFailures(email: string): void {
  * Middleware checking if the targeted email account is currently locked due to progressive failure.
  */
 export function loginEmailLockoutGuard(req: Request, res: Response, next: NextFunction): void {
+  if (process.env.NODE_ENV !== 'production') {
+    next();
+    return;
+  }
   const email = String(req.body?.email || '').trim().toLowerCase();
   const status = isEmailLocked(email);
   if (status.isLocked) {
@@ -79,12 +83,19 @@ export function loginEmailLockoutGuard(req: Request, res: Response, next: NextFu
   next();
 }
 
-// 1a. Auth login rate limit by IP (10 attempts per 15 minutes per IP)
+// 1a. Auth login rate limit by IP (10 attempts per 15 minutes per IP in production)
 export const loginIpRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: process.env.NODE_ENV === 'production' ? 10 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    if (process.env.NODE_ENV !== 'production') {
+      const ip = req.ip || req.socket.remoteAddress || '';
+      return ip.includes('127.0.0.1') || ip.includes('::1') || ip === 'localhost';
+    }
+    return false;
+  },
   handler: (_req, res) => {
     res.status(429).json({
       status: 'error',

@@ -302,3 +302,88 @@ body {
 .app-scroll::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
+
+/* ─── Dashboard Light Theme Mode ─── */
+.theme-light {
+  color-scheme: light;
+}
+
+.theme-light body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.theme-light .admin-layout-root {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.theme-light header {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light main {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.theme-light .bg-slate-950 {
+  background-color: #ffffff !important;
+  color: #0f172a;
+}
+
+.theme-light .bg-slate-900,
+.theme-light .bg-slate-900\/40,
+.theme-light .bg-slate-900\/50,
+.theme-light .bg-slate-900\/60,
+.theme-light .bg-slate-900\/70,
+.theme-light .bg-slate-900\/80 {
+  background-color: #ffffff !important;
+  color: #0f172a;
+}
+
+.theme-light .border-slate-900,
+.theme-light .border-slate-800,
+.theme-light .border-slate-700 {
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light .text-white {
+  color: #0f172a !important;
+}
+
+.theme-light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+.theme-light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+.theme-light .text-slate-300 {
+  color: #334155 !important;
+}
+
+.theme-light .text-slate-400 {
+  color: #64748b !important;
+}
+
+.theme-light input,
+.theme-light select,
+.theme-light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light input::placeholder,
+.theme-light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+

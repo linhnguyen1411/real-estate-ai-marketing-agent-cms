@@ -50,6 +50,15 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
   if (user.role === 'owner' || user.role === 'super_admin') {
     roleKey = 'super_admin';
     isPlatformRootTeam = true;
+    const ledTeam = await getTeamByLeadUserId(user.id);
+    if (ledTeam) {
+      teamId = ledTeam.id;
+    } else {
+      const rootTeam = await getPlatformRootTeam();
+      if (rootTeam) {
+        teamId = rootTeam.id;
+      }
+    }
   } else {
     // 2. Check if Team Lead
     const ledTeam = await getTeamByLeadUserId(user.id);

@@ -19,6 +19,7 @@ import {
   invalidateAfterLeadPromote,
   invalidateCrmModule,
 } from './queryCache';
+import { DEFAULT_SETTINGS } from '../config/defaults';
 
 export { invalidateAfterLeadPromote, invalidateCrmModule, cacheInvalidate };
 
@@ -200,12 +201,29 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data;
 }
 
-export async function login(email: string, password: string): Promise<AuthSession> {
+export async function login(email: string, password: string, portal?: 'admin' | 'member'): Promise<AuthSession> {
   const session = await apiRequest<AuthSession>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, portal })
   });
   setAuthToken(session.token);
+  return session;
+}
+
+export async function register(payload: {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  referralCode?: string;
+}): Promise<AuthSession> {
+  const session = await apiRequest<AuthSession>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (session?.token) {
+    setAuthToken(session.token);
+  }
   return session;
 }
 
@@ -228,6 +246,8 @@ export function updateProfile(payload: {
   show_public_profile?: boolean;
   current_password?: string;
   new_password?: string;
+  referred_by?: string;
+  referral_code_to_join?: string;
 }) {
   return apiRequest<AuthUser>('/api/auth/profile', {
     method: 'PUT',
@@ -238,6 +258,85 @@ export function updateProfile(payload: {
 export async function uploadProfileAvatar(imageDataUrl: string) {
   const user = await updateProfile({ image: imageDataUrl });
   return { url: user.avatar_url || '', user };
+}
+
+export interface UserTeamInfo {
+  inTeam: boolean;
+  membership: {
+    status: 'approved' | 'pending' | 'suspended';
+    joinedAt: string;
+    role?: string;
+  } | null;
+  team: {
+    id: string;
+    referralCode: string;
+    leadName: string;
+    leadEmail: string;
+    isPlatformRoot: boolean;
+  } | null;
+  isTeamLead: boolean;
+  ledTeam: {
+    id: string;
+    referralCode: string;
+  } | null;
+  myReferralCode?: string;
+  referredBy?: string | null;
+  canJoinTeam: boolean;
+}
+
+export function getMyTeam() {
+  return apiRequest<UserTeamInfo>('/api/auth/my-team');
+}
+
+export function joinTeam(referralCode: string) {
+  return apiRequest<{ team: any; status: string; user: AuthUser; message?: string }>('/api/auth/join-team', {
+    method: 'POST',
+    body: JSON.stringify({ referralCode }),
+  });
+}
+
+export interface UserLicenseInfo {
+  hasKey: boolean;
+  licenseKeyId?: string;
+  licenseKey?: string;
+  status?: string;
+  plan?: string;
+  features?: string[];
+  expiresAt?: string;
+  maxDevices?: number;
+  activeDevices?: number;
+  devices?: Array<{
+    deviceId: string;
+    deviceName?: string;
+    lastHeartbeatAt?: string;
+  }>;
+  pem?: string;
+  downloadUrl?: string;
+  securityNotice?: string;
+}
+
+export function getMyLicense() {
+  return apiRequest<UserLicenseInfo>('/api/license/my-license');
+}
+
+export function requestFreePemKey() {
+  return apiRequest<UserLicenseInfo>('/api/license/request-pem', {
+    method: 'POST',
+  });
+}
+
+export function upgradeSubscriptionPlan(plan: 'pro' | 'enterprise', periodDays = 30) {
+  return apiRequest<{
+    plan: string;
+    expiresAt: string;
+    features: string[];
+    licenseKey: string;
+    pem: string;
+    maxDevices: number;
+  }>('/api/license/upgrade-plan', {
+    method: 'POST',
+    body: JSON.stringify({ plan, periodDays }),
+  });
 }
 
 export interface NavigationCounts {
@@ -323,9 +422,11 @@ export async function getBootstrapData(): Promise<{
     cacheGetOrSet('navigation-counts', CACHE_TTL_MS.navigationCounts, () =>
       apiRequest<NavigationCounts>('/api/navigation-counts'),
     ),
-    cacheGetOrSet('settings', CACHE_TTL_MS.settings, () => apiRequest<AppSettings>('/api/settings')),
+    cacheGetOrSet('settings', CACHE_TTL_MS.settings, () =>
+      apiRequest<AppSettings>('/api/settings').catch(() => DEFAULT_SETTINGS)
+    ),
   ]);
-  return { dashboard, navigationCounts, settings };
+  return { dashboard, navigationCounts, settings: settings || DEFAULT_SETTINGS };
 }
 
 export function getDashboard() {
@@ -340,7 +441,9 @@ export function getNavigationCounts(force = false) {
 }
 
 export function getSettings() {
-  return cacheGetOrSet('settings', CACHE_TTL_MS.settings, () => apiRequest<AppSettings>('/api/settings'));
+  return cacheGetOrSet('settings', CACHE_TTL_MS.settings, () =>
+    apiRequest<AppSettings>('/api/settings').catch(() => DEFAULT_SETTINGS)
+  );
 }
 
 export function getChannels() {
@@ -606,3 +709,162 @@ export function saveSettings(settings: AppSettings) {
     body: JSON.stringify(settings)
   });
 }
+
+export interface TeamMemberItem {
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  avatarUrl?: string;
+  status: 'approved' | 'pending' | 'suspended';
+  joinedAt: string;
+  approvedBy?: string | null;
+  teamId?: string;
+  teamReferralCode?: string;
+  leadName?: string;
+}
+
+export function getTeamMembers(options?: { teamId?: string; all?: boolean }) {
+  const params = new URLSearchParams();
+  if (options?.teamId) params.set('teamId', options.teamId);
+  if (options?.all) params.set('all', 'true');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest<TeamMemberItem[]>(`/api/team/members${query}`);
+}
+
+export function updateTeamMemberStatus(userId: string, status: 'approved' | 'suspended' | 'pending') {
+  return apiRequest<{ status: string; message: string; data: any }>(`/api/team/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function rotateTeamReferralCode() {
+  return apiRequest<{ referralCode: string }>('/api/team/rotate-referral-code', {
+    method: 'POST',
+  });
+}
+
+export interface RbacMatrixRule {
+  roleKey: string;
+  permissionKey: string;
+  scope: 'all' | 'company' | 'team' | 'own' | 'none';
+  premiumOnly?: boolean;
+}
+
+export function getRbacMatrix() {
+  return apiRequest<RbacMatrixRule[]>('/api/rbac/matrix');
+}
+
+export function updateRbacMatrix(rule: RbacMatrixRule) {
+  return apiRequest<{ message: string }>('/api/rbac/matrix', {
+    method: 'PUT',
+    body: JSON.stringify(rule),
+  });
+}
+
+export interface EntitlementItem {
+  id: string;
+  subjectType: 'user' | 'team';
+  subjectId: string;
+  plan: string;
+  features: string[];
+  startsAt: string;
+  expiresAt: string;
+  source: string;
+  grantedBy: string;
+}
+
+export function getEntitlements() {
+  return apiRequest<EntitlementItem[]>('/api/entitlements');
+}
+
+export function createEntitlement(payload: {
+  subjectType: 'user' | 'team';
+  subjectId: string;
+  plan: string;
+  features: string[];
+  startsAt?: string;
+  expiresAt: string;
+}) {
+  return apiRequest<EntitlementItem>('/api/entitlements', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteEntitlement(id: string) {
+  return apiRequest<{ message: string }>(`/api/entitlements/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export interface UserWalletData {
+  id: string;
+  userId: string;
+  balance: number;
+  lockedBalance: number;
+  availableBalance: number;
+  status: string;
+  updatedAt: string;
+}
+
+export interface WalletTransactionItem {
+  id: string;
+  walletId: string;
+  userId: string;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  type: string;
+  status: string;
+  referenceId: string | null;
+  note: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface MyWalletResponse {
+  wallet: UserWalletData;
+  transactions: WalletTransactionItem[];
+  planCosts: Record<string, number>;
+}
+
+export function getMyWallet() {
+  return apiRequest<MyWalletResponse>('/api/wallet/my');
+}
+
+export function upgradeLicenseWithTokens(plan: 'pro' | 'enterprise', periodDays = 30) {
+  return apiRequest<{
+    plan: string;
+    cost: number;
+    newBalance: number;
+    expiresAt: string;
+    licenseKey: string;
+    pem: string;
+    features: string[];
+  }>('/api/wallet/upgrade-license', {
+    method: 'POST',
+    body: JSON.stringify({ plan, periodDays }),
+  });
+}
+
+export function getAdminWallets(search?: string) {
+  const query = search ? `?search=${encodeURIComponent(search)}` : '';
+  return apiRequest<Array<UserWalletData & { email?: string; name?: string }>>(`/api/admin/wallets${query}`);
+}
+
+export function adminDepositTokens(payload: { userId: string; amount: number; note: string }) {
+  return apiRequest<{
+    wallet: UserWalletData;
+    transaction: WalletTransactionItem;
+  }>('/api/admin/wallets/deposit', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAdminUserTransactions(userId: string) {
+  return apiRequest<WalletTransactionItem[]>(`/api/admin/wallets/${encodeURIComponent(userId)}/transactions`);
+}
+

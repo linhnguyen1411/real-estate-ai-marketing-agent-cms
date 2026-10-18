@@ -19,6 +19,8 @@ import {
   Search,
   Send,
   Sparkles,
+  LogIn,
+  UserPlus,
   X
 } from 'lucide-react';
 import { Property, PublicAgentProfile } from './types';
@@ -956,6 +958,21 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             <a href="#contact" className="btn-cta px-3 py-2 text-xs">
               Nhận danh sách đầu tư
             </a>
+            <div className="h-4 w-px bg-invest-border mx-1" />
+            <Link
+              to="/dang-nhap"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-invest-border px-3 py-2 text-xs font-semibold text-invest-text hover:border-invest-blue hover:text-invest-blue transition-colors"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Đăng nhập
+            </Link>
+            <Link
+              to="/dang-nhap?mode=register"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-invest-blue px-3 py-2 text-xs font-semibold text-white hover:bg-invest-blue/90 transition-colors shadow-sm"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Đăng ký
+            </Link>
           </div>
 
           <button
@@ -969,11 +986,29 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-invest-border px-4 py-3 lg:hidden">
+          <div className="border-t border-invest-border px-4 py-3 lg:hidden space-y-3">
             <PublicNavMobile onItemClick={() => setMobileMenuOpen(false)} />
-            <a href="#contact" className="btn-cta mt-3 block w-full text-center text-sm">
+            <a href="#contact" onClick={() => setMobileMenuOpen(false)} className="btn-cta block w-full text-center text-sm">
               Nhận danh sách đầu tư
             </a>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-invest-border">
+              <Link
+                to="/dang-nhap"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-invest-border py-2 text-center text-xs font-semibold text-invest-text hover:bg-invest-blue-muted hover:text-invest-blue"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Đăng nhập
+              </Link>
+              <Link
+                to="/dang-nhap?mode=register"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-invest-blue py-2 text-center text-xs font-semibold text-white hover:bg-invest-blue/90"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Đăng ký
+              </Link>
+            </div>
           </div>
         )}
       </header>

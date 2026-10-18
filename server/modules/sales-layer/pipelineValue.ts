@@ -25,7 +25,7 @@ export function estimateDealTy(input: {
   if (max > 0) return max;
   if (min > 0) return min;
   if (ask > 0) return ask;
-  return 5; // default average deal assumption (tỷ)
+  return 0; // Strictly real database data: no budget specified = 0 tỷ (never fabricate deal size)
 }
 
 export function probabilityForStage(stage: SalesPipelineStage, override?: number | null): number {
@@ -96,10 +96,14 @@ export function aggregatePipelineValue(
   for (const row of rows) {
     const stage = row.profile.pipelineStage;
     metrics[stage] = (metrics[stage] || 0) + 1;
-    const deal = row.profile.expectedDealTy ?? estimateDealTy(row);
+    const hasExplicitBudget =
+      (row.budgetMin != null && Number(row.budgetMin) > 0) ||
+      (row.budgetMax != null && Number(row.budgetMax) > 0) ||
+      (row.askingPrice != null && Number(row.askingPrice) > 0);
+    const deal = hasExplicitBudget ? (row.profile.expectedDealTy ?? estimateDealTy(row)) : 0;
     const p = probabilityForStage(stage, row.profile.probability);
     dealSum += deal;
-    dealCount += 1;
+    if (deal > 0) dealCount += 1;
 
     if (stage !== 'won' && stage !== 'lost') {
       metrics.pipelineValueTy += deal;

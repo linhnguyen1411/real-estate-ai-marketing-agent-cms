@@ -15,22 +15,61 @@ import { readDatabase } from '../../dbHelper';
 export function createTeamRouter() {
   const router = Router();
 
-  // 1. List team members for the lead's team
+  // 1. List team members for the lead's team or all teams for super admin
   router.get('/api/team/members', requirePermission('team.members.manage'), async (req: Request, res: Response) => {
-    const teamId = req.teamId;
-    if (!teamId) {
-      res.status(404).json({ status: 'error', message: 'Bạn không thuộc team nào.' });
-      return;
+    const authUser = getAuthUser(req);
+    const isSuper = authUser?.role === 'owner' || (authUser?.role as string) === 'super_admin';
+    const requestedTeamId = String(req.query.teamId || '').trim();
+
+    const { getTeamByLeadUserId, getPlatformRootTeam } = await import('../rbac/rbacRepository');
+    let teamId = requestedTeamId || req.teamId;
+
+    if (!teamId && authUser) {
+      const led = await getTeamByLeadUserId(authUser.id);
+      teamId = led?.id;
+      if (!teamId && isSuper) {
+        const root = await getPlatformRootTeam();
+        teamId = root?.id;
+      }
     }
 
-    const members = await getTeamMembers(teamId);
+    const viewAll = isSuper && (req.query.all === 'true' || req.query.view === 'all');
+    let members: any[] = [];
+
+    const { prisma } = await import('../../prisma');
+    if (viewAll) {
+      try {
+        members = await prisma.teamMember.findMany({ orderBy: { joinedAt: 'desc' } });
+      } catch {
+        members = teamId ? await getTeamMembers(teamId) : [];
+      }
+    } else {
+      if (!teamId) {
+        res.json({ status: 'success', data: [] });
+        return;
+      }
+      members = await getTeamMembers(teamId);
+    }
+
     const db = readDatabase();
     const userMap = new Map((db.users || []).map((u: any) => [u.id, u]));
 
-    const enriched = members.map((m) => {
+    // Also fetch teams to enrich team name/code
+    const teamsMap = new Map<string, any>();
+    try {
+      const teams = await prisma.team.findMany();
+      for (const t of teams) teamsMap.set(t.id, t);
+    } catch {}
+
+    const enriched = members.map((m: any) => {
       const user = userMap.get(m.userId) as any;
+      const t = teamsMap.get(m.teamId);
+      const lead = t ? userMap.get(t.leadUserId) : null;
       return {
         userId: m.userId,
+        teamId: m.teamId,
+        teamReferralCode: t?.referralCode || '',
+        leadName: lead?.name || (t?.isPlatformRoot ? 'Platform Root Team' : 'Trưởng nhóm'),
         name: user?.name || 'Thành viên',
         email: user?.email || '',
         phone: user?.phone || '',
@@ -46,25 +85,33 @@ export function createTeamRouter() {
 
   // 2. Approve or suspend a team member
   router.patch('/api/team/members/:userId', requirePermission('team.members.manage'), async (req: Request, res: Response) => {
-    const teamId = req.teamId;
-    if (!teamId) {
-      res.status(404).json({ status: 'error', message: 'Bạn không thuộc team nào.' });
-      return;
+    const authUser = getAuthUser(req);
+    const isSuper = authUser?.role === 'owner' || (authUser?.role as string) === 'super_admin';
+
+    const { getTeamByLeadUserId, getPlatformRootTeam } = await import('../rbac/rbacRepository');
+    let teamId = req.teamId;
+    if (!teamId && authUser) {
+      const led = await getTeamByLeadUserId(authUser.id);
+      teamId = led?.id;
+      if (!teamId && isSuper) {
+        const root = await getPlatformRootTeam();
+        teamId = root?.id;
+      }
     }
 
     const targetUserId = req.params.userId;
     const { status } = req.body || {};
 
-    if (status !== 'approved' && status !== 'suspended') {
+    if (status !== 'approved' && status !== 'suspended' && status !== 'pending') {
       res.status(400).json({
         status: 'error',
-        message: 'Trạng thái không hợp lệ. Chỉ chấp nhận "approved" hoặc "suspended".',
+        message: 'Trạng thái không hợp lệ. Chỉ chấp nhận "approved", "suspended" hoặc "pending".',
       });
       return;
     }
 
-    const authUser = getAuthUser(req);
-    const updated = await updateTeamMemberStatus(teamId, targetUserId, status, authUser.id);
+    const effectiveTeamId = isSuper ? '' : (teamId || '');
+    const updated = await updateTeamMemberStatus(effectiveTeamId, targetUserId, status as any, authUser?.id);
     if (!updated) {
       res.status(404).json({
         status: 'error',
@@ -75,7 +122,7 @@ export function createTeamRouter() {
 
     res.json({
       status: 'success',
-      message: status === 'approved' ? 'Đã duyệt thành viên vào team.' : 'Đã tạm đình chỉ thành viên.',
+      message: status === 'approved' ? 'Đã duyệt thành viên vào team.' : status === 'pending' ? 'Đã chuyển về chờ duyệt.' : 'Đã tạm đình chỉ thành viên.',
       data: updated,
     });
   });

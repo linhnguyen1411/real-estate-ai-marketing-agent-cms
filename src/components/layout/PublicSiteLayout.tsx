@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Bot, Facebook, Menu, MessageCircle, Phone, X } from 'lucide-react';
+import { Bot, Facebook, LogIn, Menu, MessageCircle, Phone, UserPlus, X } from 'lucide-react';
 import { CONTACT, PRIMARY_CTA } from '../../seo/siteConfig';
 import PublicNav, { PublicNavMobile } from './PublicNav';
 import SiteLogo from './SiteLogo';
@@ -35,6 +35,21 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
             <Link to="/lien-he" className="btn-cta px-3 py-2 text-xs">
               Nhận danh sách đầu tư
             </Link>
+            <div className="h-4 w-px bg-invest-border mx-1" />
+            <Link
+              to="/dang-nhap"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-invest-border px-3 py-2 text-xs font-semibold text-invest-text hover:border-invest-blue hover:text-invest-blue transition-colors"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Đăng nhập
+            </Link>
+            <Link
+              to="/dang-nhap?mode=register"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-invest-blue px-3 py-2 text-xs font-semibold text-white hover:bg-invest-blue/90 transition-colors shadow-sm"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Đăng ký
+            </Link>
           </div>
 
           <button
@@ -48,15 +63,33 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-invest-border px-4 py-3 lg:hidden">
+          <div className="border-t border-invest-border px-4 py-3 lg:hidden space-y-3">
             <PublicNavMobile onItemClick={() => setMobileMenuOpen(false)} />
             <Link
               to="/lien-he"
               onClick={() => setMobileMenuOpen(false)}
-              className="btn-cta mt-3 block w-full text-center text-sm"
+              className="btn-cta block w-full text-center text-sm"
             >
               {PRIMARY_CTA}
             </Link>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-invest-border">
+              <Link
+                to="/dang-nhap"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-invest-border py-2 text-center text-xs font-semibold text-invest-text hover:bg-invest-blue-muted hover:text-invest-blue"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Đăng nhập
+              </Link>
+              <Link
+                to="/dang-nhap?mode=register"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-invest-blue py-2 text-center text-xs font-semibold text-white hover:bg-invest-blue/90"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Đăng ký
+              </Link>
+            </div>
           </div>
         )}
       </header>

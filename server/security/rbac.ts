@@ -46,6 +46,24 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   // Authentication & Profile of current user
   'GET /api/auth/me',
   'PUT /api/auth/profile',
+  'GET /api/auth/my-team',
+  'POST /api/auth/join-team',
+  'GET /api/team/members',
+  'PATCH /api/team/members/:userId',
+  'POST /api/team/rotate-referral-code',
+  'GET /api/dashboard',
+  'GET /api/navigation-counts',
+  'GET /api/channels',
+  'GET /api/settings',
+
+  // Short links (scoped by user/company)
+  'GET /api/admin/short-links',
+  'POST /api/admin/short-links',
+  'PUT /api/admin/short-links/:id',
+  'PATCH /api/admin/short-links/:id',
+  'DELETE /api/admin/short-links/:id',
+  'GET /api/admin/short-links/:id/analytics',
+  'POST /api/short-links/resolve',
 
   // Customers (CRM for sales/member daily work - scoped by company & ownership)
   'GET /api/customers',
@@ -73,7 +91,10 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   // Chat AI assistant (member conversation)
   'GET /api/chat/history',
   'POST /api/chat/send',
+  'POST /api/ai/chat',
+  'GET /api/ai/status',
   'DELETE /api/chat/sessions/:sessionUserId',
+  'POST /api/chat/sessions/:sessionUserId/delete',
 
   // Posts & Marketing Drafts (member authoring)
   'GET /api/posts',
@@ -101,6 +122,12 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   'GET /api/blog/authors',
   'GET /api/properties/:id/assignments',
   'POST /api/license/download-trial',
+  'GET /api/license/my-key',
+  'GET /api/license/my-license',
+  'POST /api/license/request-pem',
+  'POST /api/license/upgrade-plan',
+  'GET /api/wallet/my',
+  'POST /api/wallet/upgrade-license',
 ];
 
 /**
@@ -151,9 +178,11 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'DELETE /api/users/:id': 'company',
   'POST /api/member-permissions/bulk': 'company',
 
-  // System settings: company+ to read, owner to write
-  'GET /api/settings': 'company',
+  // System settings: member+ to read, owner to write
+  'GET /api/settings': 'member',
   'PUT /api/settings': 'owner',
+  'GET /api/auth/my-team': 'member',
+  'POST /api/auth/join-team': 'member',
 
   // Investor Leads & Magnets: owner or company only (PII data)
   'GET /api/investor-leads': 'company',
@@ -197,13 +226,13 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'PUT /api/blog/categories/:id': 'company',
   'POST /api/blog/tags': 'company',
 
-  // Short links admin: owner or company only
-  'GET /api/admin/short-links': 'company',
-  'POST /api/admin/short-links': 'company',
-  'PUT /api/admin/short-links/:id': 'company',
-  'DELETE /api/admin/short-links/:id': 'company',
-  'GET /api/admin/short-links/:id/analytics': 'company',
-  'POST /api/short-links/resolve': 'company',
+  // Short links: member+ (scoped by user/company)
+  'GET /api/admin/short-links': 'member',
+  'POST /api/admin/short-links': 'member',
+  'PUT /api/admin/short-links/:id': 'member',
+  'DELETE /api/admin/short-links/:id': 'member',
+  'GET /api/admin/short-links/:id/analytics': 'member',
+  'POST /api/short-links/resolve': 'member',
 
   // Properties batch import & quick parse: owner or company only
   'POST /api/admin/properties/quick-parse': 'company',
@@ -248,12 +277,12 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'POST /api/agent/missions/:id/pause': 'company',
   'POST /api/agent/missions/:id/activate': 'company',
 
-  // Team management (team lead / company / owner)
-  'GET /api/team/members': 'company',
-  'PATCH /api/team/members/:userId': 'company',
-  'POST /api/team/rotate-referral-code': 'company',
-  'GET /api/team/permissions': 'company',
-  'PUT /api/team/permissions': 'company',
+  // Team management (team lead / company / owner - verified by team.members.manage permission)
+  'GET /api/team/members': 'member',
+  'PATCH /api/team/members/:userId': 'member',
+  'POST /api/team/rotate-referral-code': 'member',
+  'GET /api/team/permissions': 'member',
+  'PUT /api/team/permissions': 'member',
 
   // Property distribution
   'POST /api/properties/:id/distribute': 'company',
@@ -268,6 +297,20 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   // License Management (owner only)
   'GET /api/admin/licenses': 'owner',
   'POST /api/admin/licenses/:id/revoke': 'owner',
+
+  // Chat AI Assistant: member+
+  'POST /api/ai/chat': 'member',
+  'GET /api/ai/status': 'member',
+  'GET /api/chat/history': 'member',
+  'DELETE /api/chat/sessions/:sessionUserId': 'member',
+  'POST /api/chat/sessions/:sessionUserId/delete': 'member',
+
+  // Wallet & Tokens
+  'GET /api/wallet/my': 'member',
+  'POST /api/wallet/upgrade-license': 'member',
+  'GET /api/admin/wallets': 'owner',
+  'POST /api/admin/wallets/deposit': 'owner',
+  'GET /api/admin/wallets/:userId/transactions': 'owner',
 };
 
 /**
@@ -330,6 +373,7 @@ export function rbacRouteGuard() {
       fullPath.startsWith('/api/agent-ingest') ||
       fullPath.startsWith('/api/agent/runtime') ||
       fullPath.startsWith('/api/social/media/files') ||
+      fullPath.startsWith('/api/webhooks/telegram') ||
       fullPath === '/api/license/activate' ||
       fullPath === '/api/license/heartbeat' ||
       fullPath === '/api/license/refresh-token'

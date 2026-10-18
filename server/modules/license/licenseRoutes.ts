@@ -7,6 +7,7 @@ import { validateSchema } from '../../middleware/validation';
 import {
   generateRawLicenseKey,
   hashLicenseKey,
+  generateLicensePem,
   ensureTrialEntitlement,
   activateLicense,
   processHeartbeat,
@@ -93,6 +94,191 @@ export function createLicenseRouter(): Router {
         downloadUrl: '/downloads/HouseAndLife-Agent-Setup.exe',
         securityNotice:
           'Cảnh báo: Tự động đăng nhập Facebook/Zalo cá nhân có rủi ro checkpoint/khoá tài khoản. Nên sử dụng tài khoản chuyên dụng.',
+      },
+    });
+  });
+
+  /**
+   * GET /api/license/my-license (and /api/license/my-key)
+   * Fetch current authenticated user's license, PEM certificate and active devices
+   */
+  const handleGetMyLicense = async (req: Request, res: Response) => {
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      return;
+    }
+
+    const { checkToolEntitlement } = await import('./licenseService');
+    const entitlement = await checkToolEntitlement(authUser.id);
+    const existing = await findLicenseKeysByUserId(authUser.id);
+    const activeKey = existing.find((k) => k.status === 'active') || existing[0];
+
+    if (!activeKey) {
+      res.json({
+        status: 'success',
+        data: {
+          hasKey: false,
+          plan: entitlement.plan,
+          features: entitlement.features,
+          expiresAt: entitlement.expiresAt,
+        },
+      });
+      return;
+    }
+
+    const devices = await getDevicesForLicense(activeKey.id);
+    const pseudoKey = `HL-${activeKey.id.replace(/[^A-Z0-9]/gi, '').slice(0, 4).toUpperCase() || 'FREE'}-XXXX-XXXX`;
+    const pem = generateLicensePem({
+      licenseKey: pseudoKey,
+      userId: authUser.id,
+      userEmail: authUser.email,
+      plan: entitlement.plan || 'trial',
+      expiresAt: entitlement.expiresAt,
+      maxDevices: activeKey.maxDevices,
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        hasKey: true,
+        licenseKeyId: activeKey.id,
+        licenseKey: pseudoKey,
+        status: activeKey.status,
+        plan: entitlement.plan,
+        features: entitlement.features,
+        expiresAt: entitlement.expiresAt,
+        maxDevices: activeKey.maxDevices,
+        activeDevices: devices.length,
+        devices: devices.map((d) => ({
+          deviceId: d.deviceId,
+          deviceName: d.deviceName,
+          lastHeartbeatAt: d.lastHeartbeatAt,
+        })),
+        pem,
+        downloadUrl: '/downloads/HouseAndLife-Agent-Setup.exe',
+      },
+    });
+  };
+
+  router.get('/api/license/my-license', handleGetMyLicense);
+  router.get('/api/license/my-key', handleGetMyLicense);
+
+  /**
+   * POST /api/license/request-pem
+   * Issue or regenerate a free trial PEM key & raw license key
+   */
+  router.post('/api/license/request-pem', async (req: Request, res: Response) => {
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      return;
+    }
+
+    const member = await findTeamMember(authUser.id);
+    if (member && member.status === 'pending') {
+      res.status(403).json({
+        status: 'error',
+        code: 'PENDING_MEMBER',
+        message: 'Tài khoản đang chờ duyệt không thể cấp Key PEM.',
+      });
+      return;
+    }
+
+    const ent = await ensureTrialEntitlement(authUser.id);
+    const rawKey = generateRawLicenseKey();
+    const created = await createLicenseKey({
+      userId: authUser.id,
+      keyHash: hashLicenseKey(rawKey),
+      maxDevices: 1,
+    });
+
+    const pem = generateLicensePem({
+      licenseKey: rawKey,
+      userId: authUser.id,
+      userEmail: authUser.email,
+      plan: ent.plan,
+      expiresAt: ent.expiresAt,
+      maxDevices: 1,
+    });
+
+    res.json({
+      status: 'success',
+      message: 'Đã tạo Khóa Bản Quyền và Key PEM Free thành công!',
+      data: {
+        licenseKeyId: created.id,
+        licenseKey: rawKey,
+        pem,
+        plan: ent.plan,
+        features: ent.features,
+        expiresAt: ent.expiresAt,
+        maxDevices: 1,
+        downloadUrl: '/downloads/HouseAndLife-Agent-Setup.exe',
+        securityNotice:
+          'Khóa bản quyền và file PEM dùng để kích hoạt Desktop Agent thu thập & phân tích tin BĐS tự động.',
+      },
+    });
+  });
+
+  /**
+   * POST /api/license/upgrade-plan
+   * Select and upgrade subscription package (Pro / Enterprise)
+   */
+  router.post('/api/license/upgrade-plan', async (req: Request, res: Response) => {
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      return;
+    }
+
+    const { plan = 'pro', periodDays = 30 } = req.body || {};
+    const { createEntitlement } = await import('../rbac/rbacRepository');
+    const expiresAt = new Date(Date.now() + Number(periodDays) * 86400_000);
+
+    const features =
+      plan === 'enterprise'
+        ? ['tool.exe', 'agent.*', 'lead.intel', 'crm', 'investor_leads', 'fb_inbox', 'automation.*', 'team.manage']
+        : ['tool.exe', 'agent.sources', 'agent.runtime', 'agent.reports', 'agent.notifications', 'lead.intel', 'crm', 'investor_leads'];
+
+    const created = await createEntitlement({
+      subjectType: 'user',
+      subjectId: authUser.id,
+      plan: String(plan),
+      features,
+      startsAt: new Date(),
+      expiresAt,
+      source: 'self_upgrade',
+      grantedBy: authUser.id,
+    });
+
+    // Generate or refresh license key with higher device limit
+    const rawKey = generateRawLicenseKey();
+    const maxDevices = plan === 'enterprise' ? 10 : 3;
+    const licenseRow = await createLicenseKey({
+      userId: authUser.id,
+      keyHash: hashLicenseKey(rawKey),
+      maxDevices,
+    });
+
+    const pem = generateLicensePem({
+      licenseKey: rawKey,
+      userId: authUser.id,
+      userEmail: authUser.email,
+      plan: String(plan),
+      expiresAt,
+      maxDevices,
+    });
+
+    res.json({
+      status: 'success',
+      message: `Nâng cấp lên gói ${plan.toUpperCase()} thành công!`,
+      data: {
+        plan: created.plan,
+        expiresAt: created.expiresAt,
+        features: created.features,
+        licenseKey: rawKey,
+        pem,
+        maxDevices,
       },
     });
   });

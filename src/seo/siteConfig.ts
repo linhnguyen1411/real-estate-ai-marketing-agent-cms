@@ -118,7 +118,8 @@ export const AUTHOR = {
 export const PRIMARY_CTA = 'Nhận danh sách cơ hội đầu tư Đà Nẵng';
 
 export const RESERVED_SLUGS = new Set([
-  'admin', 'api', 'listings', 'bds-da-nang',
+  'admin', 'my', 'dashboard', 'api', 'listings', 'bds-da-nang',
+  'login', 'register', 'dang-nhap', 'dang-ky',
   'bat-dong-san', 'can-ho', 'dat-nen', 'nha-pho', 'du-an', 'nam-da-nang',
   'can-ho-cao-cap-da-nang', 'dat-nen-nam-hoa-xuan-da-nang',
   'bat-dong-san-nam-da-nang', 'bat-dong-san-dau-tu-da-nang',

@@ -27,6 +27,7 @@ export interface User {
   show_public_profile?: boolean;
   status: 'active' | 'inactive';
   referral_code?: string;
+  referred_by?: string;
   created_at: string;
 }
 
@@ -46,6 +47,7 @@ export interface AuthUser {
   show_public_profile?: boolean;
   must_change_password?: boolean;
   referral_code?: string;
+  referred_by?: string;
   roleKey?: string;
   teamId?: string;
   isPlatformRootTeam?: boolean;

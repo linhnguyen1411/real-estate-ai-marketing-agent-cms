@@ -85,10 +85,13 @@ npm ci
 # ----------------------------------------------------
 echo "==> STEP 1: Database backup"
 mkdir -p "$BACKUP_DIR"
-BACKUP_FILE="$BACKUP_DIR/db-backup-$(date +%Y%m%d_%H%M%S).sql"
+BACKUP_FILE="$BACKUP_DIR/db-backup-$(date +%Y%m%d_%H%M%S).sql.gz"
 if command -v pg_dump >/dev/null 2>&1; then
-  pg_dump "$DATABASE_URL" > "$BACKUP_FILE"
+  DB_URL="${DATABASE_URL%%\?*}"
+  pg_dump "$DB_URL" --no-owner --clean --if-exists --format=plain | gzip -9 > "$BACKUP_FILE"
   echo "[BACKUP] Database snapshot created at $BACKUP_FILE"
+  # Clean up old backups in BACKUP_DIR, keep latest 2
+  ls -t "$BACKUP_DIR"/db-backup-*.sql.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
 else
   echo "[BACKUP] Warning: pg_dump not found in PATH, skipping pg_dump backup"
 fi

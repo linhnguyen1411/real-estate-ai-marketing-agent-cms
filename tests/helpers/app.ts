@@ -2,6 +2,7 @@ import { createApp } from '../../server/bootstrap/createApp';
 import { mountRoutes } from '../../server/bootstrap/mountRoutes';
 import { setCacheForTesting } from '../../server/dbHelper';
 import { signToken, toAuthUser } from '../../server/modules/auth/authAccess';
+import { createEntitlement } from '../../server/modules/rbac/rbacRepository';
 import type { Express } from 'express';
 import type { User, Company } from '../../src/types';
 
@@ -152,6 +153,28 @@ export function createTestApp(): TestContext {
 
   // Seed cache for testing
   setCacheForTesting(mockDb as any);
+
+  // Seed test entitlements for companyAdminA and memberA so tests have feature access
+  createEntitlement({
+    subjectType: 'user',
+    subjectId: companyAdminA.id,
+    plan: 'enterprise',
+    features: ['crm', 'investor_leads', 'fb_inbox', 'website_chat', 'agent.sources', 'agent.runtime', 'agent.reports'],
+    startsAt: new Date(Date.now() - 10000),
+    expiresAt: new Date(Date.now() + 864000000),
+    source: 'manual',
+    grantedBy: 'system',
+  });
+  createEntitlement({
+    subjectType: 'user',
+    subjectId: memberA.id,
+    plan: 'pro',
+    features: ['crm', 'investor_leads', 'fb_inbox', 'website_chat', 'agent.sources', 'agent.runtime', 'agent.reports'],
+    startsAt: new Date(Date.now() - 10000),
+    expiresAt: new Date(Date.now() + 864000000),
+    source: 'manual',
+    grantedBy: 'system',
+  });
 
   const tokens = {
     owner: signToken(toAuthUser(owner, mockDb)),

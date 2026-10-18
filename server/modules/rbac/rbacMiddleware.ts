@@ -43,6 +43,7 @@ export const PUBLIC_ALLOWLIST_PATTERNS = [
   /^\/api\/appointments\/public(\/.*)?$/,
   /^\/api\/agent-ingest(\/.*)?$/,
   /^\/api\/license\/(activate|heartbeat|refresh-token)$/,
+  /^\/api\/webhooks\/telegram(\/.*)?$/,
 ];
 
 export function isPublicPath(path: string): boolean {
@@ -56,12 +57,19 @@ export interface RoutePermissionRule {
 }
 
 export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
+  // Dashboard & Navigation badges & Channels & Safe Settings Read
+  { pattern: /^\/api\/dashboard(\/.*)?$/, permission: 'dashboard' },
+  { pattern: /^\/api\/navigation-counts(\/.*)?$/, permission: 'dashboard' },
+  { pattern: /^\/api\/channels(\/.*)?$/, permission: 'dashboard' },
+  { pattern: /^\/api\/settings$/, method: 'GET', permission: 'dashboard' },
+
   // Properties
   { pattern: /^\/api\/properties\/distribute/, permission: 'property.distribute' },
   { pattern: /^\/api\/properties\/batch-import/, permission: 'property.write' },
   { pattern: /^\/api\/admin\/properties\/batch-import/, permission: 'property.write' },
   { pattern: /^\/api\/properties\/quick-parse/, permission: 'property.write' },
   { pattern: /^\/api\/admin\/properties\/quick-parse/, permission: 'property.write' },
+  { pattern: /^\/api\/ai\/generate-content(\/.*)?$/, permission: 'property.write' },
   { pattern: /^\/api\/properties(\/.*)?$/, method: 'GET', permission: 'property.read' },
   { pattern: /^\/api\/properties(\/.*)?$/, method: 'POST', permission: 'property.write' },
   { pattern: /^\/api\/properties(\/.*)?$/, method: 'PUT', permission: 'property.write' },
@@ -87,9 +95,11 @@ export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
   { pattern: /^\/api\/facebook(\/.*)?$/, permission: 'fb_inbox' },
   { pattern: /^\/api\/admin\/facebook(\/.*)?$/, permission: 'fb_inbox' },
   { pattern: /^\/api\/inbox(\/.*)?$/, permission: 'fb_inbox' },
+  { pattern: /^\/api\/ai\/generate-reply(\/.*)?$/, permission: 'fb_inbox' },
 
   // Investor Leads
   { pattern: /^\/api\/investor-leads(\/.*)?$/, permission: 'investor_leads' },
+  { pattern: /^\/api\/lead-magnet-content(\/.*)?$/, permission: 'investor_leads' },
 
   // Agent Modules
   { pattern: /^\/api\/planning(\/.*)?$/, permission: 'agent.runtime' },
@@ -127,6 +137,7 @@ export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
 
   // User management
   { pattern: /^\/api\/users(\/.*)?$/, permission: 'user.manage' },
+  { pattern: /^\/api\/member-permissions\/bulk(\/.*)?$/, permission: 'team.permissions.edit' },
 
   // System settings
   { pattern: /^\/api\/settings(\/.*)?$/, permission: 'settings.system' },
@@ -138,9 +149,12 @@ export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
   { pattern: /^\/api\/rbac(\/.*)?$/, permission: 'rbac.matrix' },
   { pattern: /^\/api\/entitlements(\/.*)?$/, permission: 'entitlement' },
   { pattern: /^\/api\/admin\/licenses(\/.*)?$/, permission: 'license.manage' },
-  { pattern: /^\/api\/licenses(\/.*)?$/, permission: 'license.manage' },
-  { pattern: /^\/api\/license\/download-trial(\/.*)?$/, permission: 'tool.download' },
+  { pattern: /^\/api\/license\/(download-trial|my-license|my-key|request-pem|upgrade-plan)(\/.*)?$/, permission: 'tool.download' },
   { pattern: /^\/api\/tools\/download(\/.*)?$/, permission: 'tool.download' },
+
+  // Wallet & Tokens
+  { pattern: /^\/api\/wallet(\/.*)?$/, permission: 'tool.download' },
+  { pattern: /^\/api\/admin\/wallets(\/.*)?$/, permission: 'license.manage' },
 ];
 
 export function resolveRoutePermission(method: string, path: string): PermissionKey | null {
@@ -261,8 +275,17 @@ export function denyByDefaultGuard() {
       return next();
     }
 
-    // 2. Allow self profile endpoints
-    if (cleanPath === '/api/auth/me' || cleanPath === '/api/auth/profile' || cleanPath === '/api/ai/status') {
+    // 2. Allow self profile endpoints and basic app settings read
+    if (
+      cleanPath === '/api/auth/me' ||
+      cleanPath === '/api/auth/profile' ||
+      cleanPath === '/api/auth/my-team' ||
+      cleanPath === '/api/auth/join-team' ||
+      cleanPath === '/api/wallet/my' ||
+      cleanPath === '/api/ai/status' ||
+      (cleanPath === '/api/settings' && req.method === 'GET') ||
+      (cleanPath === '/api/channels' && req.method === 'GET')
+    ) {
       return next();
     }
 

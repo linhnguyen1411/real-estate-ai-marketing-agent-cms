@@ -152,16 +152,28 @@ export const findTeamById = getTeamById;
 
 export async function getTeamByReferralCode(referralCode: string): Promise<DbTeam | null> {
   const norm = referralCode.trim().toUpperCase();
+  const withoutPrefix = norm.replace(/^REF-/, '');
+  const withPrefix = norm.startsWith('REF-') ? norm : `REF-${norm}`;
+  const candidates = Array.from(new Set([norm, withPrefix, withoutPrefix]));
+
   if (shouldUsePrisma()) {
     try {
-      const row = await prisma.team.findUnique({ where: { referralCode: norm } });
+      const row = await prisma.team.findFirst({
+        where: {
+          referralCode: {
+            in: candidates,
+            mode: 'insensitive',
+          },
+        },
+      });
       if (row) return row as DbTeam;
     } catch {
       // Fallback
     }
   }
   for (const team of memoryTeams.values()) {
-    if (team.referralCode.toUpperCase() === norm) return team;
+    const teamCode = team.referralCode.toUpperCase();
+    if (candidates.includes(teamCode)) return team;
   }
   return null;
 }
@@ -194,6 +206,34 @@ export async function createTeamMember(member: DbTeamMember): Promise<DbTeamMemb
         data: {
           teamId: member.teamId,
           userId: member.userId,
+          status: member.status,
+          approvedBy: member.approvedBy,
+          joinedAt: member.joinedAt,
+        },
+      });
+      return row as DbTeamMember;
+    } catch {
+      // Fallback
+    }
+  }
+  memoryTeamMembers.set(member.userId, member);
+  return member;
+}
+
+export async function upsertTeamMember(member: DbTeamMember): Promise<DbTeamMember> {
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.teamMember.upsert({
+        where: { userId: member.userId },
+        create: {
+          teamId: member.teamId,
+          userId: member.userId,
+          status: member.status,
+          approvedBy: member.approvedBy,
+          joinedAt: member.joinedAt,
+        },
+        update: {
+          teamId: member.teamId,
           status: member.status,
           approvedBy: member.approvedBy,
           joinedAt: member.joinedAt,
@@ -431,33 +471,44 @@ export async function backfillRbac(): Promise<void> {
     // 1. Seed permissions
     await seedRolePermissions();
 
-    // 2. Check if platform root team exists
-    const rootTeam = await prisma.team.findFirst({ where: { isPlatformRoot: true } });
-    if (!rootTeam) {
-      // Find owner or super_admin
-      const ownerUser = await prisma.user.findFirst({
-        where: {
-          role: { in: ['owner', 'super_admin'] },
-        },
-      });
-      if (ownerUser) {
-        const teamId = `team-root-${ownerUser.id}`;
-        await prisma.team.upsert({
-          where: { leadUserId: ownerUser.id },
-          create: {
-            id: teamId,
-            leadUserId: ownerUser.id,
-            referralCode: generateReferralCode(),
-            isPlatformRoot: true,
-          },
-          update: {
-            isPlatformRoot: true,
-          },
+    if (!shouldUsePrisma()) return;
+
+    // 2. Backfill referral codes for all users who don't have one in DB
+    const allUsers = await prisma.user.findMany();
+    for (const u of allUsers) {
+      const data = (u.data as any) || {};
+      if (!data.referral_code) {
+        const canonicalCode = `REF-${(u.id || 'USER').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`;
+        data.referral_code = canonicalCode;
+        await prisma.user.update({
+          where: { id: u.id },
+          data: { data },
         });
       }
     }
-  } catch {
-    // DB offline, skip backfill
+
+    // 3. Ensure all owner / super_admin users have their platform root team initialized
+    const ownerUsers = allUsers.filter(x => x.role === 'owner' || (x.role as string) === 'super_admin');
+    for (const ownerUser of ownerUsers) {
+      const data = (ownerUser.data as any) || {};
+      const canonicalCode = data.referral_code || `REF-${(ownerUser.id || 'USER').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`;
+      await prisma.team.upsert({
+        where: { leadUserId: ownerUser.id },
+        create: {
+          id: `team-root-${ownerUser.id}`,
+          leadUserId: ownerUser.id,
+          referralCode: canonicalCode,
+          isPlatformRoot: true,
+          createdAt: new Date(),
+        },
+        update: {
+          referralCode: canonicalCode,
+          isPlatformRoot: true,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('[RBAC] Bỏ qua backfill RBAC lúc khởi động:', err);
   }
 }
 

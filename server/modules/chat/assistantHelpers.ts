@@ -34,8 +34,8 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
     })
     .map(entry => entry.item);
 
-  const propertyMatches = rankProperties(properties, message, intent === 'properties' ? 5 : 2).map(compactProperty);
-  const customerMatches = rank(customers, (a: Customer, b: Customer) => (b.lead_score || 0) - (a.lead_score || 0))
+  const propertyMatches = intent === 'knowledge' ? [] : rankProperties(properties, message, intent === 'properties' ? 5 : 2).map(compactProperty);
+  const customerMatches = intent === 'knowledge' ? [] : rank(customers, (a: Customer, b: Customer) => (b.lead_score || 0) - (a.lead_score || 0))
     .slice(0, intent === 'customers' ? 5 : 2)
     .map(compactCustomer);
   const postMatches = rank(posts, (a: Post, b: Post) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -97,7 +97,18 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
   };
 }
 
-export function buildAssistantFallback(context: any) {
+export function buildAssistantFallback(context: any, ragKnowledge?: { formattedContext: string; chunks: any[] }) {
+  if (ragKnowledge?.chunks?.length && (!context.properties || context.properties.length === 0) && (!context.customers || context.customers.length === 0)) {
+    const topChunk = ragKnowledge.chunks[0];
+    return [
+      `Dạ em gửi anh/chị thông tin từ tài liệu hướng dẫn hệ thống (${topChunk.sectionTitle}):`,
+      '',
+      topChunk.content.slice(0, 1200),
+      '',
+      '📌 Bạn có thể thao tác trực tiếp tại các mục tương ứng trên thanh điều hướng bên trái hoặc liên hệ Quản trị viên để được hỗ trợ thêm nhé!'
+    ].join('\n');
+  }
+
   const propertyLines = context.properties.slice(0, 5).map((property: Property) =>
     `- ${property.title}: ${property.location}, ${property.area}m2, ${property.price} tỷ, ${property.legal_status}, ${property.sale_status === 'sold' ? 'đã bán' : 'đang bán'}.`
   );

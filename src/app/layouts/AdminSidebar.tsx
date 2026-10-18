@@ -11,9 +11,13 @@ import {
   SEO_SUBMENU,
   buildPrimaryNavItems,
   buildSecondaryNavItems,
+  canAccessAgentMenu,
+  canAccessSeoMenu,
+  isUserSuperAdmin,
   type ExtraNavBadges,
 } from '../navigation/sidebarConfig';
 import { AGENT_TAB_TO_PATH, SEO_TAB_TO_PATH } from '../navigation/tabPaths';
+import type { AuthUser } from '../../types';
 
 function resolveBadge(
   item: NavItemConfig,
@@ -28,6 +32,7 @@ function resolveBadge(
 }
 
 export interface AdminSidebarProps {
+  currentUser?: AuthUser | null;
   activeTab: string;
   adminMenuOpen: boolean;
   seoMenuOpen: boolean;
@@ -45,6 +50,7 @@ export interface AdminSidebarProps {
 }
 
 export default function AdminSidebar({
+  currentUser,
   activeTab,
   adminMenuOpen,
   seoMenuOpen,
@@ -60,11 +66,19 @@ export default function AdminSidebar({
   onToggleAgentMenu,
   onRunDemoAutomations,
 }: AdminSidebarProps) {
-  const primary = buildPrimaryNavItems();
+  const canSeo = canAccessSeoMenu(currentUser);
+  const canAgent = canAccessAgentMenu(currentUser);
+  const canSandbox = isUserSuperAdmin(currentUser);
+
+  const primary = buildPrimaryNavItems(currentUser);
   const secondary = buildSecondaryNavItems({
+    currentUser,
     canManageWebsiteChat,
     canManageCmsUsers,
   });
+
+  const isSuper = isUserSuperAdmin(currentUser);
+  const defaultDashboard = isSuper ? '/admin/dashboard' : '/my/dashboard';
 
   const renderNavButton = (item: NavItemConfig) => {
     const IconComp = item.icon;
@@ -75,7 +89,11 @@ export default function AdminSidebar({
         key={item.id}
         type="button"
         onClick={() => {
-          onSelectTab(item.id, { path: item.path || '/admin/dashboard' });
+          let targetPath = item.path || defaultDashboard;
+          if (!isSuper && targetPath.startsWith('/admin')) {
+            targetPath = '/my/dashboard';
+          }
+          onSelectTab(item.id, { path: targetPath });
           onCloseMenu();
         }}
         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
@@ -127,135 +145,141 @@ export default function AdminSidebar({
           </div>
           {primary.map(renderNavButton)}
 
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={onToggleSeoMenu}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                activeTab.startsWith('seo-')
-                  ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
-                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Newspaper
-                  className={`w-4 h-4 ${activeTab.startsWith('seo-') ? 'text-rose-500' : 'text-slate-500'}`}
-                />
-                <span>Nội dung SEO</span>
-              </div>
-              {seoMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-            {seoMenuOpen && (
-              <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
-                {SEO_SUBMENU.map(item => {
-                  const IconComp = item.icon;
-                  const isSelected = activeTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectTab(item.id, {
-                          path: SEO_TAB_TO_PATH[item.id] || '/admin/seo/posts',
-                          openSeo: true,
-                        });
-                        onCloseMenu();
-                      }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                        isSelected
-                          ? 'bg-slate-800 text-white'
-                          : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
-                      }`}
-                    >
-                      <IconComp className="w-3.5 h-3.5" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={onToggleAgentMenu}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                activeTab.startsWith('agent-')
-                  ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
-                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <ScanSearch
-                  className={`w-4 h-4 ${activeTab.startsWith('agent-') ? 'text-rose-500' : 'text-slate-500'}`}
-                />
-                <span>AI Agent</span>
-              </div>
-              {agentMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-            {agentMenuOpen && (
-              <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
-                {AGENT_SUBMENU.map(item => {
-                  const IconComp = item.icon;
-                  const isSelected = activeTab === item.id;
-                  const badge = resolveBadge(item, navigationCounts, extraBadges);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectTab(item.id, {
-                          path: AGENT_TAB_TO_PATH[item.id] || '/admin/agents',
-                          openAgent: true,
-                        });
-                        onCloseMenu();
-                      }}
-                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                        isSelected
-                          ? 'bg-slate-800 text-white'
-                          : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
+          {canSeo && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={onToggleSeoMenu}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab.startsWith('seo-')
+                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Newspaper
+                    className={`w-4 h-4 ${activeTab.startsWith('seo-') ? 'text-rose-500' : 'text-slate-500'}`}
+                  />
+                  <span>Nội dung SEO</span>
+                </div>
+                {seoMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {seoMenuOpen && (
+                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
+                  {SEO_SUBMENU.map(item => {
+                    const IconComp = item.icon;
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectTab(item.id, {
+                            path: SEO_TAB_TO_PATH[item.id] || '/admin/seo/posts',
+                            openSeo: true,
+                          });
+                          onCloseMenu();
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-slate-800 text-white'
+                            : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
                         <IconComp className="w-3.5 h-3.5" />
                         {item.label}
-                      </span>
-                      {badge !== undefined && badge > 0 && (
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                            isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'
-                          }`}
-                        >
-                          {badge}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {canAgent && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={onToggleAgentMenu}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab.startsWith('agent-')
+                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ScanSearch
+                    className={`w-4 h-4 ${activeTab.startsWith('agent-') ? 'text-rose-500' : 'text-slate-500'}`}
+                  />
+                  <span>AI Agent</span>
+                </div>
+                {agentMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {agentMenuOpen && (
+                <div className="ml-3 mt-1 space-y-0.5 border-l border-slate-800 pl-2">
+                  {AGENT_SUBMENU.map(item => {
+                    const IconComp = item.icon;
+                    const isSelected = activeTab === item.id;
+                    const badge = resolveBadge(item, navigationCounts, extraBadges);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectTab(item.id, {
+                            path: AGENT_TAB_TO_PATH[item.id] || '/admin/agents',
+                            openAgent: true,
+                          });
+                          onCloseMenu();
+                        }}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-slate-800 text-white'
+                            : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <IconComp className="w-3.5 h-3.5" />
+                          {item.label}
                         </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                        {badge !== undefined && badge > 0 && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                              isSelected ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400'
+                            }`}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {secondary.map(renderNavButton)}
         </div>
 
-        <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-900 text-center space-y-3 mt-4">
-          <h4 className="text-xs font-semibold text-rose-400">Sandbox Developer</h4>
-          <p className="text-2xs text-slate-400 leading-relaxed">
-            Tích hợp hệ thống Ollama cục bộ qua endpoint http://localhost:11434 với các model chất lượng Llama3.1
-            hoặc Qwen2.5.
-          </p>
-          <button
-            type="button"
-            disabled={!!actionLoading}
-            onClick={onRunDemoAutomations}
-            className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
-          >
-            <Cpu className="w-3.5 h-3.5 text-rose-500" />
-            <span>Chạy Thử Nghiệm Automation</span>
-          </button>
-        </div>
+        {canSandbox && (
+          <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-900 text-center space-y-3 mt-4">
+            <h4 className="text-xs font-semibold text-rose-400">Sandbox Developer</h4>
+            <p className="text-2xs text-slate-400 leading-relaxed">
+              Tích hợp hệ thống Ollama cục bộ qua endpoint http://localhost:11434 với các model chất lượng Llama3.1
+              hoặc Qwen2.5.
+            </p>
+            <button
+              type="button"
+              disabled={!!actionLoading}
+              onClick={onRunDemoAutomations}
+              className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
+            >
+              <Cpu className="w-3.5 h-3.5 text-rose-500" />
+              <span>Chạy Thử Nghiệm Automation</span>
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );

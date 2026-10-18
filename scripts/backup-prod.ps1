@@ -36,6 +36,9 @@ $remoteCommand = (
   '; pg_dump "$DB_URL" --no-owner --clean --if-exists --format=plain | gzip -9 > ' + $BackupDir + '/db-' + $timestamp + '.sql.gz' +
   '; test -d dist && tar -czf ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz dist' +
   '; cp .env ' + $BackupDir + '/env-' + $timestamp + '.bak' +
+  '; ls -t ' + $BackupDir + '/db-*.sql.gz 2>/dev/null | tail -n +4 | xargs -r rm -f' +
+  '; ls -t ' + $BackupDir + '/dist-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f' +
+  '; ls -t ' + $BackupDir + '/env-*.bak 2>/dev/null | tail -n +4 | xargs -r rm -f' +
   '; ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql.gz ' + $BackupDir + '/dist-' + $timestamp + '.tar.gz 2>/dev/null || ls -lh ' + $BackupDir + '/db-' + $timestamp + '.sql.gz' +
   '; echo BACKUP_DB=' + $BackupDir + '/db-' + $timestamp + '.sql.gz'
 )

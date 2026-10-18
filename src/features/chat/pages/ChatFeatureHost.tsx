@@ -57,25 +57,31 @@ export default function ChatFeatureHost({
   const reload = async () => {
     setReloading(true);
     try {
-      const [historyRecords, guests, myChatHistory] = await Promise.all([
-        getChatHistory().catch(() => []),
-        getPublicChatGuests().catch(() => []),
-        getChatHistory('mine').catch(() => []),
-      ]);
-      setChatHistoryRecords(historyRecords);
-      setPublicChatGuests(guests);
-      setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
-      if (myChatHistory.length > 0) {
-        setChatMessages(
-          myChatHistory
-            .slice()
-            .reverse()
-            .map(item => ({
-              role: item.role,
-              content: item.message,
-              timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            })),
-        );
+      if (mode === 'chatbot') {
+        const myChatHistory = await getChatHistory('mine').catch(() => []);
+        if (myChatHistory.length > 0) {
+          setChatMessages(
+            myChatHistory
+              .slice()
+              .reverse()
+              .map(item => ({
+                role: item.role,
+                content: item.message,
+                timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              })),
+          );
+        }
+        return;
+      }
+
+      if (canManageWebsiteChat) {
+        const [historyRecords, guests] = await Promise.all([
+          getChatHistory().catch(() => []),
+          getPublicChatGuests().catch(() => []),
+        ]);
+        setChatHistoryRecords(historyRecords);
+        setPublicChatGuests(guests);
+        setSelectedChatGuestId(prev => prev || guests[0]?.session_id || '');
       }
     } finally {
       setReloading(false);

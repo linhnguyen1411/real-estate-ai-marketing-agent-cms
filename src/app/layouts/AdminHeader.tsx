@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react';
-import { Menu, RefreshCw } from 'lucide-react';
+import { Menu, RefreshCw, Sun, Moon } from 'lucide-react';
 import { SITE } from '../../seo/siteConfig';
 import type { AuthUser, AppSettings } from '../../types';
+import { useTheme } from '../theme/ThemeContext';
 
 const AgentNotificationBell = React.lazy(() => import('../../components/agent/AgentNotificationBell'));
 
@@ -24,6 +25,8 @@ export default function AdminHeader({
   onRefresh,
   onLogout,
 }: AdminHeaderProps) {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <header className="shrink-0 border-b border-slate-900 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-30 px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-3">
@@ -77,6 +80,20 @@ export default function AdminHeader({
         <Suspense fallback={null}>
           <AgentNotificationBell />
         </Suspense>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+          title={theme === 'dark' ? 'Chuyển sang giao diện Sáng (Light mode)' : 'Chuyển sang giao diện Tối (Dark mode)'}
+          aria-label="Đổi giao diện Light/Dark"
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform" />
+          ) : (
+            <Moon className="w-4 h-4 text-indigo-400 hover:-rotate-12 transition-transform" />
+          )}
+        </button>
 
         <button
           type="button"

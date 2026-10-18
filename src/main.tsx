@@ -149,8 +149,16 @@ createRoot(document.getElementById('root')!).render(
     <Router>
       <HelmetProvider>
         <Routes>
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="/admin/login" element={<AdminRoute />} />
           <Route path="/admin/dashboard" element={<AdminRoute />} />
+          <Route path="/my" element={<Navigate to="/my/dashboard" replace />} />
+          <Route path="/my/dashboard" element={<AdminRoute />} />
+          <Route path="/dashboard" element={<AdminRoute />} />
+          <Route path="/dang-nhap" element={<AdminRoute />} />
+          <Route path="/dang-ky" element={<AdminRoute />} />
+          <Route path="/login" element={<Navigate to="/dang-nhap" replace />} />
+          <Route path="/register" element={<Navigate to="/dang-nhap?mode=register" replace />} />
           <Route path="/admin/ai-content" element={<Navigate to="/admin/seo/posts" replace />} />
           <Route path="/admin/seo/posts" element={<AdminRoute />} />
           <Route path="/admin/seo/categories" element={<AdminRoute />} />

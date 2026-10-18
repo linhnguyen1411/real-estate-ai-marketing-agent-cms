@@ -11,6 +11,8 @@ export const AUTH_SECRET = process.env.AUTH_SECRET || getEnv().AUTH_SECRET;
 export function toAuthUser(user: User, db: any): AuthUser {
   const company = db.companies?.find((item: any) => item.id === user.company_id);
   const publicSlug = user.public_slug || `${slugifyAgentProfile(user.name)}-${user.id.slice(-4)}`;
+  const referralCode =
+    user.referral_code || `REF-${(user.id || 'USER').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`;
   return {
     id: user.id,
     name: user.name,
@@ -25,7 +27,8 @@ export function toAuthUser(user: User, db: any): AuthUser {
     public_slug: publicSlug,
     show_public_profile: user.show_public_profile !== false,
     must_change_password: Boolean(user.must_change_password),
-    referral_code: user.referral_code,
+    referral_code: referralCode,
+    referred_by: (user as any).referred_by || undefined,
   };
 }
 

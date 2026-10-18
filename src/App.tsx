@@ -80,6 +80,17 @@ import {
   SEO_PATH_TO_TAB,
   SEO_TAB_TO_PATH,
 } from './app/navigation/tabPaths';
+import {
+  canAccessAgentMenu,
+  canAccessSeoMenu,
+  hasUserEntitlement,
+  hasUserPermission,
+  isUserSuperAdmin,
+  isUserTeamLead,
+  buildPrimaryNavItems,
+  SEO_SUBMENU,
+  AGENT_SUBMENU,
+} from './app/navigation/sidebarConfig';
 
 const InvestorLeadsPage = React.lazy(() => import('./features/investor-leads/pages/InvestorLeadsPage'));
 const ShortLinksPanel = React.lazy(() => import('./components/admin/ShortLinksPanel'));
@@ -96,6 +107,7 @@ const PropertiesPage = React.lazy(() => import('./features/properties/pages/Prop
 const InboxPage = React.lazy(() => import('./features/inbox/pages/InboxPage'));
 const ChatFeatureHost = React.lazy(() => import('./features/chat/pages/ChatFeatureHost'));
 const UsersPage = React.lazy(() => import('./features/users/pages/UsersPage'));
+const RbacManagementPanel = React.lazy(() => import('./components/admin/RbacManagementPanel'));
 const ExecutiveKpiGrid = React.lazy(
   () => import('./features/dashboard/components/ExecutiveKpiGrid'),
 );
@@ -247,6 +259,10 @@ export default function App() {
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
+        if (user) {
+          const isSuperAdmin = user.role === 'owner';
+          localStorage.setItem('auth_portal', isSuperAdmin ? 'admin' : 'member');
+        }
       } catch (error) {
         logout();
       } finally {
@@ -271,13 +287,50 @@ export default function App() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (currentUser && location.pathname === '/admin/login') {
-      navigate('/admin/dashboard', { replace: true });
-    }
-    if (!currentUser && location.pathname !== '/admin/login') {
-      navigate('/admin/login', { replace: true });
+    const isAuthPath = ['/admin/login', '/login', '/register', '/dang-nhap', '/dang-ky'].includes(location.pathname);
+    const isSuper = isUserSuperAdmin(currentUser);
+
+    if (currentUser) {
+      if (isAuthPath) {
+        navigate(isSuper ? '/admin/dashboard' : '/my/dashboard', { replace: true });
+        return;
+      }
+      if (!isSuper && location.pathname.startsWith('/admin')) {
+        navigate('/my/dashboard', { replace: true });
+        return;
+      }
+      if (isSuper && (location.pathname.startsWith('/my') || location.pathname === '/dashboard')) {
+        navigate('/admin/dashboard', { replace: true });
+        return;
+      }
+      if (!isSuper && location.pathname === '/dashboard') {
+        navigate('/my/dashboard', { replace: true });
+        return;
+      }
+    } else if (!isAuthPath) {
+      const storedPortal = localStorage.getItem('auth_portal');
+      const shouldAdminLogin = storedPortal === 'admin' || location.pathname.startsWith('/admin');
+      const fallbackLogin = shouldAdminLogin ? '/admin/login' : '/dang-nhap';
+      navigate(fallbackLogin, { replace: true });
     }
   }, [authLoading, currentUser, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const allowed = new Set(buildPrimaryNavItems(currentUser).map(i => i.id));
+    buildSecondaryNavItems({ currentUser, canManageWebsiteChat, canManageCmsUsers }).forEach(i => allowed.add(i.id));
+    allowed.add('dashboard');
+    allowed.add('profile');
+    if (canAccessSeoMenu(currentUser)) {
+      SEO_SUBMENU.forEach(s => allowed.add(s.id));
+    }
+    if (canAccessAgentMenu(currentUser)) {
+      AGENT_SUBMENU.forEach(s => allowed.add(s.id));
+    }
+    if (!allowed.has(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const requestedTab = (location.state as { activeTab?: string } | null)?.activeTab;
@@ -286,6 +339,13 @@ export default function App() {
       setAgentMenuOpen(requestedTab.startsWith('agent-'));
       setSeoMenuOpen(requestedTab.startsWith('seo-'));
       navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
+    if (location.pathname === '/my/dashboard' || location.pathname === '/admin/dashboard' || location.pathname === '/dashboard') {
+      setActiveTab('dashboard');
+      setAgentMenuOpen(false);
+      setSeoMenuOpen(false);
       return;
     }
 
@@ -459,13 +519,16 @@ export default function App() {
     setAuthLoading(true);
 
     try {
-      const session = await login(loginEmail, loginPassword);
+      const portal: 'admin' | 'member' = location.pathname.startsWith('/admin') ? 'admin' : 'member';
+      const session = await login(loginEmail, loginPassword, portal);
       setCurrentUser(session.user);
+      const isSuper = isUserSuperAdmin(session.user);
+      localStorage.setItem('auth_portal', isSuper ? 'admin' : 'member');
       if (session.user?.must_change_password) {
         setMustChangePassword(true);
       } else {
         setActiveTab('dashboard');
-        navigate('/admin/dashboard', { replace: true });
+        navigate(isSuper ? '/admin/dashboard' : '/my/dashboard', { replace: true });
       }
     } catch (error: any) {
       setLoginError(error.message || 'Đăng nhập thất bại.');
@@ -475,15 +538,18 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    const isSuperAdmin = isUserSuperAdmin(currentUser) || localStorage.getItem('auth_portal') === 'admin';
+    const targetPath = isSuperAdmin ? '/admin/login' : '/dang-nhap';
     logout();
     localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+    localStorage.removeItem('auth_portal');
     setCurrentUser(null);
     setPosts([]);
     setAutomations([]);
     setGeneratedContents([]);
     setManagedUsers([]);
     setAdminMenuOpen(false);
-    navigate('/admin/login', { replace: true });
+    navigate(targetPath, { replace: true });
   };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -607,8 +673,24 @@ export default function App() {
   const priorityGeneratedContents = generatedContents
     .filter(item => priorityPlatforms.includes(item.channel))
     .slice(0, 8);
-  const canManageCmsUsers = currentUser?.role === 'owner' || currentUser?.role === 'company';
-  const canManageWebsiteChat = canManageCmsUsers;
+  const isSuper = isUserSuperAdmin(currentUser);
+  const isLead = isUserTeamLead(currentUser);
+  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
+
+  const canManageCmsUsers = isSuper || isLead || hasUserPermission(currentUser, 'user.manage');
+  const canManageWebsiteChat = isSuper || isRoot || hasUserPermission(currentUser, 'website_chat');
+  const canManageSettings = isSuper || hasUserPermission(currentUser, 'settings.system');
+  const canManageIntegrations = isSuper || hasUserPermission(currentUser, 'integrations.system');
+  const canManageAutomations = isSuper || hasUserPermission(currentUser, 'automation.admin');
+  const canManageProjects = isSuper || hasUserPermission(currentUser, 'projects.admin');
+  const canManageAiContent = isSuper || hasUserPermission(currentUser, 'ai_content.admin') || hasUserEntitlement(currentUser, 'ai_content');
+  const canManageLeadMagnet = isSuper || isLead || hasUserPermission(currentUser, 'property.distribute');
+  const canAccessCrm = isSuper || isRoot || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
+  const canAccessInvestorLeads = isSuper || isRoot || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
+  const canAccessAgent = canAccessAgentMenu(currentUser);
+  const canAccessSeo = canAccessSeoMenu(currentUser);
+  const canManageRbac = isSuper || hasUserPermission(currentUser, 'rbac.matrix');
+  const canManageTeam = isSuper || isLead || hasUserPermission(currentUser, 'team.members.manage');
   if (authLoading && !currentUser) {
     return <AuthLoadingScreen />;
   }
@@ -623,6 +705,12 @@ export default function App() {
         onEmailChange={setLoginEmail}
         onPasswordChange={setLoginPassword}
         onSubmit={handleLogin}
+        onRegisterSuccess={(user) => {
+          setCurrentUser(user);
+          setActiveTab('dashboard');
+          const isSuper = isUserSuperAdmin(user);
+          navigate(isSuper ? '/admin/dashboard' : '/my/dashboard', { replace: true });
+        }}
       />
     );
   }
@@ -632,12 +720,15 @@ export default function App() {
       <MustChangePasswordScreen
         userEmail={currentUser?.email}
         onSuccess={() => {
+          const isSuperAdmin = isUserSuperAdmin(currentUser) || localStorage.getItem('auth_portal') === 'admin';
+          const targetPath = isSuperAdmin ? '/admin/login' : '/dang-nhap';
           logout();
+          localStorage.removeItem('auth_portal');
           setCurrentUser(null);
           setMustChangePassword(false);
           setLoginPassword('');
           showToast('Đổi mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.', 'success');
-          navigate('/admin/login', { replace: true });
+          navigate(targetPath, { replace: true });
         }}
       />
     );
@@ -656,7 +747,13 @@ export default function App() {
       setAgentMenuOpen(true);
       setSeoMenuOpen(false);
     }
-    navigate(opts?.path || '/admin/dashboard');
+    const isSuper = isUserSuperAdmin(currentUser);
+    const defaultDashboard = isSuper ? '/admin/dashboard' : '/my/dashboard';
+    let targetPath = opts?.path || defaultDashboard;
+    if (!isSuper && targetPath.startsWith('/admin')) {
+      targetPath = '/my/dashboard';
+    }
+    navigate(targetPath);
   };
 
   return (
@@ -673,12 +770,14 @@ export default function App() {
         onOpenProfile: () => {
           setActiveTab('profile');
           setAdminMenuOpen(false);
-          navigate('/admin/dashboard');
+          const isSuper = isUserSuperAdmin(currentUser);
+          navigate(isSuper ? '/admin/dashboard' : '/my/dashboard');
         },
         onRefresh: fetchAllData,
         onLogout: handleLogout,
       }}
       sidebar={{
+        currentUser,
         activeTab,
         adminMenuOpen,
         seoMenuOpen,
@@ -700,9 +799,25 @@ export default function App() {
 
 
           {location.pathname.startsWith('/admin/agents') ? (
-            <Suspense fallback={<ModuleFallback label="Đang tải AI Agent…" />}>
-              <AgentPlatformPage userRole={currentUser.role} />
-            </Suspense>
+            canAccessAgent ? (
+              <Suspense fallback={<ModuleFallback label="Đang tải AI Agent…" />}>
+                <AgentPlatformPage userRole={currentUser.role} />
+              </Suspense>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center max-w-lg mx-auto my-12 space-y-4">
+                <h3 className="text-lg font-bold text-white">Truy cập bị giới hạn</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Tài khoản của bạn chưa được cấp quyền sử dụng hệ thống AI Employee & Agent hoặc cần kích hoạt gói Premium. Vui lòng liên hệ Quản trị viên.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(isUserSuperAdmin(currentUser) ? '/admin/dashboard' : '/my/dashboard')}
+                  className="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-semibold hover:bg-rose-500 transition-all"
+                >
+                  Quay lại Dashboard
+                </button>
+              </div>
+            )
           ) : (
           <>
 
@@ -758,7 +873,7 @@ export default function App() {
               {/* ==================================================== */}
               {/* TAB 2: CRM CUSTOMERS MANAGEMENT */}
               {/* ==================================================== */}
-              {activeTab === 'crm' && (
+              {activeTab === 'crm' && canAccessCrm && (
                 <Suspense fallback={<ModuleFallback label="Đang tải CRM…" />}>
                   <CustomersPage
                     onNotify={showToast}
@@ -774,7 +889,7 @@ export default function App() {
                 </Suspense>
               )}
 
-              {activeTab === 'investor-leads' && (
+              {activeTab === 'investor-leads' && canAccessInvestorLeads && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <Suspense fallback={<ModuleFallback label="Đang tải Leads đầu tư…" />}>
                     <InvestorLeadsPage />
@@ -790,7 +905,7 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'lead-magnet-content' && (
+              {activeTab === 'lead-magnet-content' && canManageLeadMagnet && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <Suspense fallback={<ModuleFallback label="Đang tải Lead Magnet…" />}>
                     <LeadMagnetContentAdmin />
@@ -798,7 +913,7 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'projects' && (
+              {activeTab === 'projects' && canManageProjects && (
                 <div className="bg-slate-900/40 rounded-2xl border border-slate-900 p-5">
                   <Suspense fallback={<ModuleFallback label="Đang tải dự án…" />}>
                     <AdminProjectsPanel
@@ -835,7 +950,7 @@ export default function App() {
                 </Suspense>
               )}
 
-              {activeTab === 'ai-content' && (
+              {activeTab === 'ai-content' && canManageAiContent && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -1175,7 +1290,7 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab.startsWith('seo-') && getAuthToken() && (
+              {activeTab.startsWith('seo-') && getAuthToken() && canAccessSeo && (
                 <Suspense fallback={<ModuleFallback label="Đang tải SEO CMS…" />}>
                   <SeoContentAdmin
                     token={getAuthToken()!}
@@ -1192,7 +1307,7 @@ export default function App() {
               {/* ==================================================== */}
               {/* TAB 6: INBOX MULTICHANNEL */}
               {/* ==================================================== */}
-              {activeTab === 'inbox' && (
+              {activeTab === 'inbox' && (isSuper || isRoot || hasUserPermission(currentUser, 'fb_inbox') || hasUserEntitlement(currentUser, 'fb_inbox')) && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Inbox…" />}>
                   <InboxPage
                     onNotify={showToast}
@@ -1238,7 +1353,7 @@ export default function App() {
                 </Suspense>
               )}
 
-              {activeTab === 'chat-history' && currentUser && (
+              {activeTab === 'chat-history' && currentUser && canManageWebsiteChat && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Chat History…" />}>
                   <ChatFeatureHost
                     mode="chat-history"
@@ -1254,7 +1369,7 @@ export default function App() {
                 </Suspense>
               )}
 
-              {activeTab === 'automations' && (
+              {activeTab === 'automations' && canManageAutomations && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Automation…" />}>
                   <AutomationsPage onNotify={showToast} />
                 </Suspense>
@@ -1281,17 +1396,37 @@ export default function App() {
                 </Suspense>
               )}
 
-              {activeTab === 'integrations' && (
+              {activeTab === 'integrations' && canManageIntegrations && (
                 <Suspense fallback={<ModuleFallback label="Đang tải tích hợp…" />}>
                   <IntegrationsPage onNotify={showToast} />
                 </Suspense>
               )}
 
-              {activeTab === 'settings' && (
+              {activeTab === 'settings' && canManageSettings && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Settings…" />}>
                   <SystemSettingsPage
                     onNotify={showToast}
                     onSettingsSaved={setSettings}
+                  />
+                </Suspense>
+              )}
+
+              {activeTab === 'rbac' && canManageRbac && (
+                <Suspense fallback={<ModuleFallback label="Đang tải Phân quyền & Gói…" />}>
+                  <RbacManagementPanel
+                    currentUser={currentUser}
+                    initialTab="members"
+                    onNotify={showToast}
+                  />
+                </Suspense>
+              )}
+
+              {activeTab === 'team' && canManageTeam && (
+                <Suspense fallback={<ModuleFallback label="Đang tải Quản lý Team…" />}>
+                  <RbacManagementPanel
+                    currentUser={currentUser}
+                    initialTab="members"
+                    onNotify={showToast}
                   />
                 </Suspense>
               )}

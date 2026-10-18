@@ -24,8 +24,9 @@ export function validateSchema(schema: z.ZodSchema) {
 
 // 1. Login schema
 export const loginSchema = z.object({
-  email: z.string().trim().email('Email không đúng định dạng.'),
+  email: z.string().trim().min(1, 'Email hoặc tên đăng nhập không được để trống.'),
   password: z.string().min(1, 'Mật khẩu không được để trống.'),
+  portal: z.enum(['admin', 'member']).optional(),
 });
 
 // 2. User Create schema
@@ -60,6 +61,8 @@ export const updateProfileSchema = z.object({
   current_password: z.string().optional(),
   new_password: z.string().min(10).optional(),
   image: z.string().optional(),
+  referral_code_to_join: z.string().trim().optional(),
+  referred_by: z.string().trim().optional(),
 });
 
 // 5. Public Contact/Lead schema

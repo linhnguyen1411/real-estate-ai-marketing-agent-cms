@@ -143,9 +143,9 @@ export const DEFAULT_ROLE_PERMISSIONS_MATRIX: RolePermissionRule[] = [
   // team.members.manage
   { roleKey: 'super_admin', permissionKey: 'team.members.manage', scope: 'all' },
   { roleKey: 'team_lead', permissionKey: 'team.members.manage', scope: 'team' },
-  { roleKey: 'member', permissionKey: 'team.members.manage', scope: 'none' },
+  { roleKey: 'member', permissionKey: 'team.members.manage', scope: 'own' },
   { roleKey: 'pending_member', permissionKey: 'team.members.manage', scope: 'none' },
-  { roleKey: 'independent', permissionKey: 'team.members.manage', scope: 'none' },
+  { roleKey: 'independent', permissionKey: 'team.members.manage', scope: 'own' },
 
   // team.permissions.edit
   { roleKey: 'super_admin', permissionKey: 'team.permissions.edit', scope: 'all' },

@@ -100,6 +100,43 @@ model PropertyAssignment {
   @@map("property_assignments")
 }
 
+model UserWallet {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  balance       Decimal  @default(0) @db.Decimal(18, 2)
+  lockedBalance Decimal  @default(0) @map("locked_balance") @db.Decimal(18, 2)
+  status        String   @default("active") // active | frozen
+  version       Int      @default(0)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  transactions  WalletTransaction[]
+
+  @@map("user_wallets")
+}
+
+model WalletTransaction {
+  id            String   @id @default(cuid())
+  walletId      String   @map("wallet_id")
+  userId        String   @map("user_id")
+  amount        Decimal  @db.Decimal(18, 2)
+  balanceBefore Decimal  @map("balance_before") @db.Decimal(18, 2)
+  balanceAfter  Decimal  @map("balance_after") @db.Decimal(18, 2)
+  type          String   // admin_deposit | admin_deduct | license_upgrade | lock | unlock | refund
+  status        String   @default("completed") // completed | pending | failed | cancelled
+  referenceId   String?  @map("reference_id")
+  note          String
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  wallet        UserWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([type])
+  @@map("wallet_transactions")
+}
+
 model LicenseKey {
   id         String   @id @default(cuid())
   userId     String   @map("user_id")

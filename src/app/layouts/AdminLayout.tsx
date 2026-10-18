@@ -20,7 +20,7 @@ export default function AdminLayout({
   children,
 }: AdminLayoutProps) {
   return (
-    <div className="h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
+    <div className="admin-layout-root h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
       <AdminToast toast={toast} onDismiss={onDismissToast} />
       <AdminHeader {...header} />
       <div className="relative flex flex-1 min-h-0 overflow-hidden">
