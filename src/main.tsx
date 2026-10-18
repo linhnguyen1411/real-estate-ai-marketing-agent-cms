@@ -36,13 +36,16 @@ const BlogTagPage = React.lazy(() => import('./pages/BlogTagPage.tsx'));
 const InvestorDashboardPage = React.lazy(() => import('./pages/InvestorDashboardPage.tsx'));
 const AgentProfilePage = React.lazy(() => import('./pages/AgentProfilePage.tsx'));
 const AgentsDirectoryPage = React.lazy(() => import('./pages/AgentsDirectoryPage.tsx'));
+import ErrorBoundary from './components/common/ErrorBoundary.tsx';
 const AdminApp = React.lazy(() => import('./App.tsx'));
 
 function AdminRoute() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <AdminApp />
-    </Suspense>
+    <ErrorBoundary fallbackTitle="Lỗi tải giao diện quản trị">
+      <Suspense fallback={<PageLoader />}>
+        <AdminApp />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

@@ -31,6 +31,7 @@ import {
   Plus,
   History,
   CreditCard,
+  Lock,
 } from 'lucide-react';
 import { AuthUser } from '../../types';
 import {

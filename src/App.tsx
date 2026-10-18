@@ -88,6 +88,7 @@ import {
   isUserSuperAdmin,
   isUserTeamLead,
   buildPrimaryNavItems,
+  buildSecondaryNavItems,
   SEO_SUBMENU,
   AGENT_SUBMENU,
 } from './app/navigation/sidebarConfig';
@@ -218,6 +219,25 @@ export default function App() {
   const [navigationCounts, setNavigationCounts] = useState<NavigationCounts>(EMPTY_NAV_COUNTS);
   const [moduleLoading, setModuleLoading] = useState(false);
   const loadedModulesRef = useRef<Set<string>>(new Set());
+
+  const isSuper = isUserSuperAdmin(currentUser);
+  const isLead = isUserTeamLead(currentUser);
+  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
+
+  const canManageCmsUsers = isSuper || isLead || hasUserPermission(currentUser, 'user.manage');
+  const canManageWebsiteChat = isSuper || isRoot || hasUserPermission(currentUser, 'website_chat');
+  const canManageSettings = isSuper || hasUserPermission(currentUser, 'settings.system');
+  const canManageIntegrations = isSuper || hasUserPermission(currentUser, 'integrations.system');
+  const canManageAutomations = isSuper || hasUserPermission(currentUser, 'automation.admin');
+  const canManageProjects = isSuper || hasUserPermission(currentUser, 'projects.admin');
+  const canManageAiContent = isSuper || hasUserPermission(currentUser, 'ai_content.admin') || hasUserEntitlement(currentUser, 'ai_content');
+  const canManageLeadMagnet = isSuper || isLead || hasUserPermission(currentUser, 'property.distribute');
+  const canAccessCrm = isSuper || isRoot || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
+  const canAccessInvestorLeads = isSuper || isRoot || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
+  const canAccessAgent = canAccessAgentMenu(currentUser);
+  const canAccessSeo = canAccessSeoMenu(currentUser);
+  const canManageRbac = isSuper || hasUserPermission(currentUser, 'rbac.matrix');
+  const canManageTeam = isSuper || isLead || hasUserPermission(currentUser, 'team.members.manage');
 
   React.useEffect(() => {
     if (!currentUser || activeTab !== 'dashboard') return;
@@ -673,24 +693,6 @@ export default function App() {
   const priorityGeneratedContents = generatedContents
     .filter(item => priorityPlatforms.includes(item.channel))
     .slice(0, 8);
-  const isSuper = isUserSuperAdmin(currentUser);
-  const isLead = isUserTeamLead(currentUser);
-  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
-
-  const canManageCmsUsers = isSuper || isLead || hasUserPermission(currentUser, 'user.manage');
-  const canManageWebsiteChat = isSuper || isRoot || hasUserPermission(currentUser, 'website_chat');
-  const canManageSettings = isSuper || hasUserPermission(currentUser, 'settings.system');
-  const canManageIntegrations = isSuper || hasUserPermission(currentUser, 'integrations.system');
-  const canManageAutomations = isSuper || hasUserPermission(currentUser, 'automation.admin');
-  const canManageProjects = isSuper || hasUserPermission(currentUser, 'projects.admin');
-  const canManageAiContent = isSuper || hasUserPermission(currentUser, 'ai_content.admin') || hasUserEntitlement(currentUser, 'ai_content');
-  const canManageLeadMagnet = isSuper || isLead || hasUserPermission(currentUser, 'property.distribute');
-  const canAccessCrm = isSuper || isRoot || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
-  const canAccessInvestorLeads = isSuper || isRoot || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
-  const canAccessAgent = canAccessAgentMenu(currentUser);
-  const canAccessSeo = canAccessSeoMenu(currentUser);
-  const canManageRbac = isSuper || hasUserPermission(currentUser, 'rbac.matrix');
-  const canManageTeam = isSuper || isLead || hasUserPermission(currentUser, 'team.members.manage');
   if (authLoading && !currentUser) {
     return <AuthLoadingScreen />;
   }
