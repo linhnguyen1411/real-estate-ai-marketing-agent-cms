@@ -46,6 +46,9 @@ data/*
 deploy-*.tar.gz
 *.tar.gz
 *.zip
+*.exe
+public/downloads/*
+!public/downloads/.gitkeep
 
 # Runtime temporary artifacts
 runtime/*
