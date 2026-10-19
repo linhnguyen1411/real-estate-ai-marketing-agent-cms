@@ -65,6 +65,7 @@ export function toPublicAgentProfile(user: User, db: any, propertyCount = 0): an
   return {
     id: auth.id,
     name: auth.name,
+    role: user.role,
     phone: auth.phone,
     avatar_url: auth.avatar_url,
     bio: auth.bio,

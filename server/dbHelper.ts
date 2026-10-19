@@ -316,12 +316,7 @@ export function getPropertyById(id: string): any | null {
 }
 
 export function readDatabase(): CmsDatabase {
-  const raw = requireCache();
-  // In development, freeze to prevent accidental mutations of shared cache
-  if (process.env.NODE_ENV === 'development') {
-    return cloneDb(raw);
-  }
-  return cloneDb(raw);
+  return requireCache();
 }
 
 export async function upsertUser(user: any, expectedVersion?: number): Promise<any> {

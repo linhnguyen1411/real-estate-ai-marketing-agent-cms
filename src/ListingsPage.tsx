@@ -636,6 +636,38 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     };
   }, [selectedProperty?.id]);
 
+  const isBrokerProperty = useMemo(() => {
+    if (!selectedProperty || !listingAgent) return false;
+    const role = listingAgent.role;
+    if (role === 'owner' || (role as string) === 'super_admin') {
+      return false;
+    }
+    return true;
+  }, [selectedProperty, listingAgent]);
+
+  const brokerPhoneRaw = useMemo(() => {
+    if (!isBrokerProperty) return null;
+    return listingAgent?.phone || selectedProperty?.contact_phone || null;
+  }, [isBrokerProperty, listingAgent?.phone, selectedProperty?.contact_phone]);
+
+  const brokerPhoneClean = useMemo(() => {
+    if (!brokerPhoneRaw) return '';
+    return brokerPhoneRaw.replace(/\D/g, '');
+  }, [brokerPhoneRaw]);
+
+  const brokerPhoneFormatted = useMemo(() => {
+    if (!brokerPhoneClean) return brokerPhoneRaw || '';
+    if (brokerPhoneClean.length === 10) {
+      return `${brokerPhoneClean.slice(0, 4)} ${brokerPhoneClean.slice(4, 7)} ${brokerPhoneClean.slice(7)}`;
+    }
+    return brokerPhoneRaw || brokerPhoneClean;
+  }, [brokerPhoneClean, brokerPhoneRaw]);
+
+  const brokerZaloUrl = useMemo(() => {
+    if (!brokerPhoneClean) return zaloUrl;
+    return `https://zalo.me/${brokerPhoneClean}`;
+  }, [brokerPhoneClean]);
+
   const featuredProperties = useMemo(
     () => activeProperties.filter(property => property.is_featured).slice(0, 6),
     [activeProperties]
@@ -1601,50 +1633,50 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
                 <div className="text-sm text-slate-500">{getTransactionType(selectedProperty) === 'Cho thuê' ? 'Giá thuê' : 'Giá bán'}</div>
                 <div className="mt-1 text-3xl font-extrabold text-invest-gold">{formatPrice(selectedProperty.price)}</div>
 
-                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Môi giới phụ trách</div>
-                  {listingAgent ? (
+                {isBrokerProperty && listingAgent ? (
+                  <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Môi giới phụ trách</div>
                     <AgentPublicCard agent={listingAgent} compact className="border-0 bg-transparent p-0 shadow-none" />
-                  ) : (
-                    <p className="text-sm text-slate-500">Thông tin môi giới đang cập nhật.</p>
-                  )}
-                </div>
-
-                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Liên hệ nhanh</div>
-                  <div className="space-y-2">
-                    <a
-                      href="tel:0905777594"
-                      onClick={() => trackPhoneClick('property_sidebar')}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
-                    >
-                      <span className="inline-flex items-center gap-2 font-semibold">
-                        <Phone className="h-4 w-4 text-invest-gold" />
-                        Gọi Mr Linh
-                      </span>
-                      <span className="font-bold text-invest-blue">0905 777 594</span>
-                    </a>
-                    <a
-                      href="tel:0984755258"
-                      onClick={() => trackPhoneClick('property_sidebar')}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
-                    >
-                      <span className="inline-flex items-center gap-2 font-semibold">
-                        <Phone className="h-4 w-4 text-invest-gold" />
-                        Gọi Ms Hằng
-                      </span>
-                      <span className="font-bold text-invest-blue">0984 755 258</span>
-                    </a>
-                    <a
-                      href={zaloUrl}
-                      onClick={() => trackZaloClick('property_sidebar')}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      Nhắn Zalo
-                    </a>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Liên hệ nhanh</div>
+                    <div className="space-y-2">
+                      <a
+                        href="tel:0905777594"
+                        onClick={() => trackPhoneClick('property_sidebar')}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
+                      >
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                          <Phone className="h-4 w-4 text-invest-gold" />
+                          Gọi Mr Linh
+                        </span>
+                        <span className="font-bold text-invest-blue">0905 777 594</span>
+                      </a>
+                      <a
+                        href="tel:0984755258"
+                        onClick={() => trackPhoneClick('property_sidebar')}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-invest-gold-muted px-3 py-2.5 text-sm text-slate-800 transition hover:bg-invest-gold-muted"
+                      >
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                          <Phone className="h-4 w-4 text-invest-gold" />
+                          Gọi Ms Hằng
+                        </span>
+                        <span className="font-bold text-invest-blue">0984 755 258</span>
+                      </a>
+                      <a
+                        href={zaloUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => trackZaloClick('property_sidebar')}
+                        className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Nhắn Zalo
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 <a
                   href="#property-lead-form"
@@ -1726,15 +1758,15 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         >
           <div className="mx-auto grid max-w-5xl grid-cols-4 gap-2 px-3 pt-2">
             <a
-              href="tel:0905777594"
+              href={isBrokerProperty && brokerPhoneClean ? `tel:${brokerPhoneClean}` : "tel:0905777594"}
               onClick={() => trackPhoneClick('property_mobile_bar')}
               className="flex min-h-[52px] flex-col items-center justify-center rounded-xl bg-slate-950 px-2 py-2 text-center text-[11px] font-bold leading-tight text-white"
             >
               <Phone className="mb-0.5 h-4 w-4" />
-              Gọi
+              Gọi {isBrokerProperty && listingAgent?.name ? listingAgent.name.split(' ').slice(-1)[0] : 'Tư vấn'}
             </a>
             <a
-              href={zaloUrl}
+              href={isBrokerProperty && brokerPhoneClean ? brokerZaloUrl : zaloUrl}
               target="_blank"
               rel="noreferrer"
               onClick={() => trackZaloClick('property_mobile_bar')}

@@ -31,6 +31,7 @@ router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSc
   const name = String(req.body?.name || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+  const phone = req.body?.phone ? String(req.body.phone).trim() : undefined;
   const referralCode = req.body?.referralCode ? String(req.body.referralCode).trim().toUpperCase() : undefined;
 
   // 1. Password policy
@@ -71,6 +72,7 @@ router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSc
     email,
     password_hash: passwordHash,
     role: 'member',
+    phone,
     status: 'active',
     referral_code: userReferralCode,
     token_version: 1,

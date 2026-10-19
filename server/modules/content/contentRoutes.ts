@@ -28,11 +28,13 @@ import {
 export function createContentRouter(opts: { agentEnabled: boolean }) {
   const { agentEnabled: AGENT_ENABLED } = opts;
   const router = Router();
+  const navCountsCache = new Map<string, { data: any; expiresAt: number }>();
 
-router.get('/api/dashboard', async (_req: Request, res: Response) => {
+router.get('/api/dashboard', async (req: Request, res: Response) => {
   try {
+    const force = req.query.refresh === 'true' || req.query.refresh === '1';
     const { buildExecutiveKpiDashboard } = await import('../executive-dashboard');
-    const data = await buildExecutiveKpiDashboard();
+    const data = await buildExecutiveKpiDashboard(force);
     res.json({ status: 'success', data });
   } catch (error: unknown) {
     res.status(500).json({
@@ -45,12 +47,19 @@ router.get('/api/dashboard', async (_req: Request, res: Response) => {
 // Lightweight sidebar badges — counts only, no entity lists.
 router.get('/api/navigation-counts', async (req: Request, res: Response) => {
   try {
+    const user = getAuthUser(req);
+    const cacheKey = `${user.id}:${user.role}`;
+    const now = Date.now();
+    const cached = navCountsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return res.json({ status: 'success', data: cached.data });
+    }
+
     const db = readDatabase();
     const customers = scopeCollection(db.customers, req);
     const properties = scopeCollection(db.properties, req);
     const posts = scopeCollection(db.posts, req);
     const inbox = scopeCollection(db.inbox, req);
-    const user = getAuthUser(req);
 
     const adminVisibleProperties = properties.filter(p => getPropertySaleStatus(p) !== 'hidden').length;
     const pendingInbox = inbox.filter(i => i.status === 'pending').length;
@@ -87,22 +96,26 @@ router.get('/api/navigation-counts', async (req: Request, res: Response) => {
     });
     const chatHistory = new Set(chatHistoryScoped.map((item: { user_id?: string }) => item.user_id).filter(Boolean)).size;
 
+    const resultData = {
+      crm: customers.length,
+      properties: adminVisibleProperties,
+      posts: posts.length,
+      pendingInbox,
+      leadIntelligence,
+      investorLeads,
+      externalInventory,
+      notifications,
+      jobs,
+      sources,
+      websiteChat,
+      chatHistory,
+    };
+
+    navCountsCache.set(cacheKey, { data: resultData, expiresAt: now + 15_000 });
+
     res.json({
       status: 'success',
-      data: {
-        crm: customers.length,
-        properties: adminVisibleProperties,
-        posts: posts.length,
-        pendingInbox,
-        leadIntelligence,
-        investorLeads,
-        externalInventory,
-        notifications,
-        jobs,
-        sources,
-        websiteChat,
-        chatHistory,
-      },
+      data: resultData,
     });
   } catch (error: any) {
     res.status(500).json({ status: 'error', message: error?.message || 'Không lấy được navigation counts.' });

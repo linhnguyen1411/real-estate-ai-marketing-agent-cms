@@ -59,6 +59,7 @@ export interface AuthUser {
 export interface PublicAgentProfile {
   id: string;
   name: string;
+  role?: UserRole;
   phone?: string;
   avatar_url?: string;
   bio?: string;

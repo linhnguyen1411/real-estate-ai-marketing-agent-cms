@@ -14,6 +14,6 @@ export const createEmptyPropertyForm = () => ({
   floors: '', bedrooms: '', bathrooms: '', garage: false, pool: false,
   description: '', rich_description: '', internal_notes: '', images: '', gallery_images: [] as string[],
   sale_status: 'available', is_featured: false, selling_points: '',
-  market_zone: '', project_name: '',
+  market_zone: '', project_name: '', listing_source: 'broker' as 'broker' | 'owner',
 });
 

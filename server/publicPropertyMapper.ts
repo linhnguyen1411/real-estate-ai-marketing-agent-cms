@@ -32,6 +32,10 @@ export interface PublicPropertyDTO {
   lot?: string;
   street?: string;
   created_at?: string;
+  created_by_user_id?: string;
+  owner_user_id?: string;
+  contact_phone?: string;
+  listing_source?: 'broker' | 'owner';
 }
 
 export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
@@ -73,6 +77,10 @@ export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
     lot: stripped.lot,
     street: stripped.street,
     created_at: stripped.created_at,
+    created_by_user_id: stripped.created_by_user_id,
+    owner_user_id: stripped.owner_user_id,
+    contact_phone: stripped.contact_phone,
+    listing_source: stripped.listing_source,
   };
   return dto;
 }

@@ -195,82 +195,82 @@ router.get('/api/properties', (req: Request, res: Response) => {
   router.post('/api/properties/batch-import', handleBatchImport);
 
 router.post('/api/properties', validateSchema(propertyCreateSchema), async (req: Request, res: Response) => {
-  const db = readDatabase();
-  const propData = req.body;
+  try {
+    const db = readDatabase();
+    const propData = req.body;
 
-  const listingSource = propData.listing_source;
-  if (!listingSource || (listingSource !== 'broker' && listingSource !== 'owner')) {
-    res.status(400).json({
-      status: 'error',
-      message: 'Vui lòng chọn nguồn tin bất động sản: Môi giới (broker) hoặc Chính chủ (owner).',
-    });
-    return;
-  }
-  
-  const now = new Date().toISOString();
-  const authUser = getAuthUser(req);
-  const normalizedTitle = normalizeIncomingPropertyTitle(propData) || 'BĐS Chưa đặt tên';
-  const generatedSlug = propData.slug || slugify(normalizedTitle);
-  const newProperty: Property = {
-    id: `p-${Date.now()}`,
-    created_at: now,
-    created_by_user_id: authUser.id,
-    title: normalizedTitle,
-    slug: generatedSlug,
-    listing_source: listingSource,
-    seo_title: propData.seo_title || `${normalizedTitle} | House & Life`,
-    meta_description: propData.meta_description || `${normalizedTitle} tại Đà Nẵng.`,
-    transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
-    type: propData.type || 'Đất nền',
-    location: propData.location || '',
-    project_name: propData.project_name || 'Nam Hòa Xuân',
-    block: propData.block || undefined,
-    lot: propData.lot || undefined,
-    street: propData.street || undefined,
-    contact_phone: propData.contact_phone || undefined,
-    area: parseFloat(propData.area) || 0,
-    floor_area: parseFloat(propData.floor_area) || undefined,
-    price: parseFloat(propData.price) || 0,
-    legal_status: propData.legal_status || 'Sổ hồng riêng',
-    direction: propData.direction || 'Đông',
-    road_width: parseFloat(propData.road_width) || 5.5,
-    floors: parseInt(propData.floors, 10) || undefined,
-    bedrooms: parseInt(propData.bedrooms, 10) || undefined,
-    bathrooms: parseInt(propData.bathrooms, 10) || undefined,
-    garage: Boolean(propData.garage),
-    pool: Boolean(propData.pool),
-    description: propData.description || '',
-    rich_description: propData.rich_description || propData.description || '',
-    internal_notes: propData.internal_notes || '',
-    sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
-    is_featured: Boolean(propData.is_featured),
-    public_view_count: Number(propData.public_view_count || 0),
-    images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
-    gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
-    selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
-    schema_json_ld: propData.schema_json_ld || generatePropertyJsonLd({
+    const listingSource = (propData.listing_source === 'owner' || propData.listing_source === 'broker')
+      ? propData.listing_source
+      : 'broker';
+    
+    const now = new Date().toISOString();
+    const authUser = getAuthUser(req);
+    const normalizedTitle = normalizeIncomingPropertyTitle(propData) || 'BĐS Chưa đặt tên';
+    const generatedSlug = propData.slug || slugify(normalizedTitle);
+    const newProperty: Property = {
+      id: `p-${Date.now()}`,
+      created_at: now,
+      created_by_user_id: authUser.id,
       title: normalizedTitle,
-      type: propData.type || 'Đất nền',
-      area: parseFloat(propData.area) || 0,
-      price: parseFloat(propData.price) || 0,
-      location: propData.location || '',
       slug: generatedSlug,
-    }),
-    ...accessDefaults(req, propData)
-  };
+      listing_source: listingSource,
+      seo_title: propData.seo_title || `${normalizedTitle} | House & Life`,
+      meta_description: propData.meta_description || `${normalizedTitle} tại Đà Nẵng.`,
+      transaction_type: String(propData.transaction_type || '').toLowerCase() === 'cho thuê' ? 'Cho thuê' : 'Bán',
+      type: propData.type || 'Đất nền',
+      location: propData.location || '',
+      project_name: propData.project_name || 'Nam Hòa Xuân',
+      block: propData.block || undefined,
+      lot: propData.lot || undefined,
+      street: propData.street || undefined,
+      contact_phone: propData.contact_phone || undefined,
+      area: parseFloat(propData.area) || 0,
+      floor_area: parseFloat(propData.floor_area) || undefined,
+      price: parseFloat(propData.price) || 0,
+      legal_status: propData.legal_status || 'Sổ hồng riêng',
+      direction: propData.direction || 'Đông',
+      road_width: parseFloat(propData.road_width) || 5.5,
+      floors: parseInt(propData.floors, 10) || undefined,
+      bedrooms: parseInt(propData.bedrooms, 10) || undefined,
+      bathrooms: parseInt(propData.bathrooms, 10) || undefined,
+      garage: Boolean(propData.garage),
+      pool: Boolean(propData.pool),
+      description: propData.description || '',
+      rich_description: propData.rich_description || propData.description || '',
+      internal_notes: propData.internal_notes || '',
+      sale_status: propData.sale_status === 'sold' || propData.sale_status === 'hidden' ? propData.sale_status : 'available',
+      is_featured: Boolean(propData.is_featured),
+      public_view_count: Number(propData.public_view_count || 0),
+      images: propData.images || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80',
+      gallery_images: Array.isArray(propData.gallery_images) ? propData.gallery_images : [],
+      selling_points: Array.isArray(propData.selling_points) ? propData.selling_points : [propData.selling_points || 'Vị trí lý tưởng'],
+      schema_json_ld: propData.schema_json_ld || generatePropertyJsonLd({
+        title: normalizedTitle,
+        type: propData.type || 'Đất nền',
+        area: parseFloat(propData.area) || 0,
+        price: parseFloat(propData.price) || 0,
+        location: propData.location || '',
+        slug: generatedSlug,
+      }),
+      ...accessDefaults(req, propData)
+    };
 
-  const seoProperty = applyPropertyHashtagSeo(newProperty);
-  const savedProperty = await upsertCmsRecord('properties', seoProperty);
-  
-  // Trigger automation: Khi thêm mới bất động sản
-  triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${savedProperty.title}`, db);
-  syncSiteSeoKeywords(db);
+    const seoProperty = applyPropertyHashtagSeo(newProperty);
+    const savedProperty = await upsertCmsRecord('properties', seoProperty);
+    
+    // Trigger automation: Khi thêm mới bất động sản
+    triggerAutomationEvent('Khi thêm mới bất động sản', `Thêm BĐS: ${savedProperty.title}`, db);
+    syncSiteSeoKeywords(db);
 
-  clearCacheKey('public-properties');
-  clearCacheKey('public-homepage');
-  clearCacheKey('sitemap-xml');
-  clearCacheKey('sitemap-properties');
-  res.json({ status: 'success', data: savedProperty });
+    clearCacheKey('public-properties');
+    clearCacheKey('public-homepage');
+    clearCacheKey('sitemap-xml');
+    clearCacheKey('sitemap-properties');
+    res.json({ status: 'success', data: savedProperty });
+  } catch (error: any) {
+    console.error('[Properties] Lỗi khi tạo BĐS:', error);
+    res.status(500).json({ status: 'error', message: error?.message || 'Không thể tạo bất động sản.' });
+  }
 });
 
 router.get('/api/properties/:id', (req: Request, res: Response) => {

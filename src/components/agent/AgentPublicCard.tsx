@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Building2, Phone } from 'lucide-react';
+import { Building2, Phone, MessageCircle } from 'lucide-react';
 import { PublicAgentProfile } from '../../types';
 import AgentTierBadge from './AgentTierBadge';
 
@@ -11,6 +11,11 @@ interface AgentPublicCardProps {
 
 export default function AgentPublicCard({ agent, compact = false, className = '' }: AgentPublicCardProps) {
   const initials = agent.name.trim().charAt(0).toUpperCase() || 'A';
+  const cleanPhone = agent.phone ? agent.phone.replace(/\D/g, '') : '';
+  const formattedPhone = cleanPhone.length === 10
+    ? `${cleanPhone.slice(0, 4)} ${cleanPhone.slice(4, 7)} ${cleanPhone.slice(7)}`
+    : agent.phone || cleanPhone;
+  const zaloUrl = cleanPhone ? `https://zalo.me/${cleanPhone}` : undefined;
 
   return (
     <div className={`rounded-xl border border-slate-200 bg-white p-4 ${className}`}>
@@ -46,19 +51,32 @@ export default function AgentPublicCard({ agent, compact = false, className = ''
         </div>
       </div>
 
-      <div className={`mt-4 grid gap-2 ${compact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-        {agent.phone && (
-          <a
-            href={`tel:${agent.phone.replace(/\s+/g, '')}`}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-invest-gold-muted px-3 py-2 text-sm font-semibold text-invest-blue transition hover:bg-invest-gold-muted/80"
-          >
-            <Phone className="h-4 w-4" />
-            {agent.phone}
-          </a>
+      <div className="mt-4 flex flex-col gap-2">
+        {cleanPhone && (
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={`tel:${cleanPhone}`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-invest-gold-muted px-2.5 py-2 text-xs sm:text-sm font-semibold text-invest-blue transition hover:bg-invest-gold-muted/80"
+            >
+              <Phone className="h-4 w-4 shrink-0 text-invest-gold" />
+              <span className="truncate">{formattedPhone}</span>
+            </a>
+            {zaloUrl && (
+              <a
+                href={zaloUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-2 text-xs sm:text-sm font-bold text-white transition hover:bg-blue-700"
+              >
+                <MessageCircle className="h-4 w-4 shrink-0" />
+                <span>Nhắn Zalo</span>
+              </a>
+            )}
+          </div>
         )}
         <Link
           to={agent.profile_url}
-          className={`inline-flex items-center justify-center rounded-lg bg-invest-blue px-3 py-2 text-sm font-bold text-white transition hover:bg-invest-blue/90 ${compact ? '' : 'sm:col-span-2'}`}
+          className="inline-flex items-center justify-center rounded-lg bg-invest-blue px-3 py-2 text-sm font-bold text-white transition hover:bg-invest-blue/90"
         >
           Xem hồ sơ môi giới
         </Link>

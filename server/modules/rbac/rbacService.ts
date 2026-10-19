@@ -36,10 +36,35 @@ export function matchesFeature(activeFeatures: Set<string>, permKey: string): bo
   return false;
 }
 
+interface CachedPermissions {
+  result: ResolvedPermissionsResult;
+  expiresAt: number;
+}
+const userPermissionsCache = new Map<string, CachedPermissions>();
+
+export function clearUserPermissionsCache(userId?: string) {
+  if (userId) {
+    for (const key of userPermissionsCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        userPermissionsCache.delete(key);
+      }
+    }
+  } else {
+    userPermissionsCache.clear();
+  }
+}
+
 /**
  * Resolve effective permissions and entitlement state for a user.
  */
 export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedPermissionsResult> {
+  const cacheKey = `${user.id}:${user.role || ''}`;
+  const cached = userPermissionsCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    return cached.result;
+  }
+
   let roleKey: RoleKey = 'independent';
   let teamId: string | undefined;
   let isPlatformRootTeam = false;
@@ -193,7 +218,7 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
     };
   }
 
-  return {
+  const resolvedResult: ResolvedPermissionsResult = {
     roleKey,
     teamId,
     isPlatformRootTeam,
@@ -202,6 +227,13 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
     permissions,
     activeEntitlementFeatures: activeFeatures,
   };
+
+  userPermissionsCache.set(cacheKey, {
+    result: resolvedResult,
+    expiresAt: now + 30_000,
+  });
+
+  return resolvedResult;
 }
 
 /**

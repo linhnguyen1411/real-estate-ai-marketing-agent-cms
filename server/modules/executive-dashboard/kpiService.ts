@@ -147,8 +147,18 @@ function buildSummary(input: {
   return `Executive Summary: ${campPart} ${buyerPart}, ${input.followUp} khách hàng cần follow-up, ${input.drafts} nội dung chờ duyệt. Doanh thu dự kiến: ${rev}. Trạng thái AI: ${input.aiStatus}.`;
 }
 
-export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboard> {
+let cachedDashboard: { data: ExecutiveKpiDashboard; expiresAt: number } | null = null;
+
+export function clearDashboardCache() {
+  cachedDashboard = null;
+}
+
+export async function buildExecutiveKpiDashboard(forceRefresh = false): Promise<ExecutiveKpiDashboard> {
   const now = Date.now();
+  if (!forceRefresh && cachedDashboard && cachedDashboard.expiresAt > now) {
+    return cachedDashboard.data;
+  }
+
   const dayAgo = new Date(now - 24 * 3600_000);
   const twoDaysAgo = new Date(now - 48 * 3600_000);
   const sevenAgo = new Date(now - 7 * 24 * 3600_000);
@@ -692,7 +702,7 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
     href: s.href,
   }));
 
-  return {
+  const finalDashboard: ExecutiveKpiDashboard = {
     version: 'h052_executive_command',
     generatedAt: new Date().toISOString(),
     summary: buildSummary({
@@ -719,4 +729,11 @@ export async function buildExecutiveKpiDashboard(): Promise<ExecutiveKpiDashboar
     quickActions,
     kpis,
   };
+
+  cachedDashboard = {
+    data: finalDashboard,
+    expiresAt: now + 25_000,
+  };
+
+  return finalDashboard;
 }

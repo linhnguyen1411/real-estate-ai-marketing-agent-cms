@@ -136,6 +136,18 @@ export default function PropertyFormModal({
                 </div>
 
                 <div className="space-y-1">
+                  <label className="block text-2xs font-semibold text-slate-400">Nguồn tin BĐS</label>
+                  <select
+                    value={newPropertyForm.listing_source || 'broker'}
+                    onChange={(e) => setNewPropertyForm({ ...newPropertyForm, listing_source: e.target.value as 'broker' | 'owner' })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200"
+                  >
+                    <option value="broker">Môi giới (Broker)</option>
+                    <option value="owner">Chính chủ (Owner)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
                   <label className="block text-2xs font-semibold text-slate-400">Khu vực thị trường</label>
                   <select
                     value={newPropertyForm.market_zone}

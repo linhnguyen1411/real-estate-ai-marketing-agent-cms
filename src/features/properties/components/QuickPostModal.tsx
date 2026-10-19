@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Zap, CheckCircle2, Sparkles, Send, Copy, ArrowRight, ShieldCheck, Tag } from 'lucide-react';
 import type { Property } from '../../../types';
 
+import { getAuthToken } from '../../../services/api';
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -28,9 +30,13 @@ export default function QuickPostModal({ isOpen, onClose, onSuccess, onNotify }:
 
     setLoading(true);
     try {
+      const token = getAuthToken();
       const res = await fetch('/api/admin/properties/quick-parse', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ rawText: text }),
       });
       const json = await res.json();
@@ -56,10 +62,18 @@ export default function QuickPostModal({ isOpen, onClose, onSuccess, onNotify }:
     if (!parsedData) return;
     setPublishing(true);
     try {
+      const token = getAuthToken();
+      const payload = {
+        ...parsedData,
+        listing_source: parsedData.listing_source || 'broker'
+      };
       const res = await fetch('/api/properties', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsedData),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (json.status === 'success') {

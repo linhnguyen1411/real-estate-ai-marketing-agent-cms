@@ -349,6 +349,7 @@ export default function PropertiesPage({
         selling_points: sellingPoints,
         market_zone: newPropertyForm.market_zone || undefined,
         project_name: newPropertyForm.project_name?.trim() || undefined,
+        listing_source: newPropertyForm.listing_source || 'broker',
       };
 
       if (editingProperty) {
