@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getAuthUser } from '../auth/authAccess';
@@ -47,7 +48,7 @@ export function createLicenseRouter(): Router {
   router.post('/api/license/download-trial', async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
     if (!authUser) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 
@@ -105,7 +106,7 @@ export function createLicenseRouter(): Router {
   const handleGetMyLicense = async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
     if (!authUser) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 
@@ -171,7 +172,7 @@ export function createLicenseRouter(): Router {
   router.post('/api/license/request-pem', async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
     if (!authUser) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 
@@ -227,7 +228,7 @@ export function createLicenseRouter(): Router {
   router.post('/api/license/upgrade-plan', async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
     if (!authUser) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 
@@ -329,7 +330,7 @@ export function createLicenseRouter(): Router {
       (req.headers['x-device-id'] as string) || req.body.deviceId;
 
     if (!token) {
-      res.status(401).json({ status: 'error', message: 'Thiếu device token.' });
+      sendError(res, 401, 'Thiếu device token.');
       return;
     }
 
@@ -416,7 +417,7 @@ export function createLicenseRouter(): Router {
   router.post('/api/admin/licenses/:id/revoke', requirePermission('license.manage'), async (req: Request, res: Response) => {
     const success = await revokeLicenseKey(req.params.id);
     if (!success) {
-      res.status(404).json({ status: 'error', message: 'Không tìm thấy license key.' });
+      sendError(res, 404, 'Không tìm thấy license key.');
       return;
     }
 

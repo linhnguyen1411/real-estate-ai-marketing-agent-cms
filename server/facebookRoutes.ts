@@ -1,3 +1,4 @@
+import { sendError } from './utils/httpResponses';
 /**
  * DEPRECATED from CMS nav; Graph webhook retained for compatibility; agent browser reader is separate.
  * Prefer keeping these routes/tables; UI entry points were removed rather than deleting this module.
@@ -57,7 +58,7 @@ export function registerFacebookWebhookRoutes(app: import('express').Express) {
 
   app.post('/webhooks/facebook', (req: Request, res: Response) => {
     if (!verifyPostSignature(req)) {
-      res.status(403).json({ status: 'error', message: 'Invalid signature' });
+      sendError(res, 403, 'Invalid signature');
       return;
     }
     queueFacebookWebhookProcessing(req.body);
@@ -120,7 +121,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
     try {
       const row = await getFacebookConversationDetail(req.params.id);
       if (!row) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy hội thoại' });
+        sendError(res, 404, 'Không tìm thấy hội thoại');
         return;
       }
       const lead = row.contact.leads[0];
@@ -161,7 +162,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
   app.patch('/api/facebook/inbox/:id/status', async (req: Request, res: Response) => {
     const status = String(req.body?.status || '').trim();
     if (!status) {
-      res.status(400).json({ status: 'error', message: 'Thiếu status' });
+      sendError(res, 400, 'Thiếu status');
       return;
     }
     const row = await updateFacebookConversationStatus(req.params.id, status);
@@ -200,7 +201,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
   app.patch('/api/facebook/comments/:id/status', async (req: Request, res: Response) => {
     const status = String(req.body?.status || '').trim();
     if (!status) {
-      res.status(400).json({ status: 'error', message: 'Thiếu status' });
+      sendError(res, 400, 'Thiếu status');
       return;
     }
     const row = await updateFacebookInteractionStatus(req.params.id, status);
@@ -211,7 +212,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
     try {
       const interaction = (await listFacebookInteractions(200)).find(r => r.id === req.params.id);
       if (!interaction || !interaction.contactId) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy comment hoặc contact' });
+        sendError(res, 404, 'Không tìm thấy comment hoặc contact');
         return;
       }
       const lead = await createOrUpdateFacebookLead({
@@ -265,7 +266,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
     try {
       const conversation = await getFacebookConversationDetail(req.params.conversationId);
       if (!conversation) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy hội thoại' });
+        sendError(res, 404, 'Không tìm thấy hội thoại');
         return;
       }
       const lead = await linkLeadToContact(req.params.leadId, conversation.contactId);
@@ -282,7 +283,7 @@ export function registerFacebookAdminRoutes(app: import('express').Express) {
     try {
       const conversation = await getFacebookConversationDetail(req.params.conversationId);
       if (!conversation) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy hội thoại' });
+        sendError(res, 404, 'Không tìm thấy hội thoại');
         return;
       }
       const lastInbound = [...conversation.messages].reverse().find(m => m.direction === 'inbound');

@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { readDatabase, upsertCmsRecord, deleteCmsRecord } from '../../dbHelper';
 import { analyzeCustomerWithAI } from '../../aiService';
@@ -80,12 +81,12 @@ router.put('/api/customers/:id', async (req: Request, res: Response) => {
   const index = db.customers.findIndex(c => c.id === req.params.id);
   
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách hàng' });
+    sendError(res, 404, 'Không tìm thấy khách hàng');
     return;
   }
 
   if (!canManageResource(db.customers[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật khách hàng này.' });
+    sendError(res, 403, 'Bạn không có quyền cập nhật khách hàng này.');
     return;
   }
 
@@ -110,12 +111,12 @@ router.delete('/api/customers/:id', async (req: Request, res: Response) => {
   const target = db.customers.find(c => c.id === req.params.id);
   
   if (!target) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách hàng' });
+    sendError(res, 404, 'Không tìm thấy khách hàng');
     return;
   }
 
   if (!canManageResource(target, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa khách hàng này.' });
+    sendError(res, 403, 'Bạn không có quyền xóa khách hàng này.');
     return;
   }
 
@@ -130,12 +131,12 @@ router.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
   const customer = db.customers.find(c => c.id === customerId);
 
   if (!customer) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách hàng để phân tích.' });
+    sendError(res, 404, 'Không tìm thấy khách hàng để phân tích.');
     return;
   }
 
   if (!canAccessResource(customer, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền phân tích khách hàng này.' });
+    sendError(res, 403, 'Bạn không có quyền phân tích khách hàng này.');
     return;
   }
 
@@ -156,7 +157,7 @@ router.post('/api/ai/analyze-customer', async (req: Request, res: Response) => {
     const savedCustomer = await upsertCmsRecord('customers', updatedCustomer, customer.version);
     res.json({ status: 'success', data: savedCustomer });
   } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
+    sendError(res, 500, err.message);
   }
 });
 

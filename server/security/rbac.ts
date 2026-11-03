@@ -1,3 +1,4 @@
+import { sendError } from '../utils/httpResponses';
 import type { Request, Response, NextFunction } from 'express';
 import { getAuthUser } from '../modules/auth';
 
@@ -19,7 +20,7 @@ export function requireRole(minRole: UserRole) {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = getAuthUser(req);
     if (!user) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 

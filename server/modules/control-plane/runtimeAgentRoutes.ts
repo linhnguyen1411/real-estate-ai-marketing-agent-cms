@@ -38,7 +38,7 @@ function requireAgentToken(req: Request, res: Response, next: NextFunction): voi
   const expected = runtimeToken();
 
   if (!token || !expected) {
-    res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+    sendError(res, 401, 'Unauthorized Execution Agent.');
     return;
   }
 
@@ -46,17 +46,17 @@ function requireAgentToken(req: Request, res: Response, next: NextFunction): voi
   const expectedBuf = Buffer.from(expected);
 
   if (tokenBuf.length !== expectedBuf.length) {
-    res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+    sendError(res, 401, 'Unauthorized Execution Agent.');
     return;
   }
 
   try {
     if (!crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
-      res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+      sendError(res, 401, 'Unauthorized Execution Agent.');
       return;
     }
   } catch {
-    res.status(401).json({ status: 'error', message: 'Unauthorized Execution Agent.' });
+    sendError(res, 401, 'Unauthorized Execution Agent.');
     return;
   }
 

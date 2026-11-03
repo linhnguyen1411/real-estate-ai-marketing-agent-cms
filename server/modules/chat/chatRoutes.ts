@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import {
   deleteChatHistoryByUserId,
@@ -18,7 +19,7 @@ import { retrieveRagKnowledge, buildOfficialSystemPrompt } from './ragKnowledgeS
 export async function deleteChatSessionHandler(req: Request, res: Response) {
   const sessionUserId = decodeURIComponent(String(req.params.sessionUserId || '').trim());
   if (!sessionUserId) {
-    res.status(400).json({ status: 'error', message: 'Thiếu mã phiên trò chuyện.' });
+    sendError(res, 400, 'Thiếu mã phiên trò chuyện.');
     return;
   }
 
@@ -47,7 +48,7 @@ export function assertCanManageChatSession(req: Request, res: Response, sessionU
 
   if (sessionUserId.startsWith('public-')) {
     if (authUser.role === 'member') {
-      res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa lịch sử khách chat.' });
+      sendError(res, 403, 'Bạn không có quyền xóa lịch sử khách chat.');
       return false;
     }
     return true;
@@ -59,14 +60,14 @@ export function assertCanManageChatSession(req: Request, res: Response, sessionU
     if (sessionUserId === authUser.id) return true;
     const meta = getChatHistorySessionMeta(sessionUserId);
     if (meta?.company_id && meta.company_id !== authUser.company_id) {
-      res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa lịch sử chat này.' });
+      sendError(res, 403, 'Bạn không có quyền xóa lịch sử chat này.');
       return false;
     }
     return true;
   }
 
   if (sessionUserId !== authUser.id) {
-    res.status(403).json({ status: 'error', message: 'Bạn chỉ được xóa lịch sử chat của chính mình.' });
+    sendError(res, 403, 'Bạn chỉ được xóa lịch sử chat của chính mình.');
     return false;
   }
 
@@ -87,7 +88,7 @@ router.get('/api/ai/status', async (req: Request, res: Response) => {
     const briefing = await getAiStatusBriefingText();
     res.json({ status: 'success', data: providers, briefing });
   } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
+    sendError(res, 500, err.message);
   }
 });
 
@@ -97,7 +98,7 @@ router.post('/api/ai/chat', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
 
   if (!message) {
-    res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống' });
+    sendError(res, 400, 'Tin nhắn không được trống');
     return;
   }
 
@@ -159,7 +160,7 @@ router.post('/api/ai/chat', async (req: Request, res: Response) => {
 
     res.json({ status: 'success', data: aiResponse });
   } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
+    sendError(res, 500, err.message);
   }
 });
 
@@ -183,7 +184,7 @@ router.post('/api/chat/sessions/:sessionUserId/delete', deleteChatSessionHandler
 router.get('/api/chat/guests', (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem danh sách khách chat.' });
+    sendError(res, 403, 'Bạn không có quyền xem danh sách khách chat.');
     return;
   }
   res.json({ status: 'success', data: getPublicChatGuests() });
@@ -192,7 +193,7 @@ router.get('/api/chat/guests', (req: Request, res: Response) => {
 router.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem lịch sử khách chat.' });
+    sendError(res, 403, 'Bạn không có quyền xem lịch sử khách chat.');
     return;
   }
   const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
@@ -203,13 +204,13 @@ router.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) 
 router.put('/api/chat/guests/:sessionId/ai', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền đổi trạng thái AI.' });
+    sendError(res, 403, 'Bạn không có quyền đổi trạng thái AI.');
     return;
   }
   const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const guest = await updatePublicChatGuestAi(sessionId, Boolean(req.body?.ai_enabled));
   if (!guest) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách chat.' });
+    sendError(res, 404, 'Không tìm thấy khách chat.');
     return;
   }
   res.json({ status: 'success', data: guest });
@@ -218,18 +219,18 @@ router.put('/api/chat/guests/:sessionId/ai', async (req: Request, res: Response)
 router.post('/api/chat/guests/:sessionId/messages', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
   if (user.role === 'member') {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền gửi tin cho khách.' });
+    sendError(res, 403, 'Bạn không có quyền gửi tin cho khách.');
     return;
   }
   const sessionId = String(req.params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const guest = getPublicChatGuest(sessionId);
   const message = String(req.body?.message || '').trim();
   if (!guest) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy khách chat.' });
+    sendError(res, 404, 'Không tìm thấy khách chat.');
     return;
   }
   if (!message) {
-    res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống.' });
+    sendError(res, 400, 'Tin nhắn không được trống.');
     return;
   }
   await updatePublicChatGuestAi(sessionId, false);

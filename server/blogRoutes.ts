@@ -1,3 +1,4 @@
+import { sendError } from './utils/httpResponses';
 import { Express, Request, Response } from 'express';
 import {
   auditPostById,
@@ -53,7 +54,7 @@ export function registerBlogPublicRoutes(app: Express) {
         data: posts.map(post => ({ ...post, content: undefined, contentMarkdown: undefined, contentHtml: undefined })),
       });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -61,12 +62,12 @@ export function registerBlogPublicRoutes(app: Express) {
     try {
       const post = await getBlogPostBySlug(req.params.slug, true);
       if (!post) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+        sendError(res, 404, 'Không tìm thấy bài viết');
         return;
       }
       res.json({ status: 'success', data: post });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -75,7 +76,7 @@ export function registerBlogPublicRoutes(app: Express) {
       const categories = await listCategoriesWithPublishedCount(true);
       res.json({ status: 'success', data: categories });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 }
@@ -142,14 +143,14 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const image = String(req.body?.image || '').trim();
       if (!image) {
-        res.status(400).json({ status: 'error', message: 'Thiếu dữ liệu ảnh.' });
+        sendError(res, 400, 'Thiếu dữ liệu ảnh.');
         return;
       }
       const slug = String(req.body?.slug || req.body?.postId || '').trim() || undefined;
       const url = saveBlogCoverFromDataUrl(image, slug);
       res.json({ status: 'success', data: { url } });
     } catch (error: any) {
-      res.status(400).json({ status: 'error', message: error.message || 'Upload ảnh thất bại.' });
+      sendError(res, 400, error.message || 'Upload ảnh thất bại.');
     }
   });
 
@@ -157,14 +158,14 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const image = String(req.body?.image || '').trim();
       if (!image) {
-        res.status(400).json({ status: 'error', message: 'Thiếu dữ liệu ảnh.' });
+        sendError(res, 400, 'Thiếu dữ liệu ảnh.');
         return;
       }
       const slug = String(req.body?.slug || '').trim() || undefined;
       const url = saveImageFromDataUrl(image, 'content-images', slug || 'content');
       res.json({ status: 'success', data: { url } });
     } catch (error: any) {
-      res.status(400).json({ status: 'error', message: error.message || 'Upload ảnh thất bại.' });
+      sendError(res, 400, error.message || 'Upload ảnh thất bại.');
     }
   });
 
@@ -173,7 +174,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const drafts = await listAiDrafts();
       res.json({ status: 'success', data: drafts });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -181,7 +182,7 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const draft = await getAiDraftById(req.params.id);
       if (!draft) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy AI draft' });
+        sendError(res, 404, 'Không tìm thấy AI draft');
         return;
       }
       const input = (draft.input || {}) as Record<string, unknown>;
@@ -204,7 +205,7 @@ export function registerBlogAdminRoutes(app: Express) {
         },
       });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -252,7 +253,7 @@ export function registerBlogAdminRoutes(app: Express) {
         }
       })();
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -260,7 +261,7 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const markdown = String(req.body?.markdown || '').trim();
       if (!markdown) {
-        res.status(400).json({ status: 'error', message: 'Thiếu markdown' });
+        sendError(res, 400, 'Thiếu markdown');
         return;
       }
       const parsed = parsePromptMarkdown(markdown);
@@ -339,7 +340,7 @@ export function registerBlogAdminRoutes(app: Express) {
         },
       });
     } catch (error: any) {
-      res.status(400).json({ status: 'error', message: error.message });
+      sendError(res, 400, error.message);
     }
   });
 
@@ -400,7 +401,7 @@ export function registerBlogAdminRoutes(app: Express) {
         },
       });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -408,13 +409,13 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const { action, ...payload } = req.body || {};
       if (!action) {
-        res.status(400).json({ status: 'error', message: 'Thiếu action' });
+        sendError(res, 400, 'Thiếu action');
         return;
       }
       const result = await runAiAssist(action, payload);
       res.json({ status: 'success', data: result });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -452,7 +453,7 @@ export function registerBlogAdminRoutes(app: Express) {
       );
       res.json({ status: 'success', data: { audit, duplicate } });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -463,7 +464,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const posts = await listBlogPosts({ status, categorySlug });
       res.json({ status: 'success', data: posts });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -472,7 +473,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const data = await suggestForPost(req.body || {});
       res.json({ status: 'success', data });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -480,12 +481,12 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const post = await getBlogPostById(req.params.id);
       if (!post) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+        sendError(res, 404, 'Không tìm thấy bài viết');
         return;
       }
       res.json({ status: 'success', data: post });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -498,7 +499,7 @@ export function registerBlogAdminRoutes(app: Express) {
         error?.code === 'P2002'
           ? 'Slug hoặc ID bài viết đã tồn tại — hãy đổi slug hoặc mở bài cũ để sửa.'
           : error.message;
-      res.status(error?.code === 'P2002' ? 409 : 500).json({ status: 'error', message });
+      sendError(res, error?.code === 'P2002' ? 409 : 500, message);
     }
   });
 
@@ -506,7 +507,7 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const post = await updateBlogPost(req.params.id, mapPostBody(req.body || {}) as any);
       if (!post) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+        sendError(res, 404, 'Không tìm thấy bài viết');
         return;
       }
       res.json({ status: 'success', data: post });
@@ -515,7 +516,7 @@ export function registerBlogAdminRoutes(app: Express) {
         error?.code === 'P2002'
           ? 'Slug đã được bài khác sử dụng — hãy đổi slug.'
           : error.message;
-      res.status(error?.code === 'P2002' ? 409 : 500).json({ status: 'error', message });
+      sendError(res, error?.code === 'P2002' ? 409 : 500, message);
     }
   });
 
@@ -524,7 +525,7 @@ export function registerBlogAdminRoutes(app: Express) {
       await deleteBlogPost(req.params.id);
       res.json({ status: 'success' });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -532,13 +533,13 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const { markdown, authorId, categoryId } = req.body || {};
       if (!markdown || !authorId) {
-        res.status(400).json({ status: 'error', message: 'Thiếu markdown hoặc authorId' });
+        sendError(res, 400, 'Thiếu markdown hoặc authorId');
         return;
       }
       const post = await importMarkdownPost(String(markdown), { authorId, categoryId });
       res.json({ status: 'success', data: post });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -546,12 +547,12 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const audit = await auditPostById(req.params.id);
       if (!audit) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+        sendError(res, 404, 'Không tìm thấy bài viết');
         return;
       }
       res.json({ status: 'success', data: audit });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -559,12 +560,12 @@ export function registerBlogAdminRoutes(app: Express) {
     try {
       const result = await duplicateCheckPostById(req.params.id);
       if (!result) {
-        res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+        sendError(res, 404, 'Không tìm thấy bài viết');
         return;
       }
       res.json({ status: 'success', data: result });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -578,7 +579,7 @@ export function registerBlogAdminRoutes(app: Express) {
       }
       res.json({ status: 'success', data: result });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -588,7 +589,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const revisions = await listRevisions(req.params.id);
       res.json({ status: 'success', data: revisions });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -597,7 +598,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const audits = await listSeoAudits(req.params.id);
       res.json({ status: 'success', data: audits });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -606,7 +607,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const categories = await listCategoriesWithPublishedCount(false);
       res.json({ status: 'success', data: categories });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -615,7 +616,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const category = await createCategory(req.body);
       res.json({ status: 'success', data: category });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -624,7 +625,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const category = await updateCategory(req.params.id, req.body);
       res.json({ status: 'success', data: category });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -633,7 +634,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const tags = await listTags();
       res.json({ status: 'success', data: tags });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -642,7 +643,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const tag = await createTag(req.body.name);
       res.json({ status: 'success', data: tag });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 
@@ -651,7 +652,7 @@ export function registerBlogAdminRoutes(app: Express) {
       const authors = await listAuthors();
       res.json({ status: 'success', data: authors });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      sendError(res, 500, error.message);
     }
   });
 

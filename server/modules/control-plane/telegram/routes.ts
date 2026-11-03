@@ -53,7 +53,7 @@ export function registerTelegramControlPlaneRoutes(app: Express): void {
       res.json({ status: 'success', data: result });
     } catch (error: unknown) {
       console.error('[telegram-console] webhook error', error);
-      res.status(200).json({ status: 'error', message: 'handled_with_error' });
+      sendError(res, 200, 'handled_with_error');
     }
   });
 }

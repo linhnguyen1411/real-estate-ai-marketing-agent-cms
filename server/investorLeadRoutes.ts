@@ -1,3 +1,4 @@
+import { sendError } from './utils/httpResponses';
 import { Router, Request, Response } from 'express';
 
 import { processLeadCapture } from './investorLeadService';
@@ -39,7 +40,7 @@ export function createInvestorLeadPublicRouter() {
       const email = String(body.email || '').trim();
 
       if (!name || !phone) {
-        res.status(400).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại.' });
+        sendError(res, 400, 'Vui lòng nhập họ tên và số điện thoại.');
         return;
       }
 
@@ -75,7 +76,7 @@ export function createInvestorLeadPublicRouter() {
       });
     } catch (error) {
       console.error('[Leads] capture error:', error);
-      res.status(500).json({ status: 'error', message: 'Không lưu được thông tin. Vui lòng thử lại.' });
+      sendError(res, 500, 'Không lưu được thông tin. Vui lòng thử lại.');
     }
   });
 
@@ -90,7 +91,7 @@ export function createInvestorLeadPublicRouter() {
       });
       res.json({ status: 'success', data: event });
     } catch {
-      res.status(500).json({ status: 'error', message: 'Event failed' });
+      sendError(res, 500, 'Event failed');
     }
   });
 
@@ -100,7 +101,7 @@ export function createInvestorLeadPublicRouter() {
     const magnet = getLeadMagnet(slug);
 
     if (!magnet) {
-      res.status(404).json({ status: 'error', message: 'Không tìm thấy tài liệu.' });
+      sendError(res, 404, 'Không tìm thấy tài liệu.');
       return;
     }
 
@@ -117,7 +118,7 @@ export function createInvestorLeadPublicRouter() {
 
     const content = getLeadMagnetContent(slug);
     if (!content) {
-      res.status(404).json({ status: 'error', message: 'Nội dung tài liệu chưa sẵn sàng.' });
+      sendError(res, 404, 'Nội dung tài liệu chưa sẵn sàng.');
       return;
     }
 
@@ -180,7 +181,7 @@ export function registerInvestorLeadAdminRoutes(app: import('express').Express) 
   app.patch('/api/investor-leads/:id/status', async (req: Request, res: Response) => {
     const status = req.body?.status;
     if (!['new', 'contacted', 'qualified', 'closed', 'lost', 'called', 'unreachable', 'callback_scheduled', 'unqualified', 'converted_to_customer'].includes(status)) {
-      res.status(400).json({ status: 'error', message: 'Status không hợp lệ.' });
+      sendError(res, 400, 'Status không hợp lệ.');
       return;
     }
     await updateLeadStatus(req.params.id, status);
@@ -191,7 +192,7 @@ export function registerInvestorLeadAdminRoutes(app: import('express').Express) 
     try {
       const user = getRequestUser(req);
       if (!user) {
-        res.status(401).json({ status: 'error', message: 'Cần đăng nhập.' });
+        sendError(res, 401, 'Cần đăng nhập.');
         return;
       }
       const result = await convertInvestorLeadToCustomer({
@@ -211,7 +212,7 @@ export function registerInvestorLeadAdminRoutes(app: import('express').Express) 
     try {
       const user = getRequestUser(req);
       if (!user) {
-        res.status(401).json({ status: 'error', message: 'Cần đăng nhập.' });
+        sendError(res, 401, 'Cần đăng nhập.');
         return;
       }
       const body = (req.body || {}) as Record<string, unknown>;

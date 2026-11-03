@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import {
   getPublicChatGuests,
@@ -117,7 +118,7 @@ router.get('/api/navigation-counts', async (req: Request, res: Response) => {
       data: resultData,
     });
   } catch (error: any) {
-    res.status(500).json({ status: 'error', message: error?.message || 'Không lấy được navigation counts.' });
+    sendError(res, 500, error?.message || 'Không lấy được navigation counts.');
   }
 });
 
@@ -149,18 +150,18 @@ router.post('/api/content/generated/:id/verify', async (req: Request, res: Respo
   const record = (db.generated_contents || []).find(item => item.id === req.params.id);
 
   if (!record) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy content đã sinh.' });
+    sendError(res, 404, 'Không tìm thấy content đã sinh.');
     return;
   }
 
   if (user.role !== 'owner' && record.company_id !== user.company_id) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền duyệt content này.' });
+    sendError(res, 403, 'Bạn không có quyền duyệt content này.');
     return;
   }
 
   const ok = await verifyGeneratedContent(record.id, verifiedContent || record.raw_content);
   if (!ok) {
-    res.status(500).json({ status: 'error', message: 'Không thể cập nhật trạng thái verified.' });
+    sendError(res, 500, 'Không thể cập nhật trạng thái verified.');
     return;
   }
 
@@ -177,12 +178,12 @@ router.post('/api/automations/:id/toggle', async (req: Request, res: Response) =
   const index = db.automations.findIndex(a => a.id === req.params.id);
 
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy kịch bản tự động' });
+    sendError(res, 404, 'Không tìm thấy kịch bản tự động');
     return;
   }
 
   if (!canManageResource(db.automations[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền thay đổi automation này.' });
+    sendError(res, 403, 'Bạn không có quyền thay đổi automation này.');
     return;
   }
 
@@ -265,7 +266,7 @@ router.post('/api/settings/telegram/test', async (req: Request, res: Response) =
   const text = req.body?.text != null ? String(req.body.text) : undefined;
   const result = await sendTestTelegram({ text });
   if (!result.ok) {
-    res.status(400).json({ status: 'error', message: result.error || 'Telegram test failed' });
+    sendError(res, 400, result.error || 'Telegram test failed');
     return;
   }
   res.json({ status: 'success', data: result });

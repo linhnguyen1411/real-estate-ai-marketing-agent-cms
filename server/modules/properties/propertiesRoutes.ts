@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { readDatabase, upsertCmsRecord, saveGeneratedContent } from '../../dbHelper';
 import { generatePropertyMarketingContent } from '../../aiService';
@@ -112,7 +113,7 @@ router.get('/api/properties', (req: Request, res: Response) => {
   const handleQuickParse = (req: Request, res: Response) => {
     const rawText = String(req.body.rawText || req.body.text || req.body.content || '').trim();
     if (!rawText) {
-      res.status(400).json({ status: 'error', message: 'Vui lòng cung cấp nội dung bài đăng thô.' });
+      sendError(res, 400, 'Vui lòng cung cấp nội dung bài đăng thô.');
       return;
     }
     const parsed = parseQuickPropertyText(rawText);
@@ -126,7 +127,7 @@ router.get('/api/properties', (req: Request, res: Response) => {
   const handleBatchImport = async (req: Request, res: Response) => {
     const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
     if (!rawItems.length) {
-      res.status(400).json({ status: 'error', message: 'Danh sách giỏ hàng trống.' });
+      sendError(res, 400, 'Danh sách giỏ hàng trống.');
       return;
     }
     const db = readDatabase();
@@ -269,7 +270,7 @@ router.post('/api/properties', validateSchema(propertyCreateSchema), async (req:
     res.json({ status: 'success', data: savedProperty });
   } catch (error: any) {
     console.error('[Properties] Lỗi khi tạo BĐS:', error);
-    res.status(500).json({ status: 'error', message: error?.message || 'Không thể tạo bất động sản.' });
+    sendError(res, 500, error?.message || 'Không thể tạo bất động sản.');
   }
 });
 
@@ -277,11 +278,11 @@ router.get('/api/properties/:id', (req: Request, res: Response) => {
   const db = readDatabase();
   const property = db.properties.find(p => p.id === req.params.id);
   if (!property) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+    sendError(res, 404, 'Không tìm thấy bất động sản');
     return;
   }
   if (!canAccessResource(property, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem bất động sản này.' });
+    sendError(res, 403, 'Bạn không có quyền xem bất động sản này.');
     return;
   }
   res.json({ status: 'success', data: property });
@@ -292,12 +293,12 @@ router.put('/api/properties/:id', async (req: Request, res: Response) => {
   const index = db.properties.findIndex(p => p.id === req.params.id);
   
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+    sendError(res, 404, 'Không tìm thấy bất động sản');
     return;
   }
 
   if (!canManageResource(db.properties[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật bất động sản này.' });
+    sendError(res, 403, 'Bạn không có quyền cập nhật bất động sản này.');
     return;
   }
 
@@ -346,12 +347,12 @@ router.delete('/api/properties/:id', async (req: Request, res: Response) => {
   const target = index >= 0 ? db.properties[index] : null;
   
   if (!target || index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+    sendError(res, 404, 'Không tìm thấy bất động sản');
     return;
   }
 
   if (!canManageResource(target, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa bất động sản này.' });
+    sendError(res, 403, 'Bạn không có quyền xóa bất động sản này.');
     return;
   }
 
@@ -371,19 +372,19 @@ router.post('/api/properties/:id/distribute', requirePermission('property.distri
   const db = readDatabase();
   const property = db.properties.find((p) => p.id === req.params.id);
   if (!property) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản.' });
+    sendError(res, 404, 'Không tìm thấy bất động sản.');
     return;
   }
 
   const teamId = req.teamId;
   if (!teamId) {
-    res.status(403).json({ status: 'error', message: 'Bạn phải là Team Lead để phân phối giỏ hàng.' });
+    sendError(res, 403, 'Bạn phải là Team Lead để phân phối giỏ hàng.');
     return;
   }
 
   const { memberIds } = req.body || {};
   if (!Array.isArray(memberIds) || memberIds.length === 0) {
-    res.status(400).json({ status: 'error', message: 'Vui lòng chọn ít nhất một thành viên để phân phối.' });
+    sendError(res, 400, 'Vui lòng chọn ít nhất một thành viên để phân phối.');
     return;
   }
 
@@ -437,11 +438,11 @@ router.get('/api/properties/:id/assignments', async (req: Request, res: Response
   const db = readDatabase();
   const property = db.properties.find((p) => p.id === req.params.id);
   if (!property) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản.' });
+    sendError(res, 404, 'Không tìm thấy bất động sản.');
     return;
   }
   if (!canAccessResource(property, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem thông tin này.' });
+    sendError(res, 403, 'Bạn không có quyền xem thông tin này.');
     return;
   }
 
@@ -458,12 +459,12 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
 
   if (!property) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản để tạo marketing.' });
+    sendError(res, 404, 'Không tìm thấy bất động sản để tạo marketing.');
     return;
   }
 
   if (!canAccessResource(property, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền tạo nội dung cho bất động sản này.' });
+    sendError(res, 403, 'Bạn không có quyền tạo nội dung cho bất động sản này.');
     return;
   }
 
@@ -547,7 +548,7 @@ router.post('/api/ai/generate-content', async (req: Request, res: Response) => {
     const savedProp = await upsertCmsRecord('properties', property, property.version);
     res.json({ status: 'success', data: savedProp });
   } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
+    sendError(res, 500, err.message);
   }
 });
 

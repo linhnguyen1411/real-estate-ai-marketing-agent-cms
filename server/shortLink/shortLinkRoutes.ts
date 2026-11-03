@@ -1,3 +1,4 @@
+import { sendError } from '../utils/httpResponses';
 import { Express, Request, Response } from 'express';
 import type { Property } from '../../src/types';
 import { getPublicPropertySlug } from '../../src/utils/propertyShare';
@@ -210,7 +211,7 @@ export function registerShortLinkPublicRoutes(
       const origin = getPublicOrigin(req);
 
       if (!entityType || !entityId) {
-        res.status(400).json({ status: 'error', message: 'Thiếu entityType hoặc entityId.' });
+        sendError(res, 400, 'Thiếu entityType hoặc entityId.');
         return;
       }
 
@@ -222,7 +223,7 @@ export function registerShortLinkPublicRoutes(
       if (entityType === 'property') {
         const property = getProperties().find(item => item.id === entityId);
         if (!property || ['sold', 'hidden'].includes(property.sale_status || 'available')) {
-          res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản.' });
+          sendError(res, 404, 'Không tìm thấy bất động sản.');
           return;
         }
         targetUrl = `${origin}/${encodeURIComponent(getPublicPropertySlug(property))}`;
@@ -232,7 +233,7 @@ export function registerShortLinkPublicRoutes(
       } else if (entityType === 'blog_post') {
         const post = await getBlogPostBySlug(entityId, true);
         if (!post) {
-          res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết.' });
+          sendError(res, 404, 'Không tìm thấy bài viết.');
           return;
         }
         targetUrl = `${origin}/tin-tuc/${post.slug}`;
@@ -240,7 +241,7 @@ export function registerShortLinkPublicRoutes(
         description = post.metaDescription || post.excerpt;
         suggestedSlug = suggestBlogShortSlug(post.slug);
       } else {
-        res.status(400).json({ status: 'error', message: 'entityType không hỗ trợ.' });
+        sendError(res, 400, 'entityType không hỗ trợ.');
         return;
       }
 
@@ -260,7 +261,7 @@ export function registerShortLinkPublicRoutes(
       res.json({ status: 'success', data: shortLink });
     } catch (error: any) {
       console.error('[short-link] resolve error:', error);
-      res.status(500).json({ status: 'error', message: error.message || 'Không tạo được short link.' });
+      sendError(res, 500, error.message || 'Không tạo được short link.');
     }
   });
 }
@@ -272,7 +273,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
       const links = await listShortLinks(origin);
       res.json({ status: 'success', data: links });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message || 'Không tải được short links.' });
+      sendError(res, 500, error.message || 'Không tải được short links.');
     }
   });
 
@@ -280,13 +281,13 @@ export function registerShortLinkAdminRoutes(app: Express) {
     try {
       const authUser = (req as any).authUser;
       if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
-        res.status(403).json({ status: 'error', message: 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền tạo Short link.' });
+        sendError(res, 403, 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền tạo Short link.');
         return;
       }
 
       const input = parseBodyInput(req.body || {});
       if (!input.target_url) {
-        res.status(400).json({ status: 'error', message: 'Thiếu target_url.' });
+        sendError(res, 400, 'Thiếu target_url.');
         return;
       }
       const origin = getPublicOrigin(req);
@@ -296,7 +297,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
       const link = await createShortLink(input, { createdBy, origin, suggestedSlug: input.slug });
       res.json({ status: 'success', data: link });
     } catch (error: any) {
-      res.status(400).json({ status: 'error', message: error.message || 'Không tạo được short link.' });
+      sendError(res, 400, error.message || 'Không tạo được short link.');
     }
   });
 
@@ -304,7 +305,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
     try {
       const authUser = (req as any).authUser;
       if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
-        res.status(403).json({ status: 'error', message: 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền cập nhật Short link.' });
+        sendError(res, 403, 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền cập nhật Short link.');
         return;
       }
 
@@ -316,7 +317,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
       const link = await updateShortLink(req.params.id, input, origin);
       res.json({ status: 'success', data: link });
     } catch (error: any) {
-      res.status(400).json({ status: 'error', message: error.message || 'Không cập nhật được short link.' });
+      sendError(res, 400, error.message || 'Không cập nhật được short link.');
     }
   });
 
@@ -325,7 +326,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
       await deleteShortLink(req.params.id);
       res.json({ status: 'success' });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message || 'Không xóa được short link.' });
+      sendError(res, 500, error.message || 'Không xóa được short link.');
     }
   });
 
@@ -334,7 +335,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
       const analytics = await getShortLinkAnalytics(req.params.id);
       res.json({ status: 'success', data: analytics });
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message || 'Không tải được analytics.' });
+      sendError(res, 500, error.message || 'Không tải được analytics.');
     }
   });
 }

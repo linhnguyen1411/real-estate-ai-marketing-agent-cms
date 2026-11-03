@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { getUserById, readDatabase, upsertUser } from '../../dbHelper';
 import { saveImageFromDataUrl } from '../../blog/imageStorage';
@@ -37,7 +38,7 @@ router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSc
   // 1. Password policy
   const policyResult = validatePasswordPolicy(password);
   if (!policyResult.valid) {
-    res.status(400).json({ status: 'error', message: policyResult.message });
+    sendError(res, 400, policyResult.message);
     return;
   }
 
@@ -45,7 +46,7 @@ router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSc
   // 2. Uniqueness check
   const existing = (db.users || []).find((u: any) => u.email?.trim().toLowerCase() === email);
   if (existing) {
-    res.status(400).json({ status: 'error', message: 'Email đã được sử dụng.' });
+    sendError(res, 400, 'Email đã được sử dụng.');
     return;
   }
 
@@ -54,7 +55,7 @@ router.post('/api/auth/register', registerRateLimiter, validateSchema(registerSc
   if (referralCode) {
     const resolution = await resolveReferrerAndTeam(referralCode);
     if (!resolution) {
-      res.status(400).json({ status: 'error', message: 'Mã giới thiệu không hợp lệ.' });
+      sendError(res, 400, 'Mã giới thiệu không hợp lệ.');
       return;
     }
     targetTeam = resolution.team;
@@ -111,7 +112,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
   const plainPassword = String(req.body?.password || '');
 
   if (!identifier || !plainPassword) {
-    res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
+    sendError(res, 401, 'Email hoặc mật khẩu không đúng.');
     return;
   }
 
@@ -194,7 +195,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
 
   if (!user) {
     recordFailedLogin(identifier);
-    res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
+    sendError(res, 401, 'Email hoặc mật khẩu không đúng.');
     return;
   }
 
@@ -225,7 +226,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
 
   if (!isValid) {
     recordFailedLogin(identifier);
-    res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng.' });
+    sendError(res, 401, 'Email hoặc mật khẩu không đúng.');
     return;
   }
 
@@ -283,7 +284,7 @@ export function createApiAuthGate() {
     const user = decoded ? getUserById(decoded.sub) : null;
 
     if (!user || user.status !== 'active') {
-      res.status(401).json({ status: 'error', message: 'Bạn cần đăng nhập để truy cập hệ thống.' });
+      sendError(res, 401, 'Bạn cần đăng nhập để truy cập hệ thống.');
       return;
     }
 
@@ -291,7 +292,7 @@ export function createApiAuthGate() {
     const expectedVersion = user.token_version ?? 1;
     const tokenVersion = decoded?.token_version ?? 1;
     if (tokenVersion !== expectedVersion) {
-      res.status(401).json({ status: 'error', message: 'Phiên đăng nhập đã hết hiệu lực do thay đổi mật khẩu hoặc bảo mật.' });
+      sendError(res, 401, 'Phiên đăng nhập đã hết hiệu lực do thay đổi mật khẩu hoặc bảo mật.');
       return;
     }
 
@@ -347,7 +348,7 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
   const index = db.users.findIndex((user: User) => user.id === authUser.id);
 
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy tài khoản.' });
+    sendError(res, 404, 'Không tìm thấy tài khoản.');
     return;
   }
 
@@ -368,7 +369,7 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
       try {
         nextAvatarUrl = saveImageFromDataUrl(image, 'agent-avatars', authUser.id);
       } catch (error: any) {
-        res.status(400).json({ status: 'error', message: error.message || 'Upload avatar thất bại.' });
+        sendError(res, 400, error.message || 'Upload avatar thất bại.');
         return;
       }
     }
@@ -383,12 +384,12 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
   }
 
   if (!nextName || !nextEmail) {
-    res.status(400).json({ status: 'error', message: 'Tên và email là bắt buộc.' });
+    sendError(res, 400, 'Tên và email là bắt buộc.');
     return;
   }
 
   if (db.users.some((user: User) => user.id !== target.id && user.email.toLowerCase() === nextEmail)) {
-    res.status(409).json({ status: 'error', message: 'Email đã được sử dụng.' });
+    sendError(res, 409, 'Email đã được sử dụng.');
     return;
   }
 
@@ -404,13 +405,13 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
     }
 
     if (!isCurrentValid) {
-      res.status(400).json({ status: 'error', message: 'Mật khẩu hiện tại không đúng.' });
+      sendError(res, 400, 'Mật khẩu hiện tại không đúng.');
       return;
     }
 
     const policy = validatePasswordPolicy(newPassword, nextEmail);
     if (!policy.valid) {
-      res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
+      sendError(res, 400, policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.');
       return;
     }
 
@@ -438,7 +439,7 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
   if (joinCode) {
     const joinResult = await joinTeamWithReferralCode(updatedUser, joinCode, false);
     if (!joinResult.success) {
-      res.status(400).json({ status: 'error', message: joinResult.message });
+      sendError(res, 400, joinResult.message);
       return;
     }
   }
@@ -454,7 +455,7 @@ router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req:
 router.get('/api/auth/my-team', async (req: Request, res: Response) => {
   const authUser = getAuthUser(req);
   if (!authUser) {
-    res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+    sendError(res, 401, 'Yêu cầu đăng nhập.');
     return;
   }
 
@@ -502,26 +503,26 @@ router.get('/api/auth/my-team', async (req: Request, res: Response) => {
 router.post('/api/auth/join-team', async (req: Request, res: Response) => {
   const authUser = getAuthUser(req);
   if (!authUser) {
-    res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+    sendError(res, 401, 'Yêu cầu đăng nhập.');
     return;
   }
 
   const referralCode = String(req.body?.referralCode || req.body?.code || req.body?.referral_code || '').trim().toUpperCase();
   if (!referralCode) {
-    res.status(400).json({ status: 'error', message: 'Vui lòng nhập mã giới thiệu.' });
+    sendError(res, 400, 'Vui lòng nhập mã giới thiệu.');
     return;
   }
 
   const db = readDatabase();
   const user = db.users?.find((u: any) => u.id === authUser.id);
   if (!user) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy thông tin tài khoản.' });
+    sendError(res, 404, 'Không tìm thấy thông tin tài khoản.');
     return;
   }
 
   const result = await joinTeamWithReferralCode(user, referralCode);
   if (!result.success) {
-    res.status(400).json({ status: 'error', message: result.message });
+    sendError(res, 400, result.message);
     return;
   }
 

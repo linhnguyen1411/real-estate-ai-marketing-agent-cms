@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 /**
  * Viewing Appointment API Routes (Public & Admin).
  */
@@ -64,7 +65,7 @@ export function createAppointmentRouter() {
       });
     } catch (error) {
       console.error('[appointments] Error creating public appointment:', error);
-      return res.status(500).json({ status: 'error', message: 'Không thể đặt lịch xem nhà lúc này.' });
+      return sendError(res, 500, 'Không thể đặt lịch xem nhà lúc này.');
     }
   });
 
@@ -96,7 +97,7 @@ export function createAppointmentRouter() {
       return res.json({ status: 'success', data: items });
     } catch (error) {
       console.error('[appointments] Error listing appointments:', error);
-      return res.status(500).json({ status: 'error', message: 'Lỗi khi tải danh sách lịch hẹn.' });
+      return sendError(res, 500, 'Lỗi khi tải danh sách lịch hẹn.');
     }
   });
 
@@ -108,7 +109,7 @@ export function createAppointmentRouter() {
 
       const existing = await getViewingAppointment(id);
       if (!existing) {
-        return res.status(404).json({ status: 'error', message: 'Không tìm thấy lịch hẹn này.' });
+        return sendError(res, 404, 'Không tìm thấy lịch hẹn này.');
       }
 
       const isOwner = isPlatformOwner(req);
@@ -134,18 +135,18 @@ export function createAppointmentRouter() {
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message === 'INVALID_APPOINTMENT_STATUS' || message === 'INVALID_APPOINTMENT_TIME') {
-          return res.status(400).json({ status: 'error', message: 'Dữ liệu lịch hẹn không hợp lệ.' });
+          return sendError(res, 400, 'Dữ liệu lịch hẹn không hợp lệ.');
         }
         throw error;
       }
       if (!updated) {
-        return res.status(404).json({ status: 'error', message: 'Không tìm thấy lịch hẹn này.' });
+        return sendError(res, 404, 'Không tìm thấy lịch hẹn này.');
       }
 
       return res.json({ status: 'success', data: updated });
     } catch (error) {
       console.error('[appointments] Error updating appointment:', error);
-      return res.status(500).json({ status: 'error', message: 'Lỗi khi cập nhật lịch hẹn.' });
+      return sendError(res, 500, 'Lỗi khi cập nhật lịch hẹn.');
     }
   });
 

@@ -1,3 +1,4 @@
+import { sendError } from '../utils/httpResponses';
 import express, { type Express, type Request, type Response } from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -134,7 +135,7 @@ export function mountRoutes(app: Express, opts: MountRoutesOptions): void {
       '/api/social/media/files',
       (req, res, next) => {
         if (!/^\/[a-f0-9]{32}\.(png|jpg|webp)$/i.test(req.path)) {
-          return res.status(400).json({ status: 'error', message: 'Tên file không hợp lệ.' });
+          return sendError(res, 400, 'Tên file không hợp lệ.');
         }
         next();
       },

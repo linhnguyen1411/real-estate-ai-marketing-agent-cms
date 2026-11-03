@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { requirePermission } from './rbacMiddleware';
 import {
@@ -90,7 +91,7 @@ export function createRbacAdminRouter() {
     const id = req.params.id;
     const ok = await deleteEntitlement(id);
     if (!ok) {
-      res.status(404).json({ status: 'error', message: 'Không tìm thấy gói hoặc thu hồi thất bại.' });
+      sendError(res, 404, 'Không tìm thấy gói hoặc thu hồi thất bại.');
       return;
     }
     res.json({ status: 'success', message: 'Thu hồi gói tính năng thành công.' });

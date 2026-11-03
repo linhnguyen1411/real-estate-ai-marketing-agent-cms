@@ -49,6 +49,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function asArray<T>(value: unknown, fallback: T[]): T[] {
+  return Array.isArray(value) ? (value as T[]) : fallback;
+}
+
 function emptyMetrics(): CampaignState['metrics'] {
   return {
     leadTotal: 0,
@@ -176,33 +180,44 @@ function rowToLiving(row: {
   createdAt: Date;
   updatedAt: Date;
 }): LivingCampaign {
-  const state =
+  const storedState =
     row.state && typeof row.state === 'object' && !Array.isArray(row.state)
-      ? (row.state as CampaignState)
-      : ({
-          audience: [],
-          asset: null,
-          budget: 'organic',
-          health: 0,
-          timeline: [],
-          tasks: [],
-          orchestratorTasks: [],
-          progress: { percent: 0, currentPhase: 'planning', phasesDone: [] },
-          metrics: emptyMetrics(),
-          research: null,
-          missions: [],
-          content: null,
-          leads: [],
-          recommendations: [],
-          publishProposal: null,
-          operationalMemory: [],
-          planChecklist: [],
-        } satisfies CampaignState);
+      ? (row.state as Partial<CampaignState>)
+      : {};
 
-  if (!Array.isArray(state.orchestratorTasks)) state.orchestratorTasks = [];
-  if (!('asset' in state) || !state.asset || typeof state.asset !== 'object' || Array.isArray(state.asset)) {
-    state.asset = null;
-  }
+  // Legacy rows may store `{}` or partial blobs; normalize before any consumer
+  // touches nested collections.
+  const state: CampaignState = {
+    audience: asArray(storedState.audience, []),
+    asset:
+      storedState.asset && typeof storedState.asset === 'object' && !Array.isArray(storedState.asset)
+        ? storedState.asset
+        : null,
+    budget: storedState.budget ?? 'organic',
+    health: typeof storedState.health === 'number' ? storedState.health : 0,
+    timeline: asArray(storedState.timeline, []),
+    tasks: asArray(storedState.tasks, []),
+    orchestratorTasks: asArray(storedState.orchestratorTasks, []),
+    progress: {
+      percent: storedState.progress?.percent ?? 0,
+      currentPhase: storedState.progress?.currentPhase ?? 'planning',
+      phasesDone: asArray(storedState.progress?.phasesDone, []),
+      blockedReason: storedState.progress?.blockedReason ?? null,
+    },
+    metrics: {
+      ...emptyMetrics(),
+      ...(storedState.metrics && typeof storedState.metrics === 'object' ? storedState.metrics : {}),
+    },
+    research: storedState.research ?? null,
+    missions: asArray(storedState.missions, []),
+    content: storedState.content ?? null,
+    leads: asArray(storedState.leads, []),
+    recommendations: asArray(storedState.recommendations, []),
+    publishProposal: storedState.publishProposal ?? null,
+    operationalMemory: asArray(storedState.operationalMemory, []),
+    planChecklist: asArray(storedState.planChecklist, []),
+  };
+
   if (!state.orchestratorTasks.length && row.id) {
     state.orchestratorTasks = createCampaignTaskGraph({
       campaignId: row.id,

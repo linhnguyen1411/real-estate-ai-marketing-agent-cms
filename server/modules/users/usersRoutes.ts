@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { readDatabase, upsertUser, upsertCmsRecord } from '../../dbHelper';
 import type { AuthUser, Property, User } from '../../../src/types';
@@ -11,7 +12,7 @@ import { validateSchema, createUserSchema, updateUserSchema } from '../../middle
 export function canManageUsers(req: Request, res: Response): boolean {
   const user = getAuthUser(req);
   if (user.role === 'owner' || user.role === 'company') return true;
-  res.status(403).json({ status: 'error', message: 'Bạn không có quyền quản lý user.' });
+  sendError(res, 403, 'Bạn không có quyền quản lý user.');
   return false;
 }
 
@@ -33,17 +34,17 @@ export function assertCanUpdateUser(authUser: AuthUser, target: User, res: Respo
 
   if (authUser.role === 'company') {
     if (target.company_id !== authUser.company_id) {
-      res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật user này.' });
+      sendError(res, 403, 'Bạn không có quyền cập nhật user này.');
       return false;
     }
     if (!isSelf && target.role !== 'member') {
-      res.status(403).json({ status: 'error', message: 'Company admin chỉ được cập nhật member trong company.' });
+      sendError(res, 403, 'Company admin chỉ được cập nhật member trong company.');
       return false;
     }
     return true;
   }
 
-  res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật user.' });
+  sendError(res, 403, 'Bạn không có quyền cập nhật user.');
   return false;
 }
 
@@ -69,29 +70,29 @@ router.post('/api/users', validateSchema(createUserSchema), async (req: Request,
   const plainPassword = String(body.password || '').trim();
 
   if (!body.name || !email || !plainPassword) {
-    res.status(400).json({ status: 'error', message: 'Tên, email và password là bắt buộc.' });
+    sendError(res, 400, 'Tên, email và password là bắt buộc.');
     return;
   }
 
   const policy = validatePasswordPolicy(plainPassword, email);
   if (!policy.valid) {
-    res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
+    sendError(res, 400, policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.');
     return;
   }
 
   if (db.users.some((user: User) => user.email.toLowerCase() === email)) {
-    res.status(409).json({ status: 'error', message: 'Email đã tồn tại.' });
+    sendError(res, 409, 'Email đã tồn tại.');
     return;
   }
 
   const role = authUser.role === 'owner' ? (body.role || 'member') : 'member';
   if (!['owner', 'company', 'member'].includes(role)) {
-    res.status(400).json({ status: 'error', message: 'Role không hợp lệ.' });
+    sendError(res, 400, 'Role không hợp lệ.');
     return;
   }
 
   if (authUser.role === 'company' && role !== 'member') {
-    res.status(403).json({ status: 'error', message: 'Company admin chỉ được tạo member.' });
+    sendError(res, 403, 'Company admin chỉ được tạo member.');
     return;
   }
 
@@ -125,7 +126,7 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   const index = db.users.findIndex((user: User) => user.id === req.params.id);
 
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy user.' });
+    sendError(res, 404, 'Không tìm thấy user.');
     return;
   }
 
@@ -138,19 +139,19 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   const nextEmail = body.email !== undefined ? String(body.email).trim().toLowerCase() : target.email;
 
   if (!nextName || !nextEmail) {
-    res.status(400).json({ status: 'error', message: 'Tên và email là bắt buộc.' });
+    sendError(res, 400, 'Tên và email là bắt buộc.');
     return;
   }
 
   if (db.users.some((user: User) => user.id !== target.id && user.email.toLowerCase() === nextEmail)) {
-    res.status(409).json({ status: 'error', message: 'Email đã tồn tại.' });
+    sendError(res, 409, 'Email đã tồn tại.');
     return;
   }
 
   let nextRole = target.role;
   if (authUser.role === 'owner' && body.role !== undefined) {
     if (!['owner', 'company', 'member'].includes(body.role)) {
-      res.status(400).json({ status: 'error', message: 'Role không hợp lệ.' });
+      sendError(res, 400, 'Role không hợp lệ.');
       return;
     }
     nextRole = body.role;
@@ -167,7 +168,7 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   let nextStatus = target.status;
   if (body.status === 'inactive' || body.status === 'active') {
     if (isSelf && body.status === 'inactive') {
-      res.status(400).json({ status: 'error', message: 'Bạn không thể tự vô hiệu hóa tài khoản của mình.' });
+      sendError(res, 400, 'Bạn không thể tự vô hiệu hóa tài khoản của mình.');
       return;
     }
     if (authUser.role === 'owner' || (authUser.role === 'company' && target.role === 'member')) {
@@ -176,12 +177,12 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   }
 
   if (target.role === 'owner' && nextRole !== 'owner' && countActiveOwners(db.users) <= 1) {
-    res.status(400).json({ status: 'error', message: 'Không thể hạ quyền owner cuối cùng.' });
+    sendError(res, 400, 'Không thể hạ quyền owner cuối cùng.');
     return;
   }
 
   if (target.role === 'owner' && nextStatus === 'inactive' && countActiveOwners(db.users) <= 1) {
-    res.status(400).json({ status: 'error', message: 'Không thể vô hiệu hóa owner cuối cùng.' });
+    sendError(res, 400, 'Không thể vô hiệu hóa owner cuối cùng.');
     return;
   }
 
@@ -189,11 +190,11 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
   if (authUser.role === 'owner' && body.agent_tier !== undefined) {
     const tier = String(body.agent_tier) as AgentTier;
     if (!['legendary', 'diamond', 'gold', 'silver', 'bronze', 'normal'].includes(tier)) {
-      res.status(400).json({ status: 'error', message: 'Bậc agent không hợp lệ.' });
+      sendError(res, 400, 'Bậc agent không hợp lệ.');
       return;
     }
     if (tier === 'legendary' && nextRole !== 'owner') {
-      res.status(400).json({ status: 'error', message: 'Bậc Administrator chỉ dành cho chủ sở hữu.' });
+      sendError(res, 400, 'Bậc Administrator chỉ dành cho chủ sở hữu.');
       return;
     }
     nextAgentTier = tier;
@@ -210,7 +211,7 @@ router.put('/api/users/:id', validateSchema(updateUserSchema), async (req: Reque
     const plainPass = String(body.password).trim();
     const policy = validatePasswordPolicy(plainPass, nextEmail);
     if (!policy.valid) {
-      res.status(400).json({ status: 'error', message: policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.' });
+      sendError(res, 400, policy.message || 'Mật khẩu không đạt yêu cầu bảo mật.');
       return;
     }
     nextPasswordHash = await hashPassword(plainPass);
@@ -251,7 +252,7 @@ router.post('/api/member-permissions/bulk', async (req: Request, res: Response) 
     : null;
 
   if (!memberId || !['customers', 'properties', 'posts'].includes(collection)) {
-    res.status(400).json({ status: 'error', message: 'Thiếu member_id hoặc collection không hợp lệ.' });
+    sendError(res, 400, 'Thiếu member_id hoặc collection không hợp lệ.');
     return;
   }
 

@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import type { Request, Response, NextFunction } from 'express';
 import { getAuthUser } from '../auth/authAccess';
 import { requireRole, resolveRequiredRole } from '../../security/rbac';
@@ -202,7 +203,7 @@ export function requirePermission(permissionKey: PermissionKey) {
 
       const authUser = getAuthUser(req);
       if (!authUser || !authUser.id) {
-        res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+        sendError(res, 401, 'Yêu cầu đăng nhập.');
         return;
       }
 
@@ -259,7 +260,7 @@ export function requirePremium(feature: string) {
     try {
       const authUser = getAuthUser(req);
       if (!authUser || !authUser.id) {
-        res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+        sendError(res, 401, 'Yêu cầu đăng nhập.');
         return;
       }
 
@@ -309,7 +310,7 @@ export function denyByDefaultGuard() {
     // 3. For all other /api routes, user must be authenticated
     const authUser = getAuthUser(req);
     if (!authUser || !authUser.id) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 
@@ -357,7 +358,7 @@ export function apiAuthorizationGuard() {
   ): void => {
     const authUser = getAuthUser(req);
     if (!authUser || !authUser.id) {
-      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      sendError(res, 401, 'Yêu cầu đăng nhập.');
       return;
     }
 

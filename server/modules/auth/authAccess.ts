@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import type { AuthUser, Property, User } from '../../../src/types';
@@ -89,7 +90,7 @@ export function countPublicAgentProperties(db: any, userId: string): number {
 export function assertUniquePublicSlug(db: any, slug: string, userId: string, res: Response): boolean {
   const normalized = slugifyAgentProfile(slug);
   if (!normalized) {
-    res.status(400).json({ status: 'error', message: 'Đường dẫn hồ sơ không hợp lệ.' });
+    sendError(res, 400, 'Đường dẫn hồ sơ không hợp lệ.');
     return false;
   }
   const conflict = (db.users || []).some((user: User) => (
@@ -98,7 +99,7 @@ export function assertUniquePublicSlug(db: any, slug: string, userId: string, re
     && user.public_slug.toLowerCase() === normalized
   ));
   if (conflict) {
-    res.status(409).json({ status: 'error', message: 'Đường dẫn hồ sơ đã được sử dụng.' });
+    sendError(res, 409, 'Đường dẫn hồ sơ đã được sử dụng.');
     return false;
   }
   return true;
@@ -276,7 +277,7 @@ export function accessDefaults(req: Request, body: any = {}) {
 
 export function requireOwner(req: Request, res: Response): boolean {
   if (getAuthUser(req).role !== 'owner') {
-    res.status(403).json({ status: 'error', message: 'Chỉ Owner có quyền thực hiện thao tác này.' });
+    sendError(res, 403, 'Chỉ Owner có quyền thực hiện thao tác này.');
     return false;
   }
   return true;

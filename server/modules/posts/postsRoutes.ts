@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { readDatabase, upsertCmsRecord, deleteCmsRecord } from '../../dbHelper';
 import { appendStandardHashtags, buildPropertySeo } from '../../aiService';
@@ -37,11 +38,11 @@ router.get('/api/posts/:id', (req: Request, res: Response) => {
   const db = readDatabase();
   const post = db.posts.find(p => p.id === req.params.id);
   if (!post) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+    sendError(res, 404, 'Không tìm thấy bài viết');
     return;
   }
   if (!canAccessResource(post, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem bài viết này.' });
+    sendError(res, 403, 'Bạn không có quyền xem bài viết này.');
     return;
   }
   res.json({ status: 'success', data: post });
@@ -86,12 +87,12 @@ router.put('/api/posts/:id', async (req: Request, res: Response) => {
   const index = db.posts.findIndex(p => p.id === req.params.id);
 
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+    sendError(res, 404, 'Không tìm thấy bài viết');
     return;
   }
 
   if (!canManageResource(db.posts[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật bài viết này.' });
+    sendError(res, 403, 'Bạn không có quyền cập nhật bài viết này.');
     return;
   }
 
@@ -111,12 +112,12 @@ router.delete('/api/posts/:id', async (req: Request, res: Response) => {
   const target = db.posts.find(p => p.id === req.params.id);
 
   if (!target) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy bài viết' });
+    sendError(res, 404, 'Không tìm thấy bài viết');
     return;
   }
 
   if (!canManageResource(target, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xóa bài viết này.' });
+    sendError(res, 403, 'Bạn không có quyền xóa bài viết này.');
     return;
   }
 

@@ -1,3 +1,4 @@
+import { sendError } from '../utils/httpResponses';
 import type { Express, Request, Response, NextFunction } from 'express';
 import compression from 'compression';
 import express from 'express';
@@ -77,7 +78,7 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
     if (fs.existsSync(exePath)) {
       res.download(exePath, 'HouseAndLife-Agent-Setup.exe');
     } else {
-      res.status(404).json({ status: 'error', message: 'Tệp cài đặt House & Life Agent chưa sẵn sàng.' });
+      sendError(res, 404, 'Tệp cài đặt House & Life Agent chưa sẵn sàng.');
     }
   });
   app.use(express.static(publicAssetsPath, createPublicStaticOptions()));

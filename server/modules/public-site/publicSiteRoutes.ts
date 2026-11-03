@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import {
@@ -210,12 +211,12 @@ router.get('/api/public/agents/by-user/:userId', (req: Request, res: Response) =
   const db = readDatabase();
   const user = (db.users || []).find((item: User) => item.id === req.params.userId);
   if (!user) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy môi giới.' });
+    sendError(res, 404, 'Không tìm thấy môi giới.');
     return;
   }
   const profile = toPublicAgentProfile(user, db, countPublicAgentProperties(db, user.id));
   if (!profile) {
-    res.status(404).json({ status: 'error', message: 'Hồ sơ môi giới không công khai.' });
+    sendError(res, 404, 'Hồ sơ môi giới không công khai.');
     return;
   }
   res.json({ status: 'success', data: profile });
@@ -229,12 +230,12 @@ router.get('/api/public/agents/:slug', (req: Request, res: Response) => {
     return itemSlug.toLowerCase() === slug;
   });
   if (!user) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy môi giới.' });
+    sendError(res, 404, 'Không tìm thấy môi giới.');
     return;
   }
   const profile = toPublicAgentProfile(user, db, countPublicAgentProperties(db, user.id));
   if (!profile) {
-    res.status(404).json({ status: 'error', message: 'Hồ sơ môi giới không công khai.' });
+    sendError(res, 404, 'Hồ sơ môi giới không công khai.');
     return;
   }
 
@@ -310,7 +311,7 @@ router.get('/api/public/chat/history', publicChatHistoryRateLimiter, (req: Reque
   const sessionId = cookieSessionId || querySessionId;
 
   if (!sessionId) {
-    res.status(400).json({ status: 'error', message: 'Thiếu mã phiên trò chuyện.' });
+    sendError(res, 400, 'Thiếu mã phiên trò chuyện.');
     return;
   }
 
@@ -340,7 +341,7 @@ router.post('/api/public/chat/guest', async (req: Request, res: Response) => {
   const phone = String(req.body?.phone || '').trim().replace(/[^\d+.\-\s]/g, '').slice(0, 40);
 
   if (!name || !phone) {
-    res.status(400).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.' });
+    sendError(res, 400, 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
     return;
   }
 
@@ -385,7 +386,7 @@ router.post('/api/public/contact', validateSchema(publicContactSchema), async (r
   const email = String(req.body?.email || '').trim();
 
   if (!name || !phone) {
-    res.status(400).json({ status: 'error', message: 'Vui lòng nhập tên và số điện thoại.' });
+    sendError(res, 400, 'Vui lòng nhập tên và số điện thoại.');
     return;
   }
 
@@ -411,7 +412,7 @@ router.post('/api/public/contact', validateSchema(publicContactSchema), async (r
     });
   } catch (error) {
     console.error('[Contact] lead capture failed:', error);
-    res.status(500).json({ status: 'error', message: 'Không gửi được. Vui lòng gọi hotline.' });
+    sendError(res, 500, 'Không gửi được. Vui lòng gọi hotline.');
   }
 });
 
@@ -422,7 +423,7 @@ router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, 
   const { message } = req.body;
 
   if (!message || !String(message).trim()) {
-    res.status(400).json({ status: 'error', message: 'Tin nhắn không được trống.' });
+    sendError(res, 400, 'Tin nhắn không được trống.');
     return;
   }
 
@@ -430,7 +431,7 @@ router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, 
   const publicUserId = normalizedSessionId ? `public-${normalizedSessionId}` : 'public-visitor';
   const publicGuest = normalizedSessionId ? getPublicChatGuest(normalizedSessionId) : null;
   if (!publicGuest) {
-    res.status(403).json({ status: 'error', message: 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.' });
+    sendError(res, 403, 'Vui lòng nhập họ tên và số điện thoại để bắt đầu chat.');
     return;
   }
   const recentHistoryRecords = getChatHistoryByUser(publicUserId, 6);

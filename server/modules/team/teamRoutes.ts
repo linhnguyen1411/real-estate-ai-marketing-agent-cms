@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { requirePermission } from '../rbac/rbacMiddleware';
 import {
@@ -131,7 +132,7 @@ export function createTeamRouter() {
   router.post('/api/team/rotate-referral-code', requirePermission('team.members.manage'), async (req: Request, res: Response) => {
     const teamId = req.teamId;
     if (!teamId) {
-      res.status(404).json({ status: 'error', message: 'Bạn không thuộc team nào.' });
+      sendError(res, 404, 'Bạn không thuộc team nào.');
       return;
     }
 
@@ -147,7 +148,7 @@ export function createTeamRouter() {
   router.get('/api/team/permissions', requirePermission('team.permissions.edit'), async (req: Request, res: Response) => {
     const teamId = req.teamId;
     if (!teamId) {
-      res.status(404).json({ status: 'error', message: 'Bạn không thuộc team nào.' });
+      sendError(res, 404, 'Bạn không thuộc team nào.');
       return;
     }
 
@@ -159,7 +160,7 @@ export function createTeamRouter() {
   router.put('/api/team/permissions', requirePermission('team.permissions.edit'), async (req: Request, res: Response) => {
     const teamId = req.teamId;
     if (!teamId) {
-      res.status(404).json({ status: 'error', message: 'Bạn không thuộc team nào.' });
+      sendError(res, 404, 'Bạn không thuộc team nào.');
       return;
     }
 

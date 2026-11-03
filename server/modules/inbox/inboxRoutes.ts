@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { readDatabase, upsertCmsRecord } from '../../dbHelper';
 import { generateAIConsultantReply } from '../../aiService';
@@ -40,11 +41,11 @@ router.get('/api/inbox/:id', (req: Request, res: Response) => {
   const db = readDatabase();
   const msg = db.inbox.find(i => i.id === req.params.id);
   if (!msg) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    sendError(res, 404, 'Không tìm thấy tin nhắn.');
     return;
   }
   if (!canAccessResource(msg, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xem tin nhắn này.' });
+    sendError(res, 403, 'Bạn không có quyền xem tin nhắn này.');
     return;
   }
   res.json({ status: 'success', data: msg });
@@ -54,11 +55,11 @@ router.put('/api/inbox/:id', async (req: Request, res: Response) => {
   const db = readDatabase();
   const index = db.inbox.findIndex(i => i.id === req.params.id);
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    sendError(res, 404, 'Không tìm thấy tin nhắn.');
     return;
   }
   if (!canManageResource(db.inbox[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền cập nhật tin nhắn này.' });
+    sendError(res, 403, 'Bạn không có quyền cập nhật tin nhắn này.');
     return;
   }
   const oldMsg = db.inbox[index];
@@ -74,12 +75,12 @@ router.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
   const msg = db.inbox.find(i => i.id === messageId);
 
   if (!msg) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    sendError(res, 404, 'Không tìm thấy tin nhắn.');
     return;
   }
 
   if (!canAccessResource(msg, req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền xử lý tin nhắn này.' });
+    sendError(res, 403, 'Bạn không có quyền xử lý tin nhắn này.');
     return;
   }
 
@@ -117,7 +118,7 @@ router.post('/api/ai/generate-reply', async (req: Request, res: Response) => {
     const savedMsg = await upsertCmsRecord('inbox', msg, msg.version);
     res.json({ status: 'success', data: savedMsg });
   } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
+    sendError(res, 500, err.message);
   }
 });
 
@@ -128,12 +129,12 @@ router.post('/api/inbox/:id/reply', async (req: Request, res: Response) => {
   const index = db.inbox.findIndex(i => i.id === req.params.id);
 
   if (index === -1) {
-    res.status(404).json({ status: 'error', message: 'Không tìm thấy tin nhắn.' });
+    sendError(res, 404, 'Không tìm thấy tin nhắn.');
     return;
   }
 
   if (!canManageResource(db.inbox[index], req)) {
-    res.status(403).json({ status: 'error', message: 'Bạn không có quyền trả lời tin nhắn này.' });
+    sendError(res, 403, 'Bạn không có quyền trả lời tin nhắn này.');
     return;
   }
 

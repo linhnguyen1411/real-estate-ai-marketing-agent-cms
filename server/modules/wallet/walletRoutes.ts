@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth/authAccess';
 import {
@@ -20,7 +21,7 @@ export function createWalletRouter(): Router {
     try {
       const user = getAuthUser(req);
       if (!user) {
-        res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+        sendError(res, 401, 'Yêu cầu đăng nhập.');
         return;
       }
 
@@ -37,7 +38,7 @@ export function createWalletRouter(): Router {
       });
     } catch (err: any) {
       console.error('[wallet] get my wallet error:', err);
-      res.status(500).json({ status: 'error', message: err.message || 'Lỗi khi tải thông tin ví.' });
+      sendError(res, 500, err.message || 'Lỗi khi tải thông tin ví.');
     }
   });
 
@@ -49,13 +50,13 @@ export function createWalletRouter(): Router {
     try {
       const user = getAuthUser(req);
       if (!user) {
-        res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+        sendError(res, 401, 'Yêu cầu đăng nhập.');
         return;
       }
 
       const { plan = 'pro', periodDays = 30 } = req.body || {};
       if (plan !== 'pro' && plan !== 'enterprise') {
-        res.status(400).json({ status: 'error', message: 'Gói nâng cấp không hợp lệ (hỗ trợ pro hoặc enterprise).' });
+        sendError(res, 400, 'Gói nâng cấp không hợp lệ (hỗ trợ pro hoặc enterprise).');
         return;
       }
 
@@ -73,7 +74,7 @@ export function createWalletRouter(): Router {
       });
     } catch (err: any) {
       console.error('[wallet] upgrade license error:', err);
-      res.status(400).json({ status: 'error', message: err.message || 'Nâng cấp thất bại.' });
+      sendError(res, 400, err.message || 'Nâng cấp thất bại.');
     }
   });
 
@@ -85,7 +86,7 @@ export function createWalletRouter(): Router {
     try {
       const user = getAuthUser(req);
       if (user.role !== 'owner' && (user as any).roleKey !== 'super_admin') {
-        res.status(403).json({ status: 'error', message: 'Chỉ Super Admin mới có quyền quản lý ví.' });
+        sendError(res, 403, 'Chỉ Super Admin mới có quyền quản lý ví.');
         return;
       }
 
@@ -98,7 +99,7 @@ export function createWalletRouter(): Router {
       });
     } catch (err: any) {
       console.error('[wallet] list admin wallets error:', err);
-      res.status(500).json({ status: 'error', message: err.message || 'Lỗi khi lấy danh sách ví.' });
+      sendError(res, 500, err.message || 'Lỗi khi lấy danh sách ví.');
     }
   });
 
@@ -110,24 +111,24 @@ export function createWalletRouter(): Router {
     try {
       const user = getAuthUser(req);
       if (user.role !== 'owner' && (user as any).roleKey !== 'super_admin') {
-        res.status(403).json({ status: 'error', message: 'Chỉ Super Admin mới có quyền cộng/trừ token.' });
+        sendError(res, 403, 'Chỉ Super Admin mới có quyền cộng/trừ token.');
         return;
       }
 
       const { userId, amount, note } = req.body || {};
       if (!userId || typeof userId !== 'string') {
-        res.status(400).json({ status: 'error', message: 'Thiếu userId người nhận token.' });
+        sendError(res, 400, 'Thiếu userId người nhận token.');
         return;
       }
 
       const numericAmount = Number(amount);
       if (isNaN(numericAmount) || numericAmount === 0) {
-        res.status(400).json({ status: 'error', message: 'Số lượng token phải là số khác 0.' });
+        sendError(res, 400, 'Số lượng token phải là số khác 0.');
         return;
       }
 
       if (!note || typeof note !== 'string' || note.trim().length === 0) {
-        res.status(400).json({ status: 'error', message: 'Ghi chú/lý do giao dịch là bắt buộc.' });
+        sendError(res, 400, 'Ghi chú/lý do giao dịch là bắt buộc.');
         return;
       }
 
@@ -145,7 +146,7 @@ export function createWalletRouter(): Router {
       });
     } catch (err: any) {
       console.error('[wallet] admin adjust tokens error:', err);
-      res.status(400).json({ status: 'error', message: err.message || 'Giao dịch token thất bại.' });
+      sendError(res, 400, err.message || 'Giao dịch token thất bại.');
     }
   });
 
@@ -157,7 +158,7 @@ export function createWalletRouter(): Router {
     try {
       const user = getAuthUser(req);
       if (user.role !== 'owner' && (user as any).roleKey !== 'super_admin') {
-        res.status(403).json({ status: 'error', message: 'Chỉ Super Admin mới có quyền xem lịch sử ví người dùng.' });
+        sendError(res, 403, 'Chỉ Super Admin mới có quyền xem lịch sử ví người dùng.');
         return;
       }
 
@@ -170,7 +171,7 @@ export function createWalletRouter(): Router {
       });
     } catch (err: any) {
       console.error('[wallet] get user transactions error:', err);
-      res.status(500).json({ status: 'error', message: err.message || 'Lỗi khi lấy lịch sử giao dịch.' });
+      sendError(res, 500, err.message || 'Lỗi khi lấy lịch sử giao dịch.');
     }
   });
 

@@ -1,3 +1,4 @@
+import { sendError } from '../../utils/httpResponses';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -240,7 +241,7 @@ export function createSeoPublicRouter() {
     const slug = req.params.propertySlug;
     const property = findPublicPropertyBySlug(slug);
     if (!property) {
-      res.status(404).json({ status: 'error', message: 'Không tìm thấy bất động sản' });
+      sendError(res, 404, 'Không tìm thấy bất động sản');
       return;
     }
     const origin = getPublicOrigin(req);
@@ -520,7 +521,7 @@ export function registerSpaFallback(app: Express) {
     app.use(handlePublicIndex);
     app.get('*', async (req: Request, res: Response) => {
       if (req.path.startsWith('/api')) {
-        res.status(404).json({ status: 'error', message: 'Not found' });
+        sendError(res, 404, 'Not found');
         return;
       }
 
