@@ -10,6 +10,7 @@ import {
   isSunGroupPortfolioSlug,
 } from '../seo/portfolioHub';
 import { getPageMetaByPath } from '../seo/pageMeta';
+import { formatPrice } from '../utils/propertyDisplay';
 import {
   buildArticleSchema,
   buildBreadcrumbSchema,
@@ -25,10 +26,6 @@ import { getPropertyThumbnailUrl } from '../utils/propertyImage';
 import type { Property } from '../types';
 
 const HUB_LABEL = 'Danh mục BĐS';
-
-function formatPrice(price: number) {
-  return `${price} tỷ`;
-}
 
 export default function ProjectPage() {
   const { projectSlug } = useParams<{ projectSlug: string }>();

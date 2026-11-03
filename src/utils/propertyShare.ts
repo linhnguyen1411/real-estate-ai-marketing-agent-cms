@@ -1,21 +1,7 @@
 import { Property } from '../types';
+import { truncateText } from './text';
 
 export type PropertySharePlatform = 'facebook' | 'zalo' | 'tiktok' | 'native' | 'copy';
-
-function toPlainText(value = '') {
-  return value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[#*_`[\]()]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function truncateText(value: string, maxLength = 155) {
-  const cleanValue = toPlainText(value);
-  return cleanValue.length > maxLength
-    ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
-    : cleanValue;
-}
 
 export function slugifyProperty(value: string) {
   return value

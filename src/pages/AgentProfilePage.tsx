@@ -6,11 +6,8 @@ import Breadcrumbs from '../components/seo/Breadcrumbs';
 import AgentTierBadge from '../components/agent/AgentTierBadge';
 import { fetchPublicAgentBySlug } from '../services/agentApi';
 import { getPublicPropertySlug } from '../utils/propertyShare';
+import { formatPrice } from '../utils/propertyDisplay';
 import type { Property } from '../types';
-
-function formatPrice(price: number) {
-  return `${price} tỷ`;
-}
 
 export default function AgentProfilePage() {
   const { agentSlug = '' } = useParams();

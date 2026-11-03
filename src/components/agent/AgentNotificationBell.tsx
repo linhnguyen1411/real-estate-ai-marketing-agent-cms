@@ -9,7 +9,7 @@ import {
 } from '../../services/agentPlatformApi';
 import type { AgentNotification } from '../../types/agentPlatform';
 import { resolveAgentNotificationHref } from '../../utils/agentNotificationLinks';
-import { formatAgentDate } from './AgentPlatformUi';
+import { formatAgentDate } from '../../features/agent/shared/AgentPlatformUi';
 
 const POLL_MS = 45_000;
 

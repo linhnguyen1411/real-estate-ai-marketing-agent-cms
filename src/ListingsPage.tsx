@@ -30,11 +30,29 @@ import { fetchPublicAgentByUserId, fetchPublicAgentBySlug } from './services/age
 import { getPropertyCreatorId } from './utils/propertyCreator';
 import { PropertyShareButton, PropertyShareCompactButton } from './components/PropertyShareModal';
 import LeadCaptureForm from './components/LeadCaptureForm';
-import { getPublicPropertySlug } from './utils/propertyShare';
+import {
+  DEFAULT_SEO_DESCRIPTION,
+  DEFAULT_SEO_KEYWORDS,
+  DEFAULT_SEO_TITLE,
+  limitSeoTitle,
+} from './utils/siteSeo';
+import {
+  findPropertyFromLocation,
+  formatPrice,
+  getGoogleMapLink,
+  getGoogleMapUrl,
+  getPropertyImage,
+  getPropertyPath,
+  getPropertySlug,
+  getPropertySlugFromPath,
+  getPropertyViewCount,
+  hasGoogleMap,
+} from './utils/propertyDisplay';
+import { toPlainText, truncateText } from './utils/text';
 import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
 import SocialProof from './components/leadGen/SocialProof';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from './leadGen/analytics';
-import { getPropertyGalleryUrls, getPropertyThumbnailUrl } from './utils/propertyImage';
+import { getPropertyGalleryUrls } from './utils/propertyImage';
 import PublicNav, { PublicNavMobile } from './components/layout/PublicNav';
 import SiteLogo from './components/layout/SiteLogo';
 import PublicSiteFooter from './components/layout/PublicSiteFooter';
@@ -96,107 +114,16 @@ const phoneNumber = '0905 777 594';
 const heroImageUrl = '/hero-da-nang.jpg';
 const publicListingsPath = '/';
 const TRANSACTION_TYPES = ['Bán', 'Cho thuê'];
-const DEFAULT_SEO_KEYWORDS = [
-  'nhà phố đà nẵng',
-  'đất nền nam hòa xuân',
-  'bán nhà phố đà nẵng',
-  'bán căn hộ đà nẵng',
-  'cho thuê căn hộ đà nẵng',
-  'căn hộ cao cấp đà nẵng',
-  'bất động sản nam đà nẵng',
-  'house and life bds đà nẵng',
-  'giá đất đà nẵng 2026'
-];
-const DEFAULT_SEO_TITLE = 'House & Life | BĐS Đà Nẵng - Nhà Phố, Đất Nền Nam Hòa Xuân, Căn Hộ & Cho Thuê';
-const DEFAULT_SEO_DESCRIPTION = 'House & Life — Vững tâm an cư, kiến tạo tương lai. Chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, bán và cho thuê căn hộ Đà Nẵng. Pháp lý chuẩn, giỏ hàng cập nhật 2026.';
-
-function formatPrice(price: number) {
-  return `${price.toLocaleString('vi-VN')} tỷ`;
-}
-
-function getPropertyViewCount(property: Property) {
-  return Number(property.public_view_count || 0);
-}
-
-function getImage(property?: Property) {
-  return getPropertyThumbnailUrl(property);
-}
-
-function hasGoogleMap(property: Property) {
-  return Number.isFinite(property.map_latitude) && Number.isFinite(property.map_longitude);
-}
-
-function getGoogleMapUrl(property: Property) {
-  return `https://maps.google.com/maps?q=${property.map_latitude},${property.map_longitude}&z=16&output=embed`;
-}
-
-function getGoogleMapLink(property: Property) {
-  return `https://www.google.com/maps/search/?api=1&query=${property.map_latitude},${property.map_longitude}`;
-}
-
-function getPropertySlug(property: Property) {
-  return getPublicPropertySlug(property);
-}
-
-function getPropertyPath(property: Property) {
-  return `/${encodeURIComponent(getPropertySlug(property))}`;
-}
-
-function getPropertySlugFromPath(pathname: string) {
-  const segment = pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
-  if (!segment || segment === 'admin' || segment === 'listings' || segment === 'bds-da-nang') {
-    return '';
-  }
-  try {
-    return decodeURIComponent(segment).toLowerCase();
-  } catch {
-    return segment.toLowerCase();
-  }
-}
-
-function findPropertyFromLocation(
-  items: Property[],
-  pathname: string,
-  search: string,
-  slugParam?: string
-) {
-  const active = items.filter(property => !['sold', 'hidden'].includes(property.sale_status || 'available'));
-  const propertyId = new URLSearchParams(search).get('property');
-  const normalizedSlug = getPropertySlugFromPath(pathname) || decodeURIComponent(slugParam || '').toLowerCase();
-  if (!propertyId && !normalizedSlug) return null;
-  return active.find(item =>
-    item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug
-  ) ?? null;
-}
-
-function toPlainText(value: string) {
-  return value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[#*_`[\]()]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function truncateText(value: string, maxLength = 155) {
-  const cleanValue = toPlainText(value);
-  return cleanValue.length > maxLength
-    ? `${cleanValue.slice(0, maxLength - 3).trim()}...`
-    : cleanValue;
-}
-
-function limitSeoTitle(value: string) {
-  return value.length <= 60 ? value : `${value.slice(0, 57).trim()}...`;
-}
 
 function getPropertySeoTitle(property: Property) {
   const type = String(property.type || '').toLowerCase();
   if (type.includes('căn') || type.includes('can')) {
-    return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`);
+    return limitSeoTitle(`${property.title} | Căn Hộ Đà Nẵng Giá 2026`, 60);
   }
   if (type.includes('shophouse')) {
-    return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`);
+    return limitSeoTitle(`${property.title} | Shophouse Đà Nẵng Kinh Doanh`, 60);
   }
-  return limitSeoTitle(`${property.title} | BĐS Đà Nẵng | House & Life`);
+  return limitSeoTitle(`${property.title} | BĐS Đà Nẵng | House & Life`, 60);
 }
 
 async function readJsonResponse(response: Response) {
@@ -245,7 +172,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
     >
       <div className={`relative shrink-0 overflow-hidden bg-slate-100 ${large ? 'aspect-square' : 'aspect-[4/3]'}`}>
         <img
-          src={getImage(property)}
+          src={getPropertyImage(property)}
           alt={property.title}
           width={800}
           height={large ? 800 : 600}
@@ -737,7 +664,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
       : collectSiteSeoKeywords(activeProperties, DEFAULT_SEO_KEYWORDS);
     return keywords.join(', ');
   }, [activeProperties, selectedProperty]);
-  const seoImage = selectedProperty ? getImage(selectedProperty) : getImage(featuredProperties[0]);
+  const seoImage = selectedProperty ? getPropertyImage(selectedProperty) : getPropertyImage(featuredProperties[0]);
 
   const structuredData = useMemo(() => {
     const itemList = activeProperties.slice(0, 50).map((property, index) => ({
@@ -1568,7 +1495,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           <div key={selectedProperty.id} className="mx-auto my-3 max-w-5xl overflow-hidden rounded-lg bg-white pb-24 shadow-2xl sm:my-8 lg:pb-0">
             <div className="relative flex h-[62vh] max-h-[680px] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:h-auto">
               <img
-                src={getPropertyGalleryUrls(selectedProperty)[galleryIndex] || getImage(selectedProperty)}
+                src={getPropertyGalleryUrls(selectedProperty)[galleryIndex] || getPropertyImage(selectedProperty)}
                 alt={selectedProperty.title}
                 width={1280}
                 height={853}

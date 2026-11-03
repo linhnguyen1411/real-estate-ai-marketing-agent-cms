@@ -4,6 +4,7 @@ import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { Property } from '../types';
 import { getPublicPropertySlug } from '../utils/propertyShare';
 import { getPropertyThumbnailUrl } from '../utils/propertyImage';
+import { formatPrice } from '../utils/propertyDisplay';
 import SeoHead from '../components/seo/SeoHead';
 import Breadcrumbs from '../components/seo/Breadcrumbs';
 import LeadCaptureForm from '../components/LeadCaptureForm';
@@ -25,10 +26,6 @@ import {
   useListingPageSize,
   useListingUrlState,
 } from '../features/listings';
-
-function formatPrice(price: number) {
-  return `${price} tỷ`;
-}
 
 interface CategoryListingsPageProps {
   /** When rendered from a top-level SEO hub route */
