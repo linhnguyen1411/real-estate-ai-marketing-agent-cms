@@ -350,27 +350,3 @@ export function resolveRequiredRole(method: string, path: string): UserRole {
   return 'company';
 }
 
-/**
- * Middleware that validates the incoming request against RBAC_PERMISSIONS_MATRIX and Deny-by-Default rule.
- */
-export function rbacRouteGuard() {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const fullPath = `${req.baseUrl || ''}${req.path || ''}`.replace(/\/+$/, '') || '/';
-    // Skip public and machine-to-machine (HMAC/Token) endpoints
-    if (
-      fullPath === '/api/health' ||
-      fullPath.startsWith('/api/public') ||
-      fullPath.startsWith('/api/agent-ingest') ||
-      fullPath.startsWith('/api/agent/runtime') ||
-      fullPath.startsWith('/api/social/media/files') ||
-      fullPath.startsWith('/api/webhooks/telegram') ||
-      fullPath === '/api/license/activate' ||
-      fullPath === '/api/license/heartbeat' ||
-      fullPath === '/api/license/refresh-token'
-    ) {
-      return next();
-    }
-    const requiredRole = resolveRequiredRole(req.method, fullPath);
-    return requireRole(requiredRole)(req, res, next);
-  };
-}

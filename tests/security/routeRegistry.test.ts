@@ -179,4 +179,20 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
       expect(res.status, `Expected non-403 for member on ${method.toUpperCase()} ${path}`).not.toBe(403);
     }
   });
+
+  it('4. Machine endpoints bypass session RBAC while blog keeps its role floor', async () => {
+    const { isPublicPath, isMachineBypassPath } = await import('../../server/modules/rbac/rbacMiddleware');
+
+    expect(isMachineBypassPath('/api/agent/runtime/jobs')).toBe(true);
+    expect(isMachineBypassPath('/api/public/properties')).toBe(true);
+    expect(isMachineBypassPath('/api/blog/posts')).toBe(false);
+    expect(isPublicPath('/api/blog/posts')).toBe(true);
+
+    // Blog authoring stays member+, but category management stays company+.
+    const res = await request(app)
+      .post('/api/blog/categories')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ name: 'Danh mục mới' });
+    expect(res.status).toBe(403);
+  });
 });

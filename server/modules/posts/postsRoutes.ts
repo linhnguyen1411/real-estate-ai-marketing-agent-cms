@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, upsertCmsRecord, deleteCmsRecord, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, deleteCmsRecord } from '../../dbHelper';
 import { appendStandardHashtags, buildPropertySeo } from '../../aiService';
 import type { Post } from '../../../src/types';
 import { parseListQuery, paginateItems, matchesSearchText } from '../../listPagination';

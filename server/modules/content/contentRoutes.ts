@@ -5,7 +5,6 @@ import {
   updateSettings,
   verifyGeneratedContent,
   upsertCmsRecord,
-  writeDatabase,
 } from '../../dbHelper';
 import type { AppSettings, AutomationTask } from '../../../src/types';
 import { buildCompanyScopeFilter, getAgentDashboardCounts } from '../../agent/agentDb';

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { getUserById, readDatabase, upsertUser, writeDatabase } from '../../dbHelper';
+import { getUserById, readDatabase, upsertUser } from '../../dbHelper';
 import { saveImageFromDataUrl } from '../../blog/imageStorage';
 import type { User } from '../../../src/types';
 import { slugifyAgentProfile } from '../../../src/utils/agentTier';

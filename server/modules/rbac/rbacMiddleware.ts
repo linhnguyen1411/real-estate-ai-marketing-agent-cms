@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getAuthUser } from '../auth/authAccess';
+import { requireRole, resolveRequiredRole } from '../../security/rbac';
 import {
   type PermissionKey,
   type PermissionScope,
@@ -36,18 +37,35 @@ export const PUBLIC_ALLOWLIST_PATTERNS = [
   /^\/api\/auth\/captcha$/,
   /^\/api\/public(\/.*)?$/,
   /^\/api\/social\/media\/files(\/.*)?$/,
-  /^\/api\/short-links\/r(\/.*)?$/,
+  // Legacy: blog authoring is still guarded by the role floor in security/rbac.ts.
   /^\/api\/blog\/(posts|categories|tags)(\/.*)?$/,
-  /^\/api\/chat\/guest(\/.*)?$/,
-  /^\/api\/chat\/public(\/.*)?$/,
-  /^\/api\/appointments\/public(\/.*)?$/,
+  // Machine-to-machine endpoints authenticate with their own token/HMAC.
   /^\/api\/agent-ingest(\/.*)?$/,
+  /^\/api\/agent\/runtime(\/.*)?$/,
   /^\/api\/license\/(activate|heartbeat|refresh-token)$/,
   /^\/api\/webhooks\/telegram(\/.*)?$/,
 ];
 
 export function isPublicPath(path: string): boolean {
   return PUBLIC_ALLOWLIST_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+/**
+ * Endpoints that authenticate with their own token/HMAC or are served before
+ * the /api session gate. These skip both the permission and role-floor gates.
+ */
+const MACHINE_BYPASS_PATTERNS = [
+  /^\/api\/health$/,
+  /^\/api\/public(\/.*)?$/,
+  /^\/api\/social\/media\/files(\/.*)?$/,
+  /^\/api\/agent-ingest(\/.*)?$/,
+  /^\/api\/agent\/runtime(\/.*)?$/,
+  /^\/api\/license\/(activate|heartbeat|refresh-token)$/,
+  /^\/api\/webhooks\/telegram(\/.*)?$/,
+];
+
+export function isMachineBypassPath(path: string): boolean {
+  return MACHINE_BYPASS_PATTERNS.some((pattern) => pattern.test(path));
 }
 
 export interface RoutePermissionRule {
@@ -309,5 +327,63 @@ export function denyByDefaultGuard() {
 
     // 5. Enforce resolved permission
     return requirePermission(permission)(req, res, next);
+  };
+}
+
+export function normalizeApiPath(req: Request): string {
+  const fullPath = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path;
+  return fullPath.replace(/\/+$/, '') || '/';
+}
+
+/**
+ * Single authorization pipeline for /api.
+ *
+ * Order is intentional:
+ * 1. Public/machine endpoints skip both gates (single shared allowlist).
+ * 2. Permission gate resolves feature/scope entitlement (deny-by-default).
+ * 3. Role floor enforces the legacy owner/company/member hierarchy.
+ *
+ * Keeping both gates in one middleware prevents the two allowlists from
+ * drifting apart while the legacy role floor is migrated into permission rules.
+ */
+export function apiAuthorizationGuard() {
+  const permissionGate = denyByDefaultGuard();
+
+  const enforceAuthAndRoleFloor = (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+    cleanPath: string,
+  ): void => {
+    const authUser = getAuthUser(req);
+    if (!authUser || !authUser.id) {
+      res.status(401).json({ status: 'error', message: 'Yêu cầu đăng nhập.' });
+      return;
+    }
+
+    const requiredRole = resolveRequiredRole(req.method, cleanPath);
+    requireRole(requiredRole)(req, res, next);
+  };
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const cleanPath = normalizeApiPath(req);
+    if (isMachineBypassPath(cleanPath)) {
+      next();
+      return;
+    }
+
+    // Legacy blog paths bypass the permission gate but still need auth + role floor.
+    if (isPublicPath(cleanPath) || isPublicPath(req.path)) {
+      enforceAuthAndRoleFloor(req, res, next, cleanPath);
+      return;
+    }
+
+    permissionGate(req, res, (error?: unknown) => {
+      if (error) {
+        next(error);
+        return;
+      }
+      enforceAuthAndRoleFloor(req, res, next, cleanPath);
+    });
   };
 }

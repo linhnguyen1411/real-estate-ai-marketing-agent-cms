@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, upsertUser, upsertCmsRecord, writeDatabase } from '../../dbHelper';
+import { readDatabase, upsertUser, upsertCmsRecord } from '../../dbHelper';
 import type { AuthUser, Property, User } from '../../../src/types';
 import type { AgentTier } from '../../../src/utils/agentTier';
 import { clearCacheKey } from '../../cache/publicCache';

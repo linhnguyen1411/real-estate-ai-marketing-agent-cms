@@ -1673,3 +1673,26 @@ model AiSalesCampaign {
   @@index([createdAt])
   @@map("ai_sales_campaigns")
 }
+
+/// Property viewing appointments booked from the public site or by staff.
+model ViewingAppointment {
+  id              String    @id
+  companyId       String?   @map("company_id")
+  customerName    String    @map("customer_name")
+  customerPhone   String    @map("customer_phone")
+  propertyId      String?   @map("property_id")
+  propertyTitle   String?   @map("property_title")
+  appointmentTime DateTime  @map("appointment_time")
+  status          String    @default("pending")
+  notes           String?   @db.Text
+  assignedStaffId String?   @map("assigned_staff_id")
+  followUpDueAt   DateTime? @map("follow_up_due_at")
+  followUpNote    String?   @map("follow_up_note") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId, appointmentTime])
+  @@index([status])
+  @@index([assignedStaffId, appointmentTime])
+  @@map("viewing_appointments")
+}

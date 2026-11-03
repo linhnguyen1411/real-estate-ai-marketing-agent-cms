@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { readDatabase, upsertCmsRecord, writeDatabase, saveGeneratedContent } from '../../dbHelper';
+import { readDatabase, upsertCmsRecord, saveGeneratedContent } from '../../dbHelper';
 import { generatePropertyMarketingContent } from '../../aiService';
 import type { Property } from '../../../src/types';
 import { sortByCreatedAtDesc } from '../../../src/utils/propertySort';

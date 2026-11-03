@@ -5,10 +5,18 @@
 import { Router, type Request, type Response } from 'express';
 import {
   createViewingAppointment,
+  getViewingAppointment,
   listViewingAppointments,
   updateViewingAppointment,
 } from './appointmentService';
 import { requirePermission } from '../rbac';
+import { getAuthUser } from '../auth/authAccess';
+import { readDatabase } from '../../dbHelper';
+
+function isPlatformOwner(req: Request): boolean {
+  const user = getAuthUser(req);
+  return user?.role === 'owner' || (user?.role as string) === 'super_admin';
+}
 
 export function createAppointmentRouter() {
   const router = Router();
@@ -23,12 +31,28 @@ export function createAppointmentRouter() {
           message: 'Vui lòng cung cấp đầy đủ: Tên, Số điện thoại và Thời gian hẹn xem nhà.',
         });
       }
+      if (Number.isNaN(new Date(String(appointmentTime)).getTime())) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Thời gian hẹn xem nhà không hợp lệ.',
+        });
+      }
+
+      let property: any;
+      try {
+        property = propertyId
+          ? readDatabase().properties.find((item: any) => item.id === propertyId)
+          : undefined;
+      } catch {
+        property = undefined;
+      }
 
       const appointment = await createViewingAppointment({
+        companyId: property?.company_id || null,
         customerName,
         customerPhone,
         propertyId,
-        propertyTitle,
+        propertyTitle: propertyTitle || property?.title,
         appointmentTime,
         notes,
       });
@@ -50,9 +74,25 @@ export function createAppointmentRouter() {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      const parsedLimit = req.query.limit ? Number(req.query.limit) : 50;
+      const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
 
-      const items = await listViewingAppointments({ status, search, limit });
+      const user = getAuthUser(req);
+      const isOwner = isPlatformOwner(req);
+      if (!isOwner && !user?.company_id) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Bạn không có quyền xem lịch hẹn ngoài công ty của mình.',
+        });
+      }
+
+      const items = await listViewingAppointments({
+        companyId: isOwner ? null : user?.company_id,
+        assignedStaffId: !isOwner && req.scope === 'own' ? user?.id : null,
+        status,
+        search,
+        limit,
+      });
       return res.json({ status: 'success', data: items });
     } catch (error) {
       console.error('[appointments] Error listing appointments:', error);
@@ -65,7 +105,39 @@ export function createAppointmentRouter() {
     try {
       const { id } = req.params;
       const updates = req.body;
-      const updated = await updateViewingAppointment(id, updates);
+
+      const existing = await getViewingAppointment(id);
+      if (!existing) {
+        return res.status(404).json({ status: 'error', message: 'Không tìm thấy lịch hẹn này.' });
+      }
+
+      const isOwner = isPlatformOwner(req);
+      if (!isOwner) {
+        const user = getAuthUser(req);
+        if (!user?.company_id || existing.companyId !== user.company_id) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Bạn không có quyền cập nhật lịch hẹn của công ty khác.',
+          });
+        }
+        if (req.scope === 'own' && existing.assignedStaffId !== user.id) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Bạn chỉ có thể cập nhật lịch hẹn được giao cho mình.',
+          });
+        }
+      }
+
+      let updated;
+      try {
+        updated = await updateViewingAppointment(id, updates);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'INVALID_APPOINTMENT_STATUS' || message === 'INVALID_APPOINTMENT_TIME') {
+          return res.status(400).json({ status: 'error', message: 'Dữ liệu lịch hẹn không hợp lệ.' });
+        }
+        throw error;
+      }
       if (!updated) {
         return res.status(404).json({ status: 'error', message: 'Không tìm thấy lịch hẹn này.' });
       }
