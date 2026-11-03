@@ -11,7 +11,7 @@ import {
   buildLegacyMissionPayloadFromTemplate,
   getLegacyMissionTemplateById,
   listLegacyMissionTemplates,
-} from '../modules/mission-engine/domain/legacyMissionTemplates';
+} from '../modules/mission-engine';
 
 export type { MissionTemplate, MissionTemplateRules, MissionTemplateSchedule };
 

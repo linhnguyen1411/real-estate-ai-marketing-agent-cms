@@ -69,7 +69,7 @@ import {
 } from '../services/contentRepository';
 import { resolveFacebookScannedPostIdentity } from '../facebook/facebookPermalinkResolver';
 import { type AnalysisBudget } from '../services/findingRuleEngine';
-import { processContentAfterCollect } from '../../modules/mission-engine/application/processContentAfterCollect';
+import { processContentAfterCollect } from '../../modules/mission-engine';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
 
 /** @deprecated use FacebookScanConfig from facebookScanConfig */

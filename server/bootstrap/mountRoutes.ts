@@ -15,7 +15,7 @@ import {
 import { registerFacebookAdminRoutes } from '../facebookRoutes';
 import { registerAgentAdminRoutes } from '../agent/agentRoutes';
 import { registerAgentIngestRoutes } from '../agentIngest/ingestRoutes';
-import { registerSocialPublishingRoutes } from '../modules/social-publishing/api/socialPublishingRoutes';
+import { registerSocialPublishingRoutes } from '../modules/social-publishing';
 import { registerPlanningRoutes } from '../modules/planning';
 import { registerLeadAcquisitionRoutes } from '../modules/lead-acquisition';
 import { registerSalesLayerRoutes } from '../modules/sales-layer';
@@ -29,26 +29,26 @@ import {
   registerRuntimeAgentRoutes,
   registerTelegramControlPlaneRoutes,
 } from '../modules/control-plane';
-import { accessDefaults, getAuthUser } from '../modules/auth/authAccess';
 import {
-  createAuthLoginRouter,
+  accessDefaults,
   createApiAuthGate,
+  createAuthLoginRouter,
   createAuthMeRouter,
-} from '../modules/auth/authRoutes';
-import { createPublicSiteRouter } from '../modules/public-site/publicSiteRoutes';
-import { createSeoPublicRouter } from '../modules/public-site/seoPublicRoutes';
-import { createUsersRouter } from '../modules/users/usersRoutes';
-import { createCustomersRouter } from '../modules/customers/customersRoutes';
-import { createPropertiesRouter } from '../modules/properties/propertiesRoutes';
-import { createPostsRouter } from '../modules/posts/postsRoutes';
-import { createInboxRouter } from '../modules/inbox/inboxRoutes';
-import { createChatRouter } from '../modules/chat/chatRoutes';
-import { createContentRouter } from '../modules/content/contentRoutes';
-import { createAppointmentRouter } from '../modules/appointments/appointmentRoutes';
-import { createTeamRouter } from '../modules/team/teamRoutes';
-import { createRbacAdminRouter } from '../modules/rbac/rbacAdminRoutes';
-import { createLicenseRouter } from '../modules/license/licenseRoutes';
-import { createWalletRouter } from '../modules/wallet/walletRoutes';
+  getAuthUser,
+} from '../modules/auth';
+import { createPublicSiteRouter, createSeoPublicRouter } from '../modules/public-site';
+import { createUsersRouter } from '../modules/users';
+import { createCustomersRouter } from '../modules/customers';
+import { createPropertiesRouter } from '../modules/properties';
+import { createPostsRouter } from '../modules/posts';
+import { createInboxRouter } from '../modules/inbox';
+import { createChatRouter } from '../modules/chat';
+import { createContentRouter } from '../modules/content';
+import { createAppointmentRouter } from '../modules/appointments';
+import { createTeamRouter } from '../modules/team';
+import { createRbacAdminRouter } from '../modules/rbac';
+import { createLicenseRouter } from '../modules/license';
+import { createWalletRouter } from '../modules/wallet';
 import { apiAuthorizationGuard } from '../modules/rbac';
 
 export type MountRoutesOptions = {

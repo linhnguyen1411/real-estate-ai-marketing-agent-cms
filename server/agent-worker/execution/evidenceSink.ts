@@ -2,7 +2,7 @@
  * G1 — Collect execution evidence on worker; CMS applies on complete.
  */
 
-import type { ExecutionEvidence } from '../../modules/control-plane/execution/jobPayloadContract';
+import type { ExecutionEvidence } from '../../modules/control-plane';
 
 export class ExecutionEvidenceSink {
   private readonly evidence: ExecutionEvidence = {};

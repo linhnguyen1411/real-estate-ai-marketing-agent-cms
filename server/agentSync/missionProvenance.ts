@@ -1,7 +1,7 @@
 /**
  * Mission 2.0 provenance helpers — shared between local enqueue and VPS ingest.
  */
-import type { ExecutionTarget } from '../modules/mission-engine/domain/workflowTypes';
+import type { ExecutionTarget } from '../modules/mission-engine';
 
 export type MissionProvenanceStepRef = {
   stepId: string;

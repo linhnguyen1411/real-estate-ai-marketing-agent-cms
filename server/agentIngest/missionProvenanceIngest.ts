@@ -4,8 +4,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import type { MissionWorkflowProvenance } from '../agentSync/missionProvenance';
-import { assertValidPipeline } from '../modules/mission-engine/domain/workflowValidation';
-import { buildStepIdempotencyKey } from '../modules/mission-engine/repositories/missionRunRepository';
+import { assertValidPipeline, buildStepIdempotencyKey } from '../modules/mission-engine';
 
 export type MissionProvenanceStepRef = {
   stepId: string;

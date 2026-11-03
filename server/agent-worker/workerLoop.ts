@@ -152,7 +152,7 @@ export class WorkerLoop {
         if (leaseTick.expired.length > 0) {
           try {
             const { emitRuntimeEventAsync } = await import(
-              '../modules/control-plane/runtimeEventBus'
+              '../modules/control-plane'
             );
             for (const e of leaseTick.expired) {
               emitRuntimeEventAsync({
@@ -313,7 +313,7 @@ export class WorkerLoop {
           });
 
           try {
-            const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+            const { emitRuntimeEventAsync } = await import('../modules/control-plane');
             emitRuntimeEventAsync({
               type: 'BROWSER_LEASED',
               companyId: job.companyId,
@@ -372,7 +372,7 @@ export class WorkerLoop {
         if (browserLease) {
           browserLease.release();
           try {
-            const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+            const { emitRuntimeEventAsync } = await import('../modules/control-plane');
             emitRuntimeEventAsync({
               type: 'BROWSER_RELEASED',
               companyId: job.companyId,

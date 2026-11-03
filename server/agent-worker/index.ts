@@ -9,8 +9,8 @@ import { HeartbeatService } from './heartbeat';
 import { reclaimOrphanedAgentJobs } from './jobClaimer';
 import { BrowserPool, ExecutionPool } from './runtime';
 import { WorkerLoop } from './workerLoop';
-import { buildAgentRegistryMetadata } from '../modules/control-plane/agentRegistry';
-import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
+import { buildAgentRegistryMetadata } from '../modules/control-plane';
+import { emitRuntimeEventAsync } from '../modules/control-plane';
 import './scanSourceHandler';
 
 async function main(): Promise<void> {

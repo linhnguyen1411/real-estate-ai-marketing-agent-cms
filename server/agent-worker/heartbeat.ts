@@ -56,7 +56,7 @@ export class HeartbeatService {
 
     // Retire zombie sessions from prior PID-based workerIds on this host.
     try {
-      const { retireSiblingSessions } = await import('../modules/control-plane/agentRegistry');
+      const { retireSiblingSessions } = await import('../modules/control-plane');
       const hostname = os.hostname();
       await retireSiblingSessions({
         keepSessionId: session.id,

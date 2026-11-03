@@ -14,7 +14,7 @@ import {
 import { saveScannedContent } from '../services/contentRepository';
 import { getLeadAnalysisLimits } from '../../agent/leadAnalyzer';
 import { type AnalysisBudget } from '../services/findingRuleEngine';
-import { processContentAfterCollect } from '../../modules/mission-engine/application/processContentAfterCollect';
+import { processContentAfterCollect } from '../../modules/mission-engine';
 import type { ScanContext, ScanMetrics, SourceAdapter } from './sourceAdapter';
 
 const SUPPORTED_TYPES = new Set(['website', 'forum']);

@@ -20,3 +20,4 @@ export { GeminiProvider } from './providers/geminiProvider';
 export { KiraProvider } from './providers/kiraProvider';
 export { LocalProvider } from './providers/localProvider';
 export { registerAiGatewayRoutes } from './api/aiGatewayRoutes';
+export { isFindingAiGateEnabled } from './apiKeyResolver';

@@ -3,8 +3,8 @@ import { prisma } from '../prisma';
 import {
   enqueueDueScheduledMissions,
   settleOpenMissionRuns,
-} from '../modules/mission-engine/application/missionRunService';
-import { enqueueDueSocialPublishJobs } from '../modules/social-publishing/jobService';
+} from '../modules/mission-engine';
+import { enqueueDueSocialPublishJobs } from '../modules/social-publishing';
 
 /** Fixed class/id pair for pg_try_advisory_xact_lock (agent scheduler). */
 export const AGENT_SCHEDULER_LOCK_CLASS = 41871;

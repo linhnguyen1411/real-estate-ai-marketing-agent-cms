@@ -6,7 +6,7 @@ import type { AgentJob } from '@prisma/client';
 import type { BrowserManager } from './browserManager';
 import { JobHandlerRegistry } from './ports';
 import { runScanSourceJob } from './scanSourceHandler';
-import { runPublishSocialJob } from '../modules/social-publishing/worker/publishSocialHandler';
+import { runPublishSocialJob } from '../modules/social-publishing';
 
 export function createDefaultJobHandlerRegistry(): JobHandlerRegistry {
   const registry = new JobHandlerRegistry();

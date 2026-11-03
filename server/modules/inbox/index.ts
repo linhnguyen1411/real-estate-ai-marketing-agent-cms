@@ -1,0 +1,1 @@
+export { createInboxRouter } from './inboxRoutes';

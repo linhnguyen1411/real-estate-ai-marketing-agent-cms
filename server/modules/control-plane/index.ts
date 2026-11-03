@@ -21,6 +21,23 @@ import { RUNTIME_EVENT_TYPES } from './types';
 import type { CommandClient } from './command-engine/types';
 
 export { registerRuntimeAgentRoutes } from './runtimeAgentRoutes';
+export { buildAgentRegistryMetadata, retireSiblingSessions } from './agentRegistry';
+export { emitRuntimeEventAsync } from './runtimeEventBus';
+export {
+  readHydratedExecution,
+  EXECUTION_PAYLOAD_SCHEMA,
+  type ExecutionEvidence,
+  type HydratedExecutionPayload,
+  type MissionExecutionSnapshot,
+  type SourceExecutionSnapshot,
+} from './execution/jobPayloadContract';
+export {
+  leadAlertKeyboard,
+  publishJobKeyboard,
+  missionActionKeyboard,
+  agentJobKeyboard,
+  type InlineKeyboard,
+} from './inlineKeyboard';
 export {
   executeControlCommand,
   formatCommandText,

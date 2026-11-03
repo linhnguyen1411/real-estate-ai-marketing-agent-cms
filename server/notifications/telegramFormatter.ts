@@ -6,17 +6,17 @@
 
 import type { ResolvedLeadIntelligence } from '../../shared/agent-domain';
 import { normalizeSocialLinks } from '../modules/link-normalization';
-import type { InlineKeyboard } from '../modules/control-plane/inlineKeyboard';
 import {
   incidentKeyboard,
   leadAlertKeyboard,
   opsActionKeyboard,
   publishJobKeyboard,
-} from '../modules/control-plane/inlineKeyboard';
+  type InlineKeyboard,
+} from '../modules/control-plane';
 import {
   formatSalesActionCard,
   resolveLeadAlertRole,
-} from '../modules/sales-layer/telegramSalesActionCard';
+} from '../modules/sales-layer';
 import type { NotificationChannel, NotificationEventType, NotificationPayload } from './notificationTypes';
 import {
   CANONICAL_LEAD_ALERT_MARKER,

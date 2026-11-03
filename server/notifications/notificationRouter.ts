@@ -5,7 +5,7 @@
 
 import { getSettings } from '../dbHelper';
 import type { AppSettings } from '../../src/types';
-import type { InlineKeyboard } from '../modules/control-plane/inlineKeyboard';
+import type { InlineKeyboard } from '../modules/control-plane';
 import {
   formatOpsBullet,
   formatRoutedNotification,

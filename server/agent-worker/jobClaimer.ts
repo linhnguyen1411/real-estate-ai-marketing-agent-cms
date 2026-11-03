@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { notifyJobFailed } from '../agent/agentNotificationService';
 import { prisma } from '../prisma';
 import { isNonRetryableBrowserErrorMessage } from './facebook/facebookCheckpointDetector';
-import { emitRuntimeEventAsync } from '../modules/control-plane/runtimeEventBus';
+import { emitRuntimeEventAsync } from '../modules/control-plane';
 import type { ClaimOptions } from './ports';
 import { capabilityForJobType } from './ports';
 

@@ -22,7 +22,7 @@ import { registerGracefulShutdown } from '../agent-worker/gracefulShutdown';
 import { createDefaultJobHandlerRegistry } from '../agent-worker/defaultHandlers';
 import { BrowserPool, ExecutionPool } from '../agent-worker/runtime';
 import { WorkerLoop } from '../agent-worker/workerLoop';
-import { buildAgentRegistryMetadata } from '../modules/control-plane/agentRegistry';
+import { buildAgentRegistryMetadata } from '../modules/control-plane';
 import { createHttpJobQueuePort } from './httpJobQueue';
 import { HttpAgentHeartbeat } from './httpHeartbeat';
 import { RuntimeAgentClient } from './runtimeClient';
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
             await browser.launch();
             try {
               const { emitRuntimeEventAsync } = await import(
-                '../modules/control-plane/runtimeEventBus'
+                '../modules/control-plane'
               );
               emitRuntimeEventAsync({
                 type: action.includes('recover') ? 'BROWSER_RECOVERED' : 'BROWSER_RESTARTED',

@@ -7,7 +7,7 @@ import {
   readHydratedExecution,
   type MissionExecutionSnapshot,
   type SourceExecutionSnapshot,
-} from '../../modules/control-plane/execution/jobPayloadContract';
+} from '../../modules/control-plane';
 import { assertAgentSourceActiveForScan } from '../../agent/agentDb';
 import { prisma } from '../../prisma';
 import { isStatelessExecutionAgent } from './stateless';

@@ -5,7 +5,7 @@
 
 import os from 'os';
 import fs from 'fs';
-import { TELEMETRY_SCHEMA_VERSION } from '../modules/control-plane/telemetry/types';
+import { TELEMETRY_SCHEMA_VERSION } from '../modules/control-plane';
 
 export type AgentTelemetryBuildInput = {
   agentId: string;

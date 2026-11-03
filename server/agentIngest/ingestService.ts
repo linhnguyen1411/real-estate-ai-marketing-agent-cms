@@ -489,9 +489,7 @@ export async function ingestFindingPayload(input: {
           }
         }
 
-        const { executeContentWorkflow } = await import(
-          '../modules/mission-engine/application/workflowExecutionService'
-        );
+        const { executeContentWorkflow } = await import('../modules/mission-engine');
         await executeContentWorkflow({
           missionRunId,
           scannedContentId: contentResult.scannedContentId,

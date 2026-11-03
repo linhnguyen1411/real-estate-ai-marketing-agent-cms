@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { getAuthUser } from '../modules/auth/authAccess';
+import { getAuthUser } from '../modules/auth';
 
 export type UserRole = 'owner' | 'company' | 'member';
 

@@ -1,5 +1,5 @@
 import { prisma } from '../prisma';
-import { startMissionRun } from '../modules/mission-engine/application/missionRunService';
+import { startMissionRun } from '../modules/mission-engine';
 
 export interface EnqueueMissionResult {
   missionId: string;
@@ -84,7 +84,7 @@ export async function enqueueSourceScan(input: {
   });
 
   try {
-    const { emitRuntimeEventAsync } = await import('../modules/control-plane/runtimeEventBus');
+    const { emitRuntimeEventAsync } = await import('../modules/control-plane');
     emitRuntimeEventAsync({
       type: 'JOB_CREATED',
       companyId: job.companyId,

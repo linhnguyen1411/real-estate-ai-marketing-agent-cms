@@ -31,7 +31,7 @@ import {
 import { enqueueFindingEnrichment } from '../../agent/findingEnrichmentService';
 import type { LeadAnalysisResult } from '../../agent/leadAnalysisSchema';
 import { decideAiFindingGate } from '../../agent/findingAiGate';
-import { isFindingAiGateEnabled } from '../../modules/ai-gateway/apiKeyResolver';
+import { isFindingAiGateEnabled } from '../../modules/ai-gateway';
 import {
   buildContentDedupeMeta,
   decideFindingDedupe,
