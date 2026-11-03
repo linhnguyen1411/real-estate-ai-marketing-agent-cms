@@ -3,16 +3,13 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   getTelegramConsoleStatus,
   handleTelegramWebhookUpdate,
   startTelegramControlPlane,
   stopTelegramControlPlane,
 } from './lifecycle';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerTelegramControlPlaneRoutes(app: Express): void {
   app.get('/api/agent/telegram/console/status', (_req: Request, res: Response) => {

@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   buildMarketingSnapshot,
   createFactoryPack,
@@ -11,10 +12,6 @@ import {
 } from '../marketingService';
 import { buildWeeklyContentCalendar } from '../contentCalendar';
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerMarketingOrgRoutes(app: Express): void {
   app.use('/api/marketing-org', requirePermission('agent.sources'));

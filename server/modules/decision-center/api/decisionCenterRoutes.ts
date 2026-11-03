@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   buildDecisionSnapshot,
   evaluateTextDecision,
@@ -20,10 +21,6 @@ import {
 } from '../store';
 import type { DecisionRule } from '../types';
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerDecisionCenterRoutes(app: Express): void {
   app.use('/api/decision-center', requirePermission('agent.runtime'));

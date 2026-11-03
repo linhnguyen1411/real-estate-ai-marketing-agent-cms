@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../utils/httpResponses';
 import { Prisma } from '@prisma/client';
 import type { AgentRouteDeps } from './agentTypes';
 import {
@@ -94,10 +95,6 @@ import {
   listMissionWorkflowTemplates,
 } from '../modules/mission-engine/domain/missionTemplates';
 import { assertValidPipeline } from '../modules/mission-engine/domain/workflowValidation';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 function isPrismaUniqueError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -824,26 +821,6 @@ export function registerAgentAdminRoutes(app: Express, deps: AgentRouteDeps) {
       res.json({ status: 'success', data: result });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Promote Lead thất bại.');
-    }
-  });
-
-  app.post('/api/agent/findings/:id/promote-investor-lead', async (req: Request, res: Response) => {
-    try {
-      const user = getAuthUser(req);
-      if (!canManageAgentConfig(user)) {
-        sendError(res, 403, 'Chỉ owner/company admin mới được chuyển Lead đầu tư.');
-        return;
-      }
-      const existing = await getAgentFindingById(req.params.id);
-      if (!existing) {
-        sendError(res, 404, 'Không tìm thấy finding.');
-        return;
-      }
-      if (!assertRecordAccess(req, res, existing.companyId)) return;
-      const result = await promoteFindingToLead({ findingId: existing.id, user });
-      res.json({ status: 'success', data: result });
-    } catch (error: unknown) {
-      sendError(res, 500, error instanceof Error ? error.message : 'Chuyển Lead đầu tư thất bại.');
     }
   });
 

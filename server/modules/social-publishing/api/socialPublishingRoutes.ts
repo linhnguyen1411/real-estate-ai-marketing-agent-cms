@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import type { AgentRouteDeps } from '../../../agent/agentTypes';
 import { canAccessAgentRecord, canManageAgentConfig } from '../../../agent/agentDb';
 import { listAuditLogs } from '../auditService';
@@ -54,10 +55,6 @@ import { DEFAULT_SAFETY_SETTINGS } from '../types';
 import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDeps) {
   const { getAuthUser, accessDefaults } = deps;

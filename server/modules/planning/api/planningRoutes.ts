@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   approveCampaign,
   completeCampaign,
@@ -23,10 +24,6 @@ import {
 } from '../campaignWorkspace';
 
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerPlanningRoutes(app: Express): void {
   app.use('/api/planning', requirePermission('agent.runtime'));

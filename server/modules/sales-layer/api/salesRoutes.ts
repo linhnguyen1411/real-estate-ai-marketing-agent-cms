@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   formatSalesDailyBriefing,
   getSalesPipelineMetrics,
@@ -16,10 +17,6 @@ import type { LearningOutcome } from '../../lead-acquisition/types';
 import { requirePermission } from '../../rbac';
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerSalesLayerRoutes(app: Express): void {
   app.use('/api/sales', requirePermission('lead.intel'));

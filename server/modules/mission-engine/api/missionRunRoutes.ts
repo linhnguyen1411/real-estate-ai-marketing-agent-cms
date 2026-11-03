@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../prisma';
 import type { AgentRouteDeps } from '../../../agent/agentTypes';
@@ -18,10 +19,6 @@ import {
 } from '../repositories/workflowStepRunRepository';
 import { executeContentWorkflow } from '../application/workflowExecutionService';
 import { buildMissionRunDetail } from '../application/missionRunDetailService';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 async function syncMissionSources(input: {
   missionId: string;

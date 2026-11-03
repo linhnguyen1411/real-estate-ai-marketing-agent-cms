@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   formatAiStatusBriefing,
   gatewayChat,
@@ -10,10 +11,6 @@ import {
   listGatewayProviders,
 } from '../gateway';
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerAiGatewayRoutes(app: Express): void {
   app.use('/api/ai-gateway', requirePermission('agent.runtime'));

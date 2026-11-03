@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../utils/httpResponses';
 import { Prisma } from '@prisma/client';
 import { getSettings, readDatabase } from '../dbHelper';
 import { generatePropertyMarketingContent } from '../aiService';
@@ -15,10 +16,6 @@ import {
 import { ingestFindingBatch, ingestFindingPayload, ingestEventEnvelope, type IngestFindingPayload } from './ingestService';
 
 const MAX_BATCH = 50;
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 function isIngestEnabled(): boolean {
   return process.env.AGENT_INGEST_ENABLED?.trim().toLowerCase() === 'true';

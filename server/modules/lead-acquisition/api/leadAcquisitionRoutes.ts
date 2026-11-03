@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   getLeadAcquisitionMetrics,
   listLeadPipeline,
@@ -25,10 +26,6 @@ const STAGES: LeadPipelineStage[] = [
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerLeadAcquisitionRoutes(app: Express): void {
   app.use('/api/lead-acquisition', requirePermission('agent.sources'));

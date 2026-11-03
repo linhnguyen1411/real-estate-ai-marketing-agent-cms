@@ -330,10 +330,7 @@ export function fetchAgentFindings(params: {
   return agentListRequest<AgentFinding>(`/api/agent/findings${qs(params)}`);
 }
 
-export function promoteAgentFinding(id: string, preferInvestorLeadPath = false) {
-  const path = preferInvestorLeadPath
-    ? `/api/agent/findings/${id}/promote-investor-lead`
-    : `/api/agent/findings/${id}/promote`;
+export function promoteAgentFinding(id: string) {
   return agentRequest<{
     outcome: 'created' | 'merged';
     leadId: string;
@@ -341,29 +338,9 @@ export function promoteAgentFinding(id: string, preferInvestorLeadPath = false) 
     phone: string;
     duplicateReason: string | null;
     findingId: string;
-  }>(path, {
+  }>(`/api/agent/findings/${id}/promote`, {
     method: 'POST',
     body: JSON.stringify({}),
-  }).catch(async err => {
-    // Fallback: try the alternate promote path if the preferred one is missing.
-    if (!preferInvestorLeadPath) {
-      try {
-        return await agentRequest<{
-          outcome: 'created' | 'merged';
-          leadId: string;
-          leadName: string;
-          phone: string;
-          duplicateReason: string | null;
-          findingId: string;
-        }>(`/api/agent/findings/${id}/promote-investor-lead`, {
-          method: 'POST',
-          body: JSON.stringify({}),
-        });
-      } catch {
-        throw err;
-      }
-    }
-    throw err;
   });
 }
 

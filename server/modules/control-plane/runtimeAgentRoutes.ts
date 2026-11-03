@@ -4,6 +4,7 @@
  */
 
 import type { Express, Request, Response, NextFunction } from 'express';
+import { sendError } from '../../utils/httpResponses';
 import {
   runtimeAgentClaimJob,
   runtimeAgentCompleteJob,
@@ -60,10 +61,6 @@ function requireAgentToken(req: Request, res: Response, next: NextFunction): voi
   }
 
   next();
-}
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
 }
 
 export function registerRuntimeAgentRoutes(app: Express): void {

@@ -3,6 +3,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { sendError } from '../../../utils/httpResponses';
 import {
   applyOutcomeFeedback,
   buildFeedbackCenterSnapshot,
@@ -44,10 +45,6 @@ import {
 } from '../store';
 import type { KnowledgeConcept } from '../types';
 import { requirePermission } from '../../rbac';
-
-function sendError(res: Response, status: number, message: string) {
-  res.status(status).json({ status: 'error', message });
-}
 
 export function registerKnowledgeBaseRoutes(app: Express): void {
   app.use('/api/knowledge', requirePermission('agent.sources'));
