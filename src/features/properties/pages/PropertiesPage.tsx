@@ -224,6 +224,7 @@ export default function PropertiesPage({
       selling_points: (property.selling_points || []).join('\n'),
       market_zone: property.market_zone || '',
       project_name: normalizeProjectName(property.project_name) || property.project_name || '',
+      listing_source: property.listing_source || 'broker',
     });
     setShowAddPropertyModal(true);
   };

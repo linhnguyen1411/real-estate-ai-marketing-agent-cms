@@ -275,7 +275,7 @@ export function denyByDefaultGuard() {
       return next();
     }
 
-    // 2. Allow self profile endpoints and basic app settings read
+    // 2. Allow self profile endpoints and basic app channels read
     if (
       cleanPath === '/api/auth/me' ||
       cleanPath === '/api/auth/profile' ||
@@ -283,7 +283,6 @@ export function denyByDefaultGuard() {
       cleanPath === '/api/auth/join-team' ||
       cleanPath === '/api/wallet/my' ||
       cleanPath === '/api/ai/status' ||
-      (cleanPath === '/api/settings' && req.method === 'GET') ||
       (cleanPath === '/api/channels' && req.method === 'GET')
     ) {
       return next();

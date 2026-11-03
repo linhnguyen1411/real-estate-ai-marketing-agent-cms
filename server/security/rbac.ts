@@ -54,16 +54,6 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   'GET /api/dashboard',
   'GET /api/navigation-counts',
   'GET /api/channels',
-  'GET /api/settings',
-
-  // Short links (scoped by user/company)
-  'GET /api/admin/short-links',
-  'POST /api/admin/short-links',
-  'PUT /api/admin/short-links/:id',
-  'PATCH /api/admin/short-links/:id',
-  'DELETE /api/admin/short-links/:id',
-  'GET /api/admin/short-links/:id/analytics',
-  'POST /api/short-links/resolve',
 
   // Customers (CRM for sales/member daily work - scoped by company & ownership)
   'GET /api/customers',
@@ -178,8 +168,8 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'DELETE /api/users/:id': 'company',
   'POST /api/member-permissions/bulk': 'company',
 
-  // System settings: member+ to read, owner to write
-  'GET /api/settings': 'member',
+  // System settings: company+ to read, owner to write
+  'GET /api/settings': 'company',
   'PUT /api/settings': 'owner',
   'GET /api/auth/my-team': 'member',
   'POST /api/auth/join-team': 'member',
@@ -226,13 +216,13 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'PUT /api/blog/categories/:id': 'company',
   'POST /api/blog/tags': 'company',
 
-  // Short links: member+ (scoped by user/company)
-  'GET /api/admin/short-links': 'member',
-  'POST /api/admin/short-links': 'member',
-  'PUT /api/admin/short-links/:id': 'member',
-  'DELETE /api/admin/short-links/:id': 'member',
-  'GET /api/admin/short-links/:id/analytics': 'member',
-  'POST /api/short-links/resolve': 'member',
+  // Short links admin: owner or company only
+  'GET /api/admin/short-links': 'company',
+  'POST /api/admin/short-links': 'company',
+  'PUT /api/admin/short-links/:id': 'company',
+  'DELETE /api/admin/short-links/:id': 'company',
+  'GET /api/admin/short-links/:id/analytics': 'company',
+  'POST /api/short-links/resolve': 'company',
 
   // Properties batch import & quick parse: owner or company only
   'POST /api/admin/properties/quick-parse': 'company',

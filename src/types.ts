@@ -130,6 +130,7 @@ export interface Property {
   lot?: string;
   street?: string;
   contact_phone?: string;
+  agent_slug?: string;
   slug?: string;
   seo_title?: string;
   meta_description?: string;

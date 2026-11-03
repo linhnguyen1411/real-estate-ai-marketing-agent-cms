@@ -1,5 +1,7 @@
 import type { Property } from '../src/types';
 import { stripPropertyImagesForApi } from '../src/utils/propertyImage';
+import { getUserById } from './dbHelper';
+import { slugifyAgentProfile } from '../src/utils/agentTier';
 
 export interface PublicPropertyDTO {
   id: string;
@@ -32,9 +34,7 @@ export interface PublicPropertyDTO {
   lot?: string;
   street?: string;
   created_at?: string;
-  created_by_user_id?: string;
-  owner_user_id?: string;
-  contact_phone?: string;
+  agent_slug?: string;
   listing_source?: 'broker' | 'owner';
 }
 
@@ -47,7 +47,20 @@ export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
     ? stripped.gallery_images
     : (Array.isArray(stripped.images) ? stripped.images : (primaryImage ? [primaryImage] : []));
 
-  // Strict allowlist: explicitly exclude internal fields
+  const creatorId = property.created_by_user_id || property.owner_user_id;
+  let agentSlug: string | undefined;
+  if (creatorId) {
+    try {
+      const user = getUserById(creatorId);
+      if (user) {
+        agentSlug = user.public_slug || `${slugifyAgentProfile(user.name || 'agent')}-${user.id.slice(-4)}`;
+      }
+    } catch {
+      // Graceful fallback if db cache uninitialized during some unit mocks
+    }
+  }
+
+  // Strict allowlist: explicitly exclude internal fields (owner_user_id, created_by_user_id, contact_phone, company_id)
   const dto: PublicPropertyDTO = {
     id: stripped.id,
     title: stripped.title,
@@ -77,9 +90,7 @@ export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
     lot: stripped.lot,
     street: stripped.street,
     created_at: stripped.created_at,
-    created_by_user_id: stripped.created_by_user_id,
-    owner_user_id: stripped.owner_user_id,
-    contact_phone: stripped.contact_phone,
+    agent_slug: agentSlug,
     listing_source: stripped.listing_source,
   };
   return dto;

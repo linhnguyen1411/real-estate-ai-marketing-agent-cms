@@ -257,8 +257,6 @@ export function createApiAuthGate() {
     pathName === '/license/refresh-token' ||
     pathName === '/api/license/refresh-token' ||
     pathName.startsWith('/public/') ||
-    pathName.startsWith('/chat/guest') ||
-    pathName.startsWith('/chat/public') ||
     pathName.startsWith('/agent-ingest/') ||
     // Execution Agent Runtime API authenticates via AGENT_RUNTIME_TOKEN (not CMS session).
     pathName.startsWith('/agent/runtime/') ||
@@ -268,6 +266,15 @@ export function createApiAuthGate() {
         pathName.startsWith('/api/social/media/files/') ||
         original.startsWith('/api/social/media/files/')))
   ) {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    if (token) {
+      const decoded = verifyToken(token);
+      const user = decoded ? getUserById(decoded.sub) : null;
+      if (user && user.status === 'active') {
+        const db = readDatabase();
+        (req as any).authUser = toAuthUser(user, db);
+      }
+    }
     return next();
   }
 

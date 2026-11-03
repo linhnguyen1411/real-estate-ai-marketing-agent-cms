@@ -94,6 +94,6 @@ export const registerSchema = z.object({
 // 8. Property Create schema
 export const propertyCreateSchema = z.object({
   title: z.string().trim().min(3, 'Tiêu đề bất động sản phải có ít nhất 3 ký tự.').optional(),
-  listing_source: z.enum(['broker', 'owner']).optional().default('broker'),
+  listing_source: z.enum(['broker', 'owner']),
 }).passthrough();
 

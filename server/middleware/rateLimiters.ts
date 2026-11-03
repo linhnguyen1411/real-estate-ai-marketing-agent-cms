@@ -66,7 +66,7 @@ export function clearLoginFailures(email: string): void {
  * Middleware checking if the targeted email account is currently locked due to progressive failure.
  */
 export function loginEmailLockoutGuard(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV === 'development') {
     next();
     return;
   }

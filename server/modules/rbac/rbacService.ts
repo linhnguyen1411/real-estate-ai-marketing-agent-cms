@@ -61,7 +61,7 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
   const cacheKey = `${user.id}:${user.role || ''}`;
   const cached = userPermissionsCache.get(cacheKey);
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
+  if (process.env.NODE_ENV !== 'test' && cached && cached.expiresAt > now) {
     return cached.result;
   }
 

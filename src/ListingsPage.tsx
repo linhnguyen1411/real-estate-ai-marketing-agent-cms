@@ -26,7 +26,7 @@ import {
 import { Property, PublicAgentProfile } from './types';
 import MarkdownContent from './components/MarkdownContent';
 import AgentPublicCard from './components/agent/AgentPublicCard';
-import { fetchPublicAgentByUserId } from './services/agentApi';
+import { fetchPublicAgentByUserId, fetchPublicAgentBySlug } from './services/agentApi';
 import { getPropertyCreatorId } from './utils/propertyCreator';
 import { PropertyShareButton, PropertyShareCompactButton } from './components/PropertyShareModal';
 import LeadCaptureForm from './components/LeadCaptureForm';
@@ -622,19 +622,28 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
       setListingAgent(null);
       return;
     }
+    let cancelled = false;
+    const agentSlug = selectedProperty.agent_slug;
+    if (agentSlug) {
+      fetchPublicAgentBySlug(agentSlug).then(agent => {
+        if (!cancelled) setListingAgent(agent);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     const creatorId = getPropertyCreatorId(selectedProperty);
     if (!creatorId) {
       setListingAgent(null);
       return;
     }
-    let cancelled = false;
     fetchPublicAgentByUserId(creatorId).then(agent => {
       if (!cancelled) setListingAgent(agent);
     });
     return () => {
       cancelled = true;
     };
-  }, [selectedProperty?.id]);
+  }, [selectedProperty?.id, selectedProperty?.agent_slug]);
 
   const isBrokerProperty = useMemo(() => {
     if (!selectedProperty || !listingAgent) return false;
