@@ -212,7 +212,7 @@ export default function ExecutiveKpiGrid({ data, refreshing }: Props) {
             key={a.label}
             type="button"
             onClick={() => navigate(a.href)}
-            className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-200"
+            className="inline-flex min-h-11 items-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-200"
           >
             {a.label}
           </button>
@@ -258,7 +258,7 @@ export default function ExecutiveKpiGrid({ data, refreshing }: Props) {
                 key={r.id}
                 type="button"
                 onClick={() => navigate(r.href)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2.5 text-left transition hover:border-rose-500/30"
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2.5 text-left transition hover:border-rose-500/30"
               >
                 <div>
                   <div className="text-sm font-semibold text-white">{r.action}</div>
@@ -281,7 +281,7 @@ export default function ExecutiveKpiGrid({ data, refreshing }: Props) {
                 <button
                   type="button"
                   onClick={() => navigate(a.href)}
-                  className="flex w-full items-start gap-2 text-left text-sm text-slate-200 transition hover:text-white"
+                  className="flex min-h-11 w-full items-start gap-2 text-left text-sm text-slate-200 transition hover:text-white"
                 >
                   <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${sevDot(a.severity)}`} />
                   <span>

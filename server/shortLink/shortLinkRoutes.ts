@@ -266,12 +266,42 @@ export function registerShortLinkPublicRoutes(
   });
 }
 
+function isSuperLinkOwner(req: Request): boolean {
+  const authUser = (req as any).authUser;
+  return authUser?.role === 'owner' || authUser?.role === 'super_admin' || req.scope === 'all';
+}
+
+async function assertOwnsShortLink(req: Request, res: Response, linkId: string): Promise<boolean> {
+  const authUser = (req as any).authUser;
+  if (!authUser) {
+    sendError(res, 401, 'Yêu cầu đăng nhập.');
+    return false;
+  }
+  if (isSuperLinkOwner(req)) return true;
+
+  const links = await listShortLinks();
+  const link = links.find((item) => item.id === linkId);
+  if (!link) {
+    sendError(res, 404, 'Không tìm thấy short link.');
+    return false;
+  }
+  if (link.created_by !== authUser.id) {
+    sendError(res, 403, 'Bạn không có quyền thay đổi short link này.');
+    return false;
+  }
+  return true;
+}
+
 export function registerShortLinkAdminRoutes(app: Express) {
   app.get('/api/admin/short-links', async (req: Request, res: Response) => {
     try {
       const origin = getPublicOrigin(req);
+      const authUser = (req as any).authUser;
       const links = await listShortLinks(origin);
-      res.json({ status: 'success', data: links });
+      const scoped = isSuperLinkOwner(req)
+        ? links
+        : links.filter((link) => link.created_by === authUser?.id);
+      res.json({ status: 'success', data: scoped });
     } catch (error: any) {
       sendError(res, 500, error.message || 'Không tải được short links.');
     }
@@ -280,8 +310,12 @@ export function registerShortLinkAdminRoutes(app: Express) {
   app.post('/api/admin/short-links', async (req: Request, res: Response) => {
     try {
       const authUser = (req as any).authUser;
-      if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
-        sendError(res, 403, 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền tạo Short link.');
+      const permissionGranted =
+        (req as any)._rbacPermissionChecked === 'shortlink.manage' ||
+        authUser?.role === 'owner' ||
+        authUser?.role === 'company';
+      if (!authUser || !permissionGranted) {
+        sendError(res, 403, 'Bạn không có quyền tạo Short link.');
         return;
       }
 
@@ -303,11 +337,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
 
   app.patch('/api/admin/short-links/:id', async (req: Request, res: Response) => {
     try {
-      const authUser = (req as any).authUser;
-      if (!authUser || (authUser.role !== 'owner' && authUser.role !== 'company')) {
-        sendError(res, 403, 'Chỉ tài khoản Quản trị viên (owner) hoặc Công ty (company) mới có quyền cập nhật Short link.');
-        return;
-      }
+      if (!(await assertOwnsShortLink(req, res, req.params.id))) return;
 
       const input = parseBodyInput(req.body || {});
       const origin = getPublicOrigin(req);
@@ -323,6 +353,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
 
   app.delete('/api/admin/short-links/:id', async (req: Request, res: Response) => {
     try {
+      if (!(await assertOwnsShortLink(req, res, req.params.id))) return;
       await deleteShortLink(req.params.id);
       res.json({ status: 'success' });
     } catch (error: any) {
@@ -332,6 +363,7 @@ export function registerShortLinkAdminRoutes(app: Express) {
 
   app.get('/api/admin/short-links/:id/analytics', async (req: Request, res: Response) => {
     try {
+      if (!(await assertOwnsShortLink(req, res, req.params.id))) return;
       const analytics = await getShortLinkAnalytics(req.params.id);
       res.json({ status: 'success', data: analytics });
     } catch (error: any) {

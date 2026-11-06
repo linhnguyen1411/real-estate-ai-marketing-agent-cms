@@ -50,8 +50,9 @@ import {
   getAuthToken,
   getCurrentUser,
   getGeneratedContents,
-  getBootstrapData,
+  getDashboard,
   getNavigationCounts,
+  getSettings,
   listProperties,
   listPosts,
   getUsers,
@@ -64,6 +65,7 @@ import {
   verifyContent,
   invalidateCrmModule,
   cacheInvalidate,
+  cacheClear,
   onMustChangePassword,
 } from './services/api';
 import PaginationBar, { DEFAULT_PAGE_SIZE } from './components/common/PaginationBar';
@@ -72,13 +74,11 @@ import AdminLayout from './app/layouts/AdminLayout';
 import LoginPage, { AuthLoadingScreen } from './features/auth/LoginPage';
 import MustChangePasswordScreen from './features/auth/MustChangePasswordScreen';
 import {
-  AGENT_PATH_TO_TAB,
-  AGENT_TAB_TO_PATH,
   ACTIVE_TAB_STORAGE_KEY,
   MXH_POSTS_ENABLED,
+  adminTabPath,
   normalizeStoredTab,
-  SEO_PATH_TO_TAB,
-  SEO_TAB_TO_PATH,
+  tabFromWorkspacePath,
 } from './app/navigation/tabPaths';
 import {
   canAccessAgentMenu,
@@ -105,7 +105,6 @@ const IntegrationsPage = React.lazy(() => import('./features/integrations/pages/
 const ProfilePage = React.lazy(() => import('./features/profile/pages/ProfilePage'));
 const CustomersPage = React.lazy(() => import('./features/crm/pages/CustomersPage'));
 const PropertiesPage = React.lazy(() => import('./features/properties/pages/PropertiesPage'));
-const InboxPage = React.lazy(() => import('./features/inbox/pages/InboxPage'));
 const ChatFeatureHost = React.lazy(() => import('./features/chat/pages/ChatFeatureHost'));
 const UsersPage = React.lazy(() => import('./features/users/pages/UsersPage'));
 const RbacManagementPanel = React.lazy(() => import('./components/admin/RbacManagementPanel'));
@@ -169,15 +168,16 @@ const MARKETING_CREATIVE_META: Record<MarketingCreativeChannel, { label: string 
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const routeTab = tabFromWorkspacePath(location.pathname);
   const [activeTab, setActiveTab] = useState<string>(() =>
-    normalizeStoredTab(localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || 'dashboard'),
+    routeTab || normalizeStoredTab(localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || 'dashboard'),
   );
   const [seoMenuOpen, setSeoMenuOpen] = useState(() => {
-    const tab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
+    const tab = routeTab || localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
     return tab.startsWith('seo-');
   });
   const [agentMenuOpen, setAgentMenuOpen] = useState(() => {
-    const tab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
+    const tab = routeTab || localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || '';
     return tab.startsWith('agent-');
   });
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -222,18 +222,22 @@ export default function App() {
 
   const isSuper = isUserSuperAdmin(currentUser);
   const isLead = isUserTeamLead(currentUser);
-  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
+  const portal = isSuper ? 'admin' : 'member';
+  const isAgentWorkspace =
+    location.pathname.startsWith('/admin/agents') || location.pathname.startsWith('/my/agents');
+  const isSeoWorkspace =
+    location.pathname.startsWith('/admin/seo') || location.pathname.startsWith('/my/seo');
 
   const canManageCmsUsers = isSuper || isLead || hasUserPermission(currentUser, 'user.manage');
-  const canManageWebsiteChat = isSuper || isRoot || hasUserPermission(currentUser, 'website_chat');
+  const canManageWebsiteChat = isSuper || hasUserPermission(currentUser, 'website_chat');
   const canManageSettings = isSuper || hasUserPermission(currentUser, 'settings.system');
   const canManageIntegrations = isSuper || hasUserPermission(currentUser, 'integrations.system');
   const canManageAutomations = isSuper || hasUserPermission(currentUser, 'automation.admin');
   const canManageProjects = isSuper || hasUserPermission(currentUser, 'projects.admin');
   const canManageAiContent = isSuper || hasUserPermission(currentUser, 'ai_content.admin') || hasUserEntitlement(currentUser, 'ai_content');
   const canManageLeadMagnet = isSuper || isLead || hasUserPermission(currentUser, 'property.distribute');
-  const canAccessCrm = isSuper || isRoot || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
-  const canAccessInvestorLeads = isSuper || isRoot || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
+  const canAccessCrm = isSuper || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
+  const canAccessInvestorLeads = isSuper || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
   const canAccessAgent = canAccessAgentMenu(currentUser);
   const canAccessSeo = canAccessSeoMenu(currentUser);
   const canManageRbac = isSuper || hasUserPermission(currentUser, 'rbac.matrix');
@@ -280,7 +284,7 @@ export default function App() {
         const user = await getCurrentUser();
         setCurrentUser(user);
         if (user) {
-          const isSuperAdmin = user.role === 'owner';
+          const isSuperAdmin = isUserSuperAdmin(user);
           localStorage.setItem('auth_portal', isSuperAdmin ? 'admin' : 'member');
         }
       } catch (error) {
@@ -315,17 +319,25 @@ export default function App() {
         navigate(isSuper ? '/admin/dashboard' : '/my/dashboard', { replace: true });
         return;
       }
-      if (!isSuper && location.pathname.startsWith('/admin')) {
-        navigate('/my/dashboard', { replace: true });
-        return;
-      }
       if (isSuper && (location.pathname.startsWith('/my') || location.pathname === '/dashboard')) {
         navigate('/admin/dashboard', { replace: true });
         return;
       }
+      if (!isSuper && location.pathname.startsWith('/admin')) {
+        // Feature workspaces stay under /admin; backend permissions decide access.
+        const featureAllowed =
+          (isAgentWorkspace && canAccessAgent) || (isSeoWorkspace && canAccessSeo);
+        if (!featureAllowed) {
+          navigate('/my/dashboard', { replace: true });
+          return;
+        }
+      }
       if (!isSuper && location.pathname === '/dashboard') {
         navigate('/my/dashboard', { replace: true });
         return;
+      }
+      if (!routeTab && !isAgentWorkspace && !isSeoWorkspace && location.pathname !== '/dashboard') {
+        navigate(isSuper ? '/admin/dashboard' : '/my/dashboard', { replace: true });
       }
     } else if (!isAuthPath) {
       const storedPortal = localStorage.getItem('auth_portal');
@@ -333,7 +345,17 @@ export default function App() {
       const fallbackLogin = shouldAdminLogin ? '/admin/login' : '/dang-nhap';
       navigate(fallbackLogin, { replace: true });
     }
-  }, [authLoading, currentUser, location.pathname, navigate]);
+  }, [
+    authLoading,
+    currentUser,
+    location.pathname,
+    navigate,
+    routeTab,
+    isAgentWorkspace,
+    isSeoWorkspace,
+    canAccessAgent,
+    canAccessSeo,
+  ]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -358,39 +380,29 @@ export default function App() {
       setActiveTab(requestedTab);
       setAgentMenuOpen(requestedTab.startsWith('agent-'));
       setSeoMenuOpen(requestedTab.startsWith('seo-'));
-      navigate(location.pathname, { replace: true, state: {} });
+      navigate(adminTabPath(isSuper ? 'admin' : 'member', requestedTab), { replace: true, state: {} });
       return;
     }
 
-    if (location.pathname === '/my/dashboard' || location.pathname === '/admin/dashboard' || location.pathname === '/dashboard') {
-      setActiveTab('dashboard');
-      setAgentMenuOpen(false);
-      setSeoMenuOpen(false);
+    const pathTab = tabFromWorkspacePath(location.pathname);
+    if (pathTab) {
+      setActiveTab(pathTab);
+      setAgentMenuOpen(pathTab.startsWith('agent-'));
+      setSeoMenuOpen(pathTab.startsWith('seo-'));
       return;
     }
-
-    const agentTab = AGENT_PATH_TO_TAB[location.pathname];
-    if (agentTab) {
-      setActiveTab(agentTab);
+    if (isAgentWorkspace) {
+      setActiveTab(prev => (prev.startsWith('agent-') ? prev : 'agent-dashboard'));
       setAgentMenuOpen(true);
       setSeoMenuOpen(false);
       return;
     }
-    const seoTab = SEO_PATH_TO_TAB[location.pathname];
-    if (seoTab) {
-      setActiveTab(seoTab);
+    if (isSeoWorkspace) {
+      setActiveTab(prev => (prev.startsWith('seo-') ? prev : 'seo-posts'));
       setSeoMenuOpen(true);
       setAgentMenuOpen(false);
-    } else if (location.pathname === '/admin/ai-content') {
-      setActiveTab('seo-posts');
-      setSeoMenuOpen(true);
-      setAgentMenuOpen(false);
-      navigate('/admin/seo/posts', { replace: true });
-    } else if (activeTab === 'seo-content' || activeTab === 'seo-ai-studio') {
-      setActiveTab('seo-posts');
-      navigate('/admin/seo/posts', { replace: true });
     }
-  }, [location.pathname, location.state]);
+  }, [location.pathname, location.state, isSuper, isAgentWorkspace, isSeoWorkspace, navigate]);
 
   const refreshNavigationCounts = async () => {
     try {
@@ -403,18 +415,13 @@ export default function App() {
 
   /** Generated contents + users for creator labels — chat loads in ChatFeatureHost. */
   const loadSecondaryData = async () => {
+    const canListUsers = isSuper || isLead;
     const [generatedContents, users] = await Promise.all([
       getGeneratedContents().catch(() => []),
-      currentUser?.role === 'owner' || currentUser?.role === 'company'
-        ? getUsers().catch(() => [])
-        : Promise.resolve([] as AuthUser[]),
+      canListUsers ? getUsers().catch(() => []) : Promise.resolve([] as AuthUser[]),
     ]);
     setGeneratedContents(generatedContents);
-    if (currentUser?.role === 'owner' || currentUser?.role === 'company') {
-      setManagedUsers(users);
-    } else {
-      setManagedUsers([]);
-    }
+    setManagedUsers(canListUsers ? users : []);
   };
 
 
@@ -429,6 +436,13 @@ export default function App() {
 
     try {
       if (tab === 'crm' || tab === 'users') {
+        return;
+      }
+      if (tab === 'dashboard') {
+        if (!mark('dashboard') && !force) return;
+        setModuleLoading(true);
+        const dashboard = await getDashboard();
+        setDashboardData(dashboard);
         return;
       }
       if (tab === 'properties' || tab === 'projects') {
@@ -449,7 +463,7 @@ export default function App() {
         }
         return;
       }
-      if (['website-chat', 'chat-history', 'chatbot', 'inbox'].includes(tab)) {
+      if (tab === 'chatbot') {
         return;
       }
       if (tab === 'posts' && MXH_POSTS_ENABLED) {
@@ -457,9 +471,6 @@ export default function App() {
         setModuleLoading(true);
         const result = await listPosts({ page: 1, limit: DEFAULT_PAGE_SIZE, search: searchQuery.trim() || undefined });
         setPosts(result.items);
-        return;
-      }
-      if (tab === 'inbox') {
         return;
       }
       if (tab === 'automations') {
@@ -488,10 +499,17 @@ export default function App() {
       invalidateCrmModule();
       cacheInvalidate('dashboard');
       cacheInvalidate('navigation-counts');
-      const data = await getBootstrapData();
-      setDashboardData(data.dashboard);
-      setNavigationCounts(data.navigationCounts);
-      setSettings(data.settings);
+      const [dashboard, navigationCounts, settings] = await Promise.all([
+        activeTab === 'dashboard' ? getDashboard() : Promise.resolve(null),
+        getNavigationCounts(true),
+        getSettings(),
+      ]);
+      if (dashboard) {
+        setDashboardData(dashboard);
+        loadedModulesRef.current.add('dashboard');
+      }
+      setNavigationCounts(navigationCounts);
+      setSettings(settings);
       hasLoadedCoreData.current = true;
       // Drop stale full-list caches when user explicitly refreshes.
       if (!isFirstLoad) {
@@ -541,6 +559,7 @@ export default function App() {
     try {
       const portal: 'admin' | 'member' = location.pathname.startsWith('/admin') ? 'admin' : 'member';
       const session = await login(loginEmail, loginPassword, portal);
+      cacheClear();
       setCurrentUser(session.user);
       const isSuper = isUserSuperAdmin(session.user);
       localStorage.setItem('auth_portal', isSuper ? 'admin' : 'member');
@@ -561,6 +580,7 @@ export default function App() {
     const isSuperAdmin = isUserSuperAdmin(currentUser) || localStorage.getItem('auth_portal') === 'admin';
     const targetPath = isSuperAdmin ? '/admin/login' : '/dang-nhap';
     logout();
+    cacheClear();
     localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
     localStorage.removeItem('auth_portal');
     setCurrentUser(null);
@@ -749,12 +769,7 @@ export default function App() {
       setAgentMenuOpen(true);
       setSeoMenuOpen(false);
     }
-    const isSuper = isUserSuperAdmin(currentUser);
-    const defaultDashboard = isSuper ? '/admin/dashboard' : '/my/dashboard';
-    let targetPath = opts?.path || defaultDashboard;
-    if (!isSuper && targetPath.startsWith('/admin')) {
-      targetPath = '/my/dashboard';
-    }
+    const targetPath = opts?.path || adminTabPath(portal, id);
     navigate(targetPath);
   };
 
@@ -772,8 +787,7 @@ export default function App() {
         onOpenProfile: () => {
           setActiveTab('profile');
           setAdminMenuOpen(false);
-          const isSuper = isUserSuperAdmin(currentUser);
-          navigate(isSuper ? '/admin/dashboard' : '/my/dashboard');
+          navigate(adminTabPath(portal, 'profile'));
         },
         onRefresh: fetchAllData,
         onLogout: handleLogout,
@@ -800,7 +814,7 @@ export default function App() {
     >
 
 
-          {location.pathname.startsWith('/admin/agents') ? (
+          {isAgentWorkspace ? (
             canAccessAgent ? (
               <Suspense fallback={<ModuleFallback label="Đang tải AI Agent…" />}>
                 <AgentPlatformPage userRole={currentUser.role} />
@@ -824,7 +838,7 @@ export default function App() {
           <>
 
           {/* Search bar inside view headers */}
-          {['properties', 'posts', 'chat-history'].includes(activeTab) && (
+          {['properties', 'posts'].includes(activeTab) && (
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-3 sm:p-4 rounded-2xl border border-slate-900">
               <div className="relative flex-1 max-w-md">
                 <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
@@ -849,7 +863,7 @@ export default function App() {
           {initialLoading && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4">
               <div className="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-              <p className="text-slate-400 text-sm">Đang tải dashboard…</p>
+              <p className="text-slate-400 text-sm">Đang tải dữ liệu…</p>
             </div>
           )}
 
@@ -1306,21 +1320,6 @@ export default function App() {
                 </Suspense>
               )}
 
-              {/* ==================================================== */}
-              {/* TAB 6: INBOX MULTICHANNEL */}
-              {/* ==================================================== */}
-              {activeTab === 'inbox' && (isSuper || isRoot || hasUserPermission(currentUser, 'fb_inbox') || hasUserEntitlement(currentUser, 'fb_inbox')) && (
-                <Suspense fallback={<ModuleFallback label="Đang tải Inbox…" />}>
-                  <InboxPage
-                    onNotify={showToast}
-                    searchQuery={searchQuery}
-                    onCountsChanged={() => {
-                      void refreshNavigationCounts();
-                    }}
-                  />
-                </Suspense>
-              )}
-
               {activeTab === 'chatbot' && currentUser && (
                 <Suspense fallback={<ModuleFallback label="Đang tải Chatbot…" />}>
                   <ChatFeatureHost
@@ -1335,38 +1334,6 @@ export default function App() {
                       void refreshNavigationCounts();
                     }}
                     key={`chatbot-${chatDraftSeed}`}
-                  />
-                </Suspense>
-              )}
-
-              {activeTab === 'website-chat' && currentUser && canManageWebsiteChat && (
-                <Suspense fallback={<ModuleFallback label="Đang tải Website Chat…" />}>
-                  <ChatFeatureHost
-                    mode="website-chat"
-                    currentUser={currentUser}
-                    onNotify={showToast}
-                    searchQuery={searchQuery}
-                    canManageWebsiteChat={canManageWebsiteChat}
-                    settings={settings}
-                    onCountsChanged={() => {
-                      void refreshNavigationCounts();
-                    }}
-                  />
-                </Suspense>
-              )}
-
-              {activeTab === 'chat-history' && currentUser && canManageWebsiteChat && (
-                <Suspense fallback={<ModuleFallback label="Đang tải Chat History…" />}>
-                  <ChatFeatureHost
-                    mode="chat-history"
-                    currentUser={currentUser}
-                    onNotify={showToast}
-                    searchQuery={searchQuery}
-                    canManageWebsiteChat={canManageWebsiteChat}
-                    settings={settings}
-                    onCountsChanged={() => {
-                      void refreshNavigationCounts();
-                    }}
                   />
                 </Suspense>
               )}

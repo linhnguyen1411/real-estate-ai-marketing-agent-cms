@@ -17,6 +17,7 @@ import LeadGenProvider from './components/leadGen/LeadGenProvider.tsx';
 import { isPropertySlugCandidate } from './seo/routes.ts';
 import { captureShortLinkFromUrl } from './utils/shortLinkAttribution.ts';
 import { HashListingsRedirect, LEGACY_LISTING_REDIRECTS, LISTING_CATALOG_ROOT, SEO_CATEGORY_PATHS } from './features/listings';
+import { installSsrHeadHandoff } from './seo/ssr/ssrHeadHandoff.ts';
 import './index.css';
 
 const AboutPage = React.lazy(() => import('./pages/AboutPage.tsx'));
@@ -146,6 +147,8 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }
 
+installSsrHeadHandoff();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LeadGenProvider>
@@ -157,6 +160,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/dashboard" element={<AdminRoute />} />
           <Route path="/my" element={<Navigate to="/my/dashboard" replace />} />
           <Route path="/my/dashboard" element={<AdminRoute />} />
+          <Route path="/my/:menu" element={<AdminRoute />} />
           <Route path="/dashboard" element={<AdminRoute />} />
           <Route path="/dang-nhap" element={<AdminRoute />} />
           <Route path="/dang-ky" element={<AdminRoute />} />
@@ -193,6 +197,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/agents/sessions" element={<AdminRoute />} />
           <Route path="/admin/agents/runtime" element={<AdminRoute />} />
           <Route path="/admin/agents/reports" element={<AdminRoute />} />
+          <Route path="/admin/:menu" element={<AdminRoute />} />
           <Route path="/bds-da-nang" element={<Navigate to="/" replace />} />
           <Route path="/bds-da-nang/:propertySlug" element={<LegacyPropertyRedirect />} />
           <Route path="/listings" element={<Navigate to={LISTING_CATALOG_ROOT} replace />} />

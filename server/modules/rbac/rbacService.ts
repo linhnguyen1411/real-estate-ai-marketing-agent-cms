@@ -111,8 +111,13 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
           roleKey = 'pending_member';
           status = 'pending';
         }
+      } else if (user.role === 'company') {
+        // 4. Legacy company admin (kept for backwards compatibility)
+        roleKey = 'team_lead';
+        isTeamLead = true;
+        status = 'active';
       } else {
-        // 4. Independent user
+        // 5. Independent user
         roleKey = 'independent';
         status = 'active';
       }
@@ -125,13 +130,8 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
   if (roleKey === 'super_admin') {
     activeFeatures.add('*');
   } else {
-    // Root team members get default access to root features
-    if (isPlatformRootTeam && status === 'active') {
-      activeFeatures.add('website_chat');
-      activeFeatures.add('crm');
-      activeFeatures.add('investor_leads');
-      activeFeatures.add('fb_inbox');
-    }
+    // Platform-root team membership is metadata only: it never grants features.
+    // Premium access comes exclusively from explicit user/team entitlements.
 
     // User-specific active entitlements
     const userEntitlements = await getActiveEntitlements('user', user.id);
@@ -181,18 +181,6 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
     const effectiveScope = narrowScope(base.scope, overrideScope);
     const premiumOnly = base.premiumOnly;
 
-    // Special check for website_chat: must be platform root team
-    if (key === 'website_chat' && roleKey !== 'super_admin' && !isPlatformRootTeam) {
-      permissions[key] = {
-        key,
-        scope: 'none',
-        premiumOnly,
-        hasAccess: false,
-        requiresPremiumUpgrade: false,
-      };
-      continue;
-    }
-
     let hasAccess = false;
     let requiresPremiumUpgrade = false;
 
@@ -223,6 +211,7 @@ export async function resolvePermissions(user: AuthUserInput): Promise<ResolvedP
     teamId,
     isPlatformRootTeam,
     isTeamLead,
+    companyWide: user.role === 'company' && !teamId,
     status,
     permissions,
     activeEntitlementFeatures: activeFeatures,
@@ -263,16 +252,27 @@ export function buildScopeWhere(scope: PermissionScope, userId: string, teamId?:
  */
 export function filterByScope<
   T extends {
+    company_id?: string;
     owner_user_id?: string;
     created_by_user_id?: string;
     team_id?: string;
     assigned_member_ids?: string[];
   }
->(items: T[], scope: PermissionScope, userId: string, teamId?: string): T[] {
+>(
+  items: T[],
+  scope: PermissionScope,
+  userId: string,
+  teamId?: string,
+  companyId?: string,
+  companyWide = false,
+): T[] {
   switch (scope) {
     case 'all':
       return items;
     case 'team':
+      if (companyWide) {
+        return items.filter((item) => Boolean(companyId) && item.company_id === companyId);
+      }
       return items.filter((item) => {
         if (teamId && item.team_id === teamId) return true;
         const owner = item.owner_user_id || item.created_by_user_id;

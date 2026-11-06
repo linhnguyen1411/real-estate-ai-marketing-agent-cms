@@ -183,13 +183,13 @@ export default function MarketingCenterPage({ canManage }: { canManage: boolean 
         <Metric label="SEO Gaps" value={h.seoGaps} tone="warn" />
       </div>
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/80 p-1">
         {TABS.map(t => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-semibold ${
+            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-semibold ${
               tab === t.id
                 ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
                 : 'text-slate-500 border border-transparent hover:text-slate-200'

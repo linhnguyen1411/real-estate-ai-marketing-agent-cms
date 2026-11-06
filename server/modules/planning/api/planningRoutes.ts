@@ -24,6 +24,7 @@ import {
 } from '../campaignWorkspace';
 
 import { requirePermission } from '../../rbac';
+import { canAccessCompany, resolveRequestCompanyId } from '../../auth';
 
 export function registerPlanningRoutes(app: Express): void {
   app.use('/api/planning', requirePermission('agent.runtime'));
@@ -52,8 +53,7 @@ export function registerPlanningRoutes(app: Express): void {
       const body = (req.body || {}) as Record<string, unknown>;
       const utterance = String(body.utterance || body.text || '').trim();
       if (!utterance) return sendError(res, 400, 'utterance is required');
-      const companyId =
-        typeof body.companyId === 'string' ? body.companyId : null;
+      const companyId = resolveRequestCompanyId(req, body.companyId) ?? null;
       const modeRaw = typeof body.mode === 'string' ? body.mode : undefined;
       const mode = modeRaw as ReturnType<typeof detectSalesMode> | undefined;
       const result = await runSalesEmployee({ utterance, companyId, mode });
@@ -65,8 +65,7 @@ export function registerPlanningRoutes(app: Express): void {
 
   app.get('/api/planning/campaigns', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const kanban = String(req.query.kanban || '') === '1' || String(req.query.view || '') === 'kanban';
       if (kanban) {
         const board = await listCampaignsKanban({ companyId });
@@ -81,8 +80,7 @@ export function registerPlanningRoutes(app: Express): void {
 
   app.get('/api/planning/campaigns/health', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const rows = await listCampaignWorkspaceHealth({ companyId });
       res.json({ status: 'success', data: rows });
     } catch (error: unknown) {
@@ -94,6 +92,7 @@ export function registerPlanningRoutes(app: Express): void {
     try {
       const ws = await getCampaignWorkspace(req.params.id);
       if (!ws) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, ws.campaign.companyId)) return sendError(res, 403, 'Forbidden');
       res.json({
         status: 'success',
         data: {
@@ -110,10 +109,10 @@ export function registerPlanningRoutes(app: Express): void {
   app.get('/api/planning/workspace', async (req: Request, res: Response) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q : '';
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const ws = await resolveCampaignWorkspace(q, companyId);
       if (!ws) return sendError(res, 404, 'No campaign workspace matched');
+      if (!canAccessCompany(req, ws.campaign.companyId)) return sendError(res, 403, 'Forbidden');
       res.json({
         status: 'success',
         data: {
@@ -131,6 +130,7 @@ export function registerPlanningRoutes(app: Express): void {
     try {
       const row = await getCampaign(req.params.id);
       if (!row) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, row.companyId)) return sendError(res, 403, 'Forbidden');
       const tasks = row.state.orchestratorTasks || [];
       const { orchestratorProgress, taskDurationMs, listReadyTasks } = await import(
         '../taskOrchestrator'
@@ -180,6 +180,7 @@ export function registerPlanningRoutes(app: Express): void {
     try {
       const row = await getCampaign(req.params.id);
       if (!row) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, row.companyId)) return sendError(res, 403, 'Forbidden');
       res.json({ status: 'success', data: row });
     } catch (error: unknown) {
       sendError(res, 500, error instanceof Error ? error.message : 'Get campaign failed');
@@ -188,6 +189,9 @@ export function registerPlanningRoutes(app: Express): void {
 
   app.post('/api/planning/campaigns/:id/approve', async (req: Request, res: Response) => {
     try {
+      const current = await getCampaign(req.params.id);
+      if (!current) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, current.companyId)) return sendError(res, 403, 'Forbidden');
       const row = await approveCampaign({
         campaignId: req.params.id,
         actor: typeof req.body?.actor === 'string' ? req.body.actor : 'admin',
@@ -200,6 +204,9 @@ export function registerPlanningRoutes(app: Express): void {
 
   app.post('/api/planning/campaigns/:id/reject', async (req: Request, res: Response) => {
     try {
+      const current = await getCampaign(req.params.id);
+      if (!current) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, current.companyId)) return sendError(res, 403, 'Forbidden');
       const row = await rejectCampaign({
         campaignId: req.params.id,
         actor: typeof req.body?.actor === 'string' ? req.body.actor : 'admin',
@@ -213,6 +220,9 @@ export function registerPlanningRoutes(app: Express): void {
 
   app.post('/api/planning/campaigns/:id/complete', async (req: Request, res: Response) => {
     try {
+      const current = await getCampaign(req.params.id);
+      if (!current) return sendError(res, 404, 'Campaign not found');
+      if (!canAccessCompany(req, current.companyId)) return sendError(res, 403, 'Forbidden');
       const row = await completeCampaign(req.params.id);
       res.json({ status: 'success', data: row });
     } catch (error: unknown) {

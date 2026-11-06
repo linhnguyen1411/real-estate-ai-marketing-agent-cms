@@ -103,7 +103,7 @@ export default function SeoCmsAdmin({ token, section = 'posts' }: SeoCmsAdminPro
           <h2 className="text-xl font-bold text-white">Nội dung SEO — CMS</h2>
           <p className="text-xs text-slate-500">House & Life · Prompt workflow · SEO audit · DB-driven public</p>
         </div>
-        <button type="button" onClick={load} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">
+        <button type="button" onClick={load} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
       </div>
@@ -120,7 +120,7 @@ export default function SeoCmsAdmin({ token, section = 'posts' }: SeoCmsAdminPro
                 key={s}
                 type="button"
                 onClick={() => setStatusFilter(s)}
-                className={`rounded-full px-3 py-1 text-xs ${statusFilter === s ? 'bg-white text-slate-900' : 'bg-slate-800 text-slate-300'}`}
+                className={`inline-flex min-h-11 items-center rounded-full px-3 py-1 text-xs ${statusFilter === s ? 'bg-white text-slate-900' : 'bg-slate-800 text-slate-300'}`}
               >
                 {s}
               </button>
@@ -129,7 +129,7 @@ export default function SeoCmsAdmin({ token, section = 'posts' }: SeoCmsAdminPro
               <button
                 type="button"
                 onClick={() => setShowAiModal(true)}
-                className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white"
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white"
               >
                 <Sparkles className="h-3.5 w-3.5" /> Tạo bằng AI
               </button>
@@ -139,7 +139,7 @@ export default function SeoCmsAdmin({ token, section = 'posts' }: SeoCmsAdminPro
                   setAiDraft(null);
                   setEditorPost({} as BlogArticle);
                 }}
-                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white"
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white"
               >
                 <Plus className="h-3.5 w-3.5" /> Bài mới
               </button>

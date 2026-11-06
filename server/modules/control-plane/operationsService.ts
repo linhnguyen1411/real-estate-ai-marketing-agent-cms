@@ -11,6 +11,7 @@ import { getAgentById, listRegisteredAgents } from './agentRegistry';
 import { emitRuntimeEvent } from './runtimeEventBus';
 import { buildControlPlaneReport } from './reportEngine';
 import type { ControlPlaneReportKind } from './types';
+import { isSuperAdminUser } from '../auth/tenantScope';
 
 export type OpsJobRow = {
   id: string;
@@ -34,7 +35,7 @@ function durationMs(startedAt: Date | null, finishedAt: Date | null, updatedAt: 
 }
 
 export async function opsGetDashboard(user: AuthUser) {
-  const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+  const companyId = isSuperAdminUser(user) ? null : user.company_id ?? '__none__';
   const { refreshOperationsMetrics } = await import('./operations');
   const operations = await refreshOperationsMetrics({
     companyId,
@@ -42,7 +43,7 @@ export async function opsGetDashboard(user: AuthUser) {
   });
   const snap = await buildAutomationRuntimeSnapshot(user);
   const agents = await listRegisteredAgents({
-    companyId: user.role === 'owner' ? undefined : user.company_id ?? undefined,
+    companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__',
   });
   const online = agents.filter(a => a.status === 'online' || a.status === 'degraded');
   const browserMeta = snap.workers
@@ -620,7 +621,7 @@ export async function opsReport(
   kind: ControlPlaneReportKind,
   options?: { date?: string },
 ) {
-  const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+  const companyId = isSuperAdminUser(user) ? null : user.company_id ?? '__none__';
   const { refreshOperationsMetrics } = await import('./operations');
   await refreshOperationsMetrics({ companyId, reason: 'report' }).catch(() => null);
   return buildControlPlaneReport(user, kind, options);

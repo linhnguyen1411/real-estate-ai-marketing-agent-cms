@@ -64,6 +64,11 @@ export function cacheInvalidateMany(keys: string[]): void {
   for (const key of keys) cacheInvalidate(key);
 }
 
+/** Drop every cached response. Must run whenever the signed-in account changes. */
+export function cacheClear(): void {
+  store.clear();
+}
+
 /** After promote / CRM mutate: drop related module caches without full CMS reload. */
 export function invalidateAfterLeadPromote(): void {
   cacheInvalidateMany([

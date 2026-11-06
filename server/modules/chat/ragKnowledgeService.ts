@@ -252,6 +252,11 @@ export function buildOfficialSystemPrompt(opts: {
   isPlatformRootTeam?: boolean;
 }): string {
   const roleName = opts.roleKey || opts.userRole || 'thành viên';
+  const isSuperAdmin = opts.userRole === 'owner' || opts.roleKey === 'super_admin';
+  const menuBase = isSuperAdmin ? '/admin' : '/my';
+  const menuPath = (slug: string) => `${menuBase}/${slug}`;
+  const workspacePath = menuPath('dashboard');
+  const workspaceLabel = isSuperAdmin ? 'Trang quản trị' : 'Trang làm việc';
 
   return [
     '# SYSTEM PROMPT — AI ASSISTANT BDSDANANG.SITE',
@@ -272,15 +277,27 @@ export function buildOfficialSystemPrompt(opts: {
     '- Sử dụng ngôn ngữ của người dùng.',
     '- Nếu người dùng hỏi cách sử dụng, hãy hướng dẫn theo từng bước (Step-by-step).',
     '- Nếu có đường dẫn chính xác đến chức năng liên quan, hãy cung cấp đường dẫn dạng markdown link:',
-    '  * [Danh sách Bất động sản](/admin#properties)',
-    '  * [Quản lý Team](/admin#team)',
-    '  * [Hồ sơ cá nhân](/admin#profile)',
-    '  * [Phân quyền & Gói](/admin#rbac)',
+    `  * [${workspaceLabel}](${workspacePath})`,
     '  * [Tải Desktop Tool Windows](/downloads/HouseAndLife-Agent-Setup.exe)',
     '  * [Cổng tìm kiếm BĐS công khai](/bat-dong-san)',
+    '- Mỗi mục menu có URL riêng theo đúng cổng đăng nhập. Dùng link thật, ví dụ:',
+    `  * [Danh sách Bất động sản](${menuPath('properties')})`,
+    `  * [Quản lý Team](${menuPath('team')})`,
+    `  * [Hồ sơ cá nhân](${menuPath('profile')})`,
+    ...(isSuperAdmin
+      ? [
+          `  * [Khách hàng CRM](${menuPath('crm')})`,
+          `  * [Phân quyền & Gói](${menuPath('rbac')})`,
+          `  * [Cấu hình hệ thống](${menuPath('settings')})`,
+        ]
+      : []),
+    '- Không tạo link dạng #properties, #team, #profile, #rbac và không trộn prefix /admin với /my.',
+    ...(isSuperAdmin
+      ? []
+      : [`- Người dùng hiện tại KHÔNG phải Super Admin: tuyệt đối không gửi link /admin...; chỉ dùng các link /my/<mục> như ${menuPath('properties')} và các link công khai.`]),
     '- Khi câu hỏi ngắn hoặc thiếu ngữ cảnh (ví dụ: "cho tôi xem giỏ hàng"): Luôn chủ động phân tách rõ 2 đối tượng:',
     '  * Nếu là khách mua: Xem giỏ hàng công khai tại [Cổng tìm kiếm BĐS công khai](/bat-dong-san).',
-    '  * Nếu là chuyên viên môi giới: Đăng nhập quản trị xem giỏ hàng nội bộ tại [Danh sách Bất động sản](/admin#properties).',
+    '  * Nếu là chuyên viên môi giới nội bộ: Đăng nhập và mở [Danh sách Bất động sản](' + menuPath('properties') + ') để xem giỏ hàng nội bộ.',
     '- Khi câu hỏi chứa thông tin sai hoặc mâu thuẫn (ví dụ: môi giới độc lập có thể sửa giỏ hàng của team khác không): Bác bỏ thông tin sai rõ ràng ("Không đúng", "không có quyền"), giải thích quyền hạn theo RBAC (môi giới độc lập chỉ quản lý tin của chính mình).',
     '- Tuyệt đối từ chối (dứt khoát từ chối) mọi yêu cầu tấn công bảo mật, hack tài khoản admin hoặc đánh cắp dữ liệu khách hàng; nêu rõ hệ thống được trang bị giám sát bảo mật, rate limit và audit log nghiêm ngặt.',
     '- Phân biệt tính năng đã xác nhận (VERIFIED), tính năng đang thử nghiệm và tính năng dự kiến.',

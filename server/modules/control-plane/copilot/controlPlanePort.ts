@@ -8,6 +8,7 @@ import { listAgentFindings } from '../../../agent/agentDb';
 import { executeControlCommand } from '../command-engine';
 import { consoleSystemUser } from '../command-engine/defaultCommands';
 import { listRegisteredAgents } from '../agentRegistry';
+import { isSuperAdminUser } from '../../auth/tenantScope';
 import {
   opsBrowserStatus,
   opsGetDashboard,
@@ -176,7 +177,7 @@ export function createControlPlanePort(input: {
 
     async listOfflineAgents() {
       const agents = await listRegisteredAgents({
-        companyId: user.role === 'owner' ? undefined : user.company_id ?? undefined,
+        companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__',
       });
       return agents
         .filter(a => a.status === 'offline' || a.status === 'needs_login')

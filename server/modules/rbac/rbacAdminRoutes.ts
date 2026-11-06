@@ -6,10 +6,18 @@ import {
   upsertRolePermission,
   listAllEntitlements,
   createEntitlement,
+  replaceActiveEntitlement,
   deleteEntitlement,
 } from './rbacRepository';
 import { DEFAULT_ROLE_PERMISSIONS_MATRIX, type RoleKey, type PermissionKey, type PermissionScope } from './rbacTypes';
 import { getAuthUser } from '../auth/authAccess';
+import { prisma } from '../../prisma';
+import { ensureUserLicenseKey } from '../license/licenseService';
+import {
+  LICENSE_PLAN_FEATURES,
+  LICENSE_PLAN_MAX_DEVICES,
+  type PurchasablePlan,
+} from '../license/planCatalog';
 
 export function createRbacAdminRouter() {
   const router = Router();
@@ -83,6 +91,64 @@ export function createRbacAdminRouter() {
       status: 'success',
       message: 'Cấp gói tính năng thành công.',
       data: created,
+    });
+  });
+
+  // 4b. Grant a paid plan directly to a user (no token deduction)
+  router.post('/api/entitlements/grant-plan', requirePermission('entitlement'), async (req: Request, res: Response) => {
+    const { subjectId, plan, expiresAt } = req.body || {};
+    const planKey = String(plan || '') as PurchasablePlan;
+
+    if (!subjectId || !Object.prototype.hasOwnProperty.call(LICENSE_PLAN_FEATURES, planKey)) {
+      sendError(res, 400, 'Gói dịch vụ không hợp lệ.');
+      return;
+    }
+
+    const expires = new Date(String(expiresAt || ''));
+    if (Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
+      sendError(res, 400, 'Ngày kết thúc gói phải ở tương lai.');
+      return;
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: String(subjectId) } });
+    if (!target) {
+      sendError(res, 404, 'Không tìm thấy user cần cấp gói.');
+      return;
+    }
+
+    let licenseKeyCreated = false;
+    try {
+      const ensured = await ensureUserLicenseKey({
+        userId: target.id,
+        maxDevices: LICENSE_PLAN_MAX_DEVICES[planKey],
+      });
+      licenseKeyCreated = ensured.created;
+    } catch (error: any) {
+      if (error?.code === 'KEY_REVOKED') {
+        sendError(res, 409, 'License Key của user đã bị thu hồi, không thể cấp gói.');
+        return;
+      }
+      console.error('[ENTITLEMENT] Không thể tạo License Key:', error);
+      sendError(res, 500, 'Không thể tạo License Key cho user.');
+      return;
+    }
+
+    const authUser = getAuthUser(req);
+    const created = await replaceActiveEntitlement({
+      subjectType: 'user',
+      subjectId: target.id,
+      plan: planKey,
+      features: LICENSE_PLAN_FEATURES[planKey],
+      startsAt: new Date(),
+      expiresAt: expires,
+      source: 'super_admin',
+      grantedBy: authUser?.id || null,
+    });
+
+    res.json({
+      status: 'success',
+      message: 'Cấp gói dịch vụ thành công.',
+      data: { entitlement: created, licenseKeyCreated },
     });
   });
 

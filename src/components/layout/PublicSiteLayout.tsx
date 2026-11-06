@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Bot, Facebook, LogIn, Menu, MessageCircle, Phone, UserPlus, X } from 'lucide-react';
-import { CONTACT, PRIMARY_CTA } from '../../seo/siteConfig';
+import { LogIn, Menu, UserPlus, X } from 'lucide-react';
+import { PRIMARY_CTA } from '../../seo/siteConfig';
 import PublicNav, { PublicNavMobile } from './PublicNav';
 import SiteLogo from './SiteLogo';
 import PublicSiteFooter from './PublicSiteFooter';
-import { trackMessengerClick, trackPhoneClick, trackZaloClick } from '../../leadGen/analytics';
+import FloatingContactRail from './FloatingContactRail';
 import { captureShortLinkFromUrl } from '../../utils/shortLinkAttribution';
 
 export default function PublicSiteLayout({ children }: { children?: React.ReactNode }) {
@@ -14,6 +14,12 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
   useEffect(() => {
     captureShortLinkFromUrl();
   }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    document.body.classList.add('mobile-menu-open');
+    return () => document.body.classList.remove('mobile-menu-open');
+  }, [mobileMenuOpen]);
 
   return (
     <div className="public-shell min-h-screen">
@@ -45,15 +51,19 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
           <button
             type="button"
             onClick={() => setMobileMenuOpen(v => !v)}
-            className="rounded-lg border border-invest-border p-2 text-invest-text lg:hidden"
-            aria-label="Menu"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-invest-border text-invest-text lg:hidden"
+            aria-label={mobileMenuOpen ? 'Đóng menu' : 'Mở menu'}
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-invest-border px-4 py-3 lg:hidden space-y-3">
+          <div
+            data-mobile-menu="true"
+            className="max-h-[calc(100dvh-4rem)] space-y-3 overflow-y-auto border-t border-invest-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden"
+          >
             <PublicNavMobile onItemClick={() => setMobileMenuOpen(false)} />
             <Link
               to="/lien-he"
@@ -88,46 +98,11 @@ export default function PublicSiteLayout({ children }: { children?: React.ReactN
 
       <PublicSiteFooter />
 
-      <div
-        className="pointer-events-none fixed right-3 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-2.5 lg:hidden"
-        style={{ paddingRight: 'env(safe-area-inset-right)' }}
-      >
-        <a
-          href={`tel:${CONTACT.phoneTel}`}
-          onClick={() => trackPhoneClick('layout_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-invest-success text-white shadow-lg ring-2 ring-white/80 active:scale-95"
-          aria-label="Gọi điện"
-        >
-          <Phone className="h-5 w-5" />
-        </a>
-        <a
-          href={CONTACT.zalo}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => trackZaloClick('layout_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg ring-2 ring-white/80 active:scale-95"
-          aria-label="Zalo"
-        >
-          <MessageCircle className="h-5 w-5" />
-        </a>
-        <a
-          href={CONTACT.messenger}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => trackMessengerClick('layout_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg ring-2 ring-white/80 active:scale-95"
-          aria-label="Messenger"
-        >
-          <Facebook className="h-5 w-5" />
-        </a>
-        <Link
-          to="/lien-he"
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-invest-cta text-white shadow-lg ring-2 ring-white/80 active:scale-95"
-          aria-label="Nhận danh sách đầu tư"
-        >
-          <Bot className="h-5 w-5" />
-        </Link>
-      </div>
+      <FloatingContactRail
+        hidden={mobileMenuOpen}
+        trackingSource="layout_floating"
+        ask={{ label: 'Nhận danh sách đầu tư', href: '/lien-he' }}
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   toSafeUser,
   verifyToken,
 } from './authAccess';
+import { isSuperAdminUser } from './tenantScope';
 
 import {
   hashPassword,
@@ -24,6 +25,28 @@ import {
 import { loginRateLimiter, registerRateLimiter, recordFailedLogin, clearLoginFailures } from '../../middleware/rateLimiters';
 import { validateSchema, loginSchema, registerSchema, updateProfileSchema } from '../../middleware/validation';
 import { prisma } from '../../prisma';
+
+/**
+ * Attach the same resolved RBAC context that /api/auth/me returns, so the
+ * client renders the identical menu list on login and after refresh.
+ */
+async function hydrateAuthUser(authUser: ReturnType<typeof toAuthUser>) {
+  try {
+    const { resolvePermissions } = await import('../rbac');
+    const resolved = await resolvePermissions(authUser as any);
+    return {
+      ...authUser,
+      roleKey: resolved.roleKey,
+      teamId: resolved.teamId,
+      isPlatformRootTeam: resolved.isPlatformRootTeam,
+      isTeamLead: resolved.isTeamLead,
+      permissions: resolved.permissions,
+      entitlements: Array.from(resolved.activeEntitlementFeatures),
+    };
+  } catch {
+    return authUser;
+  }
+}
 
 export function createAuthLoginRouter() {
   const router = Router();
@@ -234,8 +257,9 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
 
   // Seamless login: Allow valid credentials regardless of portal entry point.
   // Frontend will direct super admin to /admin and others to /dashboard.
-  const authUser = toAuthUser(user, db);
-  res.json({ status: 'success', data: { token: signToken(authUser), user: authUser } });
+  const baseUser = toAuthUser(user, db);
+  const authUser = await hydrateAuthUser(baseUser);
+  res.json({ status: 'success', data: { token: signToken(baseUser), user: authUser } });
 });
 
   return router;
@@ -322,24 +346,7 @@ export function createAuthMeRouter() {
 
 router.get('/api/auth/me', async (req: Request, res: Response) => {
   const authUser = getAuthUser(req);
-  try {
-    const { resolvePermissions } = await import('../rbac');
-    const resolved = await resolvePermissions(authUser as any);
-    res.json({
-      status: 'success',
-      data: {
-        ...authUser,
-        roleKey: resolved.roleKey,
-        teamId: resolved.teamId,
-        isPlatformRootTeam: resolved.isPlatformRootTeam,
-        isTeamLead: resolved.isTeamLead,
-        permissions: resolved.permissions,
-        entitlements: Array.from(resolved.activeEntitlementFeatures),
-      },
-    });
-  } catch {
-    res.json({ status: 'success', data: authUser });
-  }
+  res.json({ status: 'success', data: await hydrateAuthUser(authUser) });
 });
 
 router.put('/api/auth/profile', validateSchema(updateProfileSchema), async (req: Request, res: Response) => {
@@ -491,7 +498,7 @@ router.get('/api/auth/my-team', async (req: Request, res: Response) => {
       ledTeam: ledTeam ? { id: ledTeam.id, referralCode: ledTeam.referralCode } : null,
       myReferralCode: user.referral_code,
       referredBy: user.referred_by || null,
-      canJoinTeam: authUser.role !== 'owner' && (!membership || membership.status !== 'approved'),
+      canJoinTeam: !isSuperAdminUser(authUser) && (!membership || membership.status !== 'approved'),
     },
   });
 });

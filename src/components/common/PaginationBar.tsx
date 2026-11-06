@@ -59,7 +59,7 @@ export default function PaginationBar({
           type="button"
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
-          className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${btnBase}`}
+          className={`inline-flex min-h-11 items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${btnBase}`}
         >
           <ChevronLeft className="h-4 w-4" />
           Trước
@@ -74,7 +74,7 @@ export default function PaginationBar({
               key={item}
               type="button"
               onClick={() => onPageChange(item)}
-              className={`min-w-[2.25rem] rounded-lg border px-2.5 py-2 text-xs font-bold transition ${
+              className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-bold transition ${
                 item === safePage ? activePage : btnBase
               }`}
             >
@@ -86,7 +86,7 @@ export default function PaginationBar({
           type="button"
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
-          className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${btnBase}`}
+          className={`inline-flex min-h-11 items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${btnBase}`}
         >
           Sau
           <ChevronRight className="h-4 w-4" />

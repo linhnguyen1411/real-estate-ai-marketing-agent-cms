@@ -45,11 +45,11 @@ export default function ContactPage() {
                 <div>
                   <dt className="text-slate-500">Hotline</dt>
                   <dd>
-                    <a href={`tel:${CONTACT.phoneTel}`} className="font-bold text-invest-blue">
+                    <a href={`tel:${CONTACT.phoneTel}`} className="inline-flex min-h-6 items-center font-bold text-invest-blue">
                       {CONTACT.phoneDisplay}
                     </a>
                     {' / '}
-                    <a href="tel:+84984755258" className="font-bold text-invest-blue">
+                    <a href="tel:+84984755258" className="inline-flex min-h-6 items-center font-bold text-invest-blue">
                       0984 755 258
                     </a>
                   </dd>
@@ -57,7 +57,7 @@ export default function ContactPage() {
                 <div>
                   <dt className="text-slate-500">Email</dt>
                   <dd>
-                    <a href={`mailto:${CONTACT.email}`} className="text-invest-blue">
+                    <a href={`mailto:${CONTACT.email}`} className="inline-flex min-h-6 items-center break-all text-invest-blue">
                       {CONTACT.email}
                     </a>
                   </dd>
@@ -69,7 +69,7 @@ export default function ContactPage() {
                 <div>
                   <dt className="text-slate-500">Facebook</dt>
                   <dd>
-                    <a href={CONTACT.facebook} target="_blank" rel="noreferrer" className="text-invest-blue">
+                    <a href={CONTACT.facebook} target="_blank" rel="noreferrer" className="inline-flex min-h-6 items-center text-invest-blue">
                       facebook.com/estoria.dn
                     </a>
                   </dd>
@@ -80,10 +80,10 @@ export default function ContactPage() {
                 </div>
               </dl>
               <div className="mt-6 flex flex-wrap gap-2">
-                <a href={CONTACT.zalo} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white">
+                <a href={CONTACT.zalo} className="inline-flex min-h-11 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white">
                   Chat Zalo
                 </a>
-                <a href={CONTACT.messenger} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-bold text-white">
+                <a href={CONTACT.messenger} className="inline-flex min-h-11 items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-bold text-white">
                   Messenger
                 </a>
               </div>

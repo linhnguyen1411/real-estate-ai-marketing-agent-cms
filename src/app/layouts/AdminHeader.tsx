@@ -33,7 +33,7 @@ export default function AdminHeader({
         <button
           type="button"
           onClick={onOpenMenu}
-          className="lg:hidden p-2 text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-slate-700"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white lg:hidden"
           aria-label="Mở menu CMS"
         >
           <Menu className="w-5 h-5" />
@@ -41,7 +41,7 @@ export default function AdminHeader({
         <img
           src={SITE.logo}
           alt={SITE.name}
-          className="h-9 w-auto max-w-[110px] rounded-lg object-contain bg-white/95 p-1"
+          className="hidden h-9 w-auto max-w-[110px] rounded-lg object-contain bg-white/95 p-1 sm:block"
         />
         <div className="min-w-0">
           <h1 className="truncate text-sm sm:text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
@@ -51,7 +51,7 @@ export default function AdminHeader({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-4">
         <button
           type="button"
           onClick={onOpenProfile}
@@ -84,7 +84,7 @@ export default function AdminHeader({
         <button
           type="button"
           onClick={toggleTheme}
-          className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-all hover:border-slate-800 hover:bg-slate-900 hover:text-white"
           title={theme === 'dark' ? 'Chuyển sang giao diện Sáng (Light mode)' : 'Chuyển sang giao diện Tối (Dark mode)'}
           aria-label="Đổi giao diện Light/Dark"
         >
@@ -98,7 +98,7 @@ export default function AdminHeader({
         <button
           type="button"
           onClick={onRefresh}
-          className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-all hover:border-slate-800 hover:bg-slate-900 hover:text-white"
           disabled={refreshing}
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -107,7 +107,7 @@ export default function AdminHeader({
         <button
           type="button"
           onClick={onLogout}
-          className="px-3 py-2 text-xs font-bold text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-rose-500/60 transition-all"
+          className="inline-flex min-h-11 items-center px-3 text-xs font-bold text-slate-300 hover:text-white rounded-lg border border-slate-800 hover:border-rose-500/60 transition-all"
         >
           Logout
         </button>

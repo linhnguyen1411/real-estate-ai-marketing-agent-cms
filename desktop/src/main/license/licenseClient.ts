@@ -1,7 +1,7 @@
 /**
- * House & Life Desktop Agent - License Client & Hardware Fingerprint
- * Manages device-bound token authentication, safeStorage persistence,
- * periodic heartbeat daemon with offline grace period, and account checkpoint safety notices.
+ * House & Life Desktop Agent - Account / License Client.
+ * Device-bound login with a license key, safeStorage vault, heartbeat with
+ * offline grace, role capabilities and per-device HMAC ingest credentials.
  */
 
 import crypto from 'crypto';
@@ -9,9 +9,15 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { app, safeStorage } from 'electron';
+import type {
+  AgentCapabilities,
+  DesktopAuthState,
+  DesktopLoginResult,
+  DesktopUserProfile,
+  IngestCredentialInfo,
+} from '../../shared/types';
 
 export interface LicenseSessionData {
-  licenseKeyHash?: string;
   deviceId: string;
   accessToken?: string;
   refreshToken?: string;
@@ -20,10 +26,27 @@ export interface LicenseSessionData {
   features?: string[];
   lastHeartbeatSuccess?: string;
   activatedAt?: string;
+  remember?: boolean;
+  user?: DesktopUserProfile;
+  capabilities?: AgentCapabilities;
+  ingest?: IngestCredentialInfo;
+}
+
+export interface HeartbeatResult {
+  valid: boolean;
+  offlineMode?: boolean;
+  error?: string;
+  code?: string;
 }
 
 export const CHECKPOINT_SAFETY_WARNING =
   'CẢNH BÁO BẢO MẬT: Tự động đăng nhập Facebook/Zalo cá nhân có rủi ro checkpoint hoặc tạm khoá tài khoản do chính sách bảo mật mạng xã hội. Khuyến nghị sử dụng tài khoản phụ hoặc tài khoản chuyên dụng phục vụ công việc.';
+
+/** Normalises pasted keys to `XXXX-XXXX-XXXX-XXXX`. */
+export function normalizeLicenseKey(raw: string): string {
+  const cleaned = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return cleaned.replace(/(.{4})/g, '$1-').replace(/-+$/, '');
+}
 
 export class LicenseClient {
   private vpsUrl: string;
@@ -31,9 +54,23 @@ export class LicenseClient {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private readonly offlineGraceHours = 48;
 
+  /** Fired when the server definitively rejects the session (revoked/expired). */
+  public onSessionInvalid: ((message: string) => void) | null = null;
+
+  /** Fired after a successful heartbeat with refreshed profile/capabilities/credentials. */
+  public onSessionUpdated: ((state: DesktopAuthState) => void) | null = null;
+
   constructor(vpsUrl: string = 'https://bdsdanang.site') {
     this.vpsUrl = vpsUrl.replace(/\/+$/, '');
     this.session = this.loadSession();
+  }
+
+  public setBaseUrl(vpsUrl: string): void {
+    this.vpsUrl = String(vpsUrl || '').replace(/\/+$/, '');
+  }
+
+  public getBaseUrl(): string {
+    return this.vpsUrl;
   }
 
   /**
@@ -112,6 +149,15 @@ export class LicenseClient {
 
   private saveSession(): void {
     const filePath = this.getStorageFilePath();
+    // "Remember account" unchecked: keep the session in memory only.
+    if (!this.session.remember) {
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     try {
       const jsonStr = JSON.stringify(this.session);
       let buffer: Buffer;
@@ -137,6 +183,31 @@ export class LicenseClient {
     return { ...this.session };
   }
 
+  public getIngestCredential(): IngestCredentialInfo | null {
+    return this.session.ingest ? { ...this.session.ingest } : null;
+  }
+
+  public hasStoredSession(): boolean {
+    return Boolean(this.session.accessToken);
+  }
+
+  public getAuthState(): DesktopAuthState {
+    if (!this.session.accessToken || !this.session.user || !this.session.capabilities) {
+      return { authenticated: false, vpsUrl: this.vpsUrl };
+    }
+    return {
+      authenticated: true,
+      user: { ...this.session.user },
+      capabilities: { ...this.session.capabilities },
+      plan: this.session.plan || null,
+      features: [...(this.session.features || [])],
+      expiresAt: this.session.expiresAt || null,
+      vpsUrl: this.vpsUrl,
+      remember: Boolean(this.session.remember),
+      serverTime: new Date().toISOString(),
+    };
+  }
+
   public isWithinOfflineGrace(): boolean {
     if (!this.session.accessToken) return false;
     if (!this.session.lastHeartbeatSuccess) return false;
@@ -147,58 +218,83 @@ export class LicenseClient {
   }
 
   /**
-   * Activate software license with key
+   * Log in (activate) with a license key.
    */
-  public async activate(rawKey: string): Promise<{ success: boolean; message?: string; data?: any }> {
+  public async activate(rawKey: string, remember: boolean): Promise<DesktopLoginResult> {
+    const key = normalizeLicenseKey(rawKey);
+    if (key.length < 19) {
+      return { success: false, code: 'INVALID_KEY', message: 'Khóa bản quyền không hợp lệ (định dạng XXXX-XXXX-XXXX-XXXX).' };
+    }
+    if (!this.vpsUrl) {
+      return { success: false, code: 'NO_SERVER', message: 'Chưa cấu hình địa chỉ máy chủ.' };
+    }
+
     try {
       const endpoint = `${this.vpsUrl}/api/license/activate`;
-      const deviceId = this.session.deviceId;
+      const deviceId = LicenseClient.getHardwareFingerprint();
       const deviceName = `${os.hostname()} (${os.platform()})`;
 
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: rawKey, deviceId, deviceName }),
+        body: JSON.stringify({ key, deviceId, deviceName }),
+        signal: AbortSignal.timeout(20000),
       });
 
-      const body = await res.json();
+      const body = (await res.json().catch(() => ({}))) as any;
       if (!res.ok || body.status !== 'success') {
         return {
           success: false,
-          message: body.message || 'Kích hoạt bản quyền thất bại.',
+          code: body.code || `HTTP_${res.status}`,
+          message: `${body.message || 'Kích hoạt bản quyền thất bại.'} (Máy chủ kiểm tra: ${this.vpsUrl})`,
         };
       }
 
-      const data = body.data;
-      this.session.accessToken = data.accessToken;
-      this.session.refreshToken = data.refreshToken;
-      this.session.plan = data.plan;
-      this.session.features = data.features;
-      this.session.lastHeartbeatSuccess = new Date().toISOString();
-      this.session.activatedAt = new Date().toISOString();
-      this.saveSession();
+      const data = body.data || {};
+      if (!data.capabilities?.canScan) {
+        return {
+          success: false,
+          code: 'AGENT_NOT_ALLOWED',
+          message: 'Tài khoản chưa được cấp quyền sử dụng Desktop Agent.',
+        };
+      }
 
+      this.session = {
+        deviceId,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        plan: data.plan,
+        features: data.features || [],
+        expiresAt: data.expiresAt || null,
+        lastHeartbeatSuccess: new Date().toISOString(),
+        activatedAt: new Date().toISOString(),
+        remember: Boolean(remember),
+        user: data.user,
+        capabilities: data.capabilities,
+        ingest: data.ingest || undefined,
+      };
+      this.saveSession();
       this.startHeartbeatDaemon();
 
       return {
         success: true,
-        message: body.message,
-        data: {
-          ...data,
-          warning: CHECKPOINT_SAFETY_WARNING,
-        },
+        message: body.message || 'Đăng nhập thành công.',
+        state: this.getAuthState(),
       };
     } catch (err: any) {
-      return { success: false, message: `Lỗi kết nối máy chủ: ${err?.message || err}` };
+      return {
+        success: false,
+        message: `Lỗi kết nối máy chủ ${this.vpsUrl}: ${err?.message || err}`,
+      };
     }
   }
 
   /**
    * Send heartbeat to server
    */
-  public async sendHeartbeat(): Promise<{ valid: boolean; offlineMode?: boolean; error?: string }> {
+  public async sendHeartbeat(): Promise<HeartbeatResult> {
     if (!this.session.accessToken) {
-      return { valid: false, error: 'Chưa kích hoạt bản quyền' };
+      return { valid: false, error: 'Chưa đăng nhập' };
     }
 
     try {
@@ -211,6 +307,7 @@ export class LicenseClient {
           'X-Device-Id': this.session.deviceId,
         },
         body: JSON.stringify({ deviceId: this.session.deviceId }),
+        signal: AbortSignal.timeout(15000),
       });
 
       if (res.status === 401 || res.status === 403) {
@@ -220,27 +317,34 @@ export class LicenseClient {
           return this.sendHeartbeat();
         }
 
-        // License revoked or expired
-        const errJson = await res.json().catch(() => ({}));
-        this.session.accessToken = undefined;
-        this.saveSession();
-        return { valid: false, error: errJson.message || 'Bản quyền bị thu hồi hoặc đã hết hạn' };
+        const errJson = (await res.json().catch(() => ({}))) as any;
+        this.invalidate(errJson.message || 'Phiên đăng nhập đã hết hạn hoặc bản quyền bị thu hồi.');
+        return { valid: false, code: errJson.code, error: errJson.message || 'Phiên đăng nhập không hợp lệ.' };
       }
 
       if (!res.ok) {
-        // Server unreachable or network error: check offline grace period
+        // Server error: fall back to offline grace
         if (this.isWithinOfflineGrace()) {
           return { valid: true, offlineMode: true };
         }
         return { valid: false, error: 'Quá thời gian offline grace (48 giờ).' };
       }
 
-      const data = await res.json();
+      const body = (await res.json().catch(() => ({}))) as any;
+      const data = body.data || {};
       this.session.lastHeartbeatSuccess = new Date().toISOString();
-      if (data.expiresAt) {
-        this.session.expiresAt = data.expiresAt;
-      }
+      if (body.expiresAt) this.session.expiresAt = body.expiresAt;
+      if (data.plan) this.session.plan = data.plan;
+      if (Array.isArray(data.features)) this.session.features = data.features;
+      if (data.user) this.session.user = data.user;
+      if (data.capabilities) this.session.capabilities = data.capabilities;
+      if (data.ingest?.secret) this.session.ingest = data.ingest;
       this.saveSession();
+      try {
+        this.onSessionUpdated?.(this.getAuthState());
+      } catch (err) {
+        console.error('[LicenseClient] onSessionUpdated handler failed:', err);
+      }
 
       return { valid: true, offlineMode: false };
     } catch {
@@ -282,6 +386,29 @@ export class LicenseClient {
       return false;
     } catch {
       return false;
+    }
+  }
+
+  public logout(): void {
+    this.stopHeartbeatDaemon();
+    this.session = { deviceId: LicenseClient.getHardwareFingerprint() };
+    try {
+      const filePath = this.getStorageFilePath();
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (err) {
+      console.error('[LicenseClient] Failed to clear vault:', err);
+    }
+  }
+
+  private invalidate(message: string): void {
+    const remember = this.session.remember;
+    this.session = { deviceId: LicenseClient.getHardwareFingerprint(), remember };
+    this.saveSession();
+    this.stopHeartbeatDaemon();
+    try {
+      this.onSessionInvalid?.(message);
+    } catch (err) {
+      console.error('[LicenseClient] onSessionInvalid handler failed:', err);
     }
   }
 

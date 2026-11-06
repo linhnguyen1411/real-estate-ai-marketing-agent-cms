@@ -3,9 +3,10 @@ import type { AgentRouteDeps } from '../agentTypes';
 import type { AgentRouteHelpers } from './agentRouteHelpers';
 import { sendError } from '../../utils/httpResponses';
 import { Prisma } from '@prisma/client';
-import { cancelQueuedJobsForSource, createAgentSource, forceDeleteAgentSource, getAgentDashboardCounts, getAgentSourceById, listAgentSources, paginatedMeta, updateAgentSource } from '../agentDb';
+import { cancelQueuedJobsForSource, createAgentSource, findAgentSourceByUrl, forceDeleteAgentSource, getAgentDashboardCounts, getAgentSourceById, listAgentSources, paginatedMeta, updateAgentSource } from '../agentDb';
 import { enqueueSourceScan } from '../agentJobService';
 import { parsePagination, validateSourceCreate, validateSourcePatch } from '../agentValidation';
+import { isSuperAdminUser } from '../../modules/auth/tenantScope';
 
 function isPrismaUniqueError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -55,9 +56,29 @@ export function registerSourceRoutes(app: Express, deps: AgentRouteDeps, helpers
     }
 
     try {
+      const user = getAuthUser(req);
+      const scope = String(req.body?.scope ?? '').trim();
+      if (scope && scope !== 'system' && scope !== 'company') {
+        sendError(res, 400, 'scope phải là "system" hoặc "company".');
+        return;
+      }
+      if (scope === 'system' && !isSuperAdminUser(user)) {
+        sendError(res, 403, 'Chỉ Super Admin mới được tạo nguồn dùng chung toàn hệ thống.');
+        return;
+      }
+
       const defaults = accessDefaults(req, req.body);
+      const companyId = scope === 'system' ? null : defaults.company_id;
+      if (companyId === null) {
+        const duplicate = await findAgentSourceByUrl(null, validated.value.url);
+        if (duplicate) {
+          sendError(res, 409, 'URL nguồn đã tồn tại trong danh sách nguồn hệ thống.');
+          return;
+        }
+      }
+
       const created = await createAgentSource({
-        companyId: defaults.company_id,
+        companyId,
         name: validated.value.name,
         type: validated.value.type,
         url: validated.value.url,
@@ -90,6 +111,7 @@ export function registerSourceRoutes(app: Express, deps: AgentRouteDeps, helpers
     }
 
     try {
+      const user = getAuthUser(req);
       const existing = await getAgentSourceById(req.params.id);
       if (!existing) {
         sendError(res, 404, 'Không tìm thấy nguồn.');
@@ -97,7 +119,30 @@ export function registerSourceRoutes(app: Express, deps: AgentRouteDeps, helpers
       }
       if (!assertRecordAccess(req, res, existing.companyId)) return;
 
+      let nextCompanyId: string | null | undefined;
+      if (req.body?.scope !== undefined) {
+        const scope = String(req.body.scope).trim();
+        if (scope !== 'system' && scope !== 'company') {
+          sendError(res, 400, 'scope phải là "system" hoặc "company".');
+          return;
+        }
+        if (!isSuperAdminUser(user)) {
+          sendError(res, 403, 'Chỉ Super Admin mới được đổi phạm vi nguồn.');
+          return;
+        }
+        nextCompanyId = scope === 'system' ? null : accessDefaults(req, req.body).company_id;
+      }
+
+      const targetCompanyId = nextCompanyId !== undefined ? nextCompanyId : existing.companyId;
+      const targetUrl = typeof validated.value.url === 'string' ? validated.value.url : existing.url;
+      const duplicate = await findAgentSourceByUrl(targetCompanyId, targetUrl);
+      if (duplicate && duplicate.id !== existing.id) {
+        sendError(res, 409, 'URL nguồn đã tồn tại trong phạm vi này.');
+        return;
+      }
+
       const patch = validated.value as Prisma.AgentSourceUpdateInput;
+      if (nextCompanyId !== undefined) patch.companyId = nextCompanyId;
       const updated = await updateAgentSource(existing.id, patch);
       if (patch.status === 'paused' && existing.status === 'active') {
         await cancelQueuedJobsForSource(existing.id);

@@ -118,15 +118,15 @@ describe('Phase 4: SSRF, File Validation & XSS Prevention', () => {
       expect(validateShortLinkTargetUrl('https://www.bdsdanang.site/lien-he', 'https://bdsdanang.site')).toBe('https://www.bdsdanang.site/lien-he');
     });
 
-    it('only allows owner or company roles to create short links', async () => {
+    it('lets members create their own short links while keeping links private', async () => {
       const { app, tokens } = createTestApp();
 
-      // Member attempting to create short link -> 403 Forbidden
       const memberRes = await request(app)
         .post('/api/admin/short-links')
         .set('Authorization', `Bearer ${tokens.memberA}`)
         .send({ target_url: '/tin-tuc/bai-viet-1', title: 'Test Link' });
-      expect(memberRes.status).toBe(403);
+      expect(memberRes.status).toBe(200);
+      expect(memberRes.body.status).toBe('success');
 
       // Company creating valid short link -> 200 OK
       const companyRes = await request(app)
@@ -135,6 +135,13 @@ describe('Phase 4: SSRF, File Validation & XSS Prevention', () => {
         .send({ target_url: '/tin-tuc/bai-viet-1', title: 'Test Link Company' });
       expect(companyRes.status).toBe(200);
       expect(companyRes.body.status).toBe('success');
+
+      // A member cannot modify a link created by someone else.
+      const foreignPatch = await request(app)
+        .patch(`/api/admin/short-links/${companyRes.body.data.id}`)
+        .set('Authorization', `Bearer ${tokens.memberA}`)
+        .send({ title: 'hijacked' });
+      expect(foreignPatch.status).toBe(403);
     });
   });
 });

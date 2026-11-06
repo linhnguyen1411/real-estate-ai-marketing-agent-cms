@@ -138,7 +138,7 @@ export default function ContentHubPage({ hubPath, title }: ContentHubPageProps) 
                 </div>
                 <Link
                   to="/can-ho-cao-cap-da-nang"
-                  className="text-sm font-semibold text-invest-blue hover:underline"
+                  className="inline-flex min-h-11 items-center text-sm font-semibold text-invest-blue hover:underline"
                 >
                   Xem căn hộ Sun Group →
                 </Link>

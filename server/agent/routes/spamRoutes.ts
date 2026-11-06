@@ -6,6 +6,7 @@ import { paginatedMeta } from '../agentDb';
 import { archiveSpamRule, createSpamRule, getSpamRuleById, listSpamRules, updateSpamRule } from '../spam/spamRuleRepository';
 import { evaluateContentSpam } from '../spam/spamPolicyService';
 import { normalizeSpamPhoneInput } from '../spam/phoneSpam';
+import { isSuperAdminUser, resolveRequestCompanyId } from '../../modules/auth';
 
 export function registerSpamRoutes(app: Express, deps: AgentRouteDeps, helpers: AgentRouteHelpers): void {
   const { getAuthUser, accessDefaults } = deps;
@@ -19,9 +20,11 @@ export function registerSpamRoutes(app: Express, deps: AgentRouteDeps, helpers: 
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
       const activeRaw = String(req.query.active ?? '').trim().toLowerCase();
       const expiredRaw = String(req.query.expired ?? '').trim().toLowerCase();
+      const requestedCompanyId =
+        typeof req.query.companyId === 'string' && req.query.companyId ? req.query.companyId : undefined;
       const result = await listSpamRules({
-        tenantCompanyId: user.role === 'owner' ? null : user.company_id ?? '__none__',
-        companyId: user.role === 'owner' ? (req.query.companyId ? String(req.query.companyId) : undefined) : undefined,
+        tenantCompanyId: resolveRequestCompanyId(req) ?? null,
+        companyId: isSuperAdminUser(user) ? requestedCompanyId : undefined,
         sourceId: req.query.sourceId ? String(req.query.sourceId) : null,
         type: req.query.type ? String(req.query.type) : null,
         action: req.query.action ? String(req.query.action) : null,
@@ -57,12 +60,7 @@ export function registerSpamRoutes(app: Express, deps: AgentRouteDeps, helpers: 
         sendError(res, 400, 'action không hợp lệ.');
         return;
       }
-      const companyId =
-        user.role === 'owner'
-          ? body.companyId != null
-            ? String(body.companyId)
-            : null
-          : user.company_id ?? null;
+      const companyId = resolveRequestCompanyId(req, body.companyId) ?? null;
       const created = await createSpamRule({
         companyId,
         sourceId: body.sourceId != null ? String(body.sourceId) : null,
@@ -149,7 +147,7 @@ export function registerSpamRoutes(app: Express, deps: AgentRouteDeps, helpers: 
         canonicalUrl: body.canonicalUrl,
         contentHash: body.contentHash,
         sourceId: body.sourceId,
-        companyId: user.role === 'owner' ? body.companyId || null : user.company_id,
+        companyId: resolveRequestCompanyId(req, body.companyId) ?? '__none__',
         classification: body.classification,
         actorRole: body.actorRole,
         tier: body.tier || 'all',

@@ -52,6 +52,7 @@ import {
 } from '../runtime/publishEvidenceService';
 import { canScheduleDraftStatus } from '../safetyService';
 import { DEFAULT_SAFETY_SETTINGS } from '../types';
+import { isSuperAdminUser } from '../../auth/tenantScope';
 import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
@@ -85,7 +86,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/channels', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const data = await listChannels({
         companyId,
         type: String(req.query.type || '').trim() || undefined,
@@ -268,7 +269,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/drafts', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const data = await listDrafts({
         companyId,
         status: String(req.query.status || '').trim() || undefined,
@@ -476,7 +477,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/jobs', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const data = await listJobs({
         companyId,
         status: String(req.query.status || '').trim() || undefined,
@@ -631,7 +632,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/attempts', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const limitRaw = Number(req.query.limit);
       const data = await listAttempts({
         companyId,
@@ -649,7 +650,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/audit', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const data = await listAuditLogs({
         companyId,
         entityType: String(req.query.entityType || '').trim() || undefined,
@@ -688,7 +689,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
   app.get('/api/social/campaigns', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? '__none__';
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__';
       const data = await listCampaigns({
         companyId,
         status: String(req.query.status || '').trim() || undefined,
@@ -713,7 +714,7 @@ export function registerSocialPublishingRoutes(app: Express, deps: AgentRouteDep
         return sendError(res, 400, 'name, draftId, and channelIds[] are required');
       }
       const data = await createCampaign({
-        companyId: user.role === 'owner' ? (body.company_id as string) || null : user.company_id,
+        companyId: isSuperAdminUser(user) ? (body.company_id as string) || null : user.company_id,
         name,
         draftId,
         channelIds,

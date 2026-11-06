@@ -146,7 +146,7 @@ export const MATRIX_PERMISSIONS: MatrixPermissionItem[] = [
   { key: 'integrations.system', label: 'Tích hợp Tài khoản / API', description: 'Kết nối Facebook, Telegram, OpenRouter, Gemini API', category: 'system' },
   { key: 'rbac.matrix', label: 'Quản trị Ma trận Phân quyền', description: 'Chỉnh sửa ma trận RBAC và phân quyền vai trò', category: 'system' },
   { key: 'entitlement', label: 'Quản lý Cấp Gói & Bản quyền', description: 'Cấp và thu hồi gói dịch vụ Pro/Enterprise', category: 'system' },
-  { key: 'license.manage', label: 'Quản trị License Key & PEM', description: 'Kích hoạt, gia hạn và thu hồi license PEM', category: 'system' },
+  { key: 'license.manage', label: 'Quản trị License Key', description: 'Kích hoạt, gia hạn và thu hồi license key', category: 'system' },
 ];
 
 interface RbacManagementPanelProps {

@@ -11,7 +11,7 @@ import type { AppSettings, AutomationTask } from '../../../src/types';
 import { buildCompanyScopeFilter, getAgentDashboardCounts } from '../../agent/agentDb';
 import { prisma } from '../../prisma';
 import { getPropertySaleStatus } from '../../../src/utils/propertyStatus';
-import { countInvestorLeads } from '../../investorLeadDb';
+import { listInvestorLeads } from '../../investorLeadDb';
 import {
   maskSettingsSecrets,
   sendTestTelegram,
@@ -24,6 +24,147 @@ import {
   canManageResource,
   scopeCollection,
 } from '../auth/authAccess';
+import { isSuperAdminUser } from '../auth/tenantScope';
+import { filterByScope } from '../rbac/rbacService';
+import type { PermissionKey, PermissionScope } from '../rbac/rbacTypes';
+import type { ExecutiveKpiDashboard, SnapshotMetric } from '../executive-dashboard/kpiTypes';
+
+/** Effective scope granted by the permission engine for a feature. */
+function permissionScopeFor(req: Request, key: PermissionKey): PermissionScope {
+  const perm = req.userPermissions?.[key];
+  if (!perm || !perm.hasAccess || perm.scope === 'none' || perm.requiresPremiumUpgrade) {
+    return 'none';
+  }
+  return perm.scope;
+}
+
+function scopedByPermission<T extends {
+  company_id?: string;
+  owner_user_id?: string;
+  created_by_user_id?: string;
+  team_id?: string;
+  assigned_member_ids?: string[];
+}>(items: T[], req: Request, key: PermissionKey): T[] {
+  const user = getAuthUser(req);
+  if (isSuperAdminUser(user)) return items;
+  const scope = permissionScopeFor(req, key);
+  if (scope === 'none') return [];
+  return filterByScope(items, scope, user.id, req.teamId, user.company_id, Boolean(req.companyWide));
+}
+
+/**
+ * Personal dashboard for every non-super user. It never reads platform-wide
+ * executives metrics — every number is filtered by the caller's effective
+ * permission scope.
+ */
+async function buildScopedDashboard(req: Request): Promise<ExecutiveKpiDashboard> {
+  const user = getAuthUser(req);
+  const db = readDatabase();
+  const base = '/my';
+
+  const has = (key: PermissionKey) => permissionScopeFor(req, key) !== 'none';
+  const customers = scopedByPermission(db.customers || [], req, 'crm');
+  const properties = scopedByPermission(db.properties || [], req, 'property.read')
+    .filter((p: any) => getPropertySaleStatus(p) !== 'hidden');
+  const posts = scopedByPermission(db.posts || [], req, 'property.read');
+  const inbox = scopedByPermission(db.inbox || [], req, 'fb_inbox');
+  const pendingInbox = inbox.filter((i: any) => i.status === 'pending').length;
+  const investorLeads = has('investor_leads')
+    ? (await listInvestorLeads(1, { includeConverted: false }).catch(() => null))?.total ?? 0
+    : 0;
+  const websiteChat = has('website_chat') ? getPublicChatGuests().length : 0;
+
+  const snapshot: SnapshotMetric[] = [];
+  const push = (
+    id: string,
+    title: string,
+    value: number,
+    href: string,
+    unit = '',
+  ) => {
+    snapshot.push({
+      id,
+      title,
+      value: `${value}${unit}`,
+      valueNumeric: value,
+      trendVsYesterday: null,
+      trendVs7d: null,
+      trendDirection: null,
+      href,
+      hasData: true,
+    });
+  };
+
+  if (has('crm')) push('customers', 'Khách hàng', customers.length, `${base}/crm`);
+  if (has('property.read')) {
+    push('properties', 'Bất động sản', properties.length, `${base}/properties`);
+    push('posts', 'Nội dung', posts.length, `${base}/posts`);
+  }
+  if (has('fb_inbox')) push('pending_inbox', 'Inbox chờ xử lý', pendingInbox, `${base}/inbox`);
+  if (has('investor_leads')) push('investor_leads', 'Leads đầu tư', investorLeads, `${base}/investor-leads`);
+  if (has('website_chat')) push('website_chat', 'Chat khách website', websiteChat, `${base}/website-chat`);
+
+  if (snapshot.length === 0) {
+    push('profile', 'Hồ sơ cá nhân', 1, `${base}/profile`);
+  }
+
+  const insights: string[] = [];
+  if (customers.length > 0) insights.push(`Bạn đang phụ trách ${customers.length} khách hàng.`);
+  if (pendingInbox > 0) insights.push(`${pendingInbox} hội thoại đang chờ phản hồi.`);
+  if (properties.length > 0) insights.push(`${properties.length} bất động sản trong phạm vi được phép truy cập.`);
+  if (insights.length === 0) insights.push('Chưa có dữ liệu trong phạm vi quyền của bạn.');
+
+  const recommendations = [];
+  if (pendingInbox > 0) {
+    recommendations.push({ id: 'answer_inbox', action: 'Trả lời', detail: `${pendingInbox} hội thoại`, href: `${base}/inbox` });
+  }
+  if (has('crm')) {
+    recommendations.push({ id: 'open_crm', action: 'Mở', detail: 'Khách hàng CRM', href: `${base}/crm` });
+  }
+  if (has('property.read')) {
+    recommendations.push({ id: 'open_properties', action: 'Xem', detail: 'Danh sách BĐS', href: `${base}/properties` });
+  }
+
+  const attention = pendingInbox > 0
+    ? [{ severity: 'warning' as const, text: `${pendingInbox} hội thoại chờ xử lý`, href: `${base}/inbox` }]
+    : [];
+
+  const quickActions = [
+    has('crm') ? { label: 'Khách hàng', href: `${base}/crm` } : null,
+    has('property.read') ? { label: 'Bất động sản', href: `${base}/properties` } : null,
+    has('fb_inbox') ? { label: 'Inbox', href: `${base}/inbox` } : null,
+    { label: 'Hồ sơ', href: `${base}/profile` },
+  ].filter(Boolean) as Array<{ label: string; href: string }>;
+
+  return {
+    version: 'h052_executive_command',
+    generatedAt: new Date().toISOString(),
+    summary: `Xin chào ${user.name || user.email}. Đây là tổng quan dữ liệu trong phạm vi quyền của bạn.`,
+    hero: {
+      aiStatus: 'Working',
+      aiStatusLabel: 'Đang hoạt động',
+      businessHealth: null,
+      todayGoal: null,
+      expectedRevenueTy: null,
+      currentCampaign: null,
+      confidence: null,
+    },
+    snapshot,
+    insights: insights.slice(0, 4),
+    recommendations: recommendations.slice(0, 4),
+    attention,
+    quickActions,
+    kpis: snapshot.map((s) => ({
+      id: s.id,
+      title: s.title,
+      bigNumber: s.value,
+      trend: null,
+      trendDirection: null,
+      miniStatus: [s.title],
+      href: s.href,
+    })),
+  };
+}
 
 export function createContentRouter(opts: { agentEnabled: boolean }) {
   const { agentEnabled: AGENT_ENABLED } = opts;
@@ -32,6 +173,11 @@ export function createContentRouter(opts: { agentEnabled: boolean }) {
 
 router.get('/api/dashboard', async (req: Request, res: Response) => {
   try {
+    const user = getAuthUser(req);
+    if (!isSuperAdminUser(user)) {
+      res.json({ status: 'success', data: await buildScopedDashboard(req) });
+      return;
+    }
     const force = req.query.refresh === 'true' || req.query.refresh === '1';
     const { buildExecutiveKpiDashboard } = await import('../executive-dashboard');
     const data = await buildExecutiveKpiDashboard(force);
@@ -48,7 +194,7 @@ router.get('/api/dashboard', async (req: Request, res: Response) => {
 router.get('/api/navigation-counts', async (req: Request, res: Response) => {
   try {
     const user = getAuthUser(req);
-    const cacheKey = `${user.id}:${user.role}`;
+    const cacheKey = `${user.id}:${user.role}:${req.scope || ''}:${req.teamId || ''}`;
     const now = Date.now();
     const cached = navCountsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
@@ -56,10 +202,15 @@ router.get('/api/navigation-counts', async (req: Request, res: Response) => {
     }
 
     const db = readDatabase();
-    const customers = scopeCollection(db.customers, req);
-    const properties = scopeCollection(db.properties, req);
-    const posts = scopeCollection(db.posts, req);
-    const inbox = scopeCollection(db.inbox, req);
+    const isSuper = isSuperAdminUser(user);
+    const has = (key: PermissionKey) => isSuper || permissionScopeFor(req, key) !== 'none';
+
+    // Each badge uses the effective scope of its own feature permission, not
+    // the scope of the /api/dashboard permission that guards this route.
+    const customers = scopedByPermission(db.customers, req, 'crm');
+    const properties = scopedByPermission(db.properties, req, 'property.read');
+    const posts = scopedByPermission(db.posts, req, 'property.read');
+    const inbox = scopedByPermission(db.inbox, req, 'fb_inbox');
 
     const adminVisibleProperties = properties.filter(p => getPropertySaleStatus(p) !== 'hidden').length;
     const pendingInbox = inbox.filter(i => i.status === 'pending').length;
@@ -70,37 +221,55 @@ router.get('/api/navigation-counts', async (req: Request, res: Response) => {
     let jobs = 0;
     let sources = 0;
 
-    if (AGENT_ENABLED) {
+    const hasAgentAccess =
+      has('agent.sources') ||
+      has('agent.runtime') ||
+      has('agent.reports') ||
+      has('agent.notifications') ||
+      has('lead.intel');
+
+    if (AGENT_ENABLED && hasAgentAccess) {
       const agentCounts = await getAgentDashboardCounts(user);
-      leadIntelligence = agentCounts.newFindings;
-      notifications = agentCounts.unreadNotifications;
-      jobs = agentCounts.queuedJobs + agentCounts.runningJobs;
-      sources = agentCounts.activeSources;
-      const companyScope = buildCompanyScopeFilter(user);
-      externalInventory = await prisma.externalInventoryItem.count({
-        where: {
-          ...companyScope,
-          status: { notIn: ['archived', 'converted'] },
-        },
-      }).catch(() => 0);
+      leadIntelligence = has('lead.intel') ? agentCounts.newFindings : 0;
+      notifications = has('agent.notifications') ? agentCounts.unreadNotifications : 0;
+      jobs = has('agent.runtime') ? agentCounts.queuedJobs + agentCounts.runningJobs : 0;
+      sources = has('agent.sources') ? agentCounts.activeSources : 0;
+      if (has('agent.sources')) {
+        const companyScope = buildCompanyScopeFilter(user);
+        externalInventory = await prisma.externalInventoryItem.count({
+          where: {
+            ...companyScope,
+            status: { notIn: ['archived', 'converted'] },
+          },
+        }).catch(() => 0);
+      }
     }
 
-    const investorLeads = await countInvestorLeads({ includeConverted: false }).catch(() => 0);
+    // Use the exact same query the listing endpoint uses so the sidebar badge
+    // can never report entries that the page then fails to render.
+    const investorLeads = has('investor_leads')
+      ? (await listInvestorLeads(1, { includeConverted: false }).catch(() => null))?.total ?? 0
+      : 0;
 
-    // Lightweight chat badges (counts only — same semantics as pre–Batch 5 App list.length).
-    const websiteChat = getPublicChatGuests().length;
-    const chatHistoryScoped = (db.chat_history || []).filter((item: { user_id?: string; company_id?: string }) => {
-      if (user.role === 'owner') return true;
-      if (user.role === 'company') return item.company_id === user.company_id;
-      return item.user_id === user.id;
-    });
+    // Website chat guests are platform-wide guest sessions: only expose them
+    // to holders of the website_chat feature.
+    const websiteChat = has('website_chat') ? getPublicChatGuests().length : 0;
+    const chatHistoryScoped = !has('chatbot.use')
+      ? []
+      : (db.chat_history || []).filter((item: { user_id?: string; company_id?: string }) => {
+          if (isSuper) return true;
+          if (user.company_id && item.company_id === user.company_id && permissionScopeFor(req, 'chatbot.use') === 'team') {
+            return true;
+          }
+          return item.user_id === user.id;
+        });
     const chatHistory = new Set(chatHistoryScoped.map((item: { user_id?: string }) => item.user_id).filter(Boolean)).size;
 
     const resultData = {
-      crm: customers.length,
-      properties: adminVisibleProperties,
-      posts: posts.length,
-      pendingInbox,
+      crm: has('crm') ? customers.length : 0,
+      properties: has('property.read') ? adminVisibleProperties : 0,
+      posts: has('property.read') ? posts.length : 0,
+      pendingInbox: has('fb_inbox') ? pendingInbox : 0,
       leadIntelligence,
       investorLeads,
       externalInventory,
@@ -124,7 +293,6 @@ router.get('/api/navigation-counts', async (req: Request, res: Response) => {
 
 router.get('/api/content/generated', (req: Request, res: Response) => {
   const db = readDatabase();
-  const user = getAuthUser(req);
   const channel = String(req.query.channel || '');
   const status = String(req.query.status || '');
   const prioritizedChannels = new Set(['facebook', 'zalo']);
@@ -132,8 +300,7 @@ router.get('/api/content/generated', (req: Request, res: Response) => {
   const records = (db.generated_contents || []).filter(item => {
     if (channel && item.channel !== channel) return false;
     if (status && item.status !== status) return false;
-    if (user.role === 'owner') return true;
-    return item.company_id === user.company_id;
+    return canManageResource(item, req);
   }).sort((a, b) => {
     const aPriority = prioritizedChannels.has(a.channel) ? 0 : 1;
     const bPriority = prioritizedChannels.has(b.channel) ? 0 : 1;
@@ -154,7 +321,7 @@ router.post('/api/content/generated/:id/verify', async (req: Request, res: Respo
     return;
   }
 
-  if (user.role !== 'owner' && record.company_id !== user.company_id) {
+  if (!canManageResource(record, req)) {
     sendError(res, 403, 'Bạn không có quyền duyệt content này.');
     return;
   }

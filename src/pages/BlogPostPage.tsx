@@ -254,7 +254,7 @@ export default function BlogPostPage() {
                 <a
                   href={`tel:${CONTACT.phone}`}
                   onClick={() => trackPhoneClick('blog_post_cta')}
-                  className="flex items-center gap-3 text-invest-text"
+                  className="flex min-h-11 items-center gap-3 text-invest-text"
                 >
                   <Phone className="h-5 w-5 text-invest-blue" />
                   {CONTACT.phoneDisplay}
@@ -262,7 +262,7 @@ export default function BlogPostPage() {
                 <a
                   href={CONTACT.zalo}
                   onClick={() => trackZaloClick('blog_post_cta')}
-                  className="flex items-center gap-3 text-invest-text"
+                  className="flex min-h-11 items-center gap-3 text-invest-text"
                 >
                   <MessageCircle className="h-5 w-5 text-blue-600" />
                   Zalo tư vấn nhanh
@@ -270,7 +270,7 @@ export default function BlogPostPage() {
                 <a
                   href={CONTACT.facebook}
                   onClick={() => trackMessengerClick('blog_post_cta')}
-                  className="flex items-center gap-3 text-invest-text"
+                  className="flex min-h-11 items-center gap-3 text-invest-text"
                 >
                   <Facebook className="h-5 w-5 text-sky-600" />
                   Facebook Messenger

@@ -65,7 +65,7 @@ export default function BlogListPage() {
             <button
               type="button"
               onClick={() => setActiveCategory('all')}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                 activeCategory === 'all'
                   ? 'bg-invest-blue text-white shadow-sm'
                   : 'border border-slate-200 bg-white text-slate-700 hover:border-invest-blue/30'
@@ -77,7 +77,7 @@ export default function BlogListPage() {
               <Link
                 key={cat.id}
                 to={`/tin-tuc/chuyen-muc/${cat.slug}`}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                className={`inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                   activeCategory === cat.slug
                     ? 'bg-invest-blue text-white shadow-sm'
                     : 'border border-slate-200 bg-white text-slate-700 hover:border-invest-blue/30'

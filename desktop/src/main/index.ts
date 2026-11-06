@@ -5,7 +5,7 @@
  * scores leads, displays Windows Toast notifications, and syncs to VPS.
  */
 
-import { app, BrowserWindow, WebContentsView, ipcMain, Notification, session, Menu, Tray, shell, clipboard, nativeImage } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Notification, session, Menu, Tray, shell, clipboard, nativeImage, safeStorage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { processRawPostToLead } from './pipeline/leadScoringPipeline';
@@ -13,10 +13,15 @@ import { VpsOutboxSync } from './sync/vpsOutboxSync';
 import { FacebookGraphqlDebugger } from './debugger/facebookGraphqlDebugger';
 import { ChromeCdpManager } from './debugger/chromeCdpManager';
 import { FacebookGroupPublisher } from './publisher/facebookGroupPublisher';
+import { sendLeadToTelegram, sendTelegramMessage } from './notifications/telegramNotifier';
+import { AgentUpdater, APP_VERSION, type UpdateState } from './updater/agentUpdater';
+import { LicenseClient } from './license/licenseClient';
 import type {
   ExtractedLeadData,
   DesktopAgentStats,
   DesktopAgentSettings,
+  DesktopAuthState,
+  AgentCapabilities,
   ZaloIncomingMessage,
   FacebookIncomingPost,
   AgentSourceItem,
@@ -29,8 +34,20 @@ let zaloView: WebContentsView | null = null;
 let fbDebugger: FacebookGraphqlDebugger | null = null;
 let chromeCdpManager: ChromeCdpManager | null = null;
 let vpsSync: VpsOutboxSync | null = null;
+let updater: AgentUpdater | null = null;
+const idleUpdateState: UpdateState = {
+  currentVersion: APP_VERSION,
+  latestVersion: null,
+  status: 'idle',
+  progressPercent: 0,
+  error: '',
+  notes: '',
+};
 let publisher: FacebookGroupPublisher | null = null;
 let tray: Tray | null = null;
+let licenseClient: LicenseClient | null = null;
+let runtimeStarted = false;
+let authNotice = '';
 
 // Leads buffer (last 200 items in memory)
 const recentLeads: ExtractedLeadData[] = [];
@@ -67,8 +84,8 @@ function getSettingsFilePath(): string {
 
 const defaultSettings: DesktopAgentSettings = {
   vpsUrl: 'https://bdsdanang.site',
-  vpsApiKeyId: 'ak_4dc59a634b9a2de6',
-  vpsApiSecret: 'as_lW4bqQeyw0izVMscw5giEXYFJp_sy-eD',
+  vpsApiKeyId: '',
+  vpsApiSecret: '',
   autoSyncEnabled: true,
   minHotLeadScore: 70,
   soundNotification: true,
@@ -81,6 +98,12 @@ const defaultSettings: DesktopAgentSettings = {
   rotateIntervalMinutes: 1,
   rotateIntervalSec: 45,
   scanSpeedMode: 'turbo',
+  enabledSourceIds: undefined,
+  telegramEnabled: false,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramNotifyAllDemand: false,
+  autoUpdateEnabled: true,
 };
 
 function getChronologicalGroupUrl(url: string): string {
@@ -116,23 +139,112 @@ function getEffectiveScrollIntervalSec(): number {
 
 let currentSettings: DesktopAgentSettings = { ...defaultSettings };
 
+const SECRET_PREFIX = 'enc:v1:';
+
+/** Encrypt secrets at rest with the OS keychain when Electron supports it. */
+function encryptSecret(plain: string): string {
+  if (!plain) return '';
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return SECRET_PREFIX + safeStorage.encryptString(plain).toString('base64');
+    }
+  } catch (err) {
+    console.error('[Settings] safeStorage encrypt failed:', err);
+  }
+  return plain;
+}
+
+function decryptSecret(stored: string): string {
+  if (!stored || !stored.startsWith(SECRET_PREFIX)) return stored || '';
+  try {
+    return safeStorage.decryptString(Buffer.from(stored.slice(SECRET_PREFIX.length), 'base64'));
+  } catch (err) {
+    console.error('[Settings] safeStorage decrypt failed:', err);
+    return '';
+  }
+}
+
 function loadSettings(): void {
   try {
     const p = getSettingsFilePath();
     if (fs.existsSync(p)) {
       const data = JSON.parse(fs.readFileSync(p, 'utf8'));
       currentSettings = { ...defaultSettings, ...data };
+      currentSettings.telegramBotToken = decryptSecret(String(data.telegramBotToken || ''));
+      currentSettings.vpsApiSecret = decryptSecret(String(data.vpsApiSecret || ''));
     }
   } catch (err) {
     console.error('[Settings] Error reading settings:', err);
   }
 }
 
+function getCapabilities(): AgentCapabilities | null {
+  return licenseClient?.getSession().capabilities || null;
+}
+
+function isAuthenticated(): boolean {
+  return Boolean(licenseClient?.hasStoredSession() && getCapabilities());
+}
+
+function userCanManageVps(): boolean {
+  return Boolean(getCapabilities()?.canManageVps);
+}
+
+function sanitizeSettingsForRenderer(settings: DesktopAgentSettings): DesktopAgentSettings {
+  if (userCanManageVps()) return { ...settings };
+  return { ...settings, vpsUrl: '', vpsApiKeyId: '', vpsApiSecret: '' };
+}
+
+function getAuthState(): DesktopAuthState {
+  const state = licenseClient?.getAuthState() || { authenticated: false };
+  return { ...state, notice: authNotice || undefined };
+}
+
+function sendAuthState(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('auth:state', getAuthState());
+  }
+}
+
+function denyUnauthenticated(): { success: false; error: string } {
+  return { success: false, error: 'Chưa đăng nhập. Vui lòng đăng nhập để tiếp tục.' };
+}
+
+function denyPermission(permission: string): { success: false; error: string } {
+  return { success: false, error: `Tài khoản của bạn không có quyền ${permission}.` };
+}
+
+/** Copies the signed-in session's server + per-device HMAC credentials into runtime settings. */
+function applySessionToSettings(): void {
+  if (!licenseClient) return;
+  const session = licenseClient.getSession();
+  const ingest = licenseClient.getIngestCredential();
+  if (!session.accessToken) return;
+  currentSettings.vpsUrl = licenseClient.getBaseUrl();
+  // Super admins may keep a manually configured credential; everyone else always
+  // signs with the credential issued for this device at activation.
+  const hasManualCredential =
+    userCanManageVps() && Boolean(currentSettings.vpsApiKeyId && currentSettings.vpsApiSecret);
+  if (ingest && !hasManualCredential) {
+    currentSettings.vpsApiKeyId = ingest.keyId;
+    currentSettings.vpsApiSecret = ingest.secret;
+  }
+  if (vpsSync) vpsSync.updateSettings(currentSettings);
+}
+
 function saveSettings(settings: Partial<DesktopAgentSettings>): DesktopAgentSettings {
   try {
     currentSettings = { ...currentSettings, ...settings };
     const p = getSettingsFilePath();
-    fs.writeFileSync(p, JSON.stringify(currentSettings, null, 2), 'utf8');
+    // VPS credentials are only persisted for super admins; agents get them from the vault.
+    const persistVps = userCanManageVps();
+    const onDisk = {
+      ...currentSettings,
+      vpsApiKeyId: persistVps ? currentSettings.vpsApiKeyId : '',
+      vpsApiSecret: persistVps ? encryptSecret(currentSettings.vpsApiSecret || '') : '',
+      telegramBotToken: encryptSecret(currentSettings.telegramBotToken || ''),
+    };
+    fs.writeFileSync(p, JSON.stringify(onDisk, null, 2), 'utf8');
     if (vpsSync) {
       vpsSync.updateSettings(currentSettings);
     }
@@ -197,6 +309,23 @@ function showHotLeadNotification(lead: ExtractedLeadData): void {
   notif.show();
 }
 
+async function maybeSendTelegram(lead: ExtractedLeadData): Promise<void> {
+  if (!currentSettings.telegramEnabled) return;
+  const isDemand = lead.classification === 'DEMAND';
+  if (!lead.isHotLead && !(currentSettings.telegramNotifyAllDemand && isDemand)) return;
+  const result = await sendLeadToTelegram(
+    {
+      enabled: true,
+      botToken: currentSettings.telegramBotToken,
+      chatId: currentSettings.telegramChatId,
+    },
+    lead,
+  );
+  if (!result.ok) {
+    console.warn('[Telegram] Lead notification failed:', result.error);
+  }
+}
+
 async function handleLeadCaptured(lead: ExtractedLeadData): Promise<void> {
   recentLeads.unshift(lead);
   if (recentLeads.length > 200) recentLeads.pop();
@@ -204,15 +333,19 @@ async function handleLeadCaptured(lead: ExtractedLeadData): Promise<void> {
   if (lead.isHotLead) {
     stats.hotLeadsTotal++;
     showHotLeadNotification(lead);
+  }
 
-    if (currentSettings.autoSyncEnabled && vpsSync) {
-      const syncRes = await vpsSync.syncLeadToVps(lead);
-      if (syncRes.success) {
-        stats.syncedToVpsTotal++;
-        stats.vpsConnected = true;
-      }
+  // Demand leads are the ones sales can act on; hot supply posts are kept too.
+  const shouldSync = lead.classification === 'DEMAND' || lead.isHotLead;
+  if (shouldSync && currentSettings.autoSyncEnabled && vpsSync) {
+    const syncRes = await vpsSync.syncLeadToVps(lead);
+    if (syncRes.success) {
+      stats.syncedToVpsTotal++;
+      stats.vpsConnected = true;
     }
   }
+
+  void maybeSendTelegram(lead);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('lead:new', lead);
@@ -274,21 +407,37 @@ async function injectSavedFacebookCookies(fbSession: Electron.Session): Promise<
   }
 }
 
+/** Sources ticked by the user; null/undefined means "all server sources". */
+function getEnabledSources(): AgentSourceItem[] {
+  const ids = currentSettings.enabledSourceIds;
+  if (!Array.isArray(ids)) return activeSources;
+  const selected = new Set(ids);
+  return activeSources.filter((source) => selected.has(source.id));
+}
+
 async function syncSourcesFromVps(): Promise<AgentSourceItem[]> {
   if (!vpsSync) return activeSources;
   try {
     const res = await vpsSync.fetchSourcesFromVps();
-    if (res.success && Array.isArray(res.sources) && res.sources.length > 0) {
+    if (res.success && Array.isArray(res.sources)) {
       activeSources = res.sources;
-      stats.activeSourcesTotal = activeSources.length;
+      const enabled = getEnabledSources();
+      stats.activeSourcesTotal = enabled.length;
       stats.vpsConnected = true;
-      console.log(`[Sources] Loaded ${activeSources.length} active Facebook groups from VPS.`);
+      console.log(
+        `[Sources] Loaded ${activeSources.length} active Facebook groups from VPS (${enabled.length} ticked).`,
+      );
+      if (activeSources.length === 0) {
+        stats.currentSourceName = '';
+        stats.currentSourceUrl = '';
+        stats.currentSourceIndex = 0;
+      }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('sources:list', activeSources);
       }
       broadcastStats();
-      // If we haven't navigated to any source yet, navigate to the first one!
-      if (!stats.currentSourceUrl && activeSources.length > 0) {
+      // If we haven't navigated to any source yet, navigate to the first enabled one.
+      if (!stats.currentSourceUrl && enabled.length > 0) {
         navigateToSource(0);
       }
     } else if (res.error) {
@@ -301,20 +450,28 @@ async function syncSourcesFromVps(): Promise<AgentSourceItem[]> {
 }
 
 function navigateToSource(index: number): void {
-  if (!activeSources.length) return;
-  const safeIdx = Math.max(0, Math.min(index, activeSources.length - 1));
+  const sources = getEnabledSources();
+  if (!sources.length) {
+    stats.currentSourceIndex = 0;
+    stats.currentSourceName = '';
+    stats.currentSourceUrl = '';
+    broadcastStats();
+    return;
+  }
+  const safeIdx = Math.max(0, Math.min(index, sources.length - 1));
   currentSourceIndex = safeIdx;
-  const source = activeSources[safeIdx];
+  const source = sources[safeIdx];
   const targetUrl = getChronologicalGroupUrl(source.url);
 
   stats.currentSourceIndex = safeIdx;
   stats.currentSourceName = source.name;
   stats.currentSourceUrl = targetUrl;
+  stats.activeSourcesTotal = sources.length;
   secondsRemaining = getEffectiveRotateIntervalSec();
   stats.secondsUntilNextRotate = secondsRemaining;
   broadcastStats();
 
-  console.log(`[SourceRotator] Switching to source [${safeIdx + 1}/${activeSources.length}]: ${source.name} (${targetUrl})`);
+  console.log(`[SourceRotator] Switching to source [${safeIdx + 1}/${sources.length}]: ${source.name} (${targetUrl})`);
 
   if (fbView && !fbView.webContents.isDestroyed()) {
     void fbView.webContents.loadURL(targetUrl);
@@ -327,7 +484,8 @@ function navigateToSource(index: number): void {
 function startSourceRotationLoop(): void {
   if (rotateTicker) clearInterval(rotateTicker);
   rotateTicker = setInterval(() => {
-    if (!currentSettings.autoRotateSources || activeSources.length <= 1) {
+    const sources = getEnabledSources();
+    if (!currentSettings.autoRotateSources || sources.length <= 1) {
       return;
     }
     secondsRemaining--;
@@ -339,16 +497,13 @@ function startSourceRotationLoop(): void {
     }
 
     if (secondsRemaining <= 0) {
-      const nextIdx = (currentSourceIndex + 1) % activeSources.length;
+      const nextIdx = (currentSourceIndex + 1) % sources.length;
       navigateToSource(nextIdx);
     }
   }, 1000);
 }
 
 async function createWindow(): Promise<void> {
-  loadSettings();
-  vpsSync = new VpsOutboxSync(currentSettings);
-
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -356,6 +511,7 @@ async function createWindow(): Promise<void> {
     minHeight: 700,
     title: 'House & Life Desktop Agent - Hệ thống quét BĐS Đa Kênh',
     backgroundColor: '#0f172a',
+    icon: path.join(__dirname, '../renderer/assets/logo_hl.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/appPreload.cjs'),
       contextIsolation: true,
@@ -366,6 +522,23 @@ async function createWindow(): Promise<void> {
   // Load controller dashboard HTML
   const rendererPath = path.join(__dirname, '../renderer/index.html');
   await mainWindow.loadFile(rendererPath);
+
+  mainWindow.on('closed', () => {
+    stopAgentRuntime();
+    mainWindow = null;
+  });
+
+  sendAuthState();
+}
+
+async function startAgentRuntime(): Promise<void> {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || runtimeStarted) return;
+  if (!getCapabilities()?.canScan) return;
+
+  runtimeStarted = true;
+  vpsSync = new VpsOutboxSync(currentSettings);
+  applySessionToSettings();
 
   // Configure persistent partitions
   const fbSession = session.fromPartition('persist:facebook_agent');
@@ -390,7 +563,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
     },
   });
-  mainWindow.contentView.addChildView(fbView);
+  win.contentView.addChildView(fbView);
 
   // Handle OAuth popups safely inside the app without triggering Google security block
   fbView.webContents.setWindowOpenHandler(() => {
@@ -445,12 +618,12 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
     },
   });
-  mainWindow.contentView.addChildView(zaloView);
+  win.contentView.addChildView(zaloView);
 
   updateViewBounds();
   setActiveTab('dashboard');
 
-  mainWindow.on('resize', () => {
+  win.on('resize', () => {
     updateViewBounds();
   });
 
@@ -531,31 +704,148 @@ async function createWindow(): Promise<void> {
   void syncSourcesFromVps();
   startSourceRotationLoop();
 
-  mainWindow.on('closed', () => {
-    if (rotateTicker) {
-      clearInterval(rotateTicker);
-      rotateTicker = null;
+  if (!updater) {
+    updater = new AgentUpdater({
+      getVpsUrl: () => currentSettings.vpsUrl,
+      isAutoEnabled: () => currentSettings.autoUpdateEnabled !== false,
+      onState: (state: UpdateState) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update:state', state);
+        }
+      },
+    });
+    console.log(`[Agent] Desktop Agent version ${APP_VERSION} — auto-update enabled.`);
+  }
+  updater.start();
+}
+
+function stopAgentRuntime(): void {
+  runtimeStarted = false;
+
+  if (rotateTicker) {
+    clearInterval(rotateTicker);
+    rotateTicker = null;
+  }
+  if (fbDebugger) {
+    fbDebugger.detach();
+    fbDebugger = null;
+  }
+  if (chromeCdpManager) {
+    chromeCdpManager.stop();
+    chromeCdpManager = null;
+  }
+  if (publisher) {
+    publisher.stopQueue();
+    publisher = null;
+  }
+  updater?.stop();
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    for (const view of [fbView, zaloView]) {
+      if (!view) continue;
+      try {
+        mainWindow.contentView.removeChildView(view);
+      } catch {
+        /* already detached */
+      }
+      try {
+        view.webContents.close();
+      } catch {
+        /* already closed */
+      }
     }
-    if (chromeCdpManager) {
-      chromeCdpManager.stop();
-      chromeCdpManager = null;
+  }
+  fbView = null;
+  zaloView = null;
+
+  activeSources = [];
+  currentSourceIndex = 0;
+  secondsRemaining = getEffectiveRotateIntervalSec();
+  stats.activeSourcesTotal = 0;
+  stats.currentSourceIndex = 0;
+  stats.currentSourceName = '';
+  stats.currentSourceUrl = '';
+  stats.secondsUntilNextRotate = secondsRemaining;
+  stats.debuggerAttached = false;
+  stats.chromeCdpAttached = false;
+  stats.vpsConnected = false;
+  vpsSync = null;
+}
+
+function clearRuntimeCredentials(): void {
+  currentSettings.vpsApiKeyId = '';
+  currentSettings.vpsApiSecret = '';
+}
+
+function lockSession(message: string): void {
+  authNotice = message;
+  stopAgentRuntime();
+  clearRuntimeCredentials();
+  licenseClient?.logout();
+  broadcastStats();
+  sendAuthState();
+}
+
+async function establishSession(restored: boolean): Promise<DesktopAuthState> {
+  if (!licenseClient) return { authenticated: false };
+  applySessionToSettings();
+
+  if (restored) {
+    // Cached vault: confirm with the server (falls back to 48h offline grace).
+    const result = await licenseClient.sendHeartbeat();
+    if (!result.valid) {
+      if (!result.offlineMode) {
+        lockSession(result.error || 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.');
+        return getAuthState();
+      }
+      console.warn('[Auth] Offline mode:', result.error || 'server unreachable');
     }
-    if (publisher) {
-      publisher.stopQueue();
-      publisher = null;
-    }
-    mainWindow = null;
-    fbView = null;
-    zaloView = null;
-  });
+  }
+
+  applySessionToSettings();
+  const state = getAuthState();
+  if (!state.authenticated) {
+    sendAuthState();
+    return state;
+  }
+
+  authNotice = '';
+  sendAuthState();
+  await startAgentRuntime();
+  broadcastStats();
+  return getAuthState();
 }
 
 // IPC Handlers
+ipcMain.handle('auth:get-state', () => getAuthState());
+
+ipcMain.handle('auth:login', async (_event, payload: { key?: string; remember?: boolean }) => {
+  if (!licenseClient) {
+    return { success: false, message: 'Ứng dụng chưa sẵn sàng, vui lòng thử lại.' };
+  }
+  const result = await licenseClient.activate(String(payload?.key || ''), Boolean(payload?.remember));
+  if (!result.success) return result;
+
+  authNotice = '';
+  applySessionToSettings();
+  sendAuthState();
+  await startAgentRuntime();
+  broadcastStats();
+  return { ...result, state: getAuthState() };
+});
+
+ipcMain.handle('auth:logout', () => {
+  lockSession('Bạn đã đăng xuất khỏi Desktop Agent.');
+  return { success: true };
+});
+
 ipcMain.on('tab:switch', (_event, tab: ActiveTab) => {
+  if (!isAuthenticated()) return;
   setActiveTab(tab);
 });
 
 ipcMain.on('tab:reload', (_event, tab: 'facebook' | 'zalo') => {
+  if (!isAuthenticated()) return;
   if (tab === 'facebook' && fbView) {
     fbView.webContents.reload();
   } else if (tab === 'zalo' && zaloView) {
@@ -564,6 +854,7 @@ ipcMain.on('tab:reload', (_event, tab: 'facebook' | 'zalo') => {
 });
 
 ipcMain.on('fb:trigger-scroll', () => {
+  if (!isAuthenticated()) return;
   if (fbView) {
     fbView.webContents.send('fb:scroll-down');
   }
@@ -578,6 +869,7 @@ ipcMain.on('url:open-external', (_event, url: string) => {
 });
 
 ipcMain.on('zalo:new-message', (_event, message: ZaloIncomingMessage) => {
+  if (!isAuthenticated()) return;
   stats.zaloMessagesTotal++;
   const lead = processRawPostToLead('zalo', message.groupName, message.content, {
     sourceUrl: 'https://chat.zalo.me',
@@ -593,10 +885,11 @@ ipcMain.handle('stats:get', () => {
 });
 
 ipcMain.handle('settings:get', () => {
-  return currentSettings;
+  return sanitizeSettingsForRenderer(currentSettings);
 });
 
 ipcMain.on('fb:dom-post-captured', (_event, post: { authorName?: string; contentText: string; canonicalUrl?: string; timestamp: number }) => {
+  if (!isAuthenticated()) return;
   stats.facebookPostsTotal++;
   const groupName = stats.currentSourceName || 'Facebook Group';
   const sourceUrl = post.canonicalUrl || stats.currentSourceUrl || '';
@@ -609,6 +902,7 @@ ipcMain.on('fb:dom-post-captured', (_event, post: { authorName?: string; content
 });
 
 ipcMain.on('speed:set', (_event, mode: 'turbo' | 'fast' | 'standard') => {
+  if (!isAuthenticated()) return;
   currentSettings.scanSpeedMode = mode;
   stats.scanSpeedMode = mode;
   if (mode === 'turbo') {
@@ -635,7 +929,31 @@ ipcMain.on('speed:set', (_event, mode: 'turbo' | 'fast' | 'standard') => {
 });
 
 ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSettings>) => {
-  const updated = saveSettings(partialSettings);
+  if (!isAuthenticated()) return sanitizeSettingsForRenderer(currentSettings);
+
+  const safeSettings: Partial<DesktopAgentSettings> = { ...partialSettings };
+  if (!userCanManageVps()) {
+    // Agent accounts never edit the VPS connection; credentials come from the license session.
+    delete safeSettings.vpsUrl;
+    delete safeSettings.vpsApiKeyId;
+    delete safeSettings.vpsApiSecret;
+  } else if (typeof safeSettings.vpsUrl === 'string' && safeSettings.vpsUrl.trim()) {
+    licenseClient?.setBaseUrl(safeSettings.vpsUrl.trim());
+    safeSettings.vpsUrl = licenseClient?.getBaseUrl() || safeSettings.vpsUrl;
+  }
+
+  const updated = saveSettings(safeSettings);
+  if (partialSettings.autoRotateSources !== undefined) {
+    stats.autoRotateSources = updated.autoRotateSources;
+  }
+  if (partialSettings.scanSpeedMode) {
+    stats.scanSpeedMode = updated.scanSpeedMode || 'turbo';
+    secondsRemaining = getEffectiveRotateIntervalSec();
+    stats.secondsUntilNextRotate = secondsRemaining;
+  }
+  if (partialSettings.enabledSourceIds !== undefined) {
+    stats.activeSourcesTotal = getEnabledSources().length;
+  }
   if (chromeCdpManager) {
     chromeCdpManager.updateConfig({
       port: updated.cdpPort || 9222,
@@ -655,6 +973,7 @@ ipcMain.handle('settings:save', (_event, partialSettings: Partial<DesktopAgentSe
 });
 
 ipcMain.handle('chrome:launch-profile', () => {
+  if (!isAuthenticated()) return denyUnauthenticated();
   if (chromeCdpManager) {
     return chromeCdpManager.launchChrome();
   }
@@ -662,12 +981,14 @@ ipcMain.handle('chrome:launch-profile', () => {
 });
 
 ipcMain.on('chrome:trigger-scroll', () => {
+  if (!isAuthenticated()) return;
   if (chromeCdpManager) {
     void chromeCdpManager.triggerScroll();
   }
 });
 
 ipcMain.handle('lead:sync-manual', async (_event, leadId: string) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
   const lead = recentLeads.find((l) => l.id === leadId);
   if (!lead) return { success: false, error: 'Lead not found in cache' };
   if (!vpsSync) return { success: false, error: 'VPS Sync not initialized' };
@@ -681,29 +1002,85 @@ ipcMain.handle('lead:sync-manual', async (_event, leadId: string) => {
 });
 
 // Sources Rotation IPC Handlers
-ipcMain.handle('sources:get', () => activeSources);
+ipcMain.handle('sources:get', () => (isAuthenticated() ? activeSources : []));
 
 ipcMain.handle('sources:refresh', async () => {
+  if (!isAuthenticated()) return [];
   return await syncSourcesFromVps();
 });
 
 ipcMain.on('sources:select', (_event, index: number) => {
+  if (!isAuthenticated()) return;
   navigateToSource(index);
 });
 
 ipcMain.on('sources:next', () => {
-  if (activeSources.length) {
-    navigateToSource((currentSourceIndex + 1) % activeSources.length);
+  if (!isAuthenticated()) return;
+  const sources = getEnabledSources();
+  if (sources.length) {
+    navigateToSource((currentSourceIndex + 1) % sources.length);
   }
 });
 
 ipcMain.on('sources:prev', () => {
-  if (activeSources.length) {
-    navigateToSource((currentSourceIndex - 1 + activeSources.length) % activeSources.length);
+  if (!isAuthenticated()) return;
+  const sources = getEnabledSources();
+  if (sources.length) {
+    navigateToSource((currentSourceIndex - 1 + sources.length) % sources.length);
   }
 });
 
+ipcMain.handle('sources:set-enabled', (_event, ids: string[]) => {
+  if (!isAuthenticated()) return { enabledSourceIds: [], enabledCount: 0 };
+  const unique = Array.from(new Set((ids || []).map(String)));
+  currentSettings.enabledSourceIds = unique;
+  saveSettings({ enabledSourceIds: unique });
+  const enabled = getEnabledSources();
+  stats.activeSourcesTotal = enabled.length;
+  if (unique.length === 0) {
+    stats.currentSourceName = '';
+    stats.currentSourceUrl = '';
+    stats.currentSourceIndex = 0;
+  } else if (currentSourceIndex >= enabled.length) {
+    currentSourceIndex = 0;
+  }
+  // Do not interrupt the page the user is watching; only boot the first source.
+  if (!stats.currentSourceUrl && enabled.length > 0) {
+    navigateToSource(0);
+  } else {
+    broadcastStats();
+  }
+  return { enabledSourceIds: unique, enabledCount: enabled.length };
+});
+
+ipcMain.handle('telegram:test', async () => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canUseNotifications) return denyPermission('dùng thông báo Telegram');
+  const result = await sendTelegramMessage(
+    {
+      enabled: true,
+      botToken: currentSettings.telegramBotToken,
+      chatId: currentSettings.telegramChatId,
+    },
+    '✅ <b>House &amp; Life Desktop Agent</b>\nKênh Telegram đã kết nối thành công. Bạn sẽ nhận lead BĐS tại đây.',
+  );
+  return result;
+});
+
+ipcMain.handle('update:get-state', () => (updater ? updater.getState() : { ...idleUpdateState }));
+
+ipcMain.handle('update:check', async () => {
+  if (updater) await updater.downloadForManualInstall();
+});
+
+ipcMain.on('update:install', () => {
+  void updater?.installNow().catch((err) => {
+    console.error('[Updater] Manual install failed:', err);
+  });
+});
+
 ipcMain.on('sources:toggle-rotate', (_event, enabled: boolean) => {
+  if (!isAuthenticated()) return;
   currentSettings.autoRotateSources = enabled;
   stats.autoRotateSources = enabled;
   saveSettings({ autoRotateSources: enabled });
@@ -712,31 +1089,42 @@ ipcMain.on('sources:toggle-rotate', (_event, enabled: boolean) => {
 
 // Publisher & Inventory Handlers
 ipcMain.handle('inventory:fetch', async () => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('đăng bài / xem giỏ hàng');
   if (!vpsSync) return { success: false, error: 'VPS Sync chưa được kết nối' };
   return vpsSync.fetchPropertiesFromVps();
 });
 
 ipcMain.handle('publisher:generate-ai', async (_e, params) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('tạo bài đăng bằng AI');
   if (!vpsSync) return { success: false, error: 'VPS Sync chưa được kết nối' };
   return vpsSync.generatePostFromVps(params);
 });
 
 ipcMain.handle('publisher:start-queue', async (_e, config) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('đăng bài');
   if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
   return publisher.startQueue(config);
 });
 
 ipcMain.handle('publisher:stop-queue', async () => {
+  if (!isAuthenticated()) return denyUnauthenticated();
   if (publisher) publisher.stopQueue();
   return { success: true };
 });
 
 ipcMain.handle('publisher:open-group-prepare', async (_e, { groupUrl, postText, imageUrls }) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('đăng bài');
   if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
   return publisher.openGroupAndPrepare(groupUrl, postText, imageUrls);
 });
 
 ipcMain.handle('publisher:copy-image', async (_e, imageUrl: string) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('đăng bài');
   try {
     if (!imageUrl) return { success: false, error: 'URL ảnh trống' };
     let buffer: Buffer | null = null;
@@ -761,6 +1149,8 @@ ipcMain.handle('publisher:copy-image', async (_e, imageUrl: string) => {
 });
 
 ipcMain.handle('publisher:download-images', async (_e, imageUrls: string[]) => {
+  if (!isAuthenticated()) return denyUnauthenticated();
+  if (!getCapabilities()?.canPublish) return denyPermission('tải ảnh đăng bài');
   if (!publisher) return { success: false, error: 'Bộ đăng bài chưa sẵn sàng' };
   try {
     const downloaded = await publisher.downloadImages(imageUrls);
@@ -792,7 +1182,33 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     // Optional application menu cleanup
     Menu.setApplicationMenu(null);
+    loadSettings();
+
+    // AGENT_VPS_URL lets QA/self-hosted builds point at a non-production server.
+    // Packaged builds default to production; dev builds default to the local CMS
+    // so keys created in the local database can be activated.
+    const envVpsUrl = String(process.env.AGENT_VPS_URL || '').trim();
+    const storedVpsUrl = String(currentSettings.vpsUrl || '').trim();
+    const hasCustomStoredUrl = Boolean(storedVpsUrl) && storedVpsUrl !== defaultSettings.vpsUrl;
+    const initialVpsUrl =
+      envVpsUrl
+      || (hasCustomStoredUrl ? storedVpsUrl : '')
+      || (app.isPackaged ? defaultSettings.vpsUrl : 'http://localhost:3000');
+    licenseClient = new LicenseClient(initialVpsUrl);
+    licenseClient.setBaseUrl(initialVpsUrl);
+    licenseClient.onSessionInvalid = (message) => lockSession(message);
+    licenseClient.onSessionUpdated = () => {
+      applySessionToSettings();
+      sendAuthState();
+    };
+
     await createWindow();
+
+    if (licenseClient.hasStoredSession()) {
+      await establishSession(true);
+    } else {
+      sendAuthState();
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

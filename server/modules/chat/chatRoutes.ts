@@ -1,5 +1,5 @@
 import { sendError } from '../../utils/httpResponses';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import {
   deleteChatHistoryByUserId,
   deletePublicChatGuest,
@@ -13,6 +13,7 @@ import {
 } from '../../dbHelper';
 import { generateText, getAIProviderStatus, getAiStatusBriefingText } from '../../aiService';
 import { getAuthUser } from '../auth/authAccess';
+import { isSuperAdminUser } from '../auth/tenantScope';
 import { buildAssistantDbContext, buildAssistantFallback } from './assistantHelpers';
 import { retrieveRagKnowledge, buildOfficialSystemPrompt } from './ragKnowledgeService';
 
@@ -43,18 +44,25 @@ export async function deleteChatSessionHandler(req: Request, res: Response) {
   });
 }
 
+function canManageWebsiteChat(req: Request): boolean {
+  const authUser = getAuthUser(req);
+  if (isSuperAdminUser(authUser)) return true;
+  const perm = req.userPermissions?.website_chat;
+  return Boolean(perm?.hasAccess && perm.scope !== 'none' && !perm.requiresPremiumUpgrade);
+}
+
 export function assertCanManageChatSession(req: Request, res: Response, sessionUserId: string): boolean {
   const authUser = getAuthUser(req);
 
   if (sessionUserId.startsWith('public-')) {
-    if (authUser.role === 'member') {
+    if (!canManageWebsiteChat(req)) {
       sendError(res, 403, 'Bạn không có quyền xóa lịch sử khách chat.');
       return false;
     }
     return true;
   }
 
-  if (authUser.role === 'owner') return true;
+  if (isSuperAdminUser(authUser)) return true;
 
   if (authUser.role === 'company') {
     if (sessionUserId === authUser.id) return true;
@@ -74,13 +82,44 @@ export function assertCanManageChatSession(req: Request, res: Response, sessionU
   return true;
 }
 
-import { requirePermission } from '../rbac';
+import { requirePermission, resolvePermissions } from '../rbac';
+
+/**
+ * Website guest chat and chat history are platform-root features: super admins
+ * get them by default, and they can only be delegated to members of the root team.
+ */
+async function requirePlatformRootTeam(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authUser = getAuthUser(req);
+  if (!authUser) {
+    sendError(res, 401, 'Yêu cầu đăng nhập.');
+    return;
+  }
+  if (isSuperAdminUser(authUser)) {
+    next();
+    return;
+  }
+  try {
+    const resolved = await resolvePermissions(authUser as any);
+    if (resolved.isPlatformRootTeam) {
+      next();
+      return;
+    }
+  } catch {
+    /* fall through to deny */
+  }
+  sendError(res, 403, 'Tính năng chat khách website chỉ dành cho Super Admin và thành viên team gốc.');
+}
 
 export function createChatRouter() {
   const router = Router();
 
-  router.use('/api/chat/guests', requirePermission('website_chat'));
-  router.use(['/api/ai/chat', '/api/chat/history', '/api/chat/sessions'], requirePermission('chatbot.use'));
+  router.use('/api/chat/guests', requirePermission('website_chat'), requirePlatformRootTeam);
+  router.use('/api/ai/chat', requirePermission('chatbot.use'));
+  router.use(
+    ['/api/chat/history', '/api/chat/sessions'],
+    requirePermission('chatbot.use'),
+    requirePlatformRootTeam,
+  );
 
 router.get('/api/ai/status', async (req: Request, res: Response) => {
   try {
@@ -170,8 +209,10 @@ router.get('/api/chat/history', (req: Request, res: Response) => {
   const mineOnly = req.query.scope === 'mine';
   const history = (db.chat_history || []).filter(item => {
     if (mineOnly) return item.user_id === user.id;
-    if (user.role === 'owner') return true;
-    if (user.role === 'company') return item.company_id === user.company_id;
+    if (isSuperAdminUser(user) || req.scope === 'all') return true;
+    if (req.scope === 'team' || user.role === 'company') {
+      return item.company_id === user.company_id;
+    }
     return item.user_id === user.id;
   });
 
@@ -182,8 +223,7 @@ router.delete('/api/chat/sessions/:sessionUserId', deleteChatSessionHandler);
 router.post('/api/chat/sessions/:sessionUserId/delete', deleteChatSessionHandler);
 
 router.get('/api/chat/guests', (req: Request, res: Response) => {
-  const user = getAuthUser(req);
-  if (user.role === 'member') {
+  if (!canManageWebsiteChat(req)) {
     sendError(res, 403, 'Bạn không có quyền xem danh sách khách chat.');
     return;
   }
@@ -191,8 +231,7 @@ router.get('/api/chat/guests', (req: Request, res: Response) => {
 });
 
 router.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) => {
-  const user = getAuthUser(req);
-  if (user.role === 'member') {
+  if (!canManageWebsiteChat(req)) {
     sendError(res, 403, 'Bạn không có quyền xem lịch sử khách chat.');
     return;
   }
@@ -203,7 +242,7 @@ router.get('/api/chat/guests/:sessionId/history', (req: Request, res: Response) 
 
 router.put('/api/chat/guests/:sessionId/ai', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
-  if (user.role === 'member') {
+  if (!canManageWebsiteChat(req)) {
     sendError(res, 403, 'Bạn không có quyền đổi trạng thái AI.');
     return;
   }
@@ -218,7 +257,7 @@ router.put('/api/chat/guests/:sessionId/ai', async (req: Request, res: Response)
 
 router.post('/api/chat/guests/:sessionId/messages', async (req: Request, res: Response) => {
   const user = getAuthUser(req);
-  if (user.role === 'member') {
+  if (!canManageWebsiteChat(req)) {
     sendError(res, 403, 'Bạn không có quyền gửi tin cho khách.');
     return;
   }

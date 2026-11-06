@@ -51,7 +51,7 @@
 
 ### 2.3 FEAT-TEAM-MGR: Quản Lý Đội Nhóm & Phê Duyệt Thành Viên
 - **Mục đích:** Trao quyền cho Trưởng nhóm quản lý nhân sự cấp dưới.
-- **Vị trí:** Tab `Quản lý Team` (`/admin#team`).
+- **Vị trí:** Tab `Quản lý Team` trong menu bên trái của dashboard (không có URL riêng).
 - **Thao tác chính:**
   - Xem danh sách thành viên đang chờ duyệt.
   - Bấm nút **Duyệt (Approve)** để kích hoạt tài khoản thành viên chính thức (`member`).
@@ -62,7 +62,7 @@
 
 ### 2.4 FEAT-PROP-MGR: Đăng Tin & Quản Lý Giỏ Hàng
 - **Mục đích:** Xây dựng kho hàng bất động sản phong phú và chính xác cho cá nhân và toàn sàn.
-- **Vị trí:** Tab `Danh sách Bất động sản` (`/admin#properties`).
+- **Vị trí:** Tab `Danh sách Bất động sản` trong menu bên trái của dashboard (không có URL riêng).
 - **Đầu vào bắt buộc:** Tiêu đề, loại hình, giá bán (tỷ đồng), diện tích ($m^2$), vị trí địa chỉ, pháp lý, phân loại nguồn tin: **Môi giới** hoặc **Chính chủ**.
 - **Cơ chế bảo vệ:** Hệ thống tự động gán `owner_user_id` theo ID của người đang đăng nhập. Quyền sở hữu tin là bất biến để phục vụ ghi nhận công sức và chia hoa hồng sau này.
 - **Xử lý xung đột:** Ứng dụng kỹ thuật Optimistic Locking qua trường `version`, tự động báo lỗi nếu có hai người cùng chỉnh sửa một tin tại một thời điểm.
@@ -71,7 +71,7 @@
 
 ### 2.5 FEAT-RBAC-2D: Ma Trận Phân Quyền Bảng 2 Chiều
 - **Mục đích:** Giúp Quản trị viên tối cao tùy biến linh hoạt quyền hạn của 5 nhóm vai trò người dùng trong hệ thống mà không cần sửa code.
-- **Vị trí:** Tab `Phân quyền & Gói` (`/admin#rbac`).
+- **Vị trí:** Tab `Phân quyền & Gói` trong menu bên trái của dashboard (không có URL riêng).
 - **Đặc điểm giao diện:**
   - Bảng 2 chiều trực quan gồm 30 dòng (30 quyền hạn) và 5 cột (5 vai trò: Super Admin, Team Lead, Member, Independent, Pending Member).
   - Checkbox bật/tắt tức thì. Khi bật, cho phép chọn phạm vi dữ liệu: `Toàn hệ thống (all)`, `Trong Team (team)`, `Cá nhân (own)`.

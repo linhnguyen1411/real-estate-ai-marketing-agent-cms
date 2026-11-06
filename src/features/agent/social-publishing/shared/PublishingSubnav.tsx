@@ -28,14 +28,14 @@ export default function PublishingSubnav({ title, subtitle, active, message }: P
           <h2 className="text-lg font-bold text-white">{title}</h2>
           <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
-        <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+        <nav className="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/80 p-1 sm:flex-nowrap sm:overflow-x-auto">
           {TABS.map(item => (
             <NavLink
               key={item.id}
               to={item.path}
               end={item.id === 'schedule'}
               className={() =>
-                `whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors border ${
+                `inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors border ${
                   active === item.id
                     ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
                     : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200 border-transparent'

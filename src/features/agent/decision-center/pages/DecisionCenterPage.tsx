@@ -186,13 +186,13 @@ export default function DecisionCenterPage({ canManage }: { canManage: boolean }
         </button>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/80 p-1">
         {TABS.map(t => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+            className={`inline-flex min-h-11 items-center rounded-lg px-3 py-1.5 text-xs font-semibold ${
               tab === t.id ? 'bg-rose-500/15 text-rose-300' : 'text-slate-500 hover:text-slate-200'
             }`}
           >

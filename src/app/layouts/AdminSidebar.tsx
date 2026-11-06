@@ -16,7 +16,7 @@ import {
   isUserSuperAdmin,
   type ExtraNavBadges,
 } from '../navigation/sidebarConfig';
-import { AGENT_TAB_TO_PATH, SEO_TAB_TO_PATH } from '../navigation/tabPaths';
+import { AGENT_TAB_TO_PATH, SEO_TAB_TO_PATH, adminTabPath } from '../navigation/tabPaths';
 import type { AuthUser } from '../../types';
 
 function resolveBadge(
@@ -78,7 +78,7 @@ export default function AdminSidebar({
   });
 
   const isSuper = isUserSuperAdmin(currentUser);
-  const defaultDashboard = isSuper ? '/admin/dashboard' : '/my/dashboard';
+  const portal = isSuper ? 'admin' : 'member';
 
   const renderNavButton = (item: NavItemConfig) => {
     const IconComp = item.icon;
@@ -89,14 +89,10 @@ export default function AdminSidebar({
         key={item.id}
         type="button"
         onClick={() => {
-          let targetPath = item.path || defaultDashboard;
-          if (!isSuper && targetPath.startsWith('/admin')) {
-            targetPath = '/my/dashboard';
-          }
-          onSelectTab(item.id, { path: targetPath });
+          onSelectTab(item.id, { path: item.path || adminTabPath(portal, item.id) });
           onCloseMenu();
         }}
-        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+        className={`flex min-h-11 w-full items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
           isSelected
             ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
             : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
@@ -135,7 +131,7 @@ export default function AdminSidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 min-h-0 bg-slate-950 border-r border-slate-900 p-4 space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 min-h-0 bg-slate-950 border-r border-slate-900 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2 shrink-0 flex flex-col justify-between overflow-y-auto app-scroll transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
           adminMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -150,7 +146,7 @@ export default function AdminSidebar({
               <button
                 type="button"
                 onClick={onToggleSeoMenu}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`flex min-h-11 w-full items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab.startsWith('seo-')
                     ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
                     : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
@@ -180,7 +176,7 @@ export default function AdminSidebar({
                           });
                           onCloseMenu();
                         }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        className={`flex min-h-10 w-full items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           isSelected
                             ? 'bg-slate-800 text-white'
                             : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
@@ -201,7 +197,7 @@ export default function AdminSidebar({
               <button
                 type="button"
                 onClick={onToggleAgentMenu}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`flex min-h-11 w-full items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab.startsWith('agent-')
                     ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold'
                     : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100 border border-transparent'
@@ -232,7 +228,7 @@ export default function AdminSidebar({
                           });
                           onCloseMenu();
                         }}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        className={`flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           isSelected
                             ? 'bg-slate-800 text-white'
                             : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
@@ -273,7 +269,7 @@ export default function AdminSidebar({
               type="button"
               disabled={!!actionLoading}
               onClick={onRunDemoAutomations}
-              className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
+              className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-xs py-2 px-3 min-h-10 rounded-xl flex items-center justify-center gap-2 shadow-sm font-medium transition-all disabled:opacity-50"
             >
               <Cpu className="w-3.5 h-3.5 text-rose-500" />
               <span>Chạy Thử Nghiệm Automation</span>

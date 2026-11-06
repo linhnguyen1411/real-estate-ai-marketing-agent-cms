@@ -1,6 +1,6 @@
 import { Property } from '../types';
 import { getPropertyThumbnailUrl } from './propertyImage';
-import { getPublicPropertySlug } from './propertyShare';
+import { getPublicPropertySlug, matchesPropertySlug } from './propertyShare';
 
 export function formatPrice(price: number) {
   return `${price.toLocaleString('vi-VN')} tỷ`;
@@ -61,7 +61,7 @@ export function findPropertyFromLocation(
   if (!propertyId && !normalizedSlug) return null;
   return (
     active.find(
-      item => item.id === propertyId || getPropertySlug(item).toLowerCase() === normalizedSlug,
+      item => item.id === propertyId || matchesPropertySlug(item, normalizedSlug),
     ) ?? null
   );
 }

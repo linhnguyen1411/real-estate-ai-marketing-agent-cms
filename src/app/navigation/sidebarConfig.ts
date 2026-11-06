@@ -61,7 +61,8 @@ export function hasUserPermission(user: AuthUser | null | undefined, permissionK
 
 export function hasUserEntitlement(user: AuthUser | null | undefined, feature: string): boolean {
   if (!user) return false;
-  if (isUserSuperAdmin(user) || user.isPlatformRootTeam) return true;
+  if (isUserSuperAdmin(user)) return true;
+  // Platform-root team membership is metadata only — it never grants features.
   return Boolean(user.entitlements?.includes(feature));
 }
 
@@ -74,7 +75,6 @@ export function canAccessAgentMenu(user?: AuthUser | null): boolean {
   if (!user) return false;
   return (
     isUserSuperAdmin(user) ||
-    Boolean(user.isPlatformRootTeam) ||
     hasUserEntitlement(user, 'agent.*') ||
     hasUserEntitlement(user, 'agent.sources') ||
     hasUserPermission(user, 'agent.sources')
@@ -84,10 +84,9 @@ export function canAccessAgentMenu(user?: AuthUser | null): boolean {
 export function buildPrimaryNavItems(currentUser?: AuthUser | null): NavItemConfig[] {
   const isSuper = isUserSuperAdmin(currentUser);
   const isLead = isUserTeamLead(currentUser);
-  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
 
-  const canCrm = isSuper || isRoot || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
-  const canLeads = isSuper || isRoot || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
+  const canCrm = isSuper || hasUserPermission(currentUser, 'crm') || hasUserEntitlement(currentUser, 'crm');
+  const canLeads = isSuper || hasUserPermission(currentUser, 'investor_leads') || hasUserEntitlement(currentUser, 'investor_leads');
   const canLeadMagnet = isSuper || isLead || hasUserPermission(currentUser, 'property.distribute');
   const canProjects = isSuper || hasUserPermission(currentUser, 'projects.admin');
   const canAiContent = isSuper || hasUserPermission(currentUser, 'ai_content.admin') || hasUserEntitlement(currentUser, 'ai_content');
@@ -137,12 +136,10 @@ export function buildSecondaryNavItems(opts: {
   chatHistoryBadge?: number;
   usersBadge?: number;
 }): NavItemConfig[] {
-  const { currentUser, canManageWebsiteChat, canManageCmsUsers } = opts;
+  const { currentUser, canManageCmsUsers } = opts;
   const isSuper = isUserSuperAdmin(currentUser);
   const isLead = isUserTeamLead(currentUser);
-  const isRoot = Boolean(currentUser?.isPlatformRootTeam);
 
-  const canInbox = isSuper || isRoot || hasUserPermission(currentUser, 'fb_inbox') || hasUserEntitlement(currentUser, 'fb_inbox');
   const canAutomations = isSuper || hasUserPermission(currentUser, 'automation.admin');
   const canTeam = isSuper || isLead || opts.canManageTeam || hasUserPermission(currentUser, 'team.members.manage');
   const canRbac = isSuper || opts.canManageRbac || hasUserPermission(currentUser, 'rbac.matrix');
@@ -152,16 +149,7 @@ export function buildSecondaryNavItems(opts: {
 
   const items: NavItemConfig[] = [];
 
-  if (canInbox) {
-    items.push({ id: 'inbox', label: 'Hòm thư inbox đa kênh', icon: MessageSquare, badgeKey: 'pendingInbox' });
-  }
-
   items.push({ id: 'chatbot', label: 'Chatbot AI Nội bộ', icon: Bot });
-
-  if (canManageWebsiteChat) {
-    items.push({ id: 'website-chat', label: 'Chat khách website', icon: MessageSquare, badgeKey: 'websiteChat' as const });
-    items.push({ id: 'chat-history', label: 'Lịch sử chat', icon: MessageSquare, badgeKey: 'chatHistory' });
-  }
 
   if (canAutomations) {
     items.push({ id: 'automations', label: 'Automation AI Center', icon: Cpu });

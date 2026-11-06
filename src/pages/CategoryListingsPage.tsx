@@ -214,7 +214,7 @@ export default function CategoryListingsPage({ forcedFacetSlug }: CategoryListin
             <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
               <Link
                 to={buildListingPath()}
-                className={`rounded-full border px-3 py-1 ${!facetSlug ? 'border-invest-blue bg-invest-blue text-white' : 'border-slate-200 text-slate-600 hover:border-invest-blue/40'}`}
+                className={`inline-flex min-h-11 items-center rounded-full border px-3 py-1 ${!facetSlug ? 'border-invest-blue bg-invest-blue text-white' : 'border-slate-200 text-slate-600 hover:border-invest-blue/40'}`}
               >
                 Tất cả
               </Link>
@@ -225,7 +225,7 @@ export default function CategoryListingsPage({ forcedFacetSlug }: CategoryListin
                   <Link
                     key={slug}
                     to={getListingCategoryPath(def)}
-                    className={`rounded-full border px-3 py-1 ${facetSlug === slug ? 'border-invest-blue bg-invest-blue text-white' : 'border-slate-200 text-slate-600 hover:border-invest-blue/40'}`}
+                    className={`inline-flex min-h-11 items-center rounded-full border px-3 py-1 ${facetSlug === slug ? 'border-invest-blue bg-invest-blue text-white' : 'border-slate-200 text-slate-600 hover:border-invest-blue/40'}`}
                   >
                     {def.label}
                   </Link>

@@ -16,12 +16,13 @@ import {
   CACHE_TTL_MS,
   cacheGetOrSet,
   cacheInvalidate,
+  cacheClear,
   invalidateAfterLeadPromote,
   invalidateCrmModule,
 } from './queryCache';
 import { DEFAULT_SETTINGS } from '../config/defaults';
 
-export { invalidateAfterLeadPromote, invalidateCrmModule, cacheInvalidate };
+export { invalidateAfterLeadPromote, invalidateCrmModule, cacheInvalidate, cacheClear };
 
 type ApiStatus = 'success' | 'error';
 
@@ -310,16 +311,17 @@ export interface UserLicenseInfo {
     deviceName?: string;
     lastHeartbeatAt?: string;
   }>;
-  pem?: string;
   downloadUrl?: string;
   securityNotice?: string;
+  expired?: boolean;
+  hasExistingKey?: boolean;
 }
 
 export function getMyLicense() {
   return apiRequest<UserLicenseInfo>('/api/license/my-license');
 }
 
-export function requestFreePemKey() {
+export function requestFreeLicenseKey() {
   return apiRequest<UserLicenseInfo>('/api/license/request-pem', {
     method: 'POST',
   });
@@ -331,7 +333,6 @@ export function upgradeSubscriptionPlan(plan: 'pro' | 'enterprise', periodDays =
     expiresAt: string;
     features: string[];
     licenseKey: string;
-    pem: string;
     maxDevices: number;
   }>('/api/license/upgrade-plan', {
     method: 'POST',
@@ -793,10 +794,79 @@ export function createEntitlement(payload: {
   });
 }
 
+export interface GrantUserPlanResult {
+  entitlement: EntitlementItem;
+  licenseKeyCreated: boolean;
+}
+
+export function grantUserPlan(payload: {
+  subjectId: string;
+  plan: 'pro' | 'enterprise';
+  expiresAt: string;
+}) {
+  return apiRequest<GrantUserPlanResult>('/api/entitlements/grant-plan', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function deleteEntitlement(id: string) {
   return apiRequest<{ message: string }>(`/api/entitlements/${id}`, {
     method: 'DELETE',
   });
+}
+
+export interface AdminUserOverview {
+  user: User;
+  publicProfile: {
+    enabled: boolean;
+    slug: string;
+    url: string;
+    reason: 'enabled' | 'disabled' | 'inactive';
+  };
+  wallet: {
+    id: string;
+    balance: number;
+    lockedBalance: number;
+    availableBalance: number;
+    status: string;
+    updatedAt: string;
+  } | null;
+  activeEntitlement: EntitlementItem | null;
+  entitlements: EntitlementItem[];
+  licenseKeys: Array<{
+    id: string;
+    key: string | null;
+    status: string;
+    maxDevices: number;
+    createdAt: string;
+    revokedAt: string | null;
+    devices: Array<{
+      deviceName: string;
+      deviceId: string;
+      activatedAt: string;
+      lastHeartbeatAt: string;
+    }>;
+  }>;
+  transactions: WalletTransactionItem[];
+  topUpRequests: TokenTopUpRequestItem[];
+  properties: {
+    total: number;
+    items: Array<{
+      id: string;
+      title: string;
+      type: string;
+      transaction_type: string;
+      location: string;
+      price: number;
+      sale_status: string;
+      created_at: string;
+    }>;
+  };
+}
+
+export function getAdminUserOverview(userId: string) {
+  return apiRequest<AdminUserOverview>(`/api/users/${encodeURIComponent(userId)}/overview`);
 }
 
 export interface UserWalletData {
@@ -824,10 +894,51 @@ export interface WalletTransactionItem {
   createdAt: string;
 }
 
+export interface TopUpBankInfo {
+  bankBin: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface TopUpConfig {
+  tokenRateVnd: number;
+  minTokens: number;
+  maxTokens: number;
+  bank: TopUpBankInfo;
+  planCosts: Record<string, number>;
+}
+
+export interface TokenTopUpPayment {
+  code: string;
+  tokens: number;
+  amountVnd: number;
+  qrUrl: string;
+  bank: TopUpBankInfo;
+  tokenRateVnd: number;
+}
+
+export interface TokenTopUpRequestItem {
+  id: string;
+  code: string;
+  userId: string;
+  tokens: number;
+  amountVnd: number;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | string;
+  note: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  walletTransactionId: string | null;
+  createdAt: string;
+  email?: string;
+  name?: string;
+}
+
 export interface MyWalletResponse {
   wallet: UserWalletData;
   transactions: WalletTransactionItem[];
   planCosts: Record<string, number>;
+  topUpConfig?: TopUpConfig;
 }
 
 export function getMyWallet() {
@@ -841,7 +952,6 @@ export function upgradeLicenseWithTokens(plan: 'pro' | 'enterprise', periodDays 
     newBalance: number;
     expiresAt: string;
     licenseKey: string;
-    pem: string;
     features: string[];
   }>('/api/wallet/upgrade-license', {
     method: 'POST',
@@ -866,5 +976,51 @@ export function adminDepositTokens(payload: { userId: string; amount: number; no
 
 export function getAdminUserTransactions(userId: string) {
   return apiRequest<WalletTransactionItem[]>(`/api/admin/wallets/${encodeURIComponent(userId)}/transactions`);
+}
+
+export function getMyTopUpRequests() {
+  return apiRequest<TokenTopUpRequestItem[]>('/api/wallet/topup-requests');
+}
+
+export function createTokenTopUpRequest(tokens: number) {
+  return apiRequest<{ request: TokenTopUpRequestItem; payment: TokenTopUpPayment }>(
+    '/api/wallet/topup-requests',
+    {
+      method: 'POST',
+      body: JSON.stringify({ tokens }),
+    }
+  );
+}
+
+export function cancelTokenTopUpRequest(requestId: string) {
+  return apiRequest<null>(`/api/wallet/topup-requests/${encodeURIComponent(requestId)}/cancel`, {
+    method: 'POST',
+  });
+}
+
+export function getAdminTopUpRequests(status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'all' = 'pending', search?: string) {
+  const params = new URLSearchParams({ status });
+  if (search) params.set('search', search);
+  return apiRequest<TokenTopUpRequestItem[]>(`/api/admin/wallet/topup-requests?${params.toString()}`);
+}
+
+export function approveTokenTopUpRequest(requestId: string, note?: string) {
+  return apiRequest<{ request: TokenTopUpRequestItem; wallet: UserWalletData; transaction: WalletTransactionItem }>(
+    `/api/admin/wallet/topup-requests/${encodeURIComponent(requestId)}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }
+  );
+}
+
+export function rejectTokenTopUpRequest(requestId: string, reason: string) {
+  return apiRequest<TokenTopUpRequestItem>(
+    `/api/admin/wallet/topup-requests/${encodeURIComponent(requestId)}/reject`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }
+  );
 }
 

@@ -12,6 +12,8 @@ export interface PublicPropertyDTO {
   type?: string;
   status?: string;
   sale_status?: string;
+  is_featured?: boolean;
+  public_view_count?: number;
   direction?: string;
   legal_status?: string;
   description?: string;
@@ -69,6 +71,8 @@ export function toPublicPropertySummary(property: Property): PublicPropertyDTO {
     location: stripped.location,
     type: stripped.type,
     sale_status: stripped.sale_status,
+    is_featured: Boolean(stripped.is_featured),
+    public_view_count: Number(stripped.public_view_count || 0),
     direction: stripped.direction,
     legal_status: stripped.legal_status,
     description: stripped.description,

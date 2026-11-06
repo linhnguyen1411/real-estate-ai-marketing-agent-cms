@@ -383,6 +383,47 @@ export async function getAllRolePermissions(): Promise<RolePermissionRule[]> {
   return memoryRolePermissions;
 }
 
+/** All entitlements for a subject, including expired ones (used for one-time trials). */
+export async function findEntitlementsBySubject(
+  subjectType: 'user' | 'team',
+  subjectId: string,
+  plans?: string[],
+): Promise<DbEntitlement[]> {
+  if (shouldUsePrisma()) {
+    try {
+      const rows = await prisma.entitlement.findMany({
+        where: {
+          subjectType,
+          subjectId,
+          ...(plans && plans.length ? { plan: { in: plans } } : {}),
+        },
+        orderBy: { expiresAt: 'desc' },
+      });
+      if (rows) {
+        return rows.map((r) => ({
+          id: r.id,
+          subjectType: r.subjectType as 'user' | 'team',
+          subjectId: r.subjectId,
+          plan: r.plan,
+          features: Array.isArray(r.features) ? (r.features as string[]) : [],
+          startsAt: r.startsAt,
+          expiresAt: r.expiresAt,
+          source: r.source,
+          grantedBy: r.grantedBy,
+        }));
+      }
+    } catch {
+      // Fallback to memory
+    }
+  }
+  return Array.from(memoryEntitlements.values()).filter(
+    (ent) =>
+      ent.subjectType === subjectType &&
+      ent.subjectId === subjectId &&
+      (!plans || plans.length === 0 || plans.includes(ent.plan)),
+  );
+}
+
 export async function getActiveEntitlements(
   subjectType: 'user' | 'team',
   subjectId: string,
@@ -569,6 +610,60 @@ export async function createEntitlement(
       return ent;
     } catch {
       // Fallback
+    }
+  }
+  memoryEntitlements.set(ent.id, ent);
+  return ent;
+}
+
+export async function replaceActiveEntitlement(
+  data: Omit<DbEntitlement, 'id'> & { id?: string }
+): Promise<DbEntitlement> {
+  const id = data.id || `ent-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const ent: DbEntitlement = {
+    id,
+    subjectType: data.subjectType,
+    subjectId: data.subjectId,
+    plan: data.plan,
+    features: data.features,
+    startsAt: data.startsAt,
+    expiresAt: data.expiresAt,
+    source: data.source,
+    grantedBy: data.grantedBy,
+  };
+  const now = new Date();
+  if (shouldUsePrisma()) {
+    try {
+      await prisma.$transaction([
+        prisma.entitlement.deleteMany({
+          where: {
+            subjectType: ent.subjectType,
+            subjectId: ent.subjectId,
+            expiresAt: { gte: now },
+          },
+        }),
+        prisma.entitlement.create({
+          data: {
+            id: ent.id,
+            subjectType: ent.subjectType,
+            subjectId: ent.subjectId,
+            plan: ent.plan,
+            features: ent.features,
+            startsAt: ent.startsAt,
+            expiresAt: ent.expiresAt,
+            source: ent.source,
+            grantedBy: ent.grantedBy,
+          },
+        }),
+      ]);
+      return ent;
+    } catch {
+      // Fallback
+    }
+  }
+  for (const [key, value] of Array.from(memoryEntitlements.entries())) {
+    if (value.subjectType === ent.subjectType && value.subjectId === ent.subjectId && value.expiresAt >= now) {
+      memoryEntitlements.delete(key);
     }
   }
   memoryEntitlements.set(ent.id, ent);

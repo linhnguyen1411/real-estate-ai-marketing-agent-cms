@@ -17,23 +17,30 @@ import {
   formatAgentDate,
 } from '../../shared/AgentPlatformUi';
 
+type SourceScope = 'system' | 'company';
+
 const EMPTY_FORM = {
   name: '',
   type: 'facebook_group',
   url: '',
   priority: 5,
   scanIntervalMinutes: 60,
+  scope: 'company' as SourceScope,
 };
 
-type Props = { canManage: boolean };
+type Props = { canManage: boolean; isSuperAdmin?: boolean };
 
-export default function AgentSources({ canManage }: Props) {
+export default function AgentSources({ canManage, isSuperAdmin = false }: Props) {
   const [sources, setSources] = useState<AgentSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const makeEmptyForm = () => ({
+    ...EMPTY_FORM,
+    scope: (isSuperAdmin ? 'system' : 'company') as SourceScope,
+  });
+  const [form, setForm] = useState(makeEmptyForm);
   const [editing, setEditing] = useState<AgentSource | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -55,7 +62,7 @@ export default function AgentSources({ canManage }: Props) {
   }, [load]);
 
   const resetForm = () => {
-    setForm(EMPTY_FORM);
+    setForm(makeEmptyForm());
     setEditing(null);
     setShowForm(false);
   };
@@ -64,13 +71,28 @@ export default function AgentSources({ canManage }: Props) {
     event.preventDefault();
     if (!canManage) return;
     setMessage('');
+    const payload: Record<string, unknown> = {
+      name: form.name,
+      type: form.type,
+      url: form.url,
+      priority: form.priority,
+      scanIntervalMinutes: form.scanIntervalMinutes,
+    };
+    const originalScope = editing ? (editing.companyId === null ? 'system' : 'company') : null;
+    if (isSuperAdmin && (!editing || form.scope !== originalScope)) {
+      payload.scope = form.scope;
+    }
     try {
       if (editing) {
-        await updateAgentSource(editing.id, form);
+        await updateAgentSource(editing.id, payload);
         setMessage('Đã cập nhật nguồn.');
       } else {
-        await createAgentSource(form);
-        setMessage('Đã tạo nguồn.');
+        await createAgentSource(payload as Parameters<typeof createAgentSource>[0]);
+        setMessage(
+          isSuperAdmin && form.scope === 'system'
+            ? 'Đã tạo nguồn dùng chung toàn hệ thống.'
+            : 'Đã tạo nguồn.',
+        );
       }
       resetForm();
       load();
@@ -108,6 +130,25 @@ export default function AgentSources({ canManage }: Props) {
     }
   };
 
+  const handleChangeScope = async (source: AgentSource, scope: SourceScope) => {
+    if (!isSuperAdmin) return;
+    setBusyId(source.id);
+    setMessage('');
+    try {
+      await updateAgentSource(source.id, { scope });
+      setMessage(
+        scope === 'system'
+          ? 'Đã chuyển nguồn thành dùng chung toàn hệ thống.'
+          : 'Đã chuyển nguồn về phạm vi công ty.',
+      );
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Đổi phạm vi thất bại.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleDelete = async (source: AgentSource) => {
     if (
       !canManage ||
@@ -140,14 +181,14 @@ export default function AgentSources({ canManage }: Props) {
     <div className="space-y-6">
       <AgentPanelHeader
         title="Nguồn quét (Sources)"
-        subtitle="Facebook group / feed cá nhân, website, forum — checkpoint chống trùng"
+        subtitle="Nguồn hệ thống dùng chung cho mọi agent; người dùng chỉ tick chọn trên desktop. Nguồn công ty chỉ áp dụng nội bộ."
         onRefresh={load}
         actions={
           canManage ? (
             <button
               type="button"
-              onClick={() => { setShowForm(true); setEditing(null); setForm(EMPTY_FORM); }}
-              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
+              onClick={() => { setShowForm(true); setEditing(null); setForm(makeEmptyForm()); }}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
             >
               <Plus className="h-3.5 w-3.5" />
               Thêm nguồn
@@ -210,6 +251,19 @@ export default function AgentSources({ canManage }: Props) {
             onChange={e => setForm(prev => ({ ...prev, url: e.target.value }))}
             className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm sm:col-span-2"
           />
+          {isSuperAdmin && (
+            <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">
+              Phạm vi sử dụng
+              <select
+                value={form.scope}
+                onChange={e => setForm(prev => ({ ...prev, scope: e.target.value as SourceScope }))}
+                className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="system">Dùng chung toàn hệ thống — mọi agent đều thấy</option>
+                <option value="company">Chỉ công ty của tôi</option>
+              </select>
+            </label>
+          )}
           <div className="flex gap-2 sm:col-span-2">
             <button type="submit" className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white">
               {editing ? 'Cập nhật' : 'Tạo nguồn'}
@@ -227,6 +281,8 @@ export default function AgentSources({ canManage }: Props) {
           description="Thêm Facebook group, feed cá nhân (facebook.com), hoặc website để worker thu thập bài viết."
         />
       ) : (
+        <>
+        <p className="mb-1 text-[11px] text-slate-500 md:hidden">Vuốt ngang bảng để xem thêm cột.</p>
         <div className="overflow-x-auto rounded-xl border border-slate-800">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-slate-900 text-xs uppercase text-slate-500">
@@ -263,11 +319,20 @@ export default function AgentSources({ canManage }: Props) {
                 const postsNew = scanStats?.newPostsInserted ?? scanStats?.postsNew;
                 const findings = scanStats?.findingsCreated ?? scanStats?.findings;
                 const stopReason = checkpoint.lastStopReason || scanStats?.stoppedReason;
+                const isSystemSource = source.companyId === null;
+                const canOperate = canManage && (!isSystemSource || isSuperAdmin);
                 return (
                 <tr key={source.id} className="border-t border-slate-800 hover:bg-slate-900/40">
                   <td className="px-3 py-3">
-                    <div className="font-medium text-white">{source.name}</div>
-                    <a href={source.url} target="_blank" rel="noreferrer" className="text-xs text-rose-400 hover:underline">
+                    <div className="flex items-center gap-2 font-medium text-white">
+                      {source.name}
+                      {isSystemSource && (
+                        <span className="rounded-full bg-sky-900/60 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-300">
+                          Hệ thống
+                        </span>
+                      )}
+                    </div>
+                    <a href={source.url} target="_blank" rel="noreferrer" className="inline-flex min-h-6 items-center text-xs text-rose-400 hover:underline">
                       {source.url.slice(0, 48)}{source.url.length > 48 ? '…' : ''}
                     </a>
                     {source.lastError && (
@@ -299,13 +364,13 @@ export default function AgentSources({ canManage }: Props) {
                     <div className="font-mono text-amber-200/80">{stopReason || '—'}</div>
                   </td>
                   <td className="px-3 py-3">
-                    {canManage && (
+                    {canOperate && (
                       <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
                           disabled={busyId === source.id}
                           onClick={() => handleScan(source)}
-                          className="rounded bg-sky-900/50 px-2 py-1 text-xs text-sky-200"
+                          className="inline-flex min-h-10 min-w-10 items-center justify-center rounded bg-sky-900/50 px-2 py-1 text-xs text-sky-200"
                           title="Tạo job quét"
                         >
                           <ScanLine className="inline h-3 w-3" />
@@ -314,7 +379,7 @@ export default function AgentSources({ canManage }: Props) {
                           type="button"
                           disabled={busyId === source.id}
                           onClick={() => togglePause(source)}
-                          className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                          className="inline-flex min-h-10 min-w-10 items-center justify-center rounded bg-slate-800 px-2.5 py-1 text-xs text-slate-200"
                         >
                           {source.status === 'active' ? <Pause className="inline h-3 w-3" /> : <Play className="inline h-3 w-3" />}
                         </button>
@@ -328,17 +393,29 @@ export default function AgentSources({ canManage }: Props) {
                               url: source.url,
                               priority: source.priority,
                               scanIntervalMinutes: source.scanIntervalMinutes,
+                              scope: isSystemSource ? 'system' : 'company',
                             });
                             setShowForm(true);
                           }}
-                          className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                          className="inline-flex min-h-10 items-center rounded bg-slate-800 px-2.5 py-1 text-xs text-slate-200"
                         >
                           Sửa
                         </button>
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            disabled={busyId === source.id}
+                            onClick={() => handleChangeScope(source, isSystemSource ? 'company' : 'system')}
+                            className="inline-flex min-h-10 items-center rounded bg-sky-950/60 px-2 py-1 text-xs text-sky-300"
+                            title={isSystemSource ? 'Chuyển về nguồn riêng của công ty' : 'Dùng chung cho mọi agent'}
+                          >
+                            {isSystemSource ? 'Về công ty' : 'Dùng chung'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDelete(source)}
-                          className="rounded bg-rose-950/60 px-2 py-1 text-xs text-rose-300"
+                          className="inline-flex min-h-10 items-center rounded bg-rose-950/60 px-2 py-1 text-xs text-rose-300"
                         >
                           Xóa
                         </button>
@@ -351,6 +428,7 @@ export default function AgentSources({ canManage }: Props) {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

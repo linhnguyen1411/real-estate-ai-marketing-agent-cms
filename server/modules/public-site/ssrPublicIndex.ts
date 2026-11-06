@@ -45,6 +45,21 @@ function keywordsForHome(): string[] {
   return buildSiteSeoKeywords(getProperties(), [...SITE.defaultKeywords]);
 }
 
+/** Property links injected into listing HTML so crawlers can discover detail pages. */
+function featuredPropertyLinks(limit = 12) {
+  const visible = getProperties().filter(
+    property => !['sold', 'hidden'].includes(property.sale_status || 'available'),
+  );
+  const ordered = [...visible.filter(property => property.is_featured), ...visible.filter(property => !property.is_featured)];
+  return ordered.slice(0, limit).map(property => ({
+    href: getPropertyPath(property),
+    title: property.title,
+    price: property.price,
+    area: property.area,
+    location: property.location,
+  }));
+}
+
 function resolveHomeSeo(origin: string): SeoMetadata {
   const seo = resolveSeo({
     route: '/',
@@ -142,7 +157,7 @@ export async function sendPublicIndex(
   if (!pathSlug) {
     const seo = resolveHomeSeo(origin);
     const schemas = materializeJsonLd(seo, { origin });
-    const bodyHtml = buildSsrBody({ seo });
+    const bodyHtml = buildSsrBody({ seo, featuredProperties: featuredPropertyLinks() });
     await sendHtml(
       helpers,
       req,
@@ -157,6 +172,7 @@ export async function sendPublicIndex(
     const schemas = materializeJsonLd(staticSeo, { origin });
     const bodyHtml = buildSsrBody({
       seo: staticSeo,
+      featuredProperties: featuredPropertyLinks(),
       article: staticSeo.pageType === PageType.ARTICLE || staticSeo.pageType === PageType.PROJECT
         ? {
             title: staticSeo.title,

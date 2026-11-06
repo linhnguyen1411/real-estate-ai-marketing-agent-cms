@@ -142,6 +142,8 @@ export function createAgentSource(payload: {
   priority?: number;
   scanIntervalMinutes?: number;
   config?: Record<string, unknown>;
+  /** "system" makes the source shared with every agent (Super Admin only). */
+  scope?: 'system' | 'company';
 }) {
   return agentRequest<AgentSource>('/api/agent/sources', {
     method: 'POST',

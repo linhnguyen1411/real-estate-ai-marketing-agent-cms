@@ -439,7 +439,7 @@ export default function ExecutiveDashboardPage() {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Action Center</h3>
         <div className="mt-2 flex flex-wrap gap-2">
           {snap.actions.available.map(a => (
-            <Link key={a.id} to={a.href.startsWith('/api/') ? '/admin/agents/runtime' : a.href} className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
+            <Link key={a.id} to={a.href.startsWith('/api/') ? '/admin/agents/runtime' : a.href} className="inline-flex min-h-11 items-center rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
               {a.label}
             </Link>
           ))}

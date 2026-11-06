@@ -36,17 +36,17 @@ export default function PublicSiteFooter() {
               </li>
             ))}
             <li>
-              <a href={`mailto:${CONTACT.email}`} className="hover:text-white">
+              <a href={`mailto:${CONTACT.email}`} className="inline-flex min-h-6 items-center hover:text-white">
                 {CONTACT.email}
               </a>
             </li>
             <li>
-              <a href={CONTACT.facebook} target="_blank" rel="noreferrer" className="hover:text-white">
+              <a href={CONTACT.facebook} target="_blank" rel="noreferrer" className="inline-flex min-h-6 items-center hover:text-white">
                 Facebook
               </a>
             </li>
             <li>
-              <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="hover:text-white">
+              <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="inline-flex min-h-6 items-center hover:text-white">
                 Zalo
               </a>
             </li>
@@ -57,18 +57,18 @@ export default function PublicSiteFooter() {
           <ul className="mt-3 space-y-2 text-sm">
             {FOOTER_LEGAL.map(link => (
               <li key={link.href}>
-                <Link to={link.href} className="hover:text-white">
+                <Link to={link.href} className="inline-flex min-h-6 items-center hover:text-white">
                   {link.label}
                 </Link>
               </li>
             ))}
             <li>
-              <Link to="/gioi-thieu" className="hover:text-white">
+              <Link to="/gioi-thieu" className="inline-flex min-h-6 items-center hover:text-white">
                 Giới thiệu
               </Link>
             </li>
             <li>
-              <Link to="/tac-gia/nguyen-phan-hoang-linh" className="hover:text-white">
+              <Link to="/tac-gia/nguyen-phan-hoang-linh" className="inline-flex min-h-6 items-center hover:text-white">
                 Tác giả
               </Link>
             </li>

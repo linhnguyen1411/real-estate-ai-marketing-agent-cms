@@ -58,6 +58,9 @@ function resolveVpsHealthUrl(settings: AppSettings): string {
   return `${base}/api/agent-ingest/v1/health`;
 }
 
+/** serverTime - localTime; keeps HMAC valid even when this host's clock drifts. */
+let clockOffsetMs = 0;
+
 async function signedFetch(
   url: string,
   method: 'GET' | 'POST',
@@ -71,49 +74,63 @@ async function signedFetch(
   }
   const path = new URL(url).pathname;
   const bodyHash = sha256Hex(body || '');
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const nonce = crypto.randomBytes(16).toString('hex');
-  const canonical = buildCanonicalString({
-    method,
-    path,
-    timestamp,
-    nonce,
-    bodyHash,
-  });
-  const signature = signCanonical(secret, canonical);
   const timeoutMs = Number(settings.agent_sync_timeout_ms || 20_000);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
+
+  const send = async (): Promise<{ res: Response; json: Record<string, unknown> }> => {
+    const timestamp = String(Math.floor((Date.now() + clockOffsetMs) / 1000));
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const canonical = buildCanonicalString({
       method,
-      headers: {
-        ...(body != null ? { 'Content-Type': 'application/json' } : {}),
-        'X-Agent-Key-Id': keyId,
-        'X-Agent-Timestamp': timestamp,
-        'X-Agent-Nonce': nonce,
-        'X-Agent-Signature': signature,
-        ...(body
-          ? {
-              'X-Idempotency-Key': (() => {
-                try {
-                  const parsed = JSON.parse(body) as { idempotencyKey?: string; ingestionId?: string };
-                  return String(parsed.idempotencyKey || parsed.ingestionId || nonce);
-                } catch {
-                  return nonce;
-                }
-              })(),
-            }
-          : {}),
-      },
-      body: body ?? undefined,
-      signal: controller.signal,
+      path,
+      timestamp,
+      nonce,
+      bodyHash,
     });
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    return { res, json };
-  } finally {
-    clearTimeout(timer);
+    const signature = signCanonical(secret, canonical);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          ...(body != null ? { 'Content-Type': 'application/json' } : {}),
+          'X-Agent-Key-Id': keyId,
+          'X-Agent-Timestamp': timestamp,
+          'X-Agent-Nonce': nonce,
+          'X-Agent-Signature': signature,
+          ...(body
+            ? {
+                'X-Idempotency-Key': (() => {
+                  try {
+                    const parsed = JSON.parse(body) as { idempotencyKey?: string; ingestionId?: string };
+                    return String(parsed.idempotencyKey || parsed.ingestionId || nonce);
+                  } catch {
+                    return nonce;
+                  }
+                })(),
+              }
+            : {}),
+        },
+        body: body ?? undefined,
+        signal: controller.signal,
+      });
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      return { res, json };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let result = await send();
+  if (result.res.status === 401 && result.json?.code === 'TIMESTAMP_SKEW') {
+    const serverTime = Number(result.json.serverTime);
+    if (Number.isFinite(serverTime) && serverTime > 0) {
+      clockOffsetMs = serverTime - Date.now();
+      // Fresh timestamp + nonce: the server rejects a replayed nonce.
+      result = await send();
+    }
   }
+  return result;
 }
 
 export type VpsHealthTestResult = {

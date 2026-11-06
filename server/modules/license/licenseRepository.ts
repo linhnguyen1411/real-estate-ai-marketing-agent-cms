@@ -5,6 +5,7 @@ export interface DbLicenseKey {
   id: string;
   userId: string;
   keyHash: string;
+  keyCipher?: string | null;
   status: 'active' | 'revoked' | 'expired';
   maxDevices: number;
   createdAt: Date;
@@ -34,12 +35,14 @@ function shouldUsePrisma(): boolean {
 export async function createLicenseKey(data: {
   userId: string;
   keyHash: string;
+  keyCipher?: string | null;
   maxDevices?: number;
 }): Promise<DbLicenseKey> {
   const licenseKey: DbLicenseKey = {
     id: `lk-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
     userId: data.userId,
     keyHash: data.keyHash,
+    keyCipher: data.keyCipher ?? null,
     status: 'active',
     maxDevices: data.maxDevices ?? 1,
     createdAt: new Date(),
@@ -53,20 +56,90 @@ export async function createLicenseKey(data: {
           id: licenseKey.id,
           userId: licenseKey.userId,
           keyHash: licenseKey.keyHash,
+          keyCipher: licenseKey.keyCipher,
           status: licenseKey.status,
           maxDevices: licenseKey.maxDevices,
           createdAt: licenseKey.createdAt,
           revokedAt: licenseKey.revokedAt,
-        },
+        } as any,
       });
       return licenseKey;
-    } catch {
+    } catch (error: any) {
+      // The partial unique index allows only one active key per account.
+      // Surface the conflict so callers can reuse the winning row instead of
+      // silently issuing a memory-only key that the DB never saw.
+      if (error?.code === 'P2002') {
+        throw error;
+      }
       // Fallback
     }
   }
 
   memoryLicenseKeys.set(licenseKey.id, licenseKey);
   return licenseKey;
+}
+
+/**
+ * Update the secret material of an existing key in place. Used when rotating
+ * legacy keys that were stored hash-only (raw value unrecoverable).
+ */
+export async function updateLicenseKeySecret(
+  id: string,
+  data: {
+    keyHash: string;
+    keyCipher: string;
+    maxDevices?: number;
+    status?: DbLicenseKey['status'];
+    revokedAt?: Date | null;
+  },
+): Promise<DbLicenseKey | null> {
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.licenseKey.update({
+        where: { id },
+        data: {
+          keyHash: data.keyHash,
+          keyCipher: data.keyCipher,
+          maxDevices: data.maxDevices,
+          status: data.status ?? 'active',
+          revokedAt: data.revokedAt ?? null,
+        } as any,
+      });
+      return row as DbLicenseKey;
+    } catch {
+      // Fallback
+    }
+  }
+
+  const existing = memoryLicenseKeys.get(id);
+  if (!existing) return null;
+  existing.keyHash = data.keyHash;
+  existing.keyCipher = data.keyCipher;
+  if (data.maxDevices !== undefined) existing.maxDevices = data.maxDevices;
+  existing.status = data.status ?? 'active';
+  existing.revokedAt = data.revokedAt ?? null;
+  return existing;
+}
+
+export async function updateLicenseKeyMaxDevices(
+  id: string,
+  maxDevices: number,
+): Promise<DbLicenseKey | null> {
+  if (shouldUsePrisma()) {
+    try {
+      const row = await prisma.licenseKey.update({
+        where: { id },
+        data: { maxDevices },
+      });
+      return row as DbLicenseKey;
+    } catch {
+      // Fallback
+    }
+  }
+  const existing = memoryLicenseKeys.get(id);
+  if (!existing) return null;
+  existing.maxDevices = maxDevices;
+  return existing;
 }
 
 export async function findLicenseKeyByHash(keyHash: string): Promise<DbLicenseKey | null> {

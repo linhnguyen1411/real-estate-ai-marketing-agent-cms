@@ -17,7 +17,7 @@
 - **Câu trả lời chuẩn:**
   Để đăng tin bất động sản lên hệ thống:
   1. Đăng nhập vào tài khoản chuyên viên tại `https://bdsdanang.site/dang-nhap`.
-  2. Tại thanh điều hướng bên trái, chọn mục **Danh sách Bất động sản** (`/admin#properties`).
+  2. Tại thanh điều hướng bên trái của dashboard, chọn mục **Danh sách Bất động sản**.
   3. Bấm vào nút **"+ Thêm Bất động sản"** ở góc phải màn hình.
   4. Điền đầy đủ thông tin: Tiêu đề, loại BĐS (Đất nền, Nhà phố, Căn hộ...), giá (tính theo tỷ VNĐ), diện tích ($m^2$), vị trí địa chỉ và pháp lý.
   5. **Bắt buộc chọn Nguồn tin:** Tick chọn **Môi giới** hoặc **Chính chủ**.
@@ -55,7 +55,7 @@
 - **Câu trả lời chuẩn:**
   Hệ thống bdsdanang.site phân định rõ 2 phân hệ giỏ hàng tùy thuộc vào đối tượng người dùng:
   1. **Nếu bạn là Khách mua / Nhà đầu tư:** Bạn có thể xem giỏ hàng nhà đất công khai tại [Cổng tìm kiếm Bất động sản công khai](/bat-dong-san).
-  2. **Nếu bạn là Chuyên viên môi giới nội bộ:** Bạn đăng nhập tài khoản và truy cập mục [Danh sách Bất động sản](/admin#properties) để xem và quản lý kho hàng nội bộ của mình và đội nhóm.
+  2. **Nếu bạn là Chuyên viên môi giới nội bộ:** Bạn đăng nhập tài khoản và mở mục **Danh sách Bất động sản** trong menu bên trái của dashboard để xem và quản lý kho hàng nội bộ của mình và đội nhóm.
 
 ---
 
@@ -71,8 +71,8 @@
 - **Câu trả lời chuẩn:**
   Mã giới thiệu (Referral Code) là một chuỗi ký tự duy nhất (dạng `REF-XXXXXX`) gắn liền với mỗi tài khoản.
   - **Mục đích:** Khi người khác đăng ký tài khoản và nhập mã của bạn, họ sẽ tự động được thêm vào Đội nhóm (Team) do bạn quản lý.
-  - **Cách lấy mã:** Bạn đăng nhập vào hệ thống, bấm vào mục **Hồ sơ cá nhân** (`/admin#profile`). Tại đây, hệ thống hiển thị **Mã giới thiệu của bạn** (Ví dụ: `REF-UOWNER` hoặc mã riêng của bạn). Bạn sao chép mã này gửi cho nhân viên/thành viên mới.
-  - **Duyệt thành viên:** Sau khi người mới đăng ký thành công có nhập mã, bạn vào mục **Quản lý Team** (`/admin#team`) để bấm nút **Duyệt (Approve)** cho họ vào nhóm chính thức.
+  - **Cách lấy mã:** Bạn đăng nhập vào hệ thống, bấm vào mục **Hồ sơ cá nhân** ở góc dưới menu trái. Tại đây, hệ thống hiển thị **Mã giới thiệu của bạn** (Ví dụ: `REF-UOWNER` hoặc mã riêng của bạn). Bạn sao chép mã này gửi cho nhân viên/thành viên mới.
+  - **Duyệt thành viên:** Sau khi người mới đăng ký thành công có nhập mã, bạn vào mục **Quản lý Team** trong menu bên trái của dashboard để bấm nút **Duyệt (Approve)** cho họ vào nhóm chính thức.
 
 ### Câu hỏi 2.2: Tôi đã đăng ký tài khoản nhưng tại sao không xem được giỏ hàng của Team?
 - **Các cách diễn đạt khác:**
@@ -93,7 +93,7 @@
 - **Câu trả lời chuẩn:**
   Hoàn toàn được! Bạn không cần tạo tài khoản mới. Hãy làm theo các bước sau:
   1. Đăng nhập vào tài khoản của bạn.
-  2. Bấm vào mục **Hồ sơ cá nhân** (`/admin#profile`).
+  2. Bấm vào mục **Hồ sơ cá nhân** ở góc dưới menu trái.
   3. Tìm đến ô **"Mã giới thiệu bảo trợ"**.
   4. Nhập mã giới thiệu của Trưởng nhóm bạn (Ví dụ: `REF-UOWNER` hoặc mã riêng của Leader).
   5. Bấm **"Lưu hồ sơ"**. Bạn sẽ được chuyển vào danh sách chờ duyệt của Team đó và nhờ Leader bấm Duyệt.

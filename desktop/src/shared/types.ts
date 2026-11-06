@@ -52,6 +52,64 @@ export type ScanSpeedMode = 'turbo' | 'fast' | 'standard';
 
 export type ActiveTab = 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings';
 
+export type AgentRoleKey = 'super_admin' | 'team_lead' | 'member' | 'independent' | 'pending_member';
+
+export type AgentDataScope = 'all' | 'team' | 'own' | 'none';
+
+export interface DesktopUserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  roleKey: AgentRoleKey;
+  roleLabel: string;
+  companyId: string | null;
+  teamId: string | null;
+  portal: 'admin' | 'my';
+}
+
+export interface AgentCapabilities {
+  roleKey: AgentRoleKey;
+  roleLabel: string;
+  portal: 'admin' | 'my';
+  scope: AgentDataScope;
+  canScan: boolean;
+  canManageSources: boolean;
+  canPublish: boolean;
+  canViewReports: boolean;
+  canUseNotifications: boolean;
+  canManageVps: boolean;
+  canManageDevices: boolean;
+}
+
+export interface IngestCredentialInfo {
+  keyId: string;
+  secret: string;
+  expiresAt: string | null;
+}
+
+export interface DesktopAuthState {
+  authenticated: boolean;
+  offlineMode?: boolean;
+  user?: DesktopUserProfile | null;
+  capabilities?: AgentCapabilities | null;
+  plan?: string | null;
+  features?: string[];
+  expiresAt?: string | null;
+  vpsUrl?: string;
+  remember?: boolean;
+  serverTime?: string;
+  /** Shown on the login screen after logout / forced lock. */
+  notice?: string;
+}
+
+export interface DesktopLoginResult {
+  success: boolean;
+  message?: string;
+  code?: string;
+  state?: DesktopAuthState;
+}
+
 export interface DesktopAgentStats {
   facebookPostsTotal: number;
   zaloMessagesTotal: number;
@@ -86,6 +144,15 @@ export interface DesktopAgentSettings {
   rotateIntervalMinutes: number;
   rotateIntervalSec?: number;
   scanSpeedMode?: ScanSpeedMode;
+  /** null/undefined = every source from the server is enabled. [] = scan nothing. */
+  enabledSourceIds?: string[] | null;
+  telegramEnabled: boolean;
+  telegramBotToken: string;
+  telegramChatId: string;
+  /** When true every DEMAND lead is pushed, otherwise only hot leads. */
+  telegramNotifyAllDemand: boolean;
+  /** Auto-download and install desktop agent updates from the VPS manifest. */
+  autoUpdateEnabled: boolean;
 }
 
 export interface InventoryProperty {

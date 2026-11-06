@@ -41,7 +41,6 @@ Legend:
 | `GET /api/properties` | Yes | Member+ | Yes | Partial | Scoped via `scopeCollection` |
 | `POST /api/properties` | Yes | Member+ | Yes | Partial | Sets `accessDefaults` |
 | `POST /api/properties/quick-parse` | Yes | Member+ | Yes | Partial | Parses raw text via NLP/Regex |
-| `POST /api/properties/batch-import` | Yes | Member+ | Yes | Partial | Batch CSV/Excel import |
 | `GET /api/properties/:id` | Yes | Member+ | Yes | Partial | Enforces `canAccessResource` |
 | `PUT /api/properties/:id` | Yes | Member+ | Yes | Partial | Enforces `canManageResource` |
 | `DELETE /api/properties/:id` | Yes | Company+ | Yes | Partial | Enforces `canManageResource` |

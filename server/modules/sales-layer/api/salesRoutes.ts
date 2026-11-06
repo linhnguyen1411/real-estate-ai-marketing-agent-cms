@@ -15,15 +15,32 @@ import {
 import { SALES_PIPELINE_STAGES, type SalesPipelineStage } from '../types';
 import type { LearningOutcome } from '../../lead-acquisition/types';
 import { requirePermission } from '../../rbac';
+import { canAccessCompany, resolveRequestCompanyId } from '../../auth';
+import { prisma } from '../../../prisma';
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
+
+async function assertFindingAccess(req: Request, res: Response, findingId: string): Promise<boolean> {
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id: findingId },
+    select: { companyId: true },
+  });
+  if (!finding) {
+    sendError(res, 404, 'Finding not found');
+    return false;
+  }
+  if (!canAccessCompany(req, finding.companyId)) {
+    sendError(res, 403, 'Forbidden');
+    return false;
+  }
+  return true;
+}
 
 export function registerSalesLayerRoutes(app: Express): void {
   app.use('/api/sales', requirePermission('lead.intel'));
   app.get('/api/sales/metrics', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const sinceHours = Number(req.query.sinceHours || 720);
       const data = await getSalesPipelineMetrics({
         companyId,
@@ -37,8 +54,7 @@ export function registerSalesLayerRoutes(app: Express): void {
 
   app.get('/api/sales/briefing', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const metrics = await getSalesPipelineMetrics({ companyId, sinceHours: 720 });
       res.json({
         status: 'success',
@@ -51,8 +67,7 @@ export function registerSalesLayerRoutes(app: Express): void {
 
   app.get('/api/sales/pipeline', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const limit = Number(req.query.limit || 200);
       const data = await listSalesPipeline({
         companyId,
@@ -66,6 +81,7 @@ export function registerSalesLayerRoutes(app: Express): void {
 
   app.post('/api/sales/:id/process', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const profile = await processSalesLayer({
         findingId: req.params.id,
         notifyFollowUp: Boolean((req.body as { notify?: boolean })?.notify),
@@ -79,6 +95,7 @@ export function registerSalesLayerRoutes(app: Express): void {
 
   app.patch('/api/sales/:id/stage', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const body = (req.body || {}) as Record<string, unknown>;
       const stage = String(body.stage || '') as SalesPipelineStage;
       if (!SALES_PIPELINE_STAGES.includes(stage)) return sendError(res, 400, 'Invalid stage');
@@ -100,6 +117,7 @@ export function registerSalesLayerRoutes(app: Express): void {
 
   app.post('/api/sales/:id/learn', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const body = (req.body || {}) as Record<string, unknown>;
       const outcome = String(body.outcome || '') as LearningOutcome;
       if (!OUTCOMES.includes(outcome)) return sendError(res, 400, 'Invalid outcome');

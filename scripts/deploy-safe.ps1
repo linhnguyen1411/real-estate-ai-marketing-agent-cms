@@ -1,5 +1,7 @@
+# Production origin since 2026-11-06: 45.117.170.118. The previous host
+# (112.213.87.124) is a standby that only proxies HTTPS traffic.
 param(
-  [string]$HostName = $env:VPS_HOST,
+  [string]$HostName = $(if ($env:VPS_HOST) { $env:VPS_HOST } else { "45.117.170.118" }),
   [string]$User = "root",
   [string]$ArchiveName = "deploy-agent-safe.tar.gz",
   [string]$HealthUrl = "https://bdsdanang.site/api/health",
@@ -8,7 +10,7 @@ param(
 )
 
 if (-not $HostName) {
-  Write-Error "HostName is required. Provide -HostName <IP/Host> or set `$env:VPS_HOST."
+  Write-Error "HostName resolved empty. Pass -HostName <IP/Host> (production: 45.117.170.118)."
   exit 1
 }
 
@@ -36,7 +38,9 @@ if (-not $SkipLint) {
 
 Write-Host "==> Create archive" -ForegroundColor Cyan
 if (Test-Path $localArchive) { Remove-Item $localArchive -Force }
-# Exclude only root runtime *data* dirs, local DB, installer builds, archives — never exclude server/**/runtime source modules.
+# Exclude root runtime state (QA artifacts, session cookies, watchdog logs) and
+# production-managed media (content-images/agent-avatars/blog-covers) so a deploy
+# never overwrites live uploads. Never exclude server/**/runtime source modules.
 tar -czf $ArchiveName `
   --exclude=.git `
   --exclude=node_modules `
@@ -53,6 +57,14 @@ tar -czf $ArchiveName `
   --exclude=.dev/** `
   --exclude=desktop/dist `
   --exclude=desktop/dist/** `
+  --exclude=./runtime `
+  --exclude=./runtime/** `
+  --exclude=./public/content-images `
+  --exclude=./public/content-images/** `
+  --exclude=./public/agent-avatars `
+  --exclude=./public/agent-avatars/** `
+  --exclude=./public/blog-covers `
+  --exclude=./public/blog-covers/** `
   --exclude=./runtime/local-pg `
   --exclude=./runtime/local-pg/** `
   --exclude=./runtime/installer-build `
@@ -71,7 +83,11 @@ tar -czf $ArchiveName `
   --exclude=./runtime/dual-host-report* `
   --exclude=$ArchiveName `
   .
-if ($LASTEXITCODE -ne 0) { throw "tar failed" }
+$tarExit = $LASTEXITCODE
+if ($tarExit -gt 1) { throw "tar failed (exit $tarExit)" }
+tar -tzf $ArchiveName > $null
+if ($LASTEXITCODE -ne 0) { throw "archive verification failed" }
+if ($tarExit -eq 1) { Write-Warning "tar reported files changed during read; archive verified OK" }
 
 Write-Host "==> Upload" -ForegroundColor Cyan
 scp $localArchive "${remote}:/tmp/$ArchiveName"

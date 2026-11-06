@@ -1,0 +1,8 @@
+{
+  "name": "houseandlife-desktop-agent",
+  "productName": "House & Life Desktop Agent",
+  "version": "1.2.0",
+  "main": "main/index.cjs",
+  "author": "House & Life Real Estate AI",
+  "description": "Desktop Agent - Quét tin BĐS Đa Kênh & Đồng bộ Lead tự động"
+}

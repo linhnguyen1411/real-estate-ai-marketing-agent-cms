@@ -153,7 +153,6 @@
 | `GET /api/users` | `company` | `tests/security/tenantIsolation.test.ts:134-137` |
 | `GET /api/admin/short-links` | `company` | `tests/security/tenantIsolation.test.ts:140-143` |
 | `GET /api/facebook/inbox` | `company` | Khai báo trong `RBAC_PERMISSIONS_MATRIX` (`rbac.ts`) |
-| `POST /api/properties/batch-import` | `company` | Khai báo trong `RBAC_PERMISSIONS_MATRIX` (`rbac.ts`) |
 | `GET /api/executive/snapshot` | `company` | `tests/security/tenantIsolation.test.ts:203` |
 | `POST /api/member-permissions/bulk` | `company` | `tests/security/tenantIsolation.test.ts:204` |
 | `POST /api/agent/missions/:id/pause` | `company` | `tests/security/tenantIsolation.test.ts:205` |

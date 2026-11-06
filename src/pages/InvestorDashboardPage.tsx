@@ -138,7 +138,7 @@ export default function InvestorDashboardPage() {
                 </Link>
               ))}
             </div>
-            <Link to="/du-an" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-invest-cta">
+            <Link to="/du-an" className="mt-4 inline-flex min-h-11 items-center gap-1 text-sm font-bold text-invest-cta">
               Xem tất cả dự án <ArrowRight className="h-4 w-4" />
             </Link>
           </section>
@@ -162,7 +162,7 @@ export default function InvestorDashboardPage() {
                 ))}
               </ul>
             )}
-            <Link to="/phan-tich" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-invest-cta">
+            <Link to="/phan-tich" className="mt-4 inline-flex min-h-11 items-center gap-1 text-sm font-bold text-invest-cta">
               Xem phân tích <ArrowRight className="h-4 w-4" />
             </Link>
           </section>

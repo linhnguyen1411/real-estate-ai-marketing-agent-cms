@@ -1,11 +1,12 @@
+# Production origin since 2026-11-06: 45.117.170.118.
 param(
-  [string]$HostName = $env:VPS_HOST,
+  [string]$HostName = $(if ($env:VPS_HOST) { $env:VPS_HOST } else { "45.117.170.118" }),
   [string]$User = "root",
   [string]$RemoteDir = "/var/www/real-estate-ai-cms"
 )
 
 if (-not $HostName) {
-  Write-Error "HostName is required. Provide -HostName <IP/Host> or set `$env:VPS_HOST."
+  Write-Error "HostName resolved empty. Pass -HostName <IP/Host> (production: 45.117.170.118)."
   exit 1
 }
 

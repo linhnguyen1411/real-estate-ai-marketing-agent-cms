@@ -18,7 +18,6 @@ import {
   Phone,
   Search,
   Send,
-  Sparkles,
   LogIn,
   UserPlus,
   X
@@ -26,6 +25,7 @@ import {
 import { Property, PublicAgentProfile } from './types';
 import MarkdownContent from './components/MarkdownContent';
 import AgentPublicCard from './components/agent/AgentPublicCard';
+import FloatingContactRail from './components/layout/FloatingContactRail';
 import { fetchPublicAgentByUserId, fetchPublicAgentBySlug } from './services/agentApi';
 import { getPropertyCreatorId } from './utils/propertyCreator';
 import { PropertyShareButton, PropertyShareCompactButton } from './components/PropertyShareModal';
@@ -50,6 +50,7 @@ import {
 } from './utils/propertyDisplay';
 import { toPlainText, truncateText } from './utils/text';
 import { collectSiteSeoKeywords, getPropertySeoKeywordsFromContent } from './utils/hashtags';
+import { LISTING_CATALOG_ROOT } from './features/listings';
 import SocialProof from './components/leadGen/SocialProof';
 import { trackMessengerClick, trackPhoneClick, trackZaloClick } from './leadGen/analytics';
 import { getPropertyGalleryUrls } from './utils/propertyImage';
@@ -62,7 +63,6 @@ import { sortByCreatedAtDesc } from './utils/propertySort';
 import PaginationBar from './components/common/PaginationBar';
 import {
   AREA_RANGES,
-  LISTING_CATALOG_ROOT,
   PRICE_RANGES,
   applyListingFilters,
   buildListingPath,
@@ -147,7 +147,6 @@ interface PropertyCardProps {
   property: Property;
   onSelect: (property: Property) => void;
   viewCount: number;
-  large?: boolean;
   priorityLoad?: boolean;
 }
 
@@ -155,7 +154,6 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
   property,
   onSelect,
   viewCount,
-  large = false,
   priorityLoad = false,
 }) => {
   const transactionType = getTransactionType(property);
@@ -170,12 +168,12 @@ const PropertyCard: React.FC<PropertyCardProps> = ({
       className="property-card group"
       aria-label={`Xem chi tiết ${property.title} tại ${property.location}`}
     >
-      <div className={`relative shrink-0 overflow-hidden bg-slate-100 ${large ? 'aspect-square' : 'aspect-[4/3]'}`}>
+      <div className="relative shrink-0 aspect-[4/3] overflow-hidden bg-slate-100">
         <img
           src={getPropertyImage(property)}
           alt={property.title}
           width={800}
-          height={large ? 800 : 600}
+          height={600}
           loading={priorityLoad ? 'eager' : 'lazy'}
           fetchPriority={priorityLoad ? 'high' : 'auto'}
           decoding="async"
@@ -272,7 +270,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     return created;
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { filters, setFilters, resetFilters } = useListingUrlState();
+  const { filters, setFilters } = useListingUrlState();
   const listingPageSize = useListingPageSize(3);
   const searchQuery = filters.q;
   const selectedType = filters.type;
@@ -319,6 +317,12 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   React.useEffect(() => {
     localPropertiesRef.current = localProperties;
   }, [localProperties]);
+
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return;
+    document.body.classList.add('mobile-menu-open');
+    return () => document.body.classList.remove('mobile-menu-open');
+  }, [mobileMenuOpen]);
 
   const applyPropertyViewUpdate = React.useCallback((update: { id: string; public_view_count?: number; last_public_view_at?: string }) => {
     if (!update?.id) return;
@@ -604,10 +608,10 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
     return `https://zalo.me/${brokerPhoneClean}`;
   }, [brokerPhoneClean]);
 
-  const featuredProperties = useMemo(
-    () => activeProperties.filter(property => property.is_featured).slice(0, 6),
-    [activeProperties]
-  );
+  const featuredProperties = useMemo(() => {
+    const flagged = activeProperties.filter(property => property.is_featured);
+    return (flagged.length ? flagged : activeProperties).slice(0, 3);
+  }, [activeProperties]);
 
   const filteredProperties = useMemo(
     () => applyListingFilters(activeProperties, filters),
@@ -649,7 +653,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   const siteOrigin = window.location.origin;
   const canonicalUrl = selectedProperty
     ? `${siteOrigin}${getPropertyPath(selectedProperty)}`
-    : siteOrigin;
+    : `${siteOrigin}/`;
   const seoTitle = selectedProperty
     ? limitSeoTitle(selectedProperty.ai_posts?.seo?.title || getPropertySeoTitle(selectedProperty))
     : DEFAULT_SEO_TITLE;
@@ -667,12 +671,6 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
   const seoImage = selectedProperty ? getPropertyImage(selectedProperty) : getPropertyImage(featuredProperties[0]);
 
   const structuredData = useMemo(() => {
-    const itemList = activeProperties.slice(0, 50).map((property, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      name: property.title,
-      url: `${siteOrigin}${getPropertyPath(property)}`
-    }));
     const schemas: Record<string, unknown>[] = [
       {
         '@context': 'https://schema.org',
@@ -682,65 +680,87 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         telephone: '+84905777594',
         areaServed: { '@type': 'City', name: 'Đà Nẵng' },
         sameAs: [zaloUrl, facebookUrl]
-      },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'CollectionPage',
-        name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
-        description: seoDescription,
-        url: siteOrigin,
-        mainEntity: {
-          '@type': 'ItemList',
-          numberOfItems: activeProperties.length,
-          itemListElement: itemList
-        }
-      },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: [
-          {
-            '@type': 'Question',
-            name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ House & Life qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
-            }
-          },
-          {
-            '@type': 'Question',
-            name: 'House & Life có hỗ trợ lọc bất động sản theo ngân sách không?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
-            }
-          }
-        ]
       }
     ];
 
-    if (selectedProperty) {
-      schemas.push({
-        '@context': 'https://schema.org',
-        '@type': 'Product',
-        name: selectedProperty.title,
-        image: getPropertyGalleryUrls(selectedProperty),
-        description: seoDescription,
-        category: selectedProperty.type,
-        url: canonicalUrl,
-        offers: {
-          '@type': 'Offer',
-          url: canonicalUrl,
-          priceCurrency: 'VND',
-          price: Math.round(selectedProperty.price * 1_000_000_000),
-          availability: 'https://schema.org/InStock'
+    if (!selectedProperty) {
+      const itemList = activeProperties.slice(0, 50).map((property, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: property.title,
+        url: `${siteOrigin}${getPropertyPath(property)}`
+      }));
+      schemas.push(
+        {
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: 'Danh sách bất động sản Đà Nẵng bán/cho thuê',
+          description: seoDescription,
+          url: `${siteOrigin}/`,
+          mainEntity: {
+            '@type': 'ItemList',
+            numberOfItems: activeProperties.length,
+            itemListElement: itemList
+          }
         },
-        additionalProperty: [
-          { '@type': 'PropertyValue', name: 'Vị trí', value: selectedProperty.location },
-          { '@type': 'PropertyValue', name: 'Diện tích', value: `${selectedProperty.area} m2` },
-          { '@type': 'PropertyValue', name: 'Pháp lý', value: selectedProperty.legal_status }
-        ]
-      });
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: [
+            {
+              '@type': 'Question',
+              name: 'Làm sao để xem chi tiết và đặt lịch xem bất động sản?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'Chọn một sản phẩm trong danh sách để xem giá, diện tích, pháp lý và hình ảnh. Sau đó liên hệ House & Life qua điện thoại, Zalo hoặc Messenger để đặt lịch xem thực tế.'
+              }
+            },
+            {
+              '@type': 'Question',
+              name: 'House & Life có hỗ trợ lọc bất động sản theo ngân sách không?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'Có. Khách hàng có thể gửi khoảng ngân sách, khu vực và loại hình mong muốn để được lọc danh sách BĐS phù hợp.'
+              }
+            }
+          ]
+        }
+      );
+    }
+
+    if (selectedProperty) {
+      schemas.push(
+        {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Trang chủ', item: `${siteOrigin}/` },
+            { '@type': 'ListItem', position: 2, name: 'Bất động sản', item: `${siteOrigin}${LISTING_CATALOG_ROOT}` },
+            { '@type': 'ListItem', position: 3, name: selectedProperty.title, item: canonicalUrl }
+          ]
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: selectedProperty.title,
+          image: getPropertyGalleryUrls(selectedProperty),
+          description: seoDescription,
+          category: selectedProperty.type,
+          url: canonicalUrl,
+          offers: {
+            '@type': 'Offer',
+            url: canonicalUrl,
+            priceCurrency: 'VND',
+            price: Math.round(selectedProperty.price * 1_000_000_000),
+            availability: 'https://schema.org/InStock'
+          },
+          additionalProperty: [
+            { '@type': 'PropertyValue', name: 'Vị trí', value: selectedProperty.location },
+            { '@type': 'PropertyValue', name: 'Diện tích', value: `${selectedProperty.area} m2` },
+            { '@type': 'PropertyValue', name: 'Pháp lý', value: selectedProperty.legal_status }
+          ]
+        }
+      );
     }
 
     return schemas;
@@ -894,8 +914,6 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
         <title>{seoTitle}</title>
         <meta name="description" content={seoDescription} />
         <meta name="keywords" content={seoKeywords} />
-        <meta name="robots" content="index, follow, max-image-preview:large" />
-        <meta name="googlebot" content="index, follow, max-image-preview:large" />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:locale" content="vi_VN" />
         <meta property="og:type" content={selectedProperty ? 'product' : 'website'} />
@@ -939,15 +957,19 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="shrink-0 rounded-lg border border-invest-border p-2 text-invest-text lg:hidden"
-            aria-label="Mở menu"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-invest-border text-invest-text lg:hidden"
+            aria-label={mobileMenuOpen ? 'Đóng menu' : 'Mở menu'}
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-invest-border px-4 py-3 lg:hidden space-y-3">
+          <div
+            data-mobile-menu="true"
+            className="max-h-[calc(100dvh-4rem)] space-y-3 overflow-y-auto border-t border-invest-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden"
+          >
             <PublicNavMobile onItemClick={() => setMobileMenuOpen(false)} />
             <a href="#contact" onClick={() => setMobileMenuOpen(false)} className="btn-cta block w-full text-center text-sm">
               Nhận danh sách đầu tư
@@ -987,175 +1009,59 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
             className="absolute inset-0 h-full w-full object-cover"
           />
           <div className="hero-investment__overlay" />
-          <div className="relative mx-auto flex min-h-[560px] max-w-7xl flex-col justify-center px-4 pb-20 pt-20 md:min-h-[680px] md:pb-24 md:pt-24">
-            <div className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-invest-border bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wide text-invest-gold">
-                <Sparkles className="h-4 w-4" />
-                Vững tâm an cư - kiến tạo tương lai
-              </div>
+          <div className="relative mx-auto flex max-w-7xl flex-col justify-center px-4 py-9 md:py-12">
+            <div className="max-w-2xl">
               <h1 className="heading-hero">
-                Nhà Phố, Đất Nền Nam Hòa Xuân & Căn Hộ Đà Nẵng
+                Nhà phố &amp; đất nền Nam Hòa Xuân, Đà Nẵng
               </h1>
-              <p className="text-body-lg mt-5 max-w-2xl text-invest-muted">
-                House & Life chuyên mua bán nhà phố, đất nền Nam Hòa Xuân, phân phối căn hộ và cho thuê căn hộ tại Đà Nẵng. Đồng hành cùng quý khách kiến tạo tổ ấm và tài sản tương lai.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-invest-muted md:text-base">
+                {activeProperties.length} sản phẩm đang bán và cho thuê, cập nhật giá và pháp lý mỗi ngày.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <a href="#contact" className="btn-cta px-5 py-3">
-                  Tư vấn mua bán & cho thuê
-                </a>
-                <Link to={LISTING_CATALOG_ROOT} className="btn-primary px-5 py-3">
-                  Xem giỏ hàng mới nhất
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-5">
-            <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_180px_180px_auto] lg:items-end">
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Tìm nhanh sản phẩm</label>
-                <div className="relative">
+              <form
+                onSubmit={event => {
+                  event.preventDefault();
+                  document.getElementById('listings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="mt-5 flex max-w-xl gap-2"
+              >
+                <div className="relative flex-1">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                   <input
                     value={searchQuery}
                     onChange={event => setSearchQuery(event.target.value)}
-                    placeholder="Nhập khu vực, tên dự án, loại hình..."
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-invest-cta focus:bg-white"
+                    placeholder="Khu vực, dự án, loại hình..."
+                    aria-label="Tìm bất động sản"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-invest-cta"
                   />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Hình thức</label>
-                <select
-                  value={selectedTransactionType}
-                  onChange={event => setSelectedTransactionType(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-invest-cta focus:bg-white"
-                >
-                  <option value="all">Bán / Cho thuê</option>
-                  {TRANSACTION_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Loại hình</label>
-                <select
-                  value={selectedType}
-                  onChange={event => setSelectedType(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-invest-cta focus:bg-white"
-                >
-                  <option value="all">Tất cả loại hình</option>
-                  {propertyTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Khoảng giá</label>
-                <select
-                  value={selectedPriceRange}
-                  onChange={event => setSelectedPriceRange(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-invest-cta focus:bg-white"
-                >
-                  {PRICE_RANGES.map(range => (
-                    <option key={range.value} value={range.value}>{range.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Diện tích</label>
-                <select
-                  value={selectedAreaRange}
-                  onChange={event => setSelectedAreaRange(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-invest-cta focus:bg-white"
-                >
-                  {AREA_RANGES.map(range => (
-                    <option key={range.value} value={range.value}>{range.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2 lg:justify-end">
-                <Link
-                  to={buildListingPath(null, filters)}
-                  className="inline-flex flex-1 items-center justify-center rounded-lg bg-invest-cta px-4 py-2.5 text-sm font-bold text-white hover:bg-invest-cta-hover lg:flex-none"
-                >
-                  Xem {filteredProperties.length} BĐS
-                </Link>
                 <button
-                  type="button"
-                  onClick={() => resetFilters()}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:border-slate-300"
+                  type="submit"
+                  className="rounded-lg bg-invest-cta px-4 py-2.5 text-sm font-bold text-white hover:bg-invest-cta-hover"
                 >
-                  Xóa
+                  Tìm
                 </button>
+              </form>
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 text-sm">
+                <a href="#listings" className="inline-flex min-h-8 items-center py-1 font-bold text-invest-blue hover:underline">
+                  Xem tất cả BĐS
+                </a>
+                <a href="#contact" className="inline-flex min-h-8 items-center py-1 font-semibold text-invest-blue hover:underline">
+                  Tư vấn miễn phí
+                </a>
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="featured" className="mx-auto max-w-7xl px-4 py-16">
-          <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Được đề xuất</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Bất động sản được đề xuất</h2>
-            </div>
-            <p className="max-w-xl text-sm leading-6 text-slate-600">
-              Các sản phẩm giá trị cao, vị trí tốt và có đủ thông tin để khách ra quyết định nhanh.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-            {featuredProperties.map((property, index) => (
-              <PropertyCard
-                key={property.id}
-                property={property}
-                onSelect={openProperty}
-                viewCount={getPropertyViewCount(property)}
-                large
-                priorityLoad={index === 0}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section id="projects" className="bg-white py-16">
-          <div className="mx-auto max-w-7xl px-4">
-            <div className="mb-8">
-              <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Chuyên dự án</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sách theo dự án</h2>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {projectGroups.map(([name, group]) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => applyProjectFilter(name)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-left transition-all hover:border-invest-gold/40 hover:bg-invest-gold-muted"
-                >
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-invest-blue text-white">
-                    <Building2 className="h-5 w-5" />
-                  </div>
-                  <h3 className="font-bold text-slate-950">{name}</h3>
-                  <p className="mt-2 text-sm text-slate-600">{group.length} sản phẩm đang hiển thị</p>
-                  <p className="mt-4 text-xs font-bold text-invest-blue">Lọc theo dự án này</p>
-                </button>
-              ))}
             </div>
           </div>
         </section>
 
         <section id="listings" className="mx-auto max-w-7xl px-4 py-16">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Bất động đang giao dịch</p>
-              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">
-                Bất động sản đang bán/cho thuê
+            <div className="lg:shrink-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Danh sách</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950 lg:whitespace-nowrap">
+                BĐS nổi bật
               </h2>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-full lg:grid-cols-[1.2fr_repeat(5,minmax(0,1fr))]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-auto lg:flex-1 lg:grid-cols-[1.2fr_repeat(5,minmax(0,1fr))]">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <input
@@ -1239,7 +1145,7 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
           <div className="mt-6 text-center">
             <Link
               to={buildListingPath(null, filters)}
-              className="text-sm font-bold text-invest-blue hover:underline"
+              className="inline-flex min-h-11 items-center py-1 text-sm font-bold text-invest-blue hover:underline"
             >
               Xem toàn bộ danh sách trên /bat-dong-san
             </Link>
@@ -1250,6 +1156,33 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
               Chưa có sản phẩm phù hợp với bộ lọc hiện tại.
             </div>
           )}
+        </section>
+
+        <section id="projects" className="bg-white py-16">
+          <div className="mx-auto max-w-7xl px-4">
+            <div className="mb-8">
+              <p className="text-xs font-bold uppercase tracking-wide text-invest-gold">Chuyên dự án</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-950">Danh sách theo dự án</h2>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {projectGroups.map(([name, group]) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => applyProjectFilter(name)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-left transition-all hover:border-invest-gold/40 hover:bg-invest-gold-muted"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-invest-blue text-white">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-bold text-slate-950">{name}</h3>
+                  <p className="mt-2 text-sm text-slate-600">{group.length} sản phẩm đang hiển thị</p>
+                  <p className="mt-4 text-xs font-bold text-invest-blue">Lọc theo dự án này</p>
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="border-y border-slate-200 bg-white py-16" aria-labelledby="seo-guide-heading">
@@ -1306,20 +1239,20 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
               </p>
               <Link
                 to="/tai-lieu-dau-tu"
-                className="mt-4 inline-block text-sm font-bold text-invest-cta hover:underline"
+                className="mt-4 inline-flex min-h-11 items-center text-sm font-bold text-invest-cta hover:underline"
               >
                 Xem tài liệu đầu tư →
               </Link>
               <div className="mt-8 grid gap-3 text-sm">
-                <a href={`tel:${phoneNumber}`} onClick={() => trackPhoneClick('contact_section')} className="flex items-center gap-3 text-invest-text">
+                <a href={`tel:${phoneNumber}`} onClick={() => trackPhoneClick('contact_section')} className="flex min-h-11 items-center gap-3 text-invest-text">
                   <Phone className="h-5 w-5 text-invest-blue" />
                   {phoneNumber}
                 </a>
-                <a href={zaloUrl} onClick={() => trackZaloClick('contact_section')} className="flex items-center gap-3 text-invest-text">
+                <a href={zaloUrl} onClick={() => trackZaloClick('contact_section')} className="flex min-h-11 items-center gap-3 text-invest-text">
                   <MessageCircle className="h-5 w-5 text-blue-600" />
                   Zalo tư vấn nhanh
                 </a>
-                <a href={facebookUrl} onClick={() => trackMessengerClick('contact_section')} className="flex items-center gap-3 text-invest-text">
+                <a href={facebookUrl} onClick={() => trackMessengerClick('contact_section')} className="flex min-h-11 items-center gap-3 text-invest-text">
                   <Facebook className="h-5 w-5 text-sky-600" />
                   Facebook Messenger
                 </a>
@@ -1337,49 +1270,17 @@ export default function ListingsPage({ properties, propertySlug, projectDisplayO
 
       <PublicSiteFooter />
 
-      <div className={`pointer-events-none fixed right-3 top-1/2 z-[70] flex -translate-y-1/2 flex-col gap-2.5 lg:hidden ${selectedProperty ? 'hidden' : ''}`} style={{ paddingRight: 'env(safe-area-inset-right)' }}>
-        <a
-          href={`tel:${phoneTel}`}
-          onClick={() => trackPhoneClick('listings_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg ring-2 ring-white/80 transition-transform active:scale-95"
-          aria-label="Gọi điện"
-        >
-          <Phone className="h-5 w-5" />
-        </a>
-        <a
-          href={zaloUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => trackZaloClick('listings_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg ring-2 ring-white/80 transition-transform active:scale-95"
-          aria-label="Chat Zalo"
-        >
-          <MessageCircle className="h-5 w-5" />
-        </a>
-        <a
-          href={messengerUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => trackMessengerClick('listings_floating')}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg ring-2 ring-white/80 transition-transform active:scale-95"
-          aria-label="Nhắn tin Messenger"
-        >
-          <Facebook className="h-5 w-5" />
-        </a>
-        {selectedProperty && (
-          <button
-            type="button"
-            onClick={openPropertyChat}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-invest-cta text-white shadow-lg ring-2 ring-white/80 transition-transform active:scale-95"
-            aria-label="Hỏi Lily AI về tin này"
-          >
-            <Bot className="h-5 w-5" />
-          </button>
-        )}
-      </div>
+      <FloatingContactRail hidden={chatOpen || !!selectedProperty} trackingSource="listings_floating" />
 
       {!selectedProperty && (
-      <div className="fixed bottom-4 left-3 right-14 z-50 sm:bottom-5 sm:left-auto sm:right-5 sm:w-[min(380px,calc(100vw-24px))]">
+      <div
+        data-mobile-floating={chatOpen ? undefined : 'true'}
+        className={`fixed z-50 ${
+          chatOpen
+            ? 'bottom-4 left-3 right-3 sm:bottom-5 sm:left-auto sm:right-5 sm:w-[min(380px,calc(100vw-24px))]'
+            : 'bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-3'
+        }`}
+      >
         {chatOpen ? (
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between bg-slate-950 px-4 py-3 text-white">

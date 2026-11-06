@@ -1,6 +1,7 @@
 import { AppSettings } from "../src/types";
 import { normalizeProjectName } from "../src/seo/propertyCatalog";
 import { sortByCreatedAtDesc } from "../src/utils/propertySort";
+import { allocatePropertySlug, buildPropertySlug } from "../src/utils/propertyShare";
 import { prisma } from "./prisma";
 import { encryptSecret, decryptSecret } from "./security/settingsCrypto";
 
@@ -146,7 +147,7 @@ async function loadCacheFromPostgres() {
         role: row.role || (data.role as string),
         email: row.email || (data.email as string),
         status: row.status || (data.status as string),
-        password_hash: row.passwordHash || (data.password_hash as string) || (data.password as string),
+        password_hash: row.passwordHash || (data.password_hash as string),
       };
     })
     .filter((u) => Boolean(u.id));
@@ -252,6 +253,37 @@ async function migrateLegacyPropertyProjectNames() {
   }
 }
 
+/**
+ * Assign a stable public slug to every property that lacks one.
+ * Runs once per boot; idempotent because already-assigned slugs are kept.
+ */
+async function backfillPropertySlugs() {
+  const db = requireCache();
+  const ordered = [...db.properties].sort((a, b) => {
+    const aTime = Number(String(a.id || "").replace(/\D+/g, ""));
+    const bTime = Number(String(b.id || "").replace(/\D+/g, ""));
+    if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+  const taken: string[] = [];
+  const changed: any[] = [];
+  for (const prop of ordered) {
+    const base = buildPropertySlug(prop.slug || prop.title) || `bds-${String(prop.id || "").replace(/^p-/, "")}`;
+    const slug = allocatePropertySlug(base, taken);
+    taken.push(slug);
+    if (prop.slug === slug) continue;
+    prop.slug = slug;
+    changed.push(prop);
+  }
+  for (const prop of changed) {
+    upsertRecordInCache("properties", prop);
+    await upsertRecordToPostgres("properties", prop);
+  }
+  if (changed.length) {
+    console.log(`[DB] Đã chuẩn hóa slug cho ${changed.length} bất động sản.`);
+  }
+}
+
 async function ensureDefaultSettings() {
   const existing = await prisma.appSetting.findUnique({ where: { key: "app" } });
   if (!existing) {
@@ -276,6 +308,11 @@ export async function ensureDatabaseReady() {
           await migrateLegacyPropertyProjectNames();
         } catch (error) {
           console.warn('[DB] Bỏ qua chuẩn hóa tên dự án lúc khởi động:', error);
+        }
+        try {
+          await backfillPropertySlugs();
+        } catch (error) {
+          console.warn('[DB] Bỏ qua chuẩn hóa slug bất động sản lúc khởi động:', error);
         }
         try {
           const { backfillRbac } = await import('./modules/rbac/rbacRepository');
@@ -932,11 +969,18 @@ export function getProperties() {
 }
 
 export async function createProperty(data: any) {
+  const cache = requireCache();
   const record = {
     ...data,
     id: data.id || `p-${Date.now()}`,
     created_at: data.created_at || new Date().toISOString(),
   };
+  if (!record.slug) {
+    record.slug = allocatePropertySlug(
+      buildPropertySlug(record.title),
+      cache.properties.map((item: any) => item.slug),
+    );
+  }
   upsertRecordInCache("properties", record);
   await upsertRecordToPostgres("properties", record);
   return record;

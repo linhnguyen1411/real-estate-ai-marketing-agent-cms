@@ -2,10 +2,11 @@ import { sendError } from '../utils/httpResponses';
 import type { Request, Response, NextFunction } from 'express';
 import { getAuthUser } from '../modules/auth';
 
-export type UserRole = 'owner' | 'company' | 'member';
+export type UserRole = 'owner' | 'super_admin' | 'company' | 'member';
 
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   owner: 3,
+  super_admin: 3,
   company: 2,
   member: 1,
 };
@@ -116,9 +117,11 @@ export const MEMBER_EXPLICIT_ALLOWLIST: string[] = [
   'GET /api/license/my-key',
   'GET /api/license/my-license',
   'POST /api/license/request-pem',
-  'POST /api/license/upgrade-plan',
   'GET /api/wallet/my',
   'POST /api/wallet/upgrade-license',
+  'GET /api/wallet/topup-requests',
+  'POST /api/wallet/topup-requests',
+  'POST /api/wallet/topup-requests/:id/cancel',
 ];
 
 /**
@@ -175,12 +178,14 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'GET /api/auth/my-team': 'member',
   'POST /api/auth/join-team': 'member',
 
-  // Investor Leads & Magnets: owner or company only (PII data)
-  'GET /api/investor-leads': 'company',
-  'PATCH /api/investor-leads/:id/status': 'company',
-  'POST /api/investor-leads/:id/convert-to-customer': 'company',
-  'POST /api/investor-leads/:id/call': 'company',
-  'GET /api/investor-leads/:id/events': 'company',
+  // Investor Leads: granular RBAC (investor_leads) decides access, including
+  // team members explicitly granted the feature. The legacy role floor must not
+  // block a member who already holds the permission.
+  'GET /api/investor-leads': 'member',
+  'PATCH /api/investor-leads/:id/status': 'member',
+  'POST /api/investor-leads/:id/convert-to-customer': 'member',
+  'POST /api/investor-leads/:id/call': 'member',
+  'GET /api/investor-leads/:id/events': 'member',
   'GET /api/lead-magnet-content': 'company',
 
   // Facebook inbox, comments, leads, and admin test connection: owner or company only
@@ -225,11 +230,9 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   'GET /api/admin/short-links/:id/analytics': 'company',
   'POST /api/short-links/resolve': 'company',
 
-  // Properties batch import & quick parse: owner or company only
+  // Properties quick parse: owner or company only
   'POST /api/admin/properties/quick-parse': 'company',
   'POST /api/properties/quick-parse': 'company',
-  'POST /api/admin/properties/batch-import': 'company',
-  'POST /api/properties/batch-import': 'company',
 
   // Executive Dashboard & Execution Trace: owner or company only
   'GET /api/executive/snapshot': 'company',
@@ -299,9 +302,15 @@ export const RBAC_PERMISSIONS_MATRIX: Record<string, UserRole> = {
   // Wallet & Tokens
   'GET /api/wallet/my': 'member',
   'POST /api/wallet/upgrade-license': 'member',
+  'GET /api/wallet/topup-requests': 'member',
+  'POST /api/wallet/topup-requests': 'member',
+  'POST /api/wallet/topup-requests/:id/cancel': 'member',
   'GET /api/admin/wallets': 'owner',
   'POST /api/admin/wallets/deposit': 'owner',
   'GET /api/admin/wallets/:userId/transactions': 'owner',
+  'GET /api/admin/wallet/topup-requests': 'owner',
+  'POST /api/admin/wallet/topup-requests/:id/approve': 'owner',
+  'POST /api/admin/wallet/topup-requests/:id/reject': 'owner',
 };
 
 /**

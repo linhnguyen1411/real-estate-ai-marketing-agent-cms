@@ -19,6 +19,7 @@ export function toAuthUser(user: User, db: any): AuthUser {
     name: user.name,
     email: user.email,
     role: user.role,
+    token_version: user.token_version ?? 1,
     company_id: user.company_id,
     company_name: company?.name,
     phone: user.phone,
@@ -152,12 +153,14 @@ export function scopeCollection<T extends { company_id?: string; owner_user_id?:
   if (req.scope) {
     if (req.scope === 'all') return items;
     if (req.scope === 'team') {
+      if (req.companyWide) {
+        return items.filter(item => Boolean(item.company_id) && item.company_id === user.company_id);
+      }
       return items.filter(item => {
         if (req.teamId && item.team_id === req.teamId) return true;
         const owner = item.owner_user_id || item.created_by_user_id;
         if (owner === user.id) return true;
         if (Array.isArray(item.assigned_member_ids) && item.assigned_member_ids.includes(user.id)) return true;
-        if (user.company_id && item.company_id === user.company_id) return true;
         return false;
       });
     }
@@ -191,11 +194,13 @@ export function canAccessResource(resource: { company_id?: string; owner_user_id
   if (req.scope) {
     if (req.scope === 'all') return true;
     if (req.scope === 'team') {
+      if (req.companyWide) {
+        return Boolean(resource.company_id) && resource.company_id === user.company_id;
+      }
       if (req.teamId && resource.team_id === req.teamId) return true;
       const owner = resource.owner_user_id || resource.created_by_user_id;
       if (owner === user.id) return true;
       if (Array.isArray(resource.assigned_member_ids) && resource.assigned_member_ids.includes(user.id)) return true;
-      if (user.company_id && resource.company_id === user.company_id) return true;
       return false;
     }
     if (req.scope === 'own') {
@@ -224,11 +229,13 @@ export function canManageResource(resource: { company_id?: string; owner_user_id
   if (req.scope) {
     if (req.scope === 'all') return true;
     if (req.scope === 'team') {
+      if (req.companyWide) {
+        return Boolean(resource.company_id) && resource.company_id === user.company_id;
+      }
       if (req.teamId && resource.team_id === req.teamId) return true;
       const owner = resource.owner_user_id || resource.created_by_user_id;
       if (owner === user.id) return true;
       if (Array.isArray(resource.assigned_member_ids) && resource.assigned_member_ids.includes(user.id)) return true;
-      if (user.company_id && resource.company_id === user.company_id) return true;
       return false;
     }
     if (req.scope === 'own') {
@@ -261,8 +268,8 @@ export function accessDefaults(req: Request, body: any = {}) {
   const owner_user_id = isSuperAdmin && body.owner_user_id ? body.owner_user_id : user.id;
   const created_by_user_id = user.id;
 
-  // Team ID & listing source
-  const team_id = body.team_id || req.teamId;
+  // Team ID & listing source. Non-super users can never choose their team via body.
+  const team_id = isSuperAdmin ? (body.team_id || req.teamId) : req.teamId;
   const listing_source = body.listing_source || 'broker';
 
   return {
@@ -276,7 +283,8 @@ export function accessDefaults(req: Request, body: any = {}) {
 }
 
 export function requireOwner(req: Request, res: Response): boolean {
-  if (getAuthUser(req).role !== 'owner') {
+  const role = getAuthUser(req).role;
+  if (role !== 'owner' && (role as string) !== 'super_admin') {
     sendError(res, 403, 'Chỉ Owner có quyền thực hiện thao tác này.');
     return false;
   }

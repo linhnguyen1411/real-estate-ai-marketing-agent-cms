@@ -275,7 +275,7 @@ export default function LegalPage() {
                   </span>
                   <div className="min-w-0">
                     <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{section.heading.replace(/^\d+\.\s*/, '')}</h2>
-                    <p className="mt-3 text-base leading-relaxed text-slate-700">{section.body}</p>
+                    <p className="mt-3 break-words text-base leading-relaxed text-slate-700">{section.body}</p>
                   </div>
                 </div>
               </section>
@@ -289,7 +289,7 @@ export default function LegalPage() {
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
                   href={`mailto:${CONTACT.email}`}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-invest-blue/30"
+                  className="max-w-full break-words rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-invest-blue/30"
                 >
                   {CONTACT.email}
                 </a>

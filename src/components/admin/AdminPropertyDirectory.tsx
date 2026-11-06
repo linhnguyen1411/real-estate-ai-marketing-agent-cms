@@ -220,7 +220,7 @@ export default function AdminPropertyDirectory({
             type="button"
             onClick={() => setView('grid')}
             title="Dạng thẻ"
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-colors ${
+            className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-xs font-bold transition-colors ${
               viewMode === 'grid' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -231,7 +231,7 @@ export default function AdminPropertyDirectory({
             type="button"
             onClick={() => setView('list')}
             title="Dạng danh sách"
-            className={`flex items-center gap-1.5 border-l border-slate-800 px-3 py-2 text-xs font-bold transition-colors ${
+            className={`inline-flex min-h-11 items-center gap-1.5 border-l border-slate-800 px-3 py-2 text-xs font-bold transition-colors ${
               viewMode === 'list' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >

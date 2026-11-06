@@ -13,12 +13,12 @@ Thư mục này chứa các script phục vụ vận hành, bảo trì cục b�
 - `restart-dev.ps1`: Tái khởi động môi trường dev cục bộ an toàn.
 
 ### 1.2 Triển Khai (Deploy) & Vận Hành
-- `deploy-safe.ps1`: Script triển khai an toàn lên VPS Production (sử dụng `prisma migrate deploy`, TUYỆT ĐỐI KHÔNG dùng `db push`). Yêu cầu truyền `-HostName` hoặc thiết lập `$env:VPS_HOST`.
+- `deploy-safe.ps1`: Script triển khai an toàn lên VPS Production (sử dụng `prisma migrate deploy`, TUYỆT ĐỐI KHÔNG dùng `db push`). Mặc định trỏ `45.117.170.118`; override bằng `-HostName` hoặc `$env:VPS_HOST`.
 - `start-production.cjs`: Entrypoint production server runner với error handling và clustering.
 - `tmp-vps-safe-deploy.sh`: Script thực thi trên VPS trong quá trình triển khai bundle an toàn.
 
 ### 1.3 Sao Lưu & Đồng Bộ Dữ Liệu
-- `backup-prod.ps1`: Sao lưu PostgreSQL và static uploads trên VPS từ xa thông qua SSH. Yêu cầu truyền `-HostName` hoặc thiết lập `$env:VPS_HOST`.
+- `backup-prod.ps1`: Sao lưu PostgreSQL và static uploads trên VPS từ xa thông qua SSH. Mặc định trỏ `45.117.170.118`; override bằng `-HostName` hoặc `$env:VPS_HOST`.
 - `pull-prod-db.ps1`: Tải bản dump DB từ VPS về local phục vụ debug (đã loại bỏ IP hardcode).
 - `remote-backup.sh`: Bash script thực hiện sao lưu định kỳ qua cron trên máy chủ.
 - `sync-prod-db.mjs`: Hỗ trợ đồng bộ an toàn cấu trúc bảng.

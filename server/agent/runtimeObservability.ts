@@ -5,6 +5,7 @@
 
 import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
+import { isSuperAdminUser } from '../modules/auth/tenantScope';
 
 const STALE_MS = 45_000;
 
@@ -16,7 +17,7 @@ function scorePart(ok: boolean, partial = false): number {
 
 export async function buildAutomationRuntimeSnapshot(user: AuthUser) {
   const companyFilter =
-    user.role === 'owner'
+    isSuperAdminUser(user)
       ? {}
       : { companyId: user.company_id ?? '__none__' };
 

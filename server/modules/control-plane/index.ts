@@ -10,6 +10,7 @@ import { getFleetState, listFleetAgents } from './fleet';
 import { selectAgent } from './agentSelector';
 import { emitRuntimeEvent, listRuntimeEvents } from './runtimeEventBus';
 import { buildControlPlaneReport } from './reportEngine';
+import { isSuperAdminUser } from '../auth/tenantScope';
 import { handleTelegramControlCommand } from './telegramRemoteConsole';
 import {
   executeControlCommand,
@@ -139,13 +140,13 @@ export const ControlPlane = {
 
   /** Runtime API — sole read surface for dashboards / bots / CLI. */
   async getRuntime(user: AuthUser, options?: { refreshMetrics?: boolean }) {
-    const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+    const companyId = isSuperAdminUser(user) ? null : user.company_id ?? null;
     const snapshot = await buildAutomationRuntimeSnapshot(user);
     const agents = await listRegisteredAgents({
-      companyId: user.role === 'owner' ? undefined : user.company_id ?? '__none__',
+      companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__',
     });
     const events = await listRuntimeEvents({
-      companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+      companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? null,
       limit: 30,
     });
     const {

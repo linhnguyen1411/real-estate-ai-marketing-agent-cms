@@ -2,6 +2,11 @@ import type { Express, Request, Response } from 'express';
 import type { AgentRouteDeps } from '../agentTypes';
 import type { AgentRouteHelpers } from './agentRouteHelpers';
 import { sendError } from '../../utils/httpResponses';
+import {
+  isSuperAdminUser,
+  resolveRequestCompanyId,
+  resolveRequestCompanyIdStrict,
+} from '../../modules/auth';
 import { listBrowserSessions, paginatedMeta } from '../agentDb';
 import { getDailyAgentReport } from '../dailyReportService';
 import { parsePagination } from '../agentValidation';
@@ -44,7 +49,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
     try {
       const user = getAuthUser(req);
       const { opsGetFleet } = await import('../../modules/control-plane');
-      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const companyId = resolveRequestCompanyId(req) ?? null;
       const data = await opsGetFleet(companyId);
       res.json({ status: 'success', data });
     } catch (error: unknown) {
@@ -56,7 +61,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
     try {
       const user = getAuthUser(req);
       const { opsGetOperationsMetrics } = await import('../../modules/control-plane');
-      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const companyId = resolveRequestCompanyId(req) ?? null;
       const refresh =
         String(req.query.refresh || '').trim() === '1' ||
         String(req.query.refresh || '').trim().toLowerCase() === 'true';
@@ -77,7 +82,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
       const { ControlPlane } = await import('../../modules/control-plane');
       const onlineOnly = String(req.query.onlineOnly || '').trim() === '1';
       const data = await ControlPlane.listAgents({
-        companyId: user.role === 'owner' ? undefined : user.company_id ?? '__none__',
+        companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__',
         onlineOnly,
       });
       res.json({ status: 'success', data });
@@ -92,7 +97,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
       const { ControlPlane } = await import('../../modules/control-plane');
       const limit = Number(req.query.limit || 50);
       const data = await ControlPlane.listEvents({
-        companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+        companyId: resolveRequestCompanyId(req) ?? null,
         limit: Number.isFinite(limit) ? limit : 50,
       });
       res.json({ status: 'success', data });
@@ -139,10 +144,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
       const { ControlPlane } = await import('../../modules/control-plane');
       const data = await ControlPlane.command(text, {
         user,
-        companyId:
-          typeof req.body?.companyId === 'string'
-            ? req.body.companyId
-            : user.company_id ?? null,
+        companyId: resolveRequestCompanyId(req, req.body?.companyId) ?? null,
         client: 'web',
         triggeredBy: user.id,
       });
@@ -162,7 +164,7 @@ export function registerRuntimeRoutes(app: Express, deps: AgentRouteDeps, helper
       }
       const { ControlPlane } = await import('../../modules/control-plane');
       const data = await ControlPlane.telegramCommand(text, {
-        companyId: typeof req.body?.companyId === 'string' ? req.body.companyId : null,
+        companyId: resolveRequestCompanyIdStrict(req, req.body?.companyId),
       });
       res.json({ status: 'success', data });
     } catch (error: unknown) {

@@ -218,7 +218,7 @@ export default function AgentPlatformPage({ userRole }: Props) {
 
   return (
     <div className="space-y-4">
-      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+      <nav className="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/80 p-1 sm:flex-nowrap sm:overflow-x-auto">
         {HUBS.map(item => (
           <NavLink
             key={item.id}
@@ -226,7 +226,7 @@ export default function AgentPlatformPage({ userRole }: Props) {
             end={item.end}
             className={() => {
               const active = hub.id === item.id;
-              return `whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+              return `inline-flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                 active
                   ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
                   : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200 border border-transparent'
@@ -239,14 +239,14 @@ export default function AgentPlatformPage({ userRole }: Props) {
       </nav>
 
       {hub.subnav.length > 0 ? (
-        <nav className="flex gap-1 overflow-x-auto px-1">
+        <nav className="flex flex-wrap gap-1 px-1 sm:flex-nowrap sm:overflow-x-auto">
           {hub.subnav.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.end}
               className={({ isActive }) =>
-                `whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+                `inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-semibold ${
                   isActive ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'
                 }`
               }
@@ -305,7 +305,10 @@ export default function AgentPlatformPage({ userRole }: Props) {
         )}
         {section === 'sources' && (
           <Suspense fallback={<AgentPanelLoader />}>
-            <SourcesPage canManage={canManage} />
+            <SourcesPage
+              canManage={canManage}
+              isSuperAdmin={userRole === 'owner' || (userRole as string) === 'super_admin'}
+            />
           </Suspense>
         )}
         {section === 'missions' && (

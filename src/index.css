@@ -52,6 +52,14 @@ body {
   min-height: 100%;
 }
 
+body.mobile-menu-open {
+  overflow: hidden;
+}
+
+body.mobile-menu-open [data-mobile-floating] {
+  display: none;
+}
+
 /* Typography */
 .text-body-lg {
   font-size: 1.125rem;
@@ -70,8 +78,8 @@ body {
 }
 
 .heading-hero {
-  font-size: clamp(2rem, 4vw + 1rem, 3.5rem);
-  line-height: 1.15;
+  font-size: clamp(1.75rem, 2.4vw + 0.9rem, 2.6rem);
+  line-height: 1.2;
   font-weight: 800;
   color: var(--invest-text);
 }
@@ -114,6 +122,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 2.75rem;
   border-radius: 0.5rem;
   background-color: var(--invest-cta);
   padding: 0.625rem 1.25rem;
@@ -131,6 +140,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 2.75rem;
   border-radius: 0.5rem;
   background-color: var(--invest-blue);
   padding: 0.625rem 1.25rem;
@@ -148,6 +158,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 2.75rem;
   border-radius: 0.5rem;
   border: 1px solid var(--invest-border);
   background-color: #fff;
@@ -212,14 +223,14 @@ body {
 /* Hero */
 .hero-investment {
   position: relative;
-  min-height: 560px;
+  min-height: 360px;
   overflow: hidden;
   background: var(--invest-section-alt);
 }
 
 @media (min-width: 768px) {
   .hero-investment {
-    min-height: 680px;
+    min-height: 440px;
   }
 }
 

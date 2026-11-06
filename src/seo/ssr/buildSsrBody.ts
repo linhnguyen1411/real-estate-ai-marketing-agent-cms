@@ -6,11 +6,21 @@ import { MAIN_NAV } from '../routes';
 import { escapeHtml, stripTags } from './escapeHtml';
 import { renderSeoTemplateFromSeo } from '../templates';
 
+export type SsrFeaturedProperty = {
+  href: string;
+  title: string;
+  price?: number;
+  area?: number;
+  location?: string;
+};
+
 export type SsrBodyInput = {
   seo: SeoMetadata;
   /** Optional path override for template/data lookup */
   path?: string;
   property?: Property;
+  /** Listing links rendered in raw HTML so crawlers can reach property pages. */
+  featuredProperties?: SsrFeaturedProperty[];
   article?: {
     title: string;
     intro: string;
@@ -35,25 +45,29 @@ export function buildSsrBody(input: SsrBodyInput): string {
     seo: input.seo,
     path: input.path,
   });
-  if (templated) return templated;
+  if (templated) return templated + renderFeaturedProperties(input.featuredProperties);
 
   switch (input.seo.pageType) {
     case PageType.PROPERTY:
       return input.property
         ? renderPropertyBody(input.seo, input.property)
-        : renderGenericBody(input.seo, input.internalLinks);
+        : renderGenericBody(input.seo, input.internalLinks, input.featuredProperties);
     case PageType.ARTICLE:
       return renderArticleBody(input.seo, input.article, input.internalLinks);
     case PageType.NOT_FOUND:
       return renderNotFoundBody(input.seo);
     case PageType.HOME:
-      return renderHomeBody(input.seo, input.internalLinks);
+      return renderHomeBody(input.seo, input.internalLinks, input.featuredProperties);
     default:
-      return renderGenericBody(input.seo, input.internalLinks);
+      return renderGenericBody(input.seo, input.internalLinks, input.featuredProperties);
   }
 }
 
-function renderHomeBody(seo: SeoMetadata, links?: { href: string; label: string }[]): string {
+function renderHomeBody(
+  seo: SeoMetadata,
+  links?: { href: string; label: string }[],
+  featuredProperties?: SsrFeaturedProperty[],
+): string {
   return wrap(`
     <header>
       <p>${escapeHtml(SITE.name)} · ${escapeHtml(SITE.brand)}</p>
@@ -64,14 +78,15 @@ function renderHomeBody(seo: SeoMetadata, links?: { href: string; label: string 
       <h2>${escapeHtml(SITE.name)}</h2>
       <p>${escapeHtml(SITE.defaultDescription)}</p>
     </section>
+    ${renderFeaturedProperties(featuredProperties)}
     ${renderInternalLinks(links || defaultNavLinks())}
     ${renderCta()}
   `);
 }
 
 function renderPropertyBody(seo: SeoMetadata, property: Property): string {
-  const summary = stripTags(property.rich_description || property.description || seo.description).slice(0, 500);
-  const points = (property.selling_points || []).filter(Boolean).slice(0, 5);
+  const summary = stripMarkdown(stripTags(property.rich_description || property.description || seo.description)).slice(0, 500);
+  const points = (property.selling_points || []).filter(Boolean).slice(0, 5).map(point => stripMarkdown(point));
   return wrap(`
     <header>
       <h1>${escapeHtml(property.title)}</h1>
@@ -147,7 +162,11 @@ function renderNotFoundBody(seo: SeoMetadata): string {
   `);
 }
 
-function renderGenericBody(seo: SeoMetadata, links?: { href: string; label: string }[]): string {
+function renderGenericBody(
+  seo: SeoMetadata,
+  links?: { href: string; label: string }[],
+  featuredProperties?: SsrFeaturedProperty[],
+): string {
   return wrap(`
     <header>
       <h1>${escapeHtml(seo.title)}</h1>
@@ -157,9 +176,38 @@ function renderGenericBody(seo: SeoMetadata, links?: { href: string; label: stri
       <h2>${escapeHtml(seo.title)}</h2>
       <p>${escapeHtml(seo.description)}</p>
     </section>
+    ${renderFeaturedProperties(featuredProperties)}
     ${renderInternalLinks(links || defaultNavLinks())}
     ${renderCta()}
   `);
+}
+
+function renderFeaturedProperties(items?: SsrFeaturedProperty[]): string {
+  if (!items?.length) return '';
+  return `
+    <section>
+      <h2>Bất động sản nổi bật tại Đà Nẵng</h2>
+      <ul>
+        ${items.map(item => {
+          const meta = [item.price ? `${item.price} tỷ` : '', item.area ? `${item.area} m²` : '', item.location || '']
+            .filter(Boolean)
+            .join(' · ');
+          return `<li><a href="${escapeHtml(item.href)}">${escapeHtml(item.title)}</a>${meta ? ` — ${escapeHtml(meta)}` : ''}</li>`;
+        }).join('')}
+      </ul>
+    </section>
+  `;
+}
+
+function stripMarkdown(value: unknown): string {
+  return String(value ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\*\*|__/g, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/`+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function renderCta(label: string = PRIMARY_CTA): string {

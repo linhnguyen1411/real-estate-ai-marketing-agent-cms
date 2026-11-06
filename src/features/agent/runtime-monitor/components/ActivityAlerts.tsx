@@ -107,7 +107,7 @@ export const QuickActions = memo(function QuickActions({
 }) {
   const navigate = useNavigate();
   const btn =
-    'inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-slate-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-sky-500/30 hover:bg-slate-800';
+    'inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/5 bg-slate-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-sky-500/30 hover:bg-slate-800';
 
   return (
     <GlassPanel title="Quick Actions" subtitle="Navigate · refresh snapshot">

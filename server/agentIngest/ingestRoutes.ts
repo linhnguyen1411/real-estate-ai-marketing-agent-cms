@@ -6,12 +6,15 @@ import { generatePropertyMarketingContent } from '../aiService';
 import { prisma } from '../prisma';
 import type { AgentRouteDeps } from '../agent/agentTypes';
 import { canManageAgentConfig } from '../agent/agentDb';
+import { buildCompanyScopeFilter } from '../agent/agentDb';
+import { isSuperAdminUser, resolveRequestCompanyId } from '../modules/auth';
 import {
   encryptApiSecret,
   generateApiKeyPair,
   hashApiSecret,
   sha256Hex,
   verifyIngestHmac,
+  type HmacAuthSuccess,
 } from './hmacAuth';
 import { ingestFindingBatch, ingestFindingPayload, ingestEventEnvelope, type IngestFindingPayload } from './ingestService';
 
@@ -21,7 +24,19 @@ function isIngestEnabled(): boolean {
   return process.env.AGENT_INGEST_ENABLED?.trim().toLowerCase() === 'true';
 }
 
-function rejectAuth(res: Response, auth: { ok: false; status: number; message: string }) {
+function rejectAuth(res: Response, auth: { ok: false; status: number; message: string; serverTimeMs?: number }) {
+  if (auth.serverTimeMs) {
+    // Clients (Desktop Agent) use serverTime to recalibrate their clock and
+    // retry once with a fresh nonce instead of failing every request.
+    res.setHeader('Date', new Date(auth.serverTimeMs).toUTCString());
+    res.status(auth.status).json({
+      status: 'error',
+      code: 'TIMESTAMP_SKEW',
+      message: 'Đồng hồ máy tính lệch quá nhiều so với máy chủ. Ứng dụng sẽ tự đồng bộ và thử lại.',
+      serverTime: auth.serverTimeMs,
+    });
+    return;
+  }
   sendError(res, auth.status, auth.message);
 }
 
@@ -37,6 +52,40 @@ function getIdempotencyKey(req: Request, body: IngestFindingPayload): string | u
   return undefined;
 }
 
+/** Auto-provisioned credentials carry the role snapshot in `role:<key>` scope. */
+function hasRole(auth: HmacAuthSuccess, ...roles: string[]): boolean {
+  return Boolean(auth.roleKey && roles.includes(auth.roleKey));
+}
+
+function buildSourceScope(auth: HmacAuthSuccess): Prisma.AgentSourceWhereInput {
+  if (hasRole(auth, 'super_admin')) return { status: 'active' };
+  if (auth.companyId) {
+    return { status: 'active', OR: [{ companyId: auth.companyId }, { companyId: null }] };
+  }
+  // Manual admin-issued keys keep their previous tenant-wide visibility.
+  if (!auth.roleKey) return { status: 'active' };
+  // Independent desktop agents only see system-wide sources.
+  return { status: 'active', companyId: null };
+}
+
+function canSeeProperty(auth: HmacAuthSuccess, property: any): boolean {
+  if (!property || property.sale_status === 'hidden') return false;
+  // Manual admin-issued keys keep their previous visibility.
+  if (!auth.roleKey) return true;
+  if (hasRole(auth, 'super_admin')) return true;
+
+  const ownerId = property.owner_user_id || property.created_by_user_id;
+  const isTeamRole = hasRole(auth, 'team_lead', 'member');
+
+  if (isTeamRole) {
+    if (auth.companyId && property.company_id === auth.companyId) return true;
+    return Boolean(auth.createdBy && ownerId === auth.createdBy);
+  }
+
+  // Independent (or unknown role): own inventory only.
+  return Boolean(auth.createdBy && ownerId === auth.createdBy);
+}
+
 import { ingestWebhookRateLimiter } from '../middleware/rateLimiters';
 
 export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
@@ -45,13 +94,13 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
   app.use('/api/agent-ingest', ingestWebhookRateLimiter);
 
   app.get('/api/agent-ingest/v1/health', async (req: Request, res: Response) => {
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.scan' });
     // Also allow authenticated owner/company via session for ops checks
     if (auth.ok === false) {
       let sessionOk = false;
       try {
         const user = getAuthUser(req);
-        sessionOk = Boolean(user && (user.role === 'owner' || user.role === 'company'));
+        sessionOk = Boolean(user && (isSuperAdminUser(user) || user.role === 'company'));
       } catch {
         sessionOk = false;
       }
@@ -107,7 +156,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.sources' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -116,8 +165,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
     try {
       const typeFilter = String(req.query.type || '').trim();
       const where: Prisma.AgentSourceWhereInput = {
-        status: 'active',
-        ...(auth.companyId ? { OR: [{ companyId: auth.companyId }, { companyId: null }] } : {}),
+        ...buildSourceScope(auth),
         ...(typeFilter ? { type: typeFilter } : {}),
       };
 
@@ -150,7 +198,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.properties' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -160,7 +208,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       const db = readDatabase();
       const allProps = Array.isArray(db.properties) ? db.properties : [];
       const properties = allProps
-        .filter((p: any) => p && p.sale_status !== 'hidden')
+        .filter((p: any) => canSeeProperty(auth, p))
         .map((p: any) => ({
           id: p.id,
           title: p.title,
@@ -248,7 +296,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.ai' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -260,7 +308,12 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       let property = null;
       if (propertyId) {
         const db = readDatabase();
-        property = (db.properties || []).find((p: any) => p.id === propertyId);
+        const found = (db.properties || []).find((p: any) => p.id === propertyId);
+        if (found && !canSeeProperty(auth, found)) {
+          sendError(res, 403, 'Bất động sản không thuộc phạm vi tài khoản.');
+          return;
+        }
+        property = found || null;
       }
       if (!property && body.propertyData) {
         property = body.propertyData;
@@ -291,7 +344,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.scan' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -327,7 +380,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.scan' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -359,7 +412,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.scan' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -405,7 +458,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
       sendError(res, 503, 'Agent ingestion disabled (AGENT_INGEST_ENABLED≠true).');
       return;
     }
-    const auth = await verifyIngestHmac(req, { requiredScope: 'findings:ingest' });
+    const auth = await verifyIngestHmac(req, { requiredScope: 'agent.scan' });
     if (auth.ok === false) {
       rejectAuth(res, auth);
       return;
@@ -463,10 +516,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         sendError(res, 403, 'Không có quyền.');
         return;
       }
-      const where =
-        user.role === 'owner'
-          ? {}
-          : { companyId: user.company_id ?? '__none__' };
+      const where = buildCompanyScopeFilter(user);
       const rows = await prisma.agentApiCredential.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -499,6 +549,10 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         return;
       }
       const body = (req.body || {}) as Record<string, unknown>;
+      if (!isSuperAdminUser(user) && !user.company_id) {
+        sendError(res, 403, 'Tài khoản chưa thuộc công ty nào.');
+        return;
+      }
       const name = String(body.name || '').trim() || 'Ingest API key';
       const defaults = accessDefaults(req, body);
       const { keyId, secret } = generateApiKeyPair();
@@ -517,9 +571,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
 
       const row = await prisma.agentApiCredential.create({
         data: {
-          companyId: user.role === 'owner'
-            ? (body.companyId != null ? String(body.companyId) : defaults.company_id)
-            : user.company_id,
+          companyId: resolveRequestCompanyId(req, body.companyId) ?? defaults.company_id,
           keyId,
           secretHash: hashApiSecret(secret),
           encryptedSecret: encryptApiSecret(secret),
@@ -565,7 +617,7 @@ export function registerAgentIngestRoutes(app: Express, deps: AgentRouteDeps) {
         sendError(res, 404, 'Không tìm thấy credential.');
         return;
       }
-      if (user.role !== 'owner' && existing.companyId !== user.company_id) {
+      if (!isSuperAdminUser(user) && (!user.company_id || existing.companyId !== user.company_id)) {
         sendError(res, 403, 'Không có quyền.');
         return;
       }

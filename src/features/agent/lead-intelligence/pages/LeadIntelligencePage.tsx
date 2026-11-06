@@ -6,7 +6,8 @@ import {
   Copy,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { adminTabPath } from '../../../../app/navigation/tabPaths';
 import {
   bulkActionAgentFindings,
   createFindingActionProposals,
@@ -109,6 +110,7 @@ const PRIORITY_TONE: Record<string, string> = {
 
 export default function LeadIntelligencePage({ userRole }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [findings, setFindings] = useState<AgentFinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -315,7 +317,8 @@ export default function LeadIntelligencePage({ userRole }: Props) {
   };
 
   const goToInvestorLeads = () => {
-    navigate('/admin/dashboard', { state: { activeTab: 'investor-leads' } });
+    const portal = location.pathname.startsWith('/my') ? 'member' : 'admin';
+    navigate(adminTabPath(portal, 'investor-leads'));
   };
 
   const promoteFinding = async (finding: AgentFinding) => {

@@ -175,6 +175,7 @@ export default function CustomersPage({
       </div>
 
       <div className={`bg-slate-900/40 rounded-2xl border border-slate-900 overflow-hidden ${loading ? 'opacity-60' : ''}`}>
+        <p className="px-4 pt-3 text-[11px] text-slate-500 md:hidden">Vuốt ngang bảng để xem thêm cột.</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>

@@ -43,7 +43,7 @@ export default function BlogPostCard({ post, variant = 'default' }: BlogPostCard
               {post.category && (
                 <Link
                   to={post.category.hubPath}
-                  className="rounded-full bg-invest-blue-muted px-2.5 py-1 text-invest-blue hover:bg-invest-blue/10"
+                  className="inline-flex min-h-6 items-center rounded-full bg-invest-blue-muted px-2.5 py-1 text-invest-blue hover:bg-invest-blue/10"
                 >
                   {post.category.name}
                 </Link>
@@ -63,7 +63,7 @@ export default function BlogPostCard({ post, variant = 'default' }: BlogPostCard
             <p className="mt-3 line-clamp-3 text-slate-600">{post.excerpt}</p>
             <Link
               to={href}
-              className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-invest-blue hover:underline"
+              className="mt-6 inline-flex min-h-11 items-center gap-1 text-sm font-bold text-invest-blue hover:underline"
             >
               Đọc phân tích
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
@@ -110,7 +110,7 @@ export default function BlogPostCard({ post, variant = 'default' }: BlogPostCard
           {post.category && (
             <Link
               to={post.category.hubPath}
-              className="rounded-full bg-invest-gold-muted px-2.5 py-1 text-invest-blue hover:bg-invest-blue-muted"
+              className="inline-flex min-h-6 items-center rounded-full bg-invest-gold-muted px-2.5 py-1 text-invest-blue hover:bg-invest-blue-muted"
             >
               {post.category.name}
             </Link>
@@ -129,7 +129,7 @@ export default function BlogPostCard({ post, variant = 'default' }: BlogPostCard
         <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-slate-600">{post.excerpt}</p>
         <Link
           to={href}
-          className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-invest-blue hover:underline"
+          className="mt-4 inline-flex min-h-11 items-center gap-1 text-sm font-bold text-invest-blue hover:underline"
         >
           Đọc tiếp
           <ArrowRight className="h-3.5 w-3.5" />

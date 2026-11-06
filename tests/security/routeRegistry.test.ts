@@ -133,7 +133,6 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
       { method: 'get', path: '/api/users' },
       { method: 'get', path: '/api/settings' },
       { method: 'get', path: '/api/investor-leads' },
-      { method: 'get', path: '/api/admin/short-links' },
       { method: 'get', path: '/api/executive/snapshot' },
       { method: 'get', path: '/api/decision-center/rules' },
       { method: 'get', path: '/api/knowledge/stats' },
@@ -163,9 +162,9 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
       { method: 'get', path: '/api/customers' },
       { method: 'get', path: '/api/properties' },
       { method: 'get', path: '/api/appointments' },
-      { method: 'get', path: '/api/chat/history' },
       { method: 'get', path: '/api/posts' },
       { method: 'get', path: '/api/inbox' },
+      { method: 'get', path: '/api/admin/short-links' },
       { method: 'get', path: '/api/blog/posts' },
       { method: 'get', path: '/api/blog/categories' },
       { method: 'get', path: '/api/blog/tags' },
@@ -178,6 +177,18 @@ describe('P4 Route Registry & Role Resolution Verification', () => {
       // Crucial: Must NOT be 403 Forbidden!
       expect(res.status, `Expected non-403 for member on ${method.toUpperCase()} ${path}`).not.toBe(403);
     }
+  });
+
+  it('3b. Website chat history is limited to Super Admin and platform-root team', async () => {
+    const memberRes = await request(app)
+      .get('/api/chat/history')
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(memberRes.status).toBe(403);
+
+    const ownerRes = await request(app)
+      .get('/api/chat/history')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(ownerRes.status).toBe(200);
   });
 
   it('4. Machine endpoints bypass session RBAC while blog keeps its role floor', async () => {

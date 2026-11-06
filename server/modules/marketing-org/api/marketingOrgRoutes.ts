@@ -12,13 +12,13 @@ import {
 } from '../marketingService';
 import { buildWeeklyContentCalendar } from '../contentCalendar';
 import { requirePermission } from '../../rbac';
+import { resolveRequestCompanyId } from '../../auth';
 
 export function registerMarketingOrgRoutes(app: Express): void {
   app.use('/api/marketing-org', requirePermission('agent.sources'));
   app.get('/api/marketing-org/snapshot', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const topic = typeof req.query.topic === 'string' ? req.query.topic : null;
       const data = await buildMarketingSnapshot({ companyId, topic });
       res.json({ status: 'success', data });
@@ -29,8 +29,7 @@ export function registerMarketingOrgRoutes(app: Express): void {
 
   app.get('/api/marketing-org/briefing', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const snapshot = await buildMarketingSnapshot({ companyId });
       res.json({
         status: 'success',

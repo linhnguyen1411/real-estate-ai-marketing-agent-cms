@@ -13,12 +13,18 @@ export type HmacAuthSuccess = {
   companyId: string | null;
   credentialId: string;
   scopes: string[];
+  /** Account that owns the auto-provisioned credential (null for manual keys). */
+  createdBy: string | null;
+  /** Role captured at activation, e.g. super_admin | team_lead | member | independent. */
+  roleKey: string | null;
 };
 
 export type HmacAuthFailure = {
   ok: false;
   status: number;
   message: string;
+  /** Set for clock-skew failures so clients can resync without user action. */
+  serverTimeMs?: number;
 };
 
 export type HmacAuthResult = HmacAuthSuccess | HmacAuthFailure;
@@ -104,9 +110,31 @@ export async function purgeExpiredIngestNonces(): Promise<number> {
   return result.count;
 }
 
+const AGENT_CAPABILITY_SCOPES = [
+  'agent.scan',
+  'agent.sources',
+  'agent.properties',
+  'agent.ai',
+  'agent.reports',
+  'agent.notifications',
+] as const;
+
 function parseScopes(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String);
-  return ['findings:ingest'];
+  const stored = Array.isArray(value) ? value.map(String) : ['findings:ingest'];
+  // Manual/legacy credentials were issued with findings:ingest only; keep them
+  // working by treating that scope as the full agent capability set.
+  if (stored.includes('findings:ingest') || stored.includes('*')) {
+    for (const scope of AGENT_CAPABILITY_SCOPES) {
+      if (!stored.includes(scope)) stored.push(scope);
+    }
+  }
+  return stored;
+}
+
+function readRoleKey(value: unknown): string | null {
+  const stored = Array.isArray(value) ? value.map(String) : [];
+  const match = stored.find((scope) => scope.startsWith('role:'));
+  return match ? match.slice('role:'.length) : null;
 }
 
 function getHeader(req: Request, name: string): string {
@@ -160,7 +188,12 @@ export async function verifyIngestHmac(
   const tsMs = tsNum > 1e12 ? tsNum : tsNum * 1000;
   const drift = Math.abs(Date.now() - tsMs);
   if (drift > skewSeconds * 1000) {
-    return { ok: false, status: 401, message: 'Timestamp skew too large.' };
+    return {
+      ok: false,
+      status: 401,
+      message: 'Timestamp skew too large.',
+      serverTimeMs: Date.now(),
+    };
   }
 
   const credential = await prisma.agentApiCredential.findUnique({ where: { keyId } });
@@ -240,5 +273,7 @@ export async function verifyIngestHmac(
     companyId: credential.companyId,
     credentialId: credential.id,
     scopes,
+    createdBy: credential.createdBy || null,
+    roleKey: readRoleKey(credential.scopes),
   };
 }

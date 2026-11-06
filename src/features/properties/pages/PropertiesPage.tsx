@@ -1,9 +1,8 @@
 import React, { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Plus, Search, X, Zap, Upload } from 'lucide-react';
+import { ExternalLink, Plus, Search, X, Zap } from 'lucide-react';
 import AdminPropertyDirectory from '../../../components/admin/AdminPropertyDirectory';
 import PaginationBar from '../../../components/common/PaginationBar';
 import QuickPostModal from '../components/QuickPostModal';
-import BatchImportModal from '../components/BatchImportModal';
 import {
   createProperty,
   deleteProperty,
@@ -65,7 +64,6 @@ export default function PropertiesPage({
   const [propertyGalleryIndex, setPropertyGalleryIndex] = useState<{ [key: string]: number }>({});
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
   const [showQuickPostModal, setShowQuickPostModal] = useState(false);
-  const [showBatchImportModal, setShowBatchImportModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [newPropertyForm, setNewPropertyForm] = useState(createEmptyPropertyForm);
   const [customProjectMode, setCustomProjectMode] = useState(false);
@@ -266,6 +264,7 @@ export default function PropertiesPage({
         gallery_images: gallery
       });
       setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      invalidateCrmModule();
       onNotify("Đã upload và lưu ảnh bất động sản.", "success");
     } catch (e: any) {
       onNotify(e.message || "Lỗi upload ảnh.", "error");
@@ -281,6 +280,7 @@ export default function PropertiesPage({
         sale_status: prop.sale_status === 'sold' ? 'available' : 'sold'
       });
       setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      invalidateCrmModule();
       onNotify(updated.sale_status === 'sold' ? "Đã đánh dấu bất động sản là đã bán." : "Đã chuyển bất động sản về trạng thái đang bán.", "success");
     } catch (e: any) {
       onNotify(e.message || "Lỗi cập nhật trạng thái bán.", "error");
@@ -296,6 +296,7 @@ export default function PropertiesPage({
         is_featured: !prop.is_featured
       });
       setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      invalidateCrmModule();
       onNotify(updated.is_featured ? "Đã gán BĐS nổi bật." : "Đã bỏ gán BĐS nổi bật.", "success");
     } catch (e: any) {
       onNotify(e.message || "Lỗi cập nhật BĐS nổi bật.", "error");
@@ -379,6 +380,7 @@ export default function PropertiesPage({
     try {
       const updated = await deleteProperty(prop.id);
       setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      invalidateCrmModule();
       onNotify('Đã ẩn sản phẩm khỏi listing công khai. Có thể khôi phục trong CMS.', 'success');
     } catch (e: any) {
       onNotify(e.message || 'Không thể ẩn sản phẩm.', 'error');
@@ -392,6 +394,7 @@ export default function PropertiesPage({
     try {
       const updated = await updateProperty(prop.id, { sale_status: 'available' });
       setProperties(prev => prev.map(item => item.id === prop.id ? updated : item));
+      invalidateCrmModule();
       onNotify('Đã khôi phục sản phẩm về listing công khai.', 'success');
     } catch (e: any) {
       onNotify(e.message || 'Không thể khôi phục sản phẩm.', 'error');
@@ -416,14 +419,6 @@ export default function PropertiesPage({
           >
             <Zap className="w-4 h-4" />
             <span>⚡ Đăng nhanh 1 chạm</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBatchImportModal(true)}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all"
-          >
-            <Upload className="w-4 h-4 text-indigo-400" />
-            <span>📥 Batch Import</span>
           </button>
           <a
             href="/"
@@ -581,15 +576,12 @@ export default function PropertiesPage({
       <QuickPostModal
         isOpen={showQuickPostModal}
         onClose={() => setShowQuickPostModal(false)}
-        onSuccess={() => void loadProperties()}
+        onSuccess={() => {
+          invalidateCrmModule();
+          void loadProperties();
+        }}
         onNotify={onNotify}
-      />
-
-      <BatchImportModal
-        isOpen={showBatchImportModal}
-        onClose={() => setShowBatchImportModal(false)}
-        onSuccess={() => void loadProperties()}
-        onNotify={onNotify}
+        projectGroups={projectCatalogGroups}
       />
 
     </div>

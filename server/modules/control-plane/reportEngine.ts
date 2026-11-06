@@ -8,6 +8,7 @@ import { buildAutomationRuntimeSnapshot } from '../../agent/runtimeObservability
 import { getDailyAgentReport } from '../../agent/dailyReportService';
 import { listRegisteredAgents } from './agentRegistry';
 import { listRuntimeEvents } from './runtimeEventBus';
+import { isSuperAdminUser } from '../auth/tenantScope';
 import type { ControlPlaneReportKind } from './types';
 
 export async function buildControlPlaneReport(
@@ -17,14 +18,14 @@ export async function buildControlPlaneReport(
 ): Promise<Record<string, unknown>> {
   const runtime = await buildAutomationRuntimeSnapshot(user);
   const agents = await listRegisteredAgents({
-    companyId: user.role === 'owner' ? undefined : user.company_id ?? '__none__',
+    companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? '__none__',
   });
   const since =
     kind === 'weekly'
       ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       : new Date(Date.now() - 24 * 60 * 60 * 1000);
   const events = await listRuntimeEvents({
-    companyId: user.role === 'owner' ? undefined : user.company_id ?? null,
+    companyId: isSuperAdminUser(user) ? undefined : user.company_id ?? null,
     since,
     limit: 100,
   });
@@ -50,7 +51,7 @@ export async function buildControlPlaneReport(
     case 'runtime_health': {
       const { refreshOperationsMetrics } = await import('./operations');
       const operations = await refreshOperationsMetrics({
-        companyId: user.role === 'owner' ? null : user.company_id ?? null,
+        companyId: isSuperAdminUser(user) ? null : user.company_id ?? null,
         reason: 'report',
       });
       return {
@@ -66,7 +67,7 @@ export async function buildControlPlaneReport(
 
     case 'scanner': {
       const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
-      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const companyId = isSuperAdminUser(user) ? null : user.company_id ?? null;
       const operations =
         getLastOperationsMetrics(companyId) ||
         (await refreshOperationsMetrics({ companyId, reason: 'report' }));
@@ -84,7 +85,7 @@ export async function buildControlPlaneReport(
 
     case 'publish': {
       const { getLastOperationsMetrics, refreshOperationsMetrics } = await import('./operations');
-      const companyId = user.role === 'owner' ? null : user.company_id ?? null;
+      const companyId = isSuperAdminUser(user) ? null : user.company_id ?? null;
       const operations =
         getLastOperationsMetrics(companyId) ||
         (await refreshOperationsMetrics({ companyId, reason: 'report' }));
@@ -120,7 +121,7 @@ export async function buildControlPlaneReport(
       const { getOrchestratorSnapshot, formatOrchestratorReportLines } = await import(
         './fleet-orchestrator'
       );
-      const companyId = user.role === 'owner' ? undefined : user.company_id ?? null;
+      const companyId = isSuperAdminUser(user) ? undefined : user.company_id ?? null;
       const fleet = await getFleetState({ companyId });
       const operations = await refreshOperationsMetrics({
         companyId: companyId ?? null,

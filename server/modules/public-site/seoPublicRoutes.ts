@@ -20,7 +20,8 @@ import {
   getStaticPageShareMeta,
   getPropertyShareMeta,
 } from './ssrPublicIndex';
-import { getPropertyPath, getPropertySlug, publicListingsPath } from './propertyPaths';
+import { getPropertyPath, publicListingsPath } from './propertyPaths';
+import { matchesPropertySlug } from '../../../src/utils/propertyShare';
 import { renderDocumentWithSeo } from '../../../src/seo/ssr/renderDocument';
 
 let viteDevServer: import('vite').ViteDevServer | null = null;
@@ -96,10 +97,15 @@ export function getPropertyPublicImageUrl(property: Property, origin: string, in
 }
 
 export function findPublicPropertyBySlug(propertySlug: string) {
-  const decodedSlug = decodeURIComponent(propertySlug || '').toLowerCase();
+  let decodedSlug = String(propertySlug || '').toLowerCase();
+  try {
+    decodedSlug = decodeURIComponent(decodedSlug);
+  } catch {
+    // keep the raw value when the URL contains malformed escapes
+  }
   return getProperties().find((property: Property) => {
     if (['sold', 'hidden'].includes(property.sale_status || 'available')) return false;
-    return property.id === decodedSlug || getPropertySlug(property).toLowerCase() === decodedSlug;
+    return matchesPropertySlug(property, decodedSlug);
   }) as Property | undefined;
 }
 

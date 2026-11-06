@@ -339,7 +339,7 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
                 key={tab.id}
                 type="button"
                 onClick={() => setBucket(tab.id)}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`inline-flex min-h-11 items-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                   bucket === tab.id
                     ? 'bg-rose-500/15 text-rose-300'
                     : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
@@ -358,7 +358,7 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
             <button
               type="button"
               onClick={() => shiftMonth(-1)}
-              className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="flex h-11 w-11 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-white"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -366,7 +366,7 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
             <button
               type="button"
               onClick={() => shiftMonth(1)}
-              className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="flex h-11 w-11 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-white"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -378,7 +378,8 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
               description="Đổi tab hoặc duyệt + lên lịch bản nháp."
             />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-800">
+            <div className="overflow-x-auto app-scroll rounded-xl border border-slate-800">
+              <div className="min-w-[640px]">
               <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-900">
                 {WEEKDAYS.map(w => (
                   <div
@@ -433,6 +434,7 @@ export default function CalendarQueuePanel({ canManage, onMessage }: Props) {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </div>
           )}

@@ -267,7 +267,7 @@ export default function CampaignsPanel({ canManage, onMessage }: Props) {
             <button
               type="button"
               onClick={() => setShowForm(v => !v)}
-              className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
             >
               <Plus className="h-3.5 w-3.5" /> Tạo campaign
             </button>

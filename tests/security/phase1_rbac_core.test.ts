@@ -282,9 +282,8 @@ describe('Phase 1 RBAC Core & Multi-Tenant Gates', () => {
     expect(resApprovedCrm.status).toBe(200);
   });
 
-  // Test 5: website_chat requires platform root team (isPlatformRoot = true)
-  it('5. Platform Root feature gate: website_chat is restricted to platform root team', async () => {
-    // Normal team
+  // Test 5: website_chat is entitlement-gated; platform-root membership alone grants nothing
+  it('5. website_chat: platform-root team membership is metadata only, entitlement is required', async () => {
     const normalTeam = {
       id: 'team-normal-crm',
       leadUserId: ctx.users.companyAdminA.id,
@@ -292,7 +291,6 @@ describe('Phase 1 RBAC Core & Multi-Tenant Gates', () => {
       isPlatformRoot: false,
       createdAt: new Date(),
     };
-    // Platform root team
     const rootTeam = {
       id: 'team-platform-root',
       leadUserId: ctx.users.owner.id,
@@ -310,22 +308,60 @@ describe('Phase 1 RBAC Core & Multi-Tenant Gates', () => {
       approvedBy: normalTeam.leadUserId,
       joinedAt: new Date(),
     });
+    // memberB is an approved member of the platform-root team but has no entitlement.
+    seedMockTeamMemberForTesting({
+      teamId: rootTeam.id,
+      userId: ctx.users.memberB.id,
+      status: 'approved',
+      approvedBy: rootTeam.leadUserId,
+      joinedAt: new Date(),
+    });
 
-    // Normal team member resolves permissions: website_chat is 'none'
+    // Root-team membership is metadata only: no premium feature is granted.
+    const rootMemberResolved = await resolvePermissions(ctx.users.memberB);
+    expect(rootMemberResolved.isPlatformRootTeam).toBe(true);
+    expect(rootMemberResolved.permissions['website_chat'].hasAccess).toBe(false);
+    expect(rootMemberResolved.permissions['website_chat'].requiresPremiumUpgrade).toBe(true);
+
+    const resRootMemberChat = await request(ctx.app)
+      .get('/api/chat/guests')
+      .set('Authorization', `Bearer ${ctx.tokens.memberB}`);
+    expect(resRootMemberChat.status).toBe(402);
+    expect(resRootMemberChat.body.code).toBe('PREMIUM_REQUIRED');
+
+    // Entitlement alone no longer unlocks website chat for a normal team:
+    // the feature is reserved for Super Admin and platform-root team members.
     const normalResolved = await resolvePermissions(ctx.users.memberA);
-    expect(normalResolved.permissions['website_chat'].scope).toBe('none');
+    expect(normalResolved.permissions['website_chat'].hasAccess).toBe(true);
+    expect(normalResolved.isPlatformRootTeam).toBe(false);
 
-    // Normal team member calling /api/chat/guests -> 403 Forbidden
     const resNormalChat = await request(ctx.app)
       .get('/api/chat/guests')
       .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
     expect(resNormalChat.status).toBe(403);
 
-    // Platform Root owner resolves permissions: website_chat is 'all'
+    // Root-team membership plus entitlement unlocks the feature.
+    seedMockEntitlementForTesting({
+      id: 'ent-root-chat',
+      subjectType: 'user',
+      subjectId: ctx.users.memberB.id,
+      plan: 'premium_trial',
+      features: ['website_chat'],
+      startsAt: new Date(Date.now() - 3600_000),
+      expiresAt: new Date(Date.now() + 3 * 86400_000),
+      source: 'manual',
+      grantedBy: 'admin',
+    });
+
+    const resRootMemberEntitled = await request(ctx.app)
+      .get('/api/chat/guests')
+      .set('Authorization', `Bearer ${ctx.tokens.memberB}`);
+    expect(resRootMemberEntitled.status).toBe(200);
+
+    // Platform owner always has 'all'.
     const rootResolved = await resolvePermissions(ctx.users.owner);
     expect(rootResolved.permissions['website_chat'].scope).toBe('all');
 
-    // Platform Root owner calling /api/chat/guests -> 200 OK
     const resRootChat = await request(ctx.app)
       .get('/api/chat/guests')
       .set('Authorization', `Bearer ${ctx.tokens.owner}`);

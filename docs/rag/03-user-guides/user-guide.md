@@ -38,13 +38,13 @@
 
 ### 2.2 Hướng Dẫn Cập Nhật Mã Giới Thiệu (Nếu Đã Có Tài Khoản)
 1. Đăng nhập vào trang quản trị `https://bdsdanang.site`.
-2. Bấm vào mục **Hồ sơ cá nhân** (Góc dưới menu trái hoặc `/admin#profile`).
+2. Bấm vào mục **Hồ sơ cá nhân** ở góc dưới menu trái.
 3. Tìm đến ô **Mã giới thiệu bảo trợ**.
 4. Nhập mã giới thiệu của Trưởng nhóm và bấm **"Lưu hồ sơ"**.
 5. Hệ thống sẽ kết nối tài khoản của bạn vào Team và gửi yêu cầu phê duyệt đến Trưởng nhóm.
 
 ### 2.3 Hướng Dẫn Đăng Mới Bất Động Sản Lên Giỏ Hàng
-1. Tại menu bên trái, chọn **Danh sách Bất động sản** (`/admin#properties`).
+1. Tại menu bên trái của dashboard, chọn **Danh sách Bất động sản**.
 2. Bấm nút **"+ Thêm Bất động sản"**.
 3. Điền các trường thông tin:
    - **Tiêu đề tin:** Rõ ràng, hấp dẫn (Ví dụ: *Bán đất nền Nam Hòa Xuân view công viên, sổ đỏ chính chủ*).
@@ -62,7 +62,7 @@
 
 ### 3.1 Cách Phê Duyệt Thành Viên Mới Vào Nhóm
 1. Đăng nhập với tài khoản Team Lead.
-2. Tại menu bên trái, chọn **Quản lý Team** (`/admin#team`).
+2. Tại menu bên trái của dashboard, chọn **Quản lý Team**.
 3. Tại danh sách **"Thành viên chờ duyệt"**, bạn sẽ thấy thông tin của các bạn sale vừa đăng ký bằng mã của bạn.
 4. Bấm nút **"Duyệt" (Approve)** đối với thành viên hợp lệ.
 5. Ngay lập tức, thành viên đó sẽ được chuyển thành **Thành viên chính thức** và có thể xem giỏ hàng chung của Team.
@@ -80,7 +80,7 @@
 
 ### 4.1 Cách Chỉnh Sửa Ma Trận Phân Quyền 2D
 1. Đăng nhập bằng tài khoản Super Admin.
-2. Chọn menu **Phân quyền & Gói** (`/admin#rbac`).
+2. Trong menu bên trái của dashboard, chọn **Phân quyền & Gói**.
 3. Tại màn hình ma trận:
    - Mỗi cột là một vai trò (`super_admin`, `team_lead`, `member`, `independent`, `pending_member`).
    - Mỗi dòng là một quyền hạn (trong 30 quyền hạn).

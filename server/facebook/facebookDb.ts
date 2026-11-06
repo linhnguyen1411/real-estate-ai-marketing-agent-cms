@@ -1,49 +1,12 @@
 import crypto from 'crypto';
 import { prisma } from '../prisma';
 import { getFacebookConfig } from './config';
-import { encryptAccessToken, decryptAccessToken } from './tokenCrypto';
 
-export async function ensureFacebookPageConnection() {
+export function getActivePageAccessToken(pageId?: string): string | null {
   const cfg = getFacebookConfig();
-  if (!cfg.pageId || !cfg.pageAccessToken) return null;
-
-  const encrypted = encryptAccessToken(cfg.pageAccessToken);
-  return prisma.facebookPageConnection.upsert({
-    where: { pageId: cfg.pageId },
-    create: {
-      id: `fb-page-${cfg.pageId}`,
-      pageId: cfg.pageId,
-      pageName: 'House & Life Fanpage',
-      accessTokenEncrypted: encrypted,
-      isActive: true,
-    },
-    update: {
-      accessTokenEncrypted: encrypted,
-      isActive: true,
-      updatedAt: new Date(),
-    },
-  });
-}
-
-export async function getActivePageAccessToken(pageId?: string): Promise<string | null> {
-  const cfg = getFacebookConfig();
-  const targetPageId = pageId || cfg.pageId;
-  if (!targetPageId) return cfg.pageAccessToken || null;
-
-  const row = await prisma.facebookPageConnection.findFirst({
-    where: { pageId: targetPageId, isActive: true },
-  });
-  if (row?.accessTokenEncrypted) {
-    try {
-      return decryptAccessToken(row.accessTokenEncrypted);
-    } catch (err: any) {
-      console.warn(`[FACEBOOK_DB] Failed to decrypt access token for pageId "${targetPageId}": ${err?.message || err}`);
-    }
-  }
-  if (targetPageId === cfg.pageId && cfg.pageAccessToken) {
-    return cfg.pageAccessToken;
-  }
-  return null;
+  if (!cfg.pageAccessToken) return null;
+  if (pageId && cfg.pageId && pageId !== cfg.pageId) return null;
+  return cfg.pageAccessToken;
 }
 
 export async function saveWebhookEvent(payload: unknown, eventType?: string | null) {

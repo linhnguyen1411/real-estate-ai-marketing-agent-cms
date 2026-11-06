@@ -4,7 +4,13 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ExtractedLeadData, DesktopAgentStats, DesktopAgentSettings } from '../shared/types';
+import type {
+  ExtractedLeadData,
+  DesktopAgentStats,
+  DesktopAgentSettings,
+  DesktopAuthState,
+  DesktopLoginResult,
+} from '../shared/types';
 
 contextBridge.exposeInMainWorld('desktopAgent', {
   // Listeners
@@ -25,6 +31,25 @@ contextBridge.exposeInMainWorld('desktopAgent', {
       callback(log);
     ipcRenderer.on('log:message', subscription);
     return () => ipcRenderer.removeListener('log:message', subscription);
+  },
+
+  // Authentication
+  onAuthState: (callback: (state: DesktopAuthState) => void) => {
+    const subscription = (_event: any, state: DesktopAuthState) => callback(state);
+    ipcRenderer.on('auth:state', subscription);
+    return () => ipcRenderer.removeListener('auth:state', subscription);
+  },
+
+  getAuthState: (): Promise<DesktopAuthState> => {
+    return ipcRenderer.invoke('auth:get-state');
+  },
+
+  login: (key: string, remember: boolean): Promise<DesktopLoginResult> => {
+    return ipcRenderer.invoke('auth:login', { key, remember });
+  },
+
+  logout: (): Promise<{ success: boolean }> => {
+    return ipcRenderer.invoke('auth:logout');
   },
 
   // Actions
@@ -101,6 +126,33 @@ contextBridge.exposeInMainWorld('desktopAgent', {
 
   setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => {
     ipcRenderer.send('speed:set', mode);
+  },
+
+  setEnabledSources: (ids: string[]): Promise<{ enabledSourceIds: string[]; enabledCount: number }> => {
+    return ipcRenderer.invoke('sources:set-enabled', ids);
+  },
+
+  testTelegram: (): Promise<{ ok: boolean; error?: string }> => {
+    return ipcRenderer.invoke('telegram:test');
+  },
+
+  // Auto-update
+  getUpdateState: (): Promise<any | null> => {
+    return ipcRenderer.invoke('update:get-state');
+  },
+
+  checkForUpdates: (): Promise<void> => {
+    return ipcRenderer.invoke('update:check');
+  },
+
+  installUpdate: (): void => {
+    ipcRenderer.send('update:install');
+  },
+
+  onUpdateState: (callback: (state: any) => void) => {
+    const subscription = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update:state', subscription);
+    return () => ipcRenderer.removeListener('update:state', subscription);
   },
 
   // Publishing & Inventory

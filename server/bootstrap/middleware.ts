@@ -81,6 +81,17 @@ export function registerMiddleware(app: Express, opts: MiddlewareOptions): void 
       sendError(res, 404, 'Tệp cài đặt House & Life Agent chưa sẵn sàng.');
     }
   });
+  // Desktop agent auto-update manifest: must never be cached by proxies/CDNs.
+  app.get('/downloads/agent-version.json', (_req: Request, res: Response) => {
+    const manifestPath = path.join(publicAssetsPath, 'downloads/agent-version.json');
+    if (fs.existsSync(manifestPath)) {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.sendFile(manifestPath);
+    } else {
+      sendError(res, 404, 'Chưa có bản cập nhật nào được phát hành.');
+    }
+  });
   app.use(express.static(publicAssetsPath, createPublicStaticOptions()));
 
   app.use(jsonSyntaxErrorHandler);

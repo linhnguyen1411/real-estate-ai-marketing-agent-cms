@@ -7,6 +7,7 @@ import { promoteFindingToLead } from '../findingPromotionService';
 import { approveScannedContentAsFinding } from '../approveFindingService';
 import { parsePagination, validateFindingPatch, validateFindingsBulkAction } from '../agentValidation';
 import { createSpamRule } from '../spam/spamRuleRepository';
+import { isSuperAdminUser } from '../../modules/auth';
 
 export function registerFindingRoutes(app: Express, deps: AgentRouteDeps, helpers: AgentRouteHelpers): void {
   const { getAuthUser, accessDefaults } = deps;
@@ -123,7 +124,7 @@ export function registerFindingRoutes(app: Express, deps: AgentRouteDeps, helper
   app.delete('/api/agent/scanned-contents/:id', async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
-      if (user.role !== 'owner') {
+      if (!isSuperAdminUser(user)) {
         sendError(res, 403, 'Chỉ owner được hard-delete.');
         return;
       }
@@ -170,7 +171,7 @@ export function registerFindingRoutes(app: Express, deps: AgentRouteDeps, helper
       const action = String(body.action || body.status || '').trim().toLowerCase();
 
       if (action === 'hard-delete' || action === 'hard_delete') {
-        if (user.role !== 'owner') {
+        if (!isSuperAdminUser(user)) {
           sendError(res, 403, 'Chỉ owner được hard-delete.');
           return;
         }

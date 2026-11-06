@@ -5,22 +5,27 @@ import { getAuthUser } from '../auth/authAccess';
 import { findTeamMember } from '../rbac/rbacRepository';
 import { requirePermission } from '../rbac/rbacMiddleware';
 import { validateSchema } from '../../middleware/validation';
+import { prisma } from '../../prisma';
 import {
-  generateRawLicenseKey,
-  hashLicenseKey,
-  generateLicensePem,
   ensureTrialEntitlement,
+  ensureUserLicenseKey,
   activateLicense,
   processHeartbeat,
   refreshDeviceAccessToken,
 } from './licenseService';
 import {
-  createLicenseKey,
+  findLicenseKeyById,
   findLicenseKeysByUserId,
   listAllLicenseKeys,
   revokeLicenseKey,
   getDevicesForLicense,
 } from './licenseRepository';
+import { resolvePermissions } from '../rbac/rbacService';
+import { buildAgentCapabilities } from './agentCapabilities';
+import {
+  provisionDesktopIngestCredential,
+  revokeDesktopIngestCredentials,
+} from './agentProvisioning';
 
 const activateSchema = z.object({
   key: z.string().trim().min(5, 'Khóa bản quyền không hợp lệ.'),
@@ -63,32 +68,38 @@ export function createLicenseRouter(): Router {
       return;
     }
 
-    // 1. Ensure user has trial entitlement (3 days) if not already entitled
     const ent = await ensureTrialEntitlement(authUser.id);
-
-    // 2. Check for existing active license key or generate new one
-    const existing = await findLicenseKeysByUserId(authUser.id);
-    const activeKey = existing.find((k) => k.status === 'active');
-
-    let rawKey: string | null = null;
-    let licenseKeyId = activeKey?.id;
-
-    if (!activeKey) {
-      rawKey = generateRawLicenseKey();
-      const created = await createLicenseKey({
-        userId: authUser.id,
-        keyHash: hashLicenseKey(rawKey),
-        maxDevices: 1,
+    if (ent.alreadyUsed) {
+      res.status(403).json({
+        status: 'error',
+        code: 'TRIAL_ALREADY_USED',
+        message: 'Mỗi tài khoản chỉ được dùng thử Premium Trial một lần. Vui lòng nâng cấp gói để tiếp tục.',
+        data: { plan: ent.plan, expiresAt: ent.expiresAt },
       });
-      licenseKeyId = created.id;
+      return;
+    }
+
+    let ensured;
+    try {
+      ensured = await ensureUserLicenseKey({ userId: authUser.id });
+    } catch (error: any) {
+      if (error?.code === 'KEY_REVOKED') {
+        res.status(403).json({
+          status: 'error',
+          code: 'KEY_REVOKED',
+          message: 'Khóa bản quyền của tài khoản đã bị thu hồi. Vui lòng liên hệ quản trị viên.',
+        });
+        return;
+      }
+      throw error;
     }
 
     res.json({
       status: 'success',
       data: {
-        licenseKeyId,
-        licenseKey: rawKey, // Only returned at generation time!
-        hasExistingKey: !!activeKey,
+        licenseKeyId: ensured.key.id,
+        licenseKey: ensured.rawKey,
+        hasExistingKey: !ensured.created,
         plan: ent.plan,
         features: ent.features,
         expiresAt: ent.expiresAt,
@@ -101,7 +112,7 @@ export function createLicenseRouter(): Router {
 
   /**
    * GET /api/license/my-license (and /api/license/my-key)
-   * Fetch current authenticated user's license, PEM certificate and active devices
+   * Fetch current authenticated user's license key and active devices
    */
   const handleGetMyLicense = async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
@@ -128,35 +139,38 @@ export function createLicenseRouter(): Router {
       return;
     }
 
-    const devices = await getDevicesForLicense(activeKey.id);
-    const pseudoKey = `HL-${activeKey.id.replace(/[^A-Z0-9]/gi, '').slice(0, 4).toUpperCase() || 'FREE'}-XXXX-XXXX`;
-    const pem = generateLicensePem({
-      licenseKey: pseudoKey,
-      userId: authUser.id,
-      userEmail: authUser.email,
-      plan: entitlement.plan || 'trial',
-      expiresAt: entitlement.expiresAt,
-      maxDevices: activeKey.maxDevices,
-    });
+    if (activeKey.status === 'revoked') {
+      res.status(403).json({
+        status: 'error',
+        code: 'KEY_REVOKED',
+        message: 'Khóa bản quyền của tài khoản đã bị thu hồi. Vui lòng liên hệ quản trị viên.',
+      });
+      return;
+    }
+
+    // Legacy rows were stored hash-only; rotate them in place so the owner can
+    // always re-open the single key tied to this account.
+    const ensured = await ensureUserLicenseKey({ userId: authUser.id });
+    const rawKey = ensured.rawKey;
+    const devices = await getDevicesForLicense(ensured.key.id);
 
     res.json({
       status: 'success',
       data: {
         hasKey: true,
-        licenseKeyId: activeKey.id,
-        licenseKey: pseudoKey,
-        status: activeKey.status,
+        licenseKeyId: ensured.key.id,
+        licenseKey: rawKey,
+        status: ensured.key.status,
         plan: entitlement.plan,
         features: entitlement.features,
         expiresAt: entitlement.expiresAt,
-        maxDevices: activeKey.maxDevices,
+        maxDevices: ensured.key.maxDevices,
         activeDevices: devices.length,
         devices: devices.map((d) => ({
           deviceId: d.deviceId,
           deviceName: d.deviceName,
           lastHeartbeatAt: d.lastHeartbeatAt,
         })),
-        pem,
         downloadUrl: '/downloads/HouseAndLife-Agent-Setup.exe',
       },
     });
@@ -167,7 +181,7 @@ export function createLicenseRouter(): Router {
 
   /**
    * POST /api/license/request-pem
-   * Issue or regenerate a free trial PEM key & raw license key
+   * Issue or regenerate the account's single raw license key.
    */
   router.post('/api/license/request-pem', async (req: Request, res: Response) => {
     const authUser = getAuthUser(req);
@@ -181,108 +195,139 @@ export function createLicenseRouter(): Router {
       res.status(403).json({
         status: 'error',
         code: 'PENDING_MEMBER',
-        message: 'Tài khoản đang chờ duyệt không thể cấp Key PEM.',
+        message: 'Tài khoản đang chờ duyệt không thể cấp khóa bản quyền.',
       });
       return;
     }
 
     const ent = await ensureTrialEntitlement(authUser.id);
-    const rawKey = generateRawLicenseKey();
-    const created = await createLicenseKey({
-      userId: authUser.id,
-      keyHash: hashLicenseKey(rawKey),
-      maxDevices: 1,
-    });
+    const hadKey = (await findLicenseKeysByUserId(authUser.id)).length > 0;
 
-    const pem = generateLicensePem({
-      licenseKey: rawKey,
-      userId: authUser.id,
-      userEmail: authUser.email,
-      plan: ent.plan,
-      expiresAt: ent.expiresAt,
-      maxDevices: 1,
-    });
+    let ensured;
+    try {
+      ensured = await ensureUserLicenseKey({ userId: authUser.id });
+    } catch (error: any) {
+      if (error?.code === 'KEY_REVOKED') {
+        res.status(403).json({
+          status: 'error',
+          code: 'KEY_REVOKED',
+          message: 'Khóa bản quyền của tài khoản đã bị thu hồi. Vui lòng liên hệ quản trị viên.',
+        });
+        return;
+      }
+      throw error;
+    }
 
+    const rawKey = ensured.rawKey;
+    const expired = ent.alreadyUsed === true;
     res.json({
       status: 'success',
-      message: 'Đã tạo Khóa Bản Quyền và Key PEM Free thành công!',
+      message: expired
+        ? 'Premium Trial của bạn đã hết hạn. Đây là key duy nhất của tài khoản; hãy nâng cấp gói để tiếp tục sử dụng.'
+        : hadKey
+          ? 'Đây là key duy nhất của tài khoản bạn. Mỗi tài khoản chỉ được cấp một lần.'
+          : 'Đã tạo Khóa Bản Quyền Free thành công!',
       data: {
-        licenseKeyId: created.id,
+        licenseKeyId: ensured.key.id,
         licenseKey: rawKey,
-        pem,
         plan: ent.plan,
         features: ent.features,
         expiresAt: ent.expiresAt,
-        maxDevices: 1,
+        maxDevices: ensured.key.maxDevices,
+        expired,
+        hasExistingKey: hadKey,
         downloadUrl: '/downloads/HouseAndLife-Agent-Setup.exe',
         securityNotice:
-          'Khóa bản quyền và file PEM dùng để kích hoạt Desktop Agent thu thập & phân tích tin BĐS tự động.',
+          'Khóa bản quyền dùng để kích hoạt Desktop Agent thu thập & phân tích tin BĐS tự động.',
       },
     });
   });
 
   /**
    * POST /api/license/upgrade-plan
-   * Select and upgrade subscription package (Pro / Enterprise)
+   * Admin-only activation of a paid plan (bank transfer confirmed manually).
+   * Reuses the account's single existing license key — never issues a second.
    */
-  router.post('/api/license/upgrade-plan', async (req: Request, res: Response) => {
-    const authUser = getAuthUser(req);
-    if (!authUser) {
-      sendError(res, 401, 'Yêu cầu đăng nhập.');
-      return;
-    }
-
-    const { plan = 'pro', periodDays = 30 } = req.body || {};
-    const { createEntitlement } = await import('../rbac/rbacRepository');
-    const expiresAt = new Date(Date.now() + Number(periodDays) * 86400_000);
-
-    const features =
-      plan === 'enterprise'
-        ? ['tool.exe', 'agent.*', 'lead.intel', 'crm', 'investor_leads', 'fb_inbox', 'automation.*', 'team.manage']
-        : ['tool.exe', 'agent.sources', 'agent.runtime', 'agent.reports', 'agent.notifications', 'lead.intel', 'crm', 'investor_leads'];
-
-    const created = await createEntitlement({
-      subjectType: 'user',
-      subjectId: authUser.id,
-      plan: String(plan),
-      features,
-      startsAt: new Date(),
-      expiresAt,
-      source: 'self_upgrade',
-      grantedBy: authUser.id,
-    });
-
-    // Generate or refresh license key with higher device limit
-    const rawKey = generateRawLicenseKey();
-    const maxDevices = plan === 'enterprise' ? 10 : 3;
-    const licenseRow = await createLicenseKey({
-      userId: authUser.id,
-      keyHash: hashLicenseKey(rawKey),
-      maxDevices,
-    });
-
-    const pem = generateLicensePem({
-      licenseKey: rawKey,
-      userId: authUser.id,
-      userEmail: authUser.email,
-      plan: String(plan),
-      expiresAt,
-      maxDevices,
-    });
-
-    res.json({
-      status: 'success',
-      message: `Nâng cấp lên gói ${plan.toUpperCase()} thành công!`,
-      data: {
-        plan: created.plan,
-        expiresAt: created.expiresAt,
-        features: created.features,
-        licenseKey: rawKey,
-        pem,
-        maxDevices,
-      },
-    });
+  const upgradePlanSchema = z.object({
+    plan: z.enum(['pro', 'enterprise']),
+    periodDays: z.number().int().min(1).max(365).optional(),
+    userId: z.string().trim().min(1).optional(),
   });
+
+  router.post(
+    '/api/license/upgrade-plan',
+    requirePermission('license.manage'),
+    validateSchema(upgradePlanSchema),
+    async (req: Request, res: Response) => {
+      const authUser = getAuthUser(req);
+      if (!authUser) {
+        sendError(res, 401, 'Yêu cầu đăng nhập.');
+        return;
+      }
+
+      const { plan, periodDays = 30 } = req.body;
+      const targetUserId = req.body.userId || authUser.id;
+      const maxDevices = plan === 'enterprise' ? 10 : 3;
+      const expiresAt = new Date(Date.now() + Number(periodDays) * 86400_000);
+
+      const target = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, email: true },
+      });
+      if (!target) {
+        sendError(res, 404, 'Không tìm thấy tài khoản cần nâng cấp.');
+        return;
+      }
+
+      const features =
+        plan === 'enterprise'
+          ? ['tool.exe', 'agent.*', 'lead.intel', 'crm', 'investor_leads', 'fb_inbox', 'automation.*', 'team.manage']
+          : ['tool.exe', 'agent.sources', 'agent.runtime', 'agent.reports', 'agent.notifications', 'lead.intel', 'crm', 'investor_leads'];
+
+      const { createEntitlement } = await import('../rbac/rbacRepository');
+      const created = await createEntitlement({
+        subjectType: 'user',
+        subjectId: target.id,
+        plan,
+        features,
+        startsAt: new Date(),
+        expiresAt,
+        source: 'super_admin',
+        grantedBy: authUser.id,
+      });
+
+      let ensured;
+      try {
+        ensured = await ensureUserLicenseKey({ userId: target.id, maxDevices });
+      } catch (error: any) {
+        if (error?.code === 'KEY_REVOKED') {
+          res.status(409).json({
+            status: 'error',
+            code: 'KEY_REVOKED',
+            message:
+              'Đã cấp gói nhưng khóa bản quyền của tài khoản đã bị thu hồi. Hãy xử lý khóa trước khi phát hành lại.',
+            data: { plan: created.plan, expiresAt: created.expiresAt },
+          });
+          return;
+        }
+        throw error;
+      }
+
+      res.json({
+        status: 'success',
+        message: `Đã kích hoạt gói ${plan.toUpperCase()} cho ${target.email}.`,
+        data: {
+          userId: target.id,
+          plan: created.plan,
+          expiresAt: created.expiresAt,
+          features: created.features,
+          licenseKey: ensured.rawKey,
+          maxDevices: ensured.key.maxDevices,
+          hasExistingKey: !ensured.created,
+        },
+      });
+    },
+  );
 
   /**
    * POST /api/license/activate
@@ -344,11 +389,65 @@ export function createLicenseRouter(): Router {
       return;
     }
 
+    const userRow = result.userId
+      ? await prisma.user.findUnique({
+          where: { id: result.userId },
+          select: { id: true, email: true, role: true, companyId: true, data: true },
+        })
+      : null;
+    if (!userRow) {
+      sendError(res, 403, 'Không tìm thấy tài khoản sở hữu khóa bản quyền.');
+      return;
+    }
+
+    const userData = (userRow.data as Record<string, unknown>) || {};
+    const resolved = await resolvePermissions({
+      id: userRow.id,
+      role: userRow.role,
+      email: userRow.email,
+      company_id: userRow.companyId || undefined,
+    });
+    const capabilities = buildAgentCapabilities(resolved, result.features || []);
+    if (!capabilities.canScan) {
+      res.status(403).json({
+        status: 'error',
+        code: 'AGENT_NOT_ALLOWED',
+        message: 'Tài khoản không còn quyền sử dụng Desktop Agent.',
+      });
+      return;
+    }
+
+    const ingest = await provisionDesktopIngestCredential({
+      userId: userRow.id,
+      deviceId,
+      companyId: userRow.companyId || null,
+      capabilities,
+      expiresAt: result.expiresAt ?? null,
+    });
+
     res.json({
       status: 'success',
       valid: true,
       expiresAt: result.expiresAt,
       offlineGraceHours: 48,
+      data: {
+        user: {
+          id: userRow.id,
+          name: String(userData.name || userData.full_name || userRow.email || ''),
+          email: userRow.email,
+          role: userRow.role,
+          roleKey: capabilities.roleKey,
+          roleLabel: capabilities.roleLabel,
+          companyId: userRow.companyId || null,
+          teamId: resolved.teamId || null,
+          portal: capabilities.portal,
+        },
+        capabilities,
+        plan: result.plan,
+        features: result.features || [],
+        ingest,
+        ingestExpiresAt: ingest.expiresAt,
+      },
     });
   });
 
@@ -415,10 +514,17 @@ export function createLicenseRouter(): Router {
    * Super Admin revokes a license key immediately
    */
   router.post('/api/admin/licenses/:id/revoke', requirePermission('license.manage'), async (req: Request, res: Response) => {
+    const existing = await findLicenseKeyById(req.params.id);
     const success = await revokeLicenseKey(req.params.id);
     if (!success) {
       sendError(res, 404, 'Không tìm thấy license key.');
       return;
+    }
+
+    // Device tokens die with the key, but HMAC ingest credentials are separate
+    // rows — revoke them too or a cached agent could keep writing data.
+    if (existing?.userId) {
+      await revokeDesktopIngestCredentials(existing.userId);
     }
 
     res.json({

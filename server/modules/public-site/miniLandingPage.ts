@@ -12,6 +12,7 @@
 import type { Property, AppSettings } from '../../../src/types';
 import { escapeHtml } from './seoPublicRoutes';
 import { generatePropertyJsonLd } from '../properties/quickPropertyParser';
+import { getPropertySlug } from './propertyPaths';
 
 export function renderMiniLandingPage(input: {
   property: Property;
@@ -55,7 +56,7 @@ export function renderMiniLandingPage(input: {
       area: property.area || 100,
       price: property.price || 0,
       location: locationDisplay,
-      slug: property.slug || property.id,
+      slug: getPropertySlug(property),
     });
 
   return `<!DOCTYPE html>

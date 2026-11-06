@@ -122,25 +122,35 @@ describe('P3 Tenant Isolation, RBAC & IDOR Security Gates', () => {
     expect([402, 403]).toContain(resSettings.status);
   });
 
-  // 6. P3.8 RBAC: Member cannot access company-only routes (returns 402 or 403)
-  it('6. P3.8: Member cannot access company-admin routes (returns 402 or 403)', async () => {
-    // Investor leads PII list
+  // 6. P3.8 RBAC: Explicitly granted features are allowed, admin-only routes are not
+  it('6. P3.8: Member gets granted features but cannot reach admin routes or other short links', async () => {
+    // Investor leads is premium: memberA holds an explicit entitlement in the fixture.
     const resLeads = await request(ctx.app)
       .get('/api/investor-leads')
       .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
-    expect([402, 403]).toContain(resLeads.status);
+    expect(resLeads.status).toBe(200);
 
-    // Users CRUD
+    // Same feature without an entitlement is rejected (memberB has none).
+    const resLeadsB = await request(ctx.app)
+      .get('/api/investor-leads')
+      .set('Authorization', `Bearer ${ctx.tokens.memberB}`);
+    expect([402, 403]).toContain(resLeadsB.status);
+
+    // Users CRUD remains admin-only regardless of entitlements.
     const resUsers = await request(ctx.app)
       .get('/api/users')
       .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
     expect([402, 403]).toContain(resUsers.status);
 
-    // Short links
+    // Short links are available, but the list is limited to links the member created.
     const resShortLinks = await request(ctx.app)
       .get('/api/admin/short-links')
       .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
-    expect([402, 403]).toContain(resShortLinks.status);
+    expect(resShortLinks.status).toBe(200);
+    expect(Array.isArray(resShortLinks.body.data)).toBe(true);
+    for (const link of resShortLinks.body.data) {
+      expect(link.created_by).toBe(ctx.users.memberA.id);
+    }
   });
 
   // 7. P3.11 Public API & Chat does not leak internal fields

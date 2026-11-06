@@ -1,11 +1,22 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { execSync } from 'child_process';
 
 const ROOT_DIR = path.resolve('.');
 const RUNTIME_DIR = path.join(ROOT_DIR, 'runtime/installer-build');
 const PUBLIC_DOWNLOADS = path.join(ROOT_DIR, 'public/downloads');
 const TARGET_EXE = path.join(PUBLIC_DOWNLOADS, 'HouseAndLife-Agent-Setup.exe');
+const MANIFEST_FILE = path.join(PUBLIC_DOWNLOADS, 'agent-version.json');
+
+const desktopPackage = JSON.parse(
+  fs.readFileSync(path.join(ROOT_DIR, 'desktop/package.json'), 'utf8')
+);
+const versionArgIndex = process.argv.indexOf('--version');
+const APP_VERSION =
+  versionArgIndex !== -1 && process.argv[versionArgIndex + 1]
+    ? process.argv[versionArgIndex + 1]
+    : desktopPackage.version;
 
 async function main() {
   console.log('=== [1/5] Building Desktop Agent Frontend & Main Bundle ===');
@@ -52,7 +63,7 @@ async function main() {
       {
         name: 'houseandlife-desktop-agent',
         productName: 'House & Life Desktop Agent',
-        version: '1.0.0',
+        version: APP_VERSION,
         main: 'main/index.cjs',
         author: 'House & Life Real Estate AI',
         description: 'Desktop Agent - Quét tin BĐS Đa Kênh & Đồng bộ Lead tự động',
@@ -90,9 +101,137 @@ namespace HouseAndLifeInstaller
         [STAThread]
         static void Main(string[] args)
         {
+            bool silent = args != null && Array.IndexOf(args, "--silent") >= 0;
+            if (silent)
+            {
+                try
+                {
+                    InstallerEngine.RunInstall(null);
+                }
+                catch
+                {
+                    Environment.ExitCode = 1;
+                }
+                return;
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new InstallerForm());
+        }
+    }
+
+    static class InstallerEngine
+    {
+        public static void RunInstall(Action<string, int> setStatus)
+        {
+            if (setStatus != null) { setStatus("Đang kiểm tra tiến trình đang chạy...", 10); }
+            Thread.Sleep(300);
+
+            // Terminate any running instance of the agent
+            foreach (var p in Process.GetProcessesByName("HouseAndLife-Agent"))
+            {
+                try { p.Kill(); p.WaitForExit(2000); } catch { }
+            }
+
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string installDir = Path.Combine(localAppData, "HouseAndLife-Agent");
+
+            if (setStatus != null) { setStatus("Đang chuẩn bị thư mục cài đặt...", 20); }
+            if (!Directory.Exists(installDir))
+            {
+                Directory.CreateDirectory(installDir);
+            }
+
+            if (setStatus != null) { setStatus("Đang giải nén tài nguyên ứng dụng...", 30); }
+            Assembly asm = Assembly.GetExecutingAssembly();
+            using (Stream stream = asm.GetManifestResourceStream("AppPayload"))
+            {
+                if (stream == null)
+                {
+                    throw new Exception("Không tìm thấy gói cài đặt nhúng (AppPayload stream null).");
+                }
+
+                using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
+                {
+                    int total = archive.Entries.Count;
+                    int current = 0;
+
+                    foreach (ZipArchiveEntry entry in archive.Entries)
+                    {
+                        current++;
+                        int pct = 30 + (int)((float)current / total * 50); // 30% -> 80%
+
+                        string fullPath = Path.Combine(installDir, entry.FullName);
+                        if (string.IsNullOrEmpty(entry.Name))
+                        {
+                            Directory.CreateDirectory(fullPath);
+                        }
+                        else
+                        {
+                            string parent = Path.GetDirectoryName(fullPath);
+                            if (!Directory.Exists(parent))
+                            {
+                                Directory.CreateDirectory(parent);
+                            }
+                            entry.ExtractToFile(fullPath, true);
+                        }
+
+                        if (current % 15 == 0 || current == total)
+                        {
+                            if (setStatus != null)
+                            {
+                                setStatus(string.Format("Đang cài đặt tệp tin ({0}/{1})...", current, total), pct);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (setStatus != null) { setStatus("Đang tạo Shortcut ngoài Desktop...", 85); }
+            string exePath = Path.Combine(installDir, "HouseAndLife-Agent.exe");
+            CreateShortcuts(installDir, exePath);
+
+            if (setStatus != null) { setStatus("Hoàn tất cài đặt! Đang khởi động House & Life Agent...", 100); }
+            Thread.Sleep(800);
+
+            if (File.Exists(exePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    WorkingDirectory = installDir
+                });
+            }
+        }
+
+        private static void CreateShortcuts(string installDir, string exePath)
+        {
+            try
+            {
+                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+                if (shellType == null) return;
+                dynamic shell = Activator.CreateInstance(shellType);
+
+                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                string desktopShortcut = Path.Combine(desktop, "House & Life Desktop Agent.lnk");
+                dynamic s1 = shell.CreateShortcut(desktopShortcut);
+                s1.TargetPath = exePath;
+                s1.WorkingDirectory = installDir;
+                s1.Description = "House & Life Desktop Agent";
+                s1.Save();
+
+                string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+                string startShortcut = Path.Combine(startMenu, "House & Life Desktop Agent.lnk");
+                dynamic s2 = shell.CreateShortcut(startShortcut);
+                s2.TargetPath = exePath;
+                s2.WorkingDirectory = installDir;
+                s2.Description = "House & Life Desktop Agent";
+                s2.Save();
+            }
+            catch
+            {
+                // Non-fatal if shortcut creation fails
+            }
         }
     }
 
@@ -169,84 +308,7 @@ namespace HouseAndLifeInstaller
         {
             try
             {
-                SetStatus("Đang kiểm tra tiến trình đang chạy...", 10);
-                Thread.Sleep(300);
-
-                // Terminate any running instance of the agent
-                foreach (var p in Process.GetProcessesByName("HouseAndLife-Agent"))
-                {
-                    try { p.Kill(); p.WaitForExit(2000); } catch { }
-                }
-
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string installDir = Path.Combine(localAppData, "HouseAndLife-Agent");
-
-                SetStatus("Đang chuẩn bị thư mục cài đặt...", 20);
-                if (!Directory.Exists(installDir))
-                {
-                    Directory.CreateDirectory(installDir);
-                }
-
-                SetStatus("Đang giải nén tài nguyên ứng dụng...", 30);
-                Assembly asm = Assembly.GetExecutingAssembly();
-                using (Stream stream = asm.GetManifestResourceStream("AppPayload"))
-                {
-                    if (stream == null)
-                    {
-                        throw new Exception("Không tìm thấy gói cài đặt nhúng (AppPayload stream null).");
-                    }
-
-                    using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
-                    {
-                        int total = archive.Entries.Count;
-                        int current = 0;
-
-                        foreach (ZipArchiveEntry entry in archive.Entries)
-                        {
-                            current++;
-                            int pct = 30 + (int)((float)current / total * 50); // 30% -> 80%
-
-                            string fullPath = Path.Combine(installDir, entry.FullName);
-                            if (string.IsNullOrEmpty(entry.Name))
-                            {
-                                // Directory
-                                Directory.CreateDirectory(fullPath);
-                            }
-                            else
-                            {
-                                string parent = Path.GetDirectoryName(fullPath);
-                                if (!Directory.Exists(parent))
-                                {
-                                    Directory.CreateDirectory(parent);
-                                }
-                                entry.ExtractToFile(fullPath, true);
-                            }
-
-                            if (current % 15 == 0 || current == total)
-                            {
-                                SetStatus(string.Format("Đang cài đặt tệp tin ({0}/{1})...", current, total), pct);
-                            }
-                        }
-                    }
-                }
-
-                SetStatus("Đang tạo Shortcut ngoài Desktop...", 85);
-                string exePath = Path.Combine(installDir, "HouseAndLife-Agent.exe");
-                CreateShortcuts(installDir, exePath);
-
-                SetStatus("Hoàn tất cài đặt! Đang khởi động House & Life Agent...", 100);
-                Thread.Sleep(800);
-
-                // Launch agent
-                if (File.Exists(exePath))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = exePath,
-                        WorkingDirectory = installDir
-                    });
-                }
-
+                InstallerEngine.RunInstall(SetStatus);
                 Thread.Sleep(1000);
                 this.Invoke(new Action(() => this.Close()));
             }
@@ -267,38 +329,6 @@ namespace HouseAndLifeInstaller
                 }
             }
         }
-
-        private void CreateShortcuts(string installDir, string exePath)
-        {
-            try
-            {
-                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
-                if (shellType == null) return;
-                dynamic shell = Activator.CreateInstance(shellType);
-
-                // Desktop shortcut
-                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                string desktopShortcut = Path.Combine(desktop, "House & Life Desktop Agent.lnk");
-                dynamic s1 = shell.CreateShortcut(desktopShortcut);
-                s1.TargetPath = exePath;
-                s1.WorkingDirectory = installDir;
-                s1.Description = "House & Life Desktop Agent";
-                s1.Save();
-
-                // Start Menu shortcut
-                string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                string startShortcut = Path.Combine(startMenu, "House & Life Desktop Agent.lnk");
-                dynamic s2 = shell.CreateShortcut(startShortcut);
-                s2.TargetPath = exePath;
-                s2.WorkingDirectory = installDir;
-                s2.Description = "House & Life Desktop Agent";
-                s2.Save();
-            }
-            catch
-            {
-                // Non-fatal if shortcut creation fails
-            }
-        }
     }
 }
 `;
@@ -312,10 +342,12 @@ namespace HouseAndLifeInstaller
   }
 
   const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
+  const appIcon = path.join(ROOT_DIR, 'desktop/assets/app.ico');
   const compileCmd = [
     `"${cscPath}"`,
     '/target:winexe',
     '/platform:x64',
+    ...(fs.existsSync(appIcon) ? [`/win32icon:"${appIcon}"`] : []),
     '/r:System.dll',
     '/r:System.Drawing.dll',
     '/r:System.Windows.Forms.dll',
@@ -331,10 +363,21 @@ namespace HouseAndLifeInstaller
 
   if (fs.existsSync(TARGET_EXE)) {
     const exeStats = fs.statSync(TARGET_EXE);
+    const sha256 = crypto.createHash('sha256').update(fs.readFileSync(TARGET_EXE)).digest('hex');
+    const manifest = {
+      version: APP_VERSION,
+      url: '/downloads/HouseAndLife-Agent-Setup.exe',
+      sha256,
+      size: exeStats.size,
+      releasedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2), 'utf8');
     console.log('================================================================');
     console.log(' SUCCESS: HouseAndLife-Agent-Setup.exe created successfully!');
     console.log(` Location: ${TARGET_EXE}`);
     console.log(` File Size: ${(exeStats.size / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(` Version: ${APP_VERSION}`);
+    console.log(` Update manifest: ${MANIFEST_FILE}`);
     console.log('================================================================');
   } else {
     throw new Error('Compilation finished but target EXE not found.');

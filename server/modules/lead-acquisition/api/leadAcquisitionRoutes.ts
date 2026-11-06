@@ -26,13 +26,30 @@ const STAGES: LeadPipelineStage[] = [
 
 const OUTCOMES: LearningOutcome[] = ['won', 'lost', 'spam', 'wrong'];
 import { requirePermission } from '../../rbac';
+import { canAccessCompany, resolveRequestCompanyId } from '../../auth';
+import { prisma } from '../../../prisma';
+
+async function assertFindingAccess(req: Request, res: Response, findingId: string): Promise<boolean> {
+  const finding = await prisma.agentFinding.findUnique({
+    where: { id: findingId },
+    select: { companyId: true },
+  });
+  if (!finding) {
+    sendError(res, 404, 'Finding not found');
+    return false;
+  }
+  if (!canAccessCompany(req, finding.companyId)) {
+    sendError(res, 403, 'Forbidden');
+    return false;
+  }
+  return true;
+}
 
 export function registerLeadAcquisitionRoutes(app: Express): void {
   app.use('/api/lead-acquisition', requirePermission('agent.sources'));
   app.get('/api/lead-acquisition/metrics', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const sinceHours = Number(req.query.sinceHours || 24);
       const data = await getLeadAcquisitionMetrics({
         companyId,
@@ -46,8 +63,7 @@ export function registerLeadAcquisitionRoutes(app: Express): void {
 
   app.get('/api/lead-acquisition/pipeline', async (req: Request, res: Response) => {
     try {
-      const companyId =
-        typeof req.query.companyId === 'string' ? req.query.companyId : null;
+      const companyId = resolveRequestCompanyId(req, req.query.companyId) ?? null;
       const limit = Number(req.query.limit || 200);
       const data = await listLeadPipeline({
         companyId,
@@ -61,6 +77,7 @@ export function registerLeadAcquisitionRoutes(app: Express): void {
 
   app.post('/api/lead-acquisition/:id/process', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const profile = await processLeadAcquisition({
         findingId: req.params.id,
         notifyTelegram: Boolean((req.body as { notify?: boolean })?.notify),
@@ -74,6 +91,7 @@ export function registerLeadAcquisitionRoutes(app: Express): void {
 
   app.patch('/api/lead-acquisition/:id/stage', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const body = (req.body || {}) as Record<string, unknown>;
       const stage = String(body.stage || '') as LeadPipelineStage;
       if (!STAGES.includes(stage)) return sendError(res, 400, 'Invalid stage');
@@ -91,6 +109,7 @@ export function registerLeadAcquisitionRoutes(app: Express): void {
 
   app.post('/api/lead-acquisition/:id/learn', async (req: Request, res: Response) => {
     try {
+      if (!(await assertFindingAccess(req, res, req.params.id))) return;
       const body = (req.body || {}) as Record<string, unknown>;
       const outcome = String(body.outcome || '') as LearningOutcome;
       if (!OUTCOMES.includes(outcome)) return sendError(res, 400, 'Invalid outcome');

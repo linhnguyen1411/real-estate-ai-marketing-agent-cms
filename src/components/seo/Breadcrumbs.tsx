@@ -19,16 +19,16 @@ export default function Breadcrumbs({ items, className = '' }: BreadcrumbsProps)
             <li key={item.path} className="inline-flex items-center gap-1">
               {index > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
               {isLast ? (
-                <span className="font-semibold text-slate-800" aria-current="page">
-                  {index === 0 ? <Home className="inline h-3.5 w-3.5" aria-label={item.name} /> : item.name}
+                <span className="inline-flex min-h-6 min-w-6 items-center justify-center font-semibold text-slate-800" aria-current="page">
+                  {index === 0 ? <Home className="h-4 w-4" aria-label={item.name} /> : item.name}
                   {index === 0 && <span className="sr-only">{item.name}</span>}
                 </span>
               ) : (
                 <Link
                   to={item.path}
-                  className="font-medium text-invest-blue hover:text-invest-blue-light hover:underline"
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center font-medium text-invest-blue hover:text-invest-blue-light hover:underline"
                 >
-                  {index === 0 ? <Home className="h-3.5 w-3.5" aria-label={item.name} /> : item.name}
+                  {index === 0 ? <Home className="h-4 w-4" aria-label={item.name} /> : item.name}
                   {index === 0 && <span className="sr-only">{item.name}</span>}
                 </Link>
               )}

@@ -3,6 +3,12 @@
  */
 
 interface DesktopAgentAPI {
+  // Authentication
+  onAuthState: (cb: (state: any) => void) => () => void;
+  getAuthState: () => Promise<any>;
+  login: (key: string, remember: boolean) => Promise<{ success: boolean; message?: string; code?: string; state?: any }>;
+  logout: () => Promise<{ success: boolean }>;
+
   onNewLead: (cb: (lead: any) => void) => () => void;
   onStatsUpdate: (cb: (stats: any) => void) => () => void;
   onLogMessage: (cb: (log: any) => void) => () => void;
@@ -21,7 +27,15 @@ interface DesktopAgentAPI {
   prevSource: () => void;
   toggleAutoRotate: (enabled: boolean) => void;
   setScanSpeed: (mode: 'turbo' | 'fast' | 'standard') => void;
+  setEnabledSources: (ids: string[]) => Promise<{ enabledSourceIds: string[]; enabledCount: number }>;
+  testTelegram: () => Promise<{ ok: boolean; error?: string }>;
   openExternalUrl: (url: string) => void;
+
+  // Auto-update
+  getUpdateState: () => Promise<any | null>;
+  checkForUpdates: () => Promise<void>;
+  installUpdate: () => void;
+  onUpdateState: (cb: (state: any) => void) => () => void;
 
   // Publishing & Inventory
   fetchInventory: () => Promise<{ success: boolean; properties?: any[]; error?: string }>;
@@ -44,7 +58,11 @@ const leadsList: any[] = [];
 let currentFilter: 'all' | 'hot' | 'supply' | 'demand' = 'all';
 let currentTab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings' = 'dashboard';
 let activeSourcesList: any[] = [];
+let agentSettings: any = null;
 let currentSourceIdx = 0;
+let authState: any = null;
+let authenticatedOnce = false;
+let authenticatedUserId = '';
 
 // Publisher state
 let inventoryList: any[] = [];
@@ -86,6 +104,10 @@ const settingSpeedMode = document.getElementById('setting-speed-mode') as HTMLSe
 
 // Tab Switching
 function switchTab(tab: 'dashboard' | 'facebook' | 'zalo' | 'publisher' | 'settings'): void {
+  const caps = authState?.capabilities;
+  if (tab === 'publisher' && !caps?.canPublish) return;
+  if ((tab === 'facebook' || tab === 'zalo') && !caps?.canScan) return;
+
   currentTab = tab;
   document.querySelectorAll('.nav-tab').forEach((el) => {
     el.classList.toggle('active', el.getAttribute('data-tab') === tab);
@@ -155,12 +177,22 @@ function formatCountdown(sec: number): string {
 }
 
 // Render Sources Dropdown
+function isSourceEnabled(source: any): boolean {
+  const ids = agentSettings?.enabledSourceIds;
+  if (!Array.isArray(ids)) return true;
+  return ids.includes(source.id);
+}
+
+function getEnabledSourcesList(): any[] {
+  return activeSourcesList.filter((source) => isSourceEnabled(source));
+}
+
 function renderSourcesDropdown(sources: any[], currentIndex = 0): void {
   selectSourcesDropdown.innerHTML = '';
   if (!sources || sources.length === 0) {
     const opt = document.createElement('option');
     opt.value = '-1';
-    opt.textContent = '-- Chưa có nguồn nào từ VPS --';
+    opt.textContent = '-- Chưa có nguồn nào được tick --';
     selectSourcesDropdown.appendChild(opt);
     return;
   }
@@ -171,6 +203,86 @@ function renderSourcesDropdown(sources: any[], currentIndex = 0): void {
     if (idx === currentIndex) opt.selected = true;
     selectSourcesDropdown.appendChild(opt);
   });
+}
+
+function updateSourceSummary(): void {
+  const summary = document.getElementById('source-select-summary');
+  if (!summary) return;
+  const enabled = getEnabledSourcesList().length;
+  if (!activeSourcesList.length) {
+    summary.textContent = 'Chưa tải nguồn. Bấm "Cập nhật từ VPS" ở tab Tổng quan để tải lại.';
+    return;
+  }
+  summary.textContent = `Đã chọn ${enabled}/${activeSourcesList.length} nguồn. ${
+    enabled === 0 ? 'Agent sẽ không quét cho đến khi bạn tick ít nhất một nguồn.' : ''
+  }`.trim();
+}
+
+function renderSourcesChecklist(): void {
+  const container = document.getElementById('settings-sources-list');
+  if (!container) return;
+  if (!activeSourcesList.length) {
+    container.innerHTML = '<p class="muted">Chưa có nguồn nào. Admin cần thêm group và chọn “Dùng chung toàn hệ thống” tại mục Nguồn trên web.</p>';
+    updateSourceSummary();
+    return;
+  }
+  container.innerHTML = '';
+  activeSourcesList.forEach((source) => {
+    const checked = isSourceEnabled(source);
+    const label = document.createElement('label');
+    label.className = `source-check-item${checked ? ' checked' : ''}`;
+    const scopeTag = source.companyId == null
+      ? '<span class="source-scope-tag">Hệ thống</span>'
+      : '';
+    label.innerHTML = `
+      <input type="checkbox" data-source-id="${String(source.id).replace(/"/g, '&quot;')}" ${checked ? 'checked' : ''}>
+      <span class="source-check-body">
+        <span class="source-check-name">${escapeHtmlText(String(source.name || 'Nhóm Facebook'))}${scopeTag}</span>
+        <span class="source-check-url">${escapeHtmlText(String(source.url || ''))}</span>
+      </span>
+    `;
+    const input = label.querySelector('input') as HTMLInputElement;
+    input.addEventListener('change', () => {
+      label.classList.toggle('checked', input.checked);
+      void persistSourceSelection();
+    });
+    container.appendChild(label);
+  });
+  updateSourceSummary();
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function persistSourceSelection(): Promise<void> {
+  const container = document.getElementById('settings-sources-list');
+  if (!container) return;
+  const ids = Array.from(container.querySelectorAll('input[type="checkbox"]'))
+    .filter((el) => (el as HTMLInputElement).checked)
+    .map((el) => String((el as HTMLInputElement).dataset.sourceId || ''))
+    .filter(Boolean);
+  const result = await window.desktopAgent.setEnabledSources(ids);
+  if (agentSettings) {
+    agentSettings.enabledSourceIds = result.enabledSourceIds;
+  }
+  updateSourceSummary();
+  renderSourcesDropdown(getEnabledSourcesList(), 0);
+}
+
+function setAllSourcesEnabled(enabled: boolean): void {
+  const container = document.getElementById('settings-sources-list');
+  if (!container) return;
+  container.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+    const input = el as HTMLInputElement;
+    input.checked = enabled;
+    input.closest('.source-check-item')?.classList.toggle('checked', enabled);
+  });
+  void persistSourceSelection();
 }
 
 // Update Stats UI
@@ -378,7 +490,8 @@ btnRefreshSources.addEventListener('click', async () => {
   try {
     const srcs = await window.desktopAgent.refreshSources();
     activeSourcesList = srcs;
-    renderSourcesDropdown(srcs, currentSourceIdx);
+    renderSourcesDropdown(getEnabledSourcesList(), currentSourceIdx);
+    renderSourcesChecklist();
   } finally {
     btnRefreshSources.textContent = '🔄 Cập nhật từ VPS';
   }
@@ -390,7 +503,28 @@ toggleAutoRotateEl.addEventListener('change', () => {
 
 window.desktopAgent.onSourcesUpdate((sources: any[]) => {
   activeSourcesList = sources;
-  renderSourcesDropdown(sources, currentSourceIdx);
+  renderSourcesDropdown(getEnabledSourcesList(), currentSourceIdx);
+  renderSourcesChecklist();
+});
+
+document.getElementById('btn-sources-all')?.addEventListener('click', () => setAllSourcesEnabled(true));
+document.getElementById('btn-sources-none')?.addEventListener('click', () => setAllSourcesEnabled(false));
+
+document.getElementById('btn-telegram-test')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-telegram-test') as HTMLButtonElement;
+  const msg = document.getElementById('telegram-test-msg');
+  if (btn) btn.disabled = true;
+  try {
+    // Persist the token/chat id currently on screen before testing.
+    await saveSettingsFromForm();
+    const result = await window.desktopAgent.testTelegram();
+    if (msg) {
+      msg.textContent = result.ok ? '✅ Đã gửi tin thử. Kiểm tra Telegram của bạn.' : `❌ ${result.error || 'Gửi thất bại'}`;
+      msg.className = result.ok ? 'hint success-text' : 'hint';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 });
 
 // Speed Button Listeners
@@ -418,6 +552,7 @@ settingSpeedMode?.addEventListener('change', () => {
 // Settings Handlers
 async function loadSettingsUI(): Promise<void> {
   const s = await window.desktopAgent.getSettings();
+  agentSettings = s;
   (document.getElementById('setting-vps-url') as HTMLInputElement).value = s.vpsUrl || '';
   (document.getElementById('setting-vps-key') as HTMLInputElement).value = s.vpsApiKeyId || '';
   (document.getElementById('setting-vps-secret') as HTMLInputElement).value = s.vpsApiSecret || '';
@@ -432,12 +567,20 @@ async function loadSettingsUI(): Promise<void> {
   (document.getElementById('setting-rotate-interval') as HTMLInputElement).value = String(
     s.rotateIntervalMinutes || 1
   );
+  (document.getElementById('setting-telegram-enabled') as HTMLInputElement).checked = !!s.telegramEnabled;
+  (document.getElementById('setting-telegram-token') as HTMLInputElement).value = s.telegramBotToken || '';
+  (document.getElementById('setting-telegram-chat') as HTMLInputElement).value = s.telegramChatId || '';
+  (document.getElementById('setting-telegram-all-demand') as HTMLInputElement).checked =
+    !!s.telegramNotifyAllDemand;
+  (document.getElementById('setting-auto-update') as HTMLInputElement).checked =
+    s.autoUpdateEnabled !== false;
   if (settingSpeedMode) {
     settingSpeedMode.value = s.scanSpeedMode || 'turbo';
   }
+  renderSourcesChecklist();
 }
 
-document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
+async function saveSettingsFromForm(): Promise<void> {
   const partial = {
     vpsUrl: (document.getElementById('setting-vps-url') as HTMLInputElement).value.trim(),
     vpsApiKeyId: (document.getElementById('setting-vps-key') as HTMLInputElement).value.trim(),
@@ -451,9 +594,18 @@ document.getElementById('btn-save-settings')?.addEventListener('click', async ()
     rotateIntervalMinutes:
       parseInt((document.getElementById('setting-rotate-interval') as HTMLInputElement).value, 10) || 1,
     scanSpeedMode: (settingSpeedMode?.value as any) || 'turbo',
+    telegramEnabled: (document.getElementById('setting-telegram-enabled') as HTMLInputElement).checked,
+    telegramBotToken: (document.getElementById('setting-telegram-token') as HTMLInputElement).value.trim(),
+    telegramChatId: (document.getElementById('setting-telegram-chat') as HTMLInputElement).value.trim(),
+    telegramNotifyAllDemand: (document.getElementById('setting-telegram-all-demand') as HTMLInputElement)
+      .checked,
+    autoUpdateEnabled: (document.getElementById('setting-auto-update') as HTMLInputElement).checked,
   };
+  agentSettings = await window.desktopAgent.saveSettings(partial);
+}
 
-  await window.desktopAgent.saveSettings(partial);
+document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
+  await saveSettingsFromForm();
   const msg = document.getElementById('save-settings-msg')!;
   msg.style.display = 'inline';
   setTimeout(() => {
@@ -461,17 +613,237 @@ document.getElementById('btn-save-settings')?.addEventListener('click', async ()
   }, 2500);
 });
 
-// Init
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadSettingsUI();
-  const initialStats = await window.desktopAgent.getStats();
-  updateStatsUI(initialStats);
+// Auto-update UI
+const UPDATE_STATUS_TEXT: Record<string, string> = {
+  idle: 'Chưa kiểm tra cập nhật.',
+  checking: 'Đang kiểm tra cập nhật...',
+  uptodate: '✅ Bạn đang dùng bản mới nhất.',
+  available: '🆕 Có bản cập nhật mới.',
+  downloading: 'Đang tải bản cập nhật...',
+  ready: '✅ Đã tải xong — bấm "Khởi động lại & cập nhật".',
+  error: '❌ Lỗi cập nhật',
+};
+
+function renderUpdateState(state: any): void {
+  const status = document.getElementById('update-status');
+  if (!state) {
+    if (status) status.textContent = 'Không có thông tin cập nhật.';
+    return;
+  }
+  const cur = document.getElementById('update-current-version') as HTMLInputElement | null;
+  const latest = document.getElementById('update-latest-version') as HTMLInputElement | null;
+  const btnInstall = document.getElementById('btn-install-update') as HTMLButtonElement | null;
+  const btnCheck = document.getElementById('btn-check-update') as HTMLButtonElement | null;
+  if (cur) cur.value = state.currentVersion || '';
+  if (latest) latest.value = state.latestVersion || '—';
+  if (status) {
+    let text = UPDATE_STATUS_TEXT[state.status] || String(state.status || '');
+    if (state.status === 'downloading' && state.progressPercent) {
+      text += ` (${state.progressPercent}%)`;
+    }
+    if (state.status === 'error' && state.error) {
+      text += `: ${state.error}`;
+    }
+    status.textContent = text;
+  }
+  if (btnInstall) btnInstall.style.display = state.status === 'ready' ? '' : 'none';
+  if (btnCheck) btnCheck.disabled = state.status === 'checking' || state.status === 'downloading';
+}
+
+document.getElementById('btn-check-update')?.addEventListener('click', () => {
+  void window.desktopAgent.checkForUpdates();
+});
+
+document.getElementById('btn-install-update')?.addEventListener('click', () => {
+  window.desktopAgent.installUpdate();
+});
+
+// ==========================================
+// AUTH GATE (login by license key + role-based UI)
+// ==========================================
+
+const authScreen = document.getElementById('auth-screen')!;
+const authForm = document.getElementById('auth-form') as HTMLFormElement;
+const authKeyInput = document.getElementById('auth-key-input') as HTMLInputElement;
+const authRemember = document.getElementById('auth-remember') as HTMLInputElement;
+const authError = document.getElementById('auth-error')!;
+const authNotice = document.getElementById('auth-notice')!;
+const authSubmit = document.getElementById('auth-submit') as HTMLButtonElement;
+const userChip = document.getElementById('user-chip')!;
+const userNameEl = document.getElementById('user-name')!;
+const userRoleEl = document.getElementById('user-role')!;
+const btnLogout = document.getElementById('btn-logout')!;
+
+function showAuthError(message: string): void {
+  authError.textContent = message;
+  authError.style.display = message ? 'block' : 'none';
+}
+
+function setAuthBusy(busy: boolean): void {
+  authSubmit.disabled = busy;
+  authSubmit.textContent = busy ? 'Đang đăng nhập...' : 'Đăng nhập';
+  authKeyInput.disabled = busy;
+  authRemember.disabled = busy;
+}
+
+function setSectionVisible(id: string, visible: boolean): void {
+  document.getElementById(id)?.classList.toggle('hidden', !visible);
+}
+
+function applyCapabilities(caps: any): void {
+  const canScan = !!caps?.canScan;
+  setSectionVisible('tab-btn-facebook', canScan);
+  setSectionVisible('tab-btn-zalo', canScan);
+  setSectionVisible('tab-btn-publisher', !!caps?.canPublish);
+  setSectionVisible('settings-vps-section', !!caps?.canManageVps);
+  setSectionVisible('settings-sources-section', !!caps?.canManageSources);
+  setSectionVisible('settings-telegram-section', !!caps?.canUseNotifications);
+
+  if (currentTab === 'publisher' && !caps?.canPublish) switchTab('dashboard');
+  if ((currentTab === 'facebook' || currentTab === 'zalo') && !canScan) switchTab('dashboard');
+}
+
+function resetUiForLock(): void {
+  leadsList.length = 0;
+  currentFilter = 'all';
+  renderTable();
+
+  activeSourcesList = [];
+  inventoryList = [];
+  selectedProperty = null;
+  selectedGroupUrls.clear();
+  selectedImageUrls.clear();
+  currentTab = 'dashboard';
+
+  document.querySelectorAll('.nav-tab').forEach((el) => {
+    el.classList.toggle('active', el.getAttribute('data-tab') === 'dashboard');
+    const id = el.id;
+    if (id === 'tab-btn-publisher' || id === 'tab-btn-facebook' || id === 'tab-btn-zalo') {
+      el.classList.add('hidden');
+    }
+  });
+  viewDashboard.classList.remove('hidden');
+  viewPublisher?.classList.add('hidden');
+  viewSettings.classList.add('hidden');
+
+  ['fb-debugger-dot', 'vps-sync-dot'].forEach((id) => {
+    document.getElementById(id)?.classList.remove('online');
+  });
+  updateStatsUI({
+    facebookPostsTotal: 0,
+    zaloMessagesTotal: 0,
+    hotLeadsTotal: 0,
+    syncedToVpsTotal: 0,
+    debuggerAttached: false,
+    vpsConnected: false,
+    activeSourcesTotal: 0,
+    currentSourceIndex: 0,
+    currentSourceName: '',
+    currentSourceUrl: '',
+    autoRotateSources: true,
+    secondsUntilNextRotate: 0,
+    scanSpeedMode: 'turbo',
+  });
+}
+
+async function afterAuthenticated(): Promise<void> {
   try {
+    await loadSettingsUI();
+    const initialStats = await window.desktopAgent.getStats();
+    updateStatsUI(initialStats);
+    renderUpdateState(await window.desktopAgent.getUpdateState());
     const sources = await window.desktopAgent.getSources();
     activeSourcesList = sources;
-    renderSourcesDropdown(sources, initialStats.currentSourceIndex || 0);
+    renderSourcesDropdown(getEnabledSourcesList(), initialStats.currentSourceIndex || 0);
+    renderSourcesChecklist();
   } catch (err) {
-    console.warn('Failed to load initial sources:', err);
+    console.warn('Failed to load account data:', err);
+  }
+}
+
+function applyAuthState(state: any): void {
+  authState = state || { authenticated: false };
+  const authenticated = !!authState.authenticated;
+
+  authScreen.classList.toggle('hidden', authenticated);
+  userChip.style.display = authenticated ? '' : 'none';
+  btnLogout.style.display = authenticated ? '' : 'none';
+
+  if (!authenticated) {
+    authenticatedOnce = false;
+    authenticatedUserId = '';
+    authNotice.textContent = authState.notice || '';
+    authNotice.style.display = authState.notice ? 'block' : 'none';
+    applyCapabilities(null);
+    resetUiForLock();
+    setTimeout(() => authKeyInput.focus(), 80);
+    return;
+  }
+
+  const user = authState.user || {};
+  userNameEl.textContent = user.name || user.email || 'Tài khoản';
+  userRoleEl.textContent = authState.capabilities?.roleLabel ? `· ${authState.capabilities.roleLabel}` : '';
+  authNotice.style.display = 'none';
+  authError.style.display = 'none';
+  applyCapabilities(authState.capabilities);
+
+  if (!authenticatedOnce || authenticatedUserId !== String(user.id || '')) {
+    authenticatedOnce = true;
+    authenticatedUserId = String(user.id || '');
+    void afterAuthenticated();
+  }
+}
+
+authKeyInput.addEventListener('input', () => {
+  const raw = authKeyInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+  authKeyInput.value = raw.replace(/(.{4})/g, '$1-').replace(/-+$/, '');
+  showAuthError('');
+});
+
+authForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const key = authKeyInput.value.trim();
+  if (key.replace(/[^A-Z0-9]/gi, '').length < 16) {
+    showAuthError('Vui lòng nhập đủ 16 ký tự của khóa bản quyền (XXXX-XXXX-XXXX-XXXX).');
+    return;
+  }
+
+  showAuthError('');
+  setAuthBusy(true);
+  try {
+    const result = await window.desktopAgent.login(key, authRemember.checked);
+    if (!result.success) {
+      showAuthError(result.message || 'Đăng nhập thất bại.');
+      return;
+    }
+    authKeyInput.value = '';
+    if (result.state) applyAuthState(result.state);
+  } catch (err: any) {
+    showAuthError(err?.message || 'Không thể kết nối máy chủ.');
+  } finally {
+    setAuthBusy(false);
+  }
+});
+
+btnLogout.addEventListener('click', async () => {
+  if (!confirm('Đăng xuất khỏi Desktop Agent trên máy này?')) return;
+  await window.desktopAgent.logout();
+});
+
+document.getElementById('auth-open-web')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  window.desktopAgent.openExternalUrl('https://bdsdanang.site');
+});
+
+// Init
+window.addEventListener('DOMContentLoaded', async () => {
+  window.desktopAgent.onUpdateState((state) => renderUpdateState(state));
+  window.desktopAgent.onAuthState((state) => applyAuthState(state));
+  try {
+    applyAuthState(await window.desktopAgent.getAuthState());
+  } catch (err) {
+    console.warn('Failed to read auth state:', err);
+    applyAuthState({ authenticated: false });
   }
 });
 

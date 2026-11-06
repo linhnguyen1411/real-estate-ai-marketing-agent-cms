@@ -23,7 +23,9 @@ export function createTeamRouter() {
     const requestedTeamId = String(req.query.teamId || '').trim();
 
     const { getTeamByLeadUserId, getPlatformRootTeam } = await import('../rbac/rbacRepository');
-    let teamId = requestedTeamId || req.teamId;
+    // Non-super callers are locked to their own resolved team. Only a super
+    // admin may target another team via ?teamId=.
+    let teamId = isSuper ? (requestedTeamId || req.teamId) : req.teamId;
 
     if (!teamId && authUser) {
       const led = await getTeamByLeadUserId(authUser.id);
@@ -111,7 +113,25 @@ export function createTeamRouter() {
       return;
     }
 
-    const effectiveTeamId = isSuper ? '' : (teamId || '');
+    // A team lead may only change members of their own team. The repository
+    // updates by userId, so the membership must be verified before writing.
+    if (!isSuper) {
+      if (!teamId) {
+        sendError(res, 403, 'Bạn không thuộc team nào.');
+        return;
+      }
+      const { getTeamMember } = await import('../rbac/rbacRepository');
+      const membership = await getTeamMember(targetUserId);
+      if (!membership || membership.teamId !== teamId) {
+        res.status(404).json({
+          status: 'error',
+          message: 'Thành viên không thuộc team của bạn hoặc không tồn tại.',
+        });
+        return;
+      }
+    }
+
+    const effectiveTeamId = isSuper ? (teamId || '') : (teamId || '');
     const updated = await updateTeamMemberStatus(effectiveTeamId, targetUserId, status as any, authUser?.id);
     if (!updated) {
       res.status(404).json({

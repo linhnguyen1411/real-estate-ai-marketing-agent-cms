@@ -1,4 +1,4 @@
-export type UserRole = 'owner' | 'company' | 'member';
+export type UserRole = 'owner' | 'super_admin' | 'company' | 'member';
 export type AgentTier = 'legendary' | 'diamond' | 'gold' | 'silver' | 'bronze' | 'normal';
 
 export interface Company {

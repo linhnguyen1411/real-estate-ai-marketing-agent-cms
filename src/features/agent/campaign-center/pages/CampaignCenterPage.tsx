@@ -394,13 +394,13 @@ export default function CampaignCenterPage({ canManage }: { canManage: boolean }
             </span>
           </div>
 
-          <div className="flex gap-1 overflow-x-auto border-b border-slate-800 px-2 py-2">
+          <div className="flex flex-wrap gap-1 border-b border-slate-800 px-2 py-2">
             {TABS.map(t => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
                   tab === t
                     ? 'bg-rose-600/90 text-white'
                     : 'bg-slate-900 text-slate-400 hover:text-slate-200'

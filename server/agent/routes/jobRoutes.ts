@@ -2,7 +2,7 @@ import type { Express, Request, Response } from 'express';
 import type { AgentRouteDeps } from '../agentTypes';
 import type { AgentRouteHelpers } from './agentRouteHelpers';
 import { sendError } from '../../utils/httpResponses';
-import { deleteAgentJob, deleteAgentJobsByStatus, getAgentJobById, listAgentJobs, paginatedMeta } from '../agentDb';
+import { buildCompanyScopeFilter, deleteAgentJob, deleteAgentJobsByStatus, getAgentJobById, listAgentJobs, paginatedMeta } from '../agentDb';
 import { parsePagination } from '../agentValidation';
 
 export function registerJobRoutes(app: Express, deps: AgentRouteDeps, helpers: AgentRouteHelpers): void {
@@ -40,7 +40,7 @@ export function registerJobRoutes(app: Express, deps: AgentRouteDeps, helpers: A
         ? (req.body.statuses as unknown[]).map(String)
         : undefined;
       const count = await deleteAgentJobsByStatus({
-        companyId: user.company_id ?? undefined,
+        companyId: buildCompanyScopeFilter(user).companyId,
         sourceId,
         statuses,
       });

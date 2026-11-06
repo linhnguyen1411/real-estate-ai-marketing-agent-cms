@@ -2,19 +2,26 @@ import type { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../src/types';
 import { resolveLeadIntelligence, toLeadIntelligenceListDTO } from '../../shared/agent-domain';
 import { prisma } from '../prisma';
+import { isSuperAdminUser } from '../modules/auth/tenantScope';
 import type { AgentDashboardCounts, MissionRules, PaginatedMeta, PaginationInput } from './agentTypes';
 
 export function buildCompanyScopeFilter(user: AuthUser): { companyId?: string } {
-  if (user.role === 'owner') return {};
+  if (isSuperAdminUser(user)) return {};
   return { companyId: user.company_id ?? '__none__' };
 }
 
+/** Sources are shared: company users see their own sources plus system-wide ones. */
+export function buildSourceScopeFilter(user: AuthUser): Prisma.AgentSourceWhereInput {
+  if (isSuperAdminUser(user)) return {};
+  return { OR: [{ companyId: user.company_id ?? '__none__' }, { companyId: null }] };
+}
+
 export function canManageAgentConfig(user: AuthUser): boolean {
-  return user.role === 'owner' || user.role === 'company';
+  return isSuperAdminUser(user) || user.role === 'company';
 }
 
 export function canAccessAgentRecord(user: AuthUser, companyId: string | null | undefined): boolean {
-  if (user.role === 'owner') return true;
+  if (isSuperAdminUser(user)) return true;
   return companyId === user.company_id;
 }
 
@@ -29,6 +36,7 @@ export function paginatedMeta(total: number, pagination: PaginationInput): Pagin
 
 export async function getAgentDashboardCounts(user: AuthUser): Promise<AgentDashboardCounts> {
   const companyScope = buildCompanyScopeFilter(user);
+  const sourceScope = buildSourceScopeFilter(user);
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const notificationWhere: Prisma.AgentNotificationWhereInput = {
@@ -47,7 +55,7 @@ export async function getAgentDashboardCounts(user: AuthUser): Promise<AgentDash
     sourcesWithError,
     recentSources,
   ] = await Promise.all([
-    prisma.agentSource.count({ where: { ...companyScope, status: 'active' } }),
+    prisma.agentSource.count({ where: { ...sourceScope, status: 'active' } }),
     prisma.agentJob.count({ where: { ...companyScope, status: 'queued' } }),
     prisma.agentJob.count({ where: { ...companyScope, status: { in: ['claimed', 'running'] } } }),
     prisma.agentFinding.count({ where: { ...companyScope, status: 'new' } }),
@@ -64,12 +72,11 @@ export async function getAgentDashboardCounts(user: AuthUser): Promise<AgentDash
     }),
     prisma.agentSource.count({
       where: {
-        ...companyScope,
-        OR: [{ status: 'error' }, { lastError: { not: null } }],
+        AND: [sourceScope, { OR: [{ status: 'error' }, { lastError: { not: null } }] }],
       },
     }),
     prisma.agentSource.findMany({
-      where: companyScope,
+      where: sourceScope,
       orderBy: [{ lastScannedAt: 'desc' }, { updatedAt: 'desc' }],
       take: 8,
       select: {
@@ -140,19 +147,20 @@ export async function listAgentSources(
   pagination: PaginationInput,
   filters: { status?: string; type?: string; search?: string },
 ) {
-  const companyScope = buildCompanyScopeFilter(user);
   const where: Prisma.AgentSourceWhereInput = {
-    ...companyScope,
-    ...(filters.status ? { status: filters.status } : {}),
-    ...(filters.type ? { type: filters.type } : {}),
-    ...(filters.search
-      ? {
-          OR: [
-            { name: { contains: filters.search, mode: 'insensitive' } },
-            { url: { contains: filters.search, mode: 'insensitive' } },
-          ],
-        }
-      : {}),
+    AND: [
+      buildSourceScopeFilter(user),
+      filters.status ? { status: filters.status } : {},
+      filters.type ? { type: filters.type } : {},
+      filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' } },
+              { url: { contains: filters.search, mode: 'insensitive' } },
+            ],
+          }
+        : {},
+    ],
   };
 
   const [items, total] = await Promise.all([
@@ -174,6 +182,11 @@ export async function getAgentSourceById(id: string) {
 
 export async function createAgentSource(data: Prisma.AgentSourceCreateInput) {
   return prisma.agentSource.create({ data });
+}
+
+/** System sources have companyId = null; the DB unique constraint does not cover NULLs. */
+export async function findAgentSourceByUrl(companyId: string | null, url: string) {
+  return prisma.agentSource.findFirst({ where: { companyId, url } });
 }
 
 export async function updateAgentSource(id: string, data: Prisma.AgentSourceUpdateInput) {
@@ -947,7 +960,7 @@ export async function hardDeleteScannedContent(input: {
   user: AuthUser;
   confirm?: boolean;
 }): Promise<{ id: string; deleted: boolean }> {
-  if (input.user.role !== 'owner') {
+  if (!isSuperAdminUser(input.user)) {
     throw new Error('Chỉ owner được hard-delete nội dung quét.');
   }
   if (!input.confirm) {

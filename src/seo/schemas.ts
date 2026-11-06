@@ -1,5 +1,6 @@
 import { Property } from '../types';
 import { getPublicPropertySlug } from '../utils/propertyShare';
+import { toPlainText } from '../utils/text';
 import { AUTHOR, CONTACT, SITE, absoluteUrl } from './siteConfig';
 
 export interface BreadcrumbItem {
@@ -175,7 +176,7 @@ export function buildPropertySchemas(property: Property, origin: string = SITE.u
     '@context': 'https://schema.org',
     '@type': propertyTypeSchema(property),
     name: property.title,
-    description: property.rich_description || property.description,
+    description: toPlainText(property.rich_description || property.description || ''),
     url,
     image: imageUrl ? [imageUrl] : undefined,
     address: place.address,
@@ -187,7 +188,7 @@ export function buildPropertySchemas(property: Property, origin: string = SITE.u
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: property.title,
-    description: property.rich_description || property.description,
+    description: toPlainText(property.rich_description || property.description || ''),
     image: imageUrl,
     url,
     category: property.type,

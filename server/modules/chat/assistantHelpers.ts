@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import type { AutomationTask, Customer, InboxMessage, Post, Property } from '../../../src/types';
 import { getAuthUser, scopeCollection } from '../auth/authAccess';
+import { isSuperAdminUser } from '../auth/tenantScope';
 import {
   compactCustomer,
   compactProperty,
@@ -24,15 +25,15 @@ export function buildAssistantDbContext(db: any, req: Request, message: string) 
   const activeProperties: Property[] = (db.properties || []).filter((p: Property) => {
     if (p.sale_status !== 'hidden') return true;
     const owner = p.owner_user_id || p.created_by_user_id;
-    return owner === user?.id || user?.role === 'owner';
+    return owner === user?.id || isSuperAdminUser(user);
   });
 
   const posts = scopeCollection<Post>(db.posts, req);
   const inbox = scopeCollection<InboxMessage>(db.inbox, req);
   const automations = scopeCollection<AutomationTask>(db.automations, req);
   const generatedContents = (db.generated_contents || []).filter((item: any) => {
-    if (user.role === 'owner') return true;
-    return item.company_id === user.company_id;
+    if (isSuperAdminUser(user)) return true;
+    return Boolean(user.company_id) && item.company_id === user.company_id;
   });
 
   const rank = <T extends any>(items: T[], fallbackSort?: (a: T, b: T) => number) => items

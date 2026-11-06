@@ -1,7 +1,6 @@
 import type { FormEvent } from 'react';
 import { Edit, X } from 'lucide-react';
 import type { AuthUser, User } from '../../../types';
-import { AGENT_TIER_META, AGENT_TIER_ORDER } from '../../../utils/agentTier';
 
 export type EditUserFormState = {
   name: string;
@@ -10,7 +9,6 @@ export type EditUserFormState = {
   role: string;
   company_id: string;
   status: 'active' | 'inactive';
-  agent_tier: User['agent_tier'];
 };
 
 type Props = {
@@ -142,25 +140,6 @@ export default function EditUserModal({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none opacity-50"
                 />
               </div>
-            </div>
-          )}
-
-          {currentUser.role === 'owner' && editingUser.role !== 'owner' && (
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400">Bậc agent</label>
-              <select
-                value={form.agent_tier || 'normal'}
-                onChange={e =>
-                  onFormChange({ ...form, agent_tier: e.target.value as User['agent_tier'] })
-                }
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-rose-500"
-              >
-                {AGENT_TIER_ORDER.filter(tier => tier !== 'legendary').map(tier => (
-                  <option key={tier} value={tier}>
-                    {AGENT_TIER_META[tier].label}
-                  </option>
-                ))}
-              </select>
             </div>
           )}
 

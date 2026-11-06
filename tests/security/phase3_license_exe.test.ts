@@ -73,10 +73,52 @@ describe('Phase 3: License Management, Hardware Device Binding & EXE Security', 
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
-    expect(res.body.data.licenseKey).toMatch(/^HL-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
-    expect(res.body.data.plan).toBe('trial');
+    expect(res.body.data.licenseKey).toMatch(/^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/);
+    expect(res.body.data.plan).toBe('premium_trial');
     expect(res.body.data.features).toContain('tool.exe');
     expect(res.body.data.securityNotice).toContain('rủi ro checkpoint');
+  });
+
+  // 2b. One key per account: repeated issuance returns the SAME key.
+  it('2b. Repeated key requests return the same single key for the account', async () => {
+    const first = await request(ctx.app)
+      .post('/api/license/download-trial')
+      .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
+    const second = await request(ctx.app)
+      .post('/api/license/download-trial')
+      .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
+    const viaPem = await request(ctx.app)
+      .post('/api/license/request-pem')
+      .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(viaPem.status).toBe(200);
+    expect(second.body.data.licenseKey).toBe(first.body.data.licenseKey);
+    expect(viaPem.body.data.licenseKey).toBe(first.body.data.licenseKey);
+    expect(second.body.data.hasExistingKey).toBe(true);
+
+    const keysInDb = await findLicenseKeysByUserId(ctx.users.memberA.id);
+    expect(keysInDb.length).toBe(1);
+  });
+
+  // 2c. A revoked key is never silently reissued.
+  it('2c. Revoked key cannot be reissued by requesting a new PEM', async () => {
+    const first = await request(ctx.app)
+      .post('/api/license/download-trial')
+      .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
+    const licenseKeyId = first.body.data.licenseKeyId;
+
+    const revoke = await request(ctx.app)
+      .post(`/api/admin/licenses/${licenseKeyId}/revoke`)
+      .set('Authorization', `Bearer ${ctx.tokens.owner}`);
+    expect(revoke.status).toBe(200);
+
+    const res = await request(ctx.app)
+      .post('/api/license/request-pem')
+      .set('Authorization', `Bearer ${ctx.tokens.memberA}`);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('KEY_REVOKED');
   });
 
   // 3. Database hygiene: Raw license key is NEVER stored in database, only SHA-256 hash
@@ -95,6 +137,9 @@ describe('Phase 3: License Management, Hardware Device Binding & EXE Security', 
     // Ensure rawKey is nowhere on the database record
     expect((keysInDb[0] as any).rawKey).toBeUndefined();
     expect((keysInDb[0] as any).key).toBeUndefined();
+    // The recoverable copy must be encrypted, never the raw key.
+    expect(keysInDb[0].keyCipher).toBeTruthy();
+    expect(keysInDb[0].keyCipher).not.toContain(rawKey);
   });
 
   // 4. Activating license with deviceId returns access token, refresh token and offline grace

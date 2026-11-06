@@ -36,7 +36,8 @@ export type PermissionKey =
   | 'projects.admin'
   | 'ai_content.admin'
   | 'automation.admin'
-  | 'appointments.manage';
+  | 'appointments.manage'
+  | 'platform.admin';
 
 export interface RolePermissionRule {
   roleKey: RoleKey;
@@ -58,6 +59,8 @@ export interface ResolvedPermissionsResult {
   teamId?: string;
   isPlatformRootTeam: boolean;
   isTeamLead: boolean;
+  /** Legacy company admin without a team: team scope covers the whole company. */
+  companyWide?: boolean;
   status: 'active' | 'pending' | 'suspended';
   permissions: Record<PermissionKey, UserEffectivePermission>;
   activeEntitlementFeatures: Set<string>;
@@ -140,12 +143,12 @@ export const DEFAULT_ROLE_PERMISSIONS_MATRIX: RolePermissionRule[] = [
   { roleKey: 'pending_member', permissionKey: 'tool.download', scope: 'none' },
   { roleKey: 'independent', permissionKey: 'tool.download', scope: 'own' },
 
-  // team.members.manage
+  // team.members.manage — only super admin and the team lead
   { roleKey: 'super_admin', permissionKey: 'team.members.manage', scope: 'all' },
   { roleKey: 'team_lead', permissionKey: 'team.members.manage', scope: 'team' },
-  { roleKey: 'member', permissionKey: 'team.members.manage', scope: 'own' },
+  { roleKey: 'member', permissionKey: 'team.members.manage', scope: 'none' },
   { roleKey: 'pending_member', permissionKey: 'team.members.manage', scope: 'none' },
-  { roleKey: 'independent', permissionKey: 'team.members.manage', scope: 'own' },
+  { roleKey: 'independent', permissionKey: 'team.members.manage', scope: 'none' },
 
   // team.permissions.edit
   { roleKey: 'super_admin', permissionKey: 'team.permissions.edit', scope: 'all' },
@@ -175,7 +178,7 @@ export const DEFAULT_ROLE_PERMISSIONS_MATRIX: RolePermissionRule[] = [
   { roleKey: 'pending_member', permissionKey: 'license.manage', scope: 'none' },
   { roleKey: 'independent', permissionKey: 'license.manage', scope: 'none' },
 
-  // website_chat (chỉ super admin và thành viên team root)
+  // website_chat (super admin, hoặc team/user có entitlement)
   { roleKey: 'super_admin', permissionKey: 'website_chat', scope: 'all' },
   { roleKey: 'team_lead', permissionKey: 'website_chat', scope: 'team', premiumOnly: true },
   { roleKey: 'member', permissionKey: 'website_chat', scope: 'team', premiumOnly: true },
@@ -293,4 +296,12 @@ export const DEFAULT_ROLE_PERMISSIONS_MATRIX: RolePermissionRule[] = [
   { roleKey: 'member', permissionKey: 'appointments.manage', scope: 'own' },
   { roleKey: 'pending_member', permissionKey: 'appointments.manage', scope: 'none' },
   { roleKey: 'independent', permissionKey: 'appointments.manage', scope: 'own' },
+
+  // platform.admin — platform-global configuration and destructive operations.
+  // Reserved for the platform super admin only.
+  { roleKey: 'super_admin', permissionKey: 'platform.admin', scope: 'all' },
+  { roleKey: 'team_lead', permissionKey: 'platform.admin', scope: 'none' },
+  { roleKey: 'member', permissionKey: 'platform.admin', scope: 'none' },
+  { roleKey: 'pending_member', permissionKey: 'platform.admin', scope: 'none' },
+  { roleKey: 'independent', permissionKey: 'platform.admin', scope: 'none' },
 ];

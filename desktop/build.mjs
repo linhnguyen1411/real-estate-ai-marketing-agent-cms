@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const desktopPackage = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 
 async function build() {
   console.log('[Build-Desktop] Starting esbuild bundling...');
@@ -24,6 +25,9 @@ async function build() {
     format: 'cjs',
     outfile: path.join(distDir, 'main/index.cjs'),
     external: ['electron'],
+    define: {
+      __DESKTOP_APP_VERSION__: JSON.stringify(desktopPackage.version),
+    },
     sourcemap: true,
   });
   console.log('[Build-Desktop] Main process built -> desktop/dist/main/index.cjs');
@@ -56,11 +60,16 @@ async function build() {
   });
   console.log('[Build-Desktop] Renderer script built -> desktop/dist/renderer/renderer.js');
 
-  // 4. Copy HTML file
+  // 4. Copy HTML file and static renderer assets
   fs.copyFileSync(
     path.join(__dirname, 'src/renderer/index.html'),
     path.join(distDir, 'renderer/index.html')
   );
+  const rendererAssets = path.join(__dirname, 'src/renderer/assets');
+  if (fs.existsSync(rendererAssets)) {
+    fs.cpSync(rendererAssets, path.join(distDir, 'renderer/assets'), { recursive: true });
+    console.log('[Build-Desktop] Copied renderer assets -> desktop/dist/renderer/assets');
+  }
   console.log('[Build-Desktop] Copied index.html -> desktop/dist/renderer/index.html');
 
   console.log('[Build-Desktop] Build completed successfully.');

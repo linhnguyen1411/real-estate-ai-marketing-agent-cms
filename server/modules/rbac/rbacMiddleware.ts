@@ -15,6 +15,7 @@ declare global {
     interface Request {
       scope?: PermissionScope;
       teamId?: string;
+      companyWide?: boolean;
       userState?: RoleKey;
       userPermissions?: Record<PermissionKey, UserEffectivePermission>;
       activeEntitlementFeatures?: Set<string>;
@@ -76,16 +77,23 @@ export interface RoutePermissionRule {
 }
 
 export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
+  // Platform-global configuration & destructive operations (super admin only).
+  // These must precede the coarse module patterns below.
+  { pattern: /^\/api\/knowledge\/(reset|import|export)(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/decision-center\/rules(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/ai-gateway\/chat(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/agent\/telegram\/console(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/executive(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/execution-trace(\/.*)?$/, permission: 'platform.admin' },
+  { pattern: /^\/api\/control-plane(\/.*)?$/, permission: 'platform.admin' },
+
   // Dashboard & Navigation badges & Channels & Safe Settings Read
   { pattern: /^\/api\/dashboard(\/.*)?$/, permission: 'dashboard' },
   { pattern: /^\/api\/navigation-counts(\/.*)?$/, permission: 'dashboard' },
   { pattern: /^\/api\/channels(\/.*)?$/, permission: 'dashboard' },
-  { pattern: /^\/api\/settings$/, method: 'GET', permission: 'dashboard' },
 
   // Properties
   { pattern: /^\/api\/properties\/distribute/, permission: 'property.distribute' },
-  { pattern: /^\/api\/properties\/batch-import/, permission: 'property.write' },
-  { pattern: /^\/api\/admin\/properties\/batch-import/, permission: 'property.write' },
   { pattern: /^\/api\/properties\/quick-parse/, permission: 'property.write' },
   { pattern: /^\/api\/admin\/properties\/quick-parse/, permission: 'property.write' },
   { pattern: /^\/api\/ai\/generate-content(\/.*)?$/, permission: 'property.write' },
@@ -124,17 +132,14 @@ export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
   { pattern: /^\/api\/planning(\/.*)?$/, permission: 'agent.runtime' },
   { pattern: /^\/api\/knowledge(\/.*)?$/, permission: 'agent.sources' },
   { pattern: /^\/api\/decision-center(\/.*)?$/, permission: 'agent.runtime' },
-  { pattern: /^\/api\/executive(\/.*)?$/, permission: 'agent.reports' },
   { pattern: /^\/api\/sales(\/.*)?$/, permission: 'lead.intel' },
   { pattern: /^\/api\/marketing-org(\/.*)?$/, permission: 'agent.sources' },
   { pattern: /^\/api\/lead-acquisition(\/.*)?$/, permission: 'agent.sources' },
-  { pattern: /^\/api\/execution-trace(\/.*)?$/, permission: 'agent.runtime' },
   { pattern: /^\/api\/ai-gateway(\/.*)?$/, permission: 'agent.runtime' },
   { pattern: /^\/api\/agent\/notifications(\/.*)?$/, permission: 'agent.notifications' },
   { pattern: /^\/api\/agent\/reports(\/.*)?$/, permission: 'agent.reports' },
   { pattern: /^\/api\/agent\/sources(\/.*)?$/, permission: 'agent.sources' },
   { pattern: /^\/api\/agent(\/.*)?$/, permission: 'agent.runtime' },
-  { pattern: /^\/api\/control-plane(\/.*)?$/, permission: 'agent.runtime' },
   { pattern: /^\/api\/telegram(\/.*)?$/, permission: 'agent.notifications' },
   { pattern: /^\/api\/social(\/.*)?$/, permission: 'agent.sources' },
 
@@ -168,12 +173,14 @@ export const ROUTE_PERMISSION_MAP: RoutePermissionRule[] = [
   { pattern: /^\/api\/rbac(\/.*)?$/, permission: 'rbac.matrix' },
   { pattern: /^\/api\/entitlements(\/.*)?$/, permission: 'entitlement' },
   { pattern: /^\/api\/admin\/licenses(\/.*)?$/, permission: 'license.manage' },
-  { pattern: /^\/api\/license\/(download-trial|my-license|my-key|request-pem|upgrade-plan)(\/.*)?$/, permission: 'tool.download' },
+  { pattern: /^\/api\/license\/(download-trial|my-license|my-key|request-pem)(\/.*)?$/, permission: 'tool.download' },
+  { pattern: /^\/api\/license\/upgrade-plan(\/.*)?$/, permission: 'license.manage' },
   { pattern: /^\/api\/tools\/download(\/.*)?$/, permission: 'tool.download' },
 
   // Wallet & Tokens
   { pattern: /^\/api\/wallet(\/.*)?$/, permission: 'tool.download' },
   { pattern: /^\/api\/admin\/wallets(\/.*)?$/, permission: 'license.manage' },
+  { pattern: /^\/api\/admin\/wallet\/topup-requests(\/.*)?$/, permission: 'license.manage' },
 ];
 
 export function resolveRoutePermission(method: string, path: string): PermissionKey | null {
@@ -240,6 +247,7 @@ export function requirePermission(permissionKey: PermissionKey) {
       // Attach context to req
       req.scope = perm.scope;
       req.teamId = resolved.teamId;
+      req.companyWide = resolved.companyWide;
       req.userState = resolved.roleKey;
       req.userPermissions = resolved.permissions;
       req.activeEntitlementFeatures = resolved.activeEntitlementFeatures;
@@ -356,6 +364,15 @@ export function apiAuthorizationGuard() {
     next: NextFunction,
     cleanPath: string,
   ): void => {
+    // The permission engine is authoritative for every route it declares.
+    // Running the legacy role floor afterwards would override valid grants
+    // (e.g. a member holding the investor_leads entitlement). Only routes that
+    // bypassed the permission gate fall back to the legacy hierarchy.
+    if (req._rbacPermissionChecked) {
+      next();
+      return;
+    }
+
     const authUser = getAuthUser(req);
     if (!authUser || !authUser.id) {
       sendError(res, 401, 'Yêu cầu đăng nhập.');

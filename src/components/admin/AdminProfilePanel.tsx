@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ExternalLink,
   Globe,
@@ -19,7 +20,6 @@ import {
   CheckCircle2,
   ArrowRight,
   Clock,
-  Laptop,
   AlertCircle,
   Users,
   UserCheck,
@@ -32,13 +32,16 @@ import {
   History,
   CreditCard,
   Lock,
+  X,
+  QrCode,
+  Banknote,
 } from 'lucide-react';
 import { AuthUser } from '../../types';
 import {
   updateProfile,
   uploadProfileAvatar,
   getMyLicense,
-  requestFreePemKey,
+  requestFreeLicenseKey,
   upgradeSubscriptionPlan,
   type UserLicenseInfo,
   getMyTeam,
@@ -51,12 +54,19 @@ import {
   upgradeLicenseWithTokens,
   getAdminWallets,
   adminDepositTokens,
+  getMyTopUpRequests,
+  createTokenTopUpRequest,
+  cancelTokenTopUpRequest,
+  getAdminTopUpRequests,
+  approveTokenTopUpRequest,
+  rejectTokenTopUpRequest,
   type UserWalletData,
   type WalletTransactionItem,
+  type TokenTopUpRequestItem,
+  type TokenTopUpPayment,
+  type TopUpConfig,
 } from '../../services/api';
 import { resizeImageFile } from '../../utils/resizeImageFile';
-import AgentTierBadge from '../agent/AgentTierBadge';
-import { resolveAgentTier, AGENT_TIER_META } from '../../utils/agentTier';
 
 interface AdminProfilePanelProps {
   currentUser: AuthUser;
@@ -68,6 +78,41 @@ interface AdminProfilePanelProps {
 
 type ProfileTab = 'profile' | 'wallet' | 'license' | 'referral' | 'plans';
 
+const PROFILE_TABS: ProfileTab[] = ['profile', 'wallet', 'license', 'referral', 'plans'];
+
+function readProfileTab(value: string | null): ProfileTab {
+  return PROFILE_TABS.includes(value as ProfileTab) ? (value as ProfileTab) : 'profile';
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  trial: 'Premium Trial',
+  premium_trial: 'Premium Trial',
+  pro: 'Pro Agent',
+  enterprise: 'Enterprise',
+  // Internal root-team access, not a purchasable package.
+  platform_root: 'Root Team (nội bộ)',
+};
+
+function planLabel(plan?: string | null): string {
+  if (!plan) return 'Chưa kích hoạt';
+  return PLAN_LABELS[plan.toLowerCase()] || plan;
+}
+
+const PLAN_BADGE_META: Record<string, { icon: typeof Crown; badgeClass: string }> = {
+  trial: { icon: Zap, badgeClass: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' },
+  premium_trial: { icon: Zap, badgeClass: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' },
+  pro: { icon: Sparkles, badgeClass: 'border-rose-500/40 bg-rose-500/10 text-rose-200' },
+  enterprise: { icon: Crown, badgeClass: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200' },
+  platform_root: { icon: Shield, badgeClass: 'border-amber-500/40 bg-amber-500/10 text-amber-200' },
+};
+
+function resolvePlanMeta(plan?: string | null) {
+  return PLAN_BADGE_META[(plan || '').toLowerCase()] || {
+    icon: Clock,
+    badgeClass: 'border-slate-700 bg-slate-800/80 text-slate-300',
+  };
+}
+
 export default function AdminProfilePanel({
   currentUser,
   saving,
@@ -75,7 +120,23 @@ export default function AdminProfilePanel({
   onUpdated,
   onNotify,
 }: AdminProfilePanelProps) {
-  const [activeTab, setActiveTab] = useState<ProfileTab>('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState<ProfileTab>(() => readProfileTab(searchParams.get('tab')));
+
+  // Keep the selected tab in the URL so a refresh (or a shared link) reopens
+  // the same tab instead of jumping back to "Hồ sơ".
+  const setActiveTab = (tab: ProfileTab) => {
+    setActiveTabState(tab);
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'profile') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  };
+
+  const tabFromUrl = readProfileTab(searchParams.get('tab'));
+  useEffect(() => {
+    setActiveTabState((prev) => (prev === tabFromUrl ? prev : tabFromUrl));
+  }, [tabFromUrl]);
   const [avatarPreview, setAvatarPreview] = useState(currentUser.avatar_url || '');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -93,10 +154,27 @@ export default function AdminProfilePanel({
   const [depositing, setDepositing] = useState(false);
   const [upgradingWithToken, setUpgradingWithToken] = useState<string | null>(null);
 
-  // License & PEM states
+  // Token top-up states
+  const [topUpConfig, setTopUpConfig] = useState<TopUpConfig | null>(null);
+  const [planCosts, setPlanCosts] = useState<Record<string, number>>({ pro: 20, enterprise: 100 });
+  const [myTopUps, setMyTopUps] = useState<TokenTopUpRequestItem[]>([]);
+  const [topUpModalOpen, setTopUpModalOpen] = useState(false);
+  const [topUpTokens, setTopUpTokens] = useState('');
+  const [creatingTopUp, setCreatingTopUp] = useState(false);
+  const [topUpPayment, setTopUpPayment] = useState<TokenTopUpPayment | null>(null);
+  const [qrImageFailed, setQrImageFailed] = useState(false);
+  const [copiedPayField, setCopiedPayField] = useState<string | null>(null);
+  const [cancellingTopUpId, setCancellingTopUpId] = useState<string | null>(null);
+  const [adminTopUps, setAdminTopUps] = useState<TokenTopUpRequestItem[]>([]);
+  const [adminTopUpsLoading, setAdminTopUpsLoading] = useState(false);
+  const [reviewingTopUpId, setReviewingTopUpId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<TokenTopUpRequestItem | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // License & device states
   const [licenseInfo, setLicenseInfo] = useState<UserLicenseInfo | null>(null);
   const [licenseLoading, setLicenseLoading] = useState(false);
-  const [requestingPem, setRequestingPem] = useState(false);
+  const [requestingLicenseKey, setRequestingLicenseKey] = useState(false);
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
   // Team affiliation states
@@ -224,10 +302,34 @@ export default function AdminProfilePanel({
       const res = await getMyWallet();
       setWalletData(res.wallet);
       setWalletTransactions(res.transactions || []);
+      if (res.planCosts) setPlanCosts(res.planCosts);
+      if (res.topUpConfig) setTopUpConfig(res.topUpConfig);
     } catch {
       /* ignore */
     } finally {
       setWalletLoading(false);
+    }
+  };
+
+  const fetchMyTopUps = async () => {
+    try {
+      const res = await getMyTopUpRequests();
+      setMyTopUps(Array.isArray(res) ? res : []);
+    } catch {
+      setMyTopUps([]);
+    }
+  };
+
+  const fetchAdminTopUpRequests = async () => {
+    if (currentUser.role !== 'owner' && (currentUser as any).roleKey !== 'super_admin') return;
+    setAdminTopUpsLoading(true);
+    try {
+      const res = await getAdminTopUpRequests('pending');
+      setAdminTopUps(Array.isArray(res) ? res : []);
+    } catch {
+      setAdminTopUps([]);
+    } finally {
+      setAdminTopUpsLoading(false);
     }
   };
 
@@ -254,7 +356,9 @@ export default function AdminProfilePanel({
     }
     if (activeTab === 'wallet') {
       void fetchWallet();
+      void fetchMyTopUps();
       void fetchAdminWallets();
+      void fetchAdminTopUpRequests();
     }
   }, [activeTab]);
 
@@ -301,7 +405,6 @@ export default function AdminProfilePanel({
         hasKey: true,
         plan: res.plan,
         licenseKey: res.licenseKey,
-        pem: res.pem,
         expiresAt: res.expiresAt,
         features: res.features,
       }));
@@ -314,8 +417,119 @@ export default function AdminProfilePanel({
     }
   };
 
-  const handleUpdateMemberStatus = async (
-    userId: string,
+  const tokenRateVnd = topUpConfig?.tokenRateVnd ?? 10000;
+  const minTopUpTokens = topUpConfig?.minTokens ?? 10;
+  const topUpTokensNumber = Number(topUpTokens);
+  const topUpAmountVnd = Number.isFinite(topUpTokensNumber) && topUpTokensNumber > 0
+    ? topUpTokensNumber * tokenRateVnd
+    : 0;
+
+  const missingTokensForPlan = (plan: 'pro' | 'enterprise') =>
+    Math.max(0, (planCosts[plan] ?? 0) - (walletData?.availableBalance ?? 0));
+
+  const openTopUpModal = (presetTokens?: number) => {
+    setTopUpPayment(null);
+    setQrImageFailed(false);
+    setCopiedPayField(null);
+    setTopUpTokens(presetTokens && presetTokens > 0 ? String(presetTokens) : '');
+    setTopUpModalOpen(true);
+  };
+
+  const copyPayField = async (field: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedPayField(field);
+      setTimeout(() => setCopiedPayField((prev) => (prev === field ? null : prev)), 2000);
+    } catch {
+      onNotify('Không copy được, vui lòng chọn và sao chép thủ công.', 'error');
+    }
+  };
+
+  const handleCreateTopUp = async () => {
+    if (!Number.isInteger(topUpTokensNumber) || topUpTokensNumber <= 0) {
+      onNotify('Số token cần nạp phải là số nguyên dương.', 'error');
+      return;
+    }
+    if (topUpTokensNumber < minTopUpTokens) {
+      onNotify(`Số token nạp tối thiểu là ${minTopUpTokens} token.`, 'error');
+      return;
+    }
+    if (topUpConfig && topUpTokensNumber > topUpConfig.maxTokens) {
+      onNotify(`Số token nạp tối đa mỗi yêu cầu là ${topUpConfig.maxTokens} token.`, 'error');
+      return;
+    }
+
+    setCreatingTopUp(true);
+    try {
+      const res = await createTokenTopUpRequest(topUpTokensNumber);
+      setTopUpPayment(res.payment);
+      setQrImageFailed(false);
+      onNotify(
+        `Đã tạo yêu cầu nạp ${res.request.tokens} token (${res.request.amountVnd.toLocaleString('vi-VN')}đ). Nội dung chuyển khoản: ${res.request.code}.`,
+        'success'
+      );
+      void fetchMyTopUps();
+      void fetchAdminTopUpRequests();
+    } catch (err: any) {
+      onNotify(err.message || 'Không tạo được yêu cầu nạp token.', 'error');
+    } finally {
+      setCreatingTopUp(false);
+    }
+  };
+
+  const handleCancelTopUp = async (requestId: string) => {
+    setCancellingTopUpId(requestId);
+    try {
+      await cancelTokenTopUpRequest(requestId);
+      onNotify('Đã hủy yêu cầu nạp token.', 'success');
+      void fetchMyTopUps();
+      void fetchAdminTopUpRequests();
+    } catch (err: any) {
+      onNotify(err.message || 'Không hủy được yêu cầu nạp token.', 'error');
+    } finally {
+      setCancellingTopUpId(null);
+    }
+  };
+
+  const handleApproveTopUp = async (request: TokenTopUpRequestItem) => {
+    setReviewingTopUpId(request.id);
+    try {
+      await approveTokenTopUpRequest(request.id);
+      onNotify(`Đã cộng ${request.tokens} token cho ${request.email || request.name || 'người dùng'} (mã ${request.code}).`, 'success');
+      void fetchAdminTopUpRequests();
+      void fetchAdminWallets();
+      void fetchMyTopUps();
+      void fetchWallet();
+    } catch (err: any) {
+      onNotify(err.message || 'Không duyệt được yêu cầu nạp token.', 'error');
+    } finally {
+      setReviewingTopUpId(null);
+    }
+  };
+
+  const handleRejectTopUp = async () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      onNotify('Vui lòng nhập lý do từ chối.', 'error');
+      return;
+    }
+
+    setReviewingTopUpId(rejectTarget.id);
+    try {
+      await rejectTokenTopUpRequest(rejectTarget.id, rejectReason.trim());
+      onNotify(`Đã từ chối yêu cầu nạp ${rejectTarget.code}.`, 'success');
+      setRejectTarget(null);
+      setRejectReason('');
+      void fetchAdminTopUpRequests();
+      void fetchMyTopUps();
+    } catch (err: any) {
+      onNotify(err.message || 'Không từ chối được yêu cầu nạp token.', 'error');
+    } finally {
+      setReviewingTopUpId(null);
+    }
+  };
+
+  const handleUpdateMemberStatus = async (    userId: string,
     newStatus: 'approved' | 'suspended' | 'pending'
   ) => {
     setUpdatingMemberId(userId);
@@ -340,7 +554,7 @@ export default function AdminProfilePanel({
 
   const pendingTeamMembersCount = teamMembers.filter((m) => m.status === 'pending').length;
 
-  const tier = resolveAgentTier(currentUser);
+  const isSuperAdmin = currentUser.role === 'owner' || currentUser.roleKey === 'super_admin';
   const publicProfileUrl = currentUser.public_slug ? `/moi-gioi/${currentUser.public_slug}` : '';
   const referralCode =
     currentUser.referral_code ||
@@ -357,33 +571,33 @@ export default function AdminProfilePanel({
     }
   };
 
-  const handleDownloadPem = (pemContent: string) => {
-    const blob = new Blob([pemContent], { type: 'application/x-pem-file;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `agent-license-${referralCode.toLowerCase()}.pem`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    onNotify('Đã tải xuống file chứng chỉ PEM!', 'success');
-  };
-
-  const handleRequestFreePem = async () => {
-    setRequestingPem(true);
+  const handleRequestFreeKey = async () => {
+    setRequestingLicenseKey(true);
     try {
-      const res = await requestFreePemKey();
+      const res = await requestFreeLicenseKey();
       setLicenseInfo(res);
-      onNotify('Đã tạo thành công Khóa Bản Quyền & Key PEM Miễn Phí (Trial 3 ngày)!', 'success');
+      if (res.expired) {
+        onNotify('Premium Trial đã hết hạn. Đây là key duy nhất của tài khoản — vui lòng nâng cấp gói để tiếp tục.', 'info');
+      } else if (res.hasExistingKey) {
+        onNotify('Đã mở lại key duy nhất của tài khoản bạn.', 'success');
+      } else {
+        onNotify('Đã tạo Khóa Bản Quyền Premium Trial (3 ngày)!', 'success');
+      }
     } catch (err: any) {
-      onNotify(err.message || 'Không thể cấp Key PEM. Vui lòng thử lại.', 'error');
+      onNotify(err.message || 'Không thể cấp khóa bản quyền. Vui lòng thử lại.', 'error');
     } finally {
-      setRequestingPem(false);
+      setRequestingLicenseKey(false);
     }
   };
 
   const handleUpgradePlan = async (plan: 'pro' | 'enterprise') => {
+    if (!isSuperAdmin) {
+      onNotify(
+        'Gói trả phí được kích hoạt thủ công sau khi Admin xác nhận chuyển khoản. Vui lòng liên hệ Super Admin để được cấp gói.',
+        'info',
+      );
+      return;
+    }
     setUpgradingPlan(plan);
     try {
       const res = await upgradeSubscriptionPlan(plan, 30);
@@ -392,7 +606,6 @@ export default function AdminProfilePanel({
         hasKey: true,
         plan: res.plan,
         licenseKey: res.licenseKey,
-        pem: res.pem,
         maxDevices: res.maxDevices,
         expiresAt: res.expiresAt,
         features: res.features,
@@ -470,7 +683,11 @@ export default function AdminProfilePanel({
     }
   };
 
-  const currentPlan = (licenseInfo?.plan || (currentUser.role === 'owner' ? 'enterprise' : 'trial')).toLowerCase();
+  const rawPlan = licenseInfo?.plan || (currentUser.role === 'owner' ? 'enterprise' : '');
+  const currentPlan = rawPlan.toLowerCase();
+  const isTrialPlan = currentPlan === 'trial' || currentPlan === 'premium_trial';
+  const planBadge = resolvePlanMeta(rawPlan);
+  const PlanBadgeIcon = planBadge.icon;
 
   return (
     <div className="space-y-6">
@@ -482,7 +699,7 @@ export default function AdminProfilePanel({
             Quản lý tài khoản & Hồ sơ
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Thiết lập hồ sơ cá nhân, ví token, tải Key PEM Agent, lấy mã giới thiệu và nâng cấp gói Premium.
+            Thiết lập hồ sơ cá nhân, ví token, quản lý khóa Desktop Agent, lấy mã giới thiệu và nâng cấp gói Premium.
           </p>
         </div>
 
@@ -499,7 +716,7 @@ export default function AdminProfilePanel({
 
       {/* Dedicated Sub-menu Navigation */}
       <div className="border-b border-slate-800">
-        <nav className="flex items-center gap-2 overflow-x-auto pb-3 app-scroll">
+        <nav className="flex flex-wrap items-center gap-2 pb-3">
           {[
             { id: 'profile', label: 'Hồ sơ & Bảo mật', icon: UserCircle },
             {
@@ -508,7 +725,7 @@ export default function AdminProfilePanel({
               icon: Wallet,
               badge: walletData ? `${walletData.availableBalance.toLocaleString()} Token` : undefined,
             },
-            { id: 'license', label: 'Key PEM & Agent', icon: Key },
+            { id: 'license', label: 'Khóa & Thiết bị', icon: Key },
             { id: 'referral', label: 'Mã giới thiệu', icon: Share2 },
             { id: 'plans', label: 'Gói Premium', icon: Crown },
           ].map(tab => {
@@ -519,7 +736,7 @@ export default function AdminProfilePanel({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as ProfileTab)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                className={`flex min-h-11 items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
                   isActive
                     ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/40'
                     : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800 hover:border-slate-700'
@@ -569,7 +786,13 @@ export default function AdminProfilePanel({
 
           <div className="text-center space-y-2">
             <p className="font-bold text-white text-base">{currentUser.name}</p>
-            <AgentTierBadge tier={tier} size="md" className="mx-auto" />
+            <span
+              className={`mx-auto inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${planBadge.badgeClass}`}
+              title={`Gói hiện tại: ${planLabel(rawPlan)}`}
+            >
+              <PlanBadgeIcon className="h-4 w-4" />
+              {planLabel(rawPlan)}
+            </span>
             <p className="text-xs text-slate-500">{currentUser.email}</p>
           </div>
 
@@ -585,10 +808,6 @@ export default function AdminProfilePanel({
               </div>
             )}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500">Bậc agent</span>
-              <span className="font-semibold text-slate-200">{AGENT_TIER_META[tier].label}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
               <span className="text-slate-500">Đội ngũ (Team)</span>
               <span className="font-semibold text-slate-200 truncate max-w-[150px]">
                 {teamInfo?.inTeam
@@ -599,8 +818,8 @@ export default function AdminProfilePanel({
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
               <span className="text-slate-500">Gói hiện tại</span>
               <span className="inline-flex items-center gap-1 font-bold text-amber-400 uppercase text-2xs px-2 py-0.5 rounded-full bg-amber-950/60 border border-amber-800/50">
-                <Crown className="w-3 h-3" />
-                {currentPlan}
+                <PlanBadgeIcon className="w-3 h-3" />
+                {planLabel(rawPlan)}
               </span>
             </div>
           </div>
@@ -614,7 +833,7 @@ export default function AdminProfilePanel({
               <button
                 type="button"
                 onClick={() => handleCopy(referralCode, 'quick-ref', 'Đã sao chép mã giới thiệu!')}
-                className="text-2xs text-amber-400 hover:text-white flex items-center gap-0.5 underline font-bold"
+                className="inline-flex min-h-6 items-center gap-0.5 text-2xs font-bold text-amber-400 underline hover:text-white"
               >
                 {copiedKey === 'quick-ref' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 Copy
@@ -630,7 +849,7 @@ export default function AdminProfilePanel({
               href={publicProfileUrl}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-sky-300 hover:bg-slate-900 transition-colors"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-sky-300 hover:bg-slate-900 transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               Xem hồ sơ công khai
@@ -842,19 +1061,29 @@ export default function AdminProfilePanel({
                     </div>
                     <h3 className="text-lg font-bold text-white">Quản Lý Số Dư & Giao Dịch Token</h3>
                     <p className="text-xs text-slate-400">
-                      Token được cộng khi phát sinh giao dịch BĐS hoặc nạp trực tiếp bởi Admin. Dùng token để nâng cấp Key Agent lên Pro / Enterprise.
+                      Tỷ lệ quy đổi: <strong>1 Token = {tokenRateVnd.toLocaleString('vi-VN')}đ</strong>. Nạp token bằng chuyển khoản QR, admin xác nhận và cộng vào ví. Dùng token để nâng cấp Key Agent lên Pro / Enterprise.
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={fetchWallet}
-                    disabled={walletLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs text-slate-300 hover:text-white transition-all disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${walletLoading ? 'animate-spin' : ''}`} />
-                    Làm mới số dư
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openTopUpModal()}
+                      className="inline-flex min-h-11 items-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white transition-all shadow-md active:scale-95"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      Mua Token
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fetchWallet}
+                      disabled={walletLoading}
+                      className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs text-slate-300 hover:text-white transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${walletLoading ? 'animate-spin' : ''}`} />
+                      Làm mới số dư
+                    </button>
+                  </div>
                 </div>
 
                 {/* 3 Metric Cards */}
@@ -906,31 +1135,130 @@ export default function AdminProfilePanel({
                       <Zap className="w-4 h-4 text-rose-400" /> Nâng cấp Key Bản Quyền bằng Token Ví
                     </h4>
                     <p className="text-2xs text-slate-400">
-                      Gói Pro (30 ngày): <strong>100 Token</strong> • Gói Enterprise (30 ngày): <strong>300 Token</strong>
+                      Gói Pro (30 ngày): <strong>{planCosts.pro} Token</strong> • Gói Enterprise (30 ngày): <strong>{planCosts.enterprise} Token</strong>
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      disabled={upgradingWithToken !== null || (walletData?.availableBalance ?? 0) < 100}
+                      disabled={upgradingWithToken !== null || (walletData?.availableBalance ?? 0) < (planCosts.pro ?? 0)}
                       onClick={() => handleUpgradeWithToken('pro')}
                       className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-1.5"
                     >
                       <Zap className="w-3.5 h-3.5" />
-                      {upgradingWithToken === 'pro' ? 'Đang nâng cấp...' : 'Nâng Pro (100 Token)'}
+                      {upgradingWithToken === 'pro' ? 'Đang nâng cấp...' : `Nâng Pro (${planCosts.pro} Token)`}
                     </button>
                     <button
                       type="button"
-                      disabled={upgradingWithToken !== null || (walletData?.availableBalance ?? 0) < 300}
+                      disabled={upgradingWithToken !== null || (walletData?.availableBalance ?? 0) < (planCosts.enterprise ?? 0)}
                       onClick={() => handleUpgradeWithToken('enterprise')}
                       className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-1.5"
                     >
                       <Crown className="w-3.5 h-3.5" />
-                      {upgradingWithToken === 'enterprise' ? 'Đang nâng cấp...' : 'Nâng Enterprise (300 Token)'}
+                      {upgradingWithToken === 'enterprise' ? 'Đang nâng cấp...' : `Nâng Enterprise (${planCosts.enterprise} Token)`}
                     </button>
+                    {(walletData?.availableBalance ?? 0) < (planCosts.enterprise ?? 0) && (
+                      <button
+                        type="button"
+                        onClick={() => openTopUpModal(missingTokensForPlan((walletData?.availableBalance ?? 0) < (planCosts.pro ?? 0) ? 'pro' : 'enterprise'))}
+                        className="px-3.5 py-2 rounded-xl border border-emerald-500/40 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5"
+                      >
+                        <Coins className="w-3.5 h-3.5" />
+                        Mua thêm token
+                      </button>
+                    )}
                   </div>
                 </div>
+              </div>
+
+              {/* User Token Top-Up Requests */}
+              <div className="rounded-2xl border border-slate-900 bg-slate-900/40 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Banknote className="w-4 h-4 text-emerald-400" />
+                      Yêu Cầu Nạp Token Của Tôi
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Yêu cầu chờ admin đối chiếu chuyển khoản. Token chỉ được cộng sau khi admin xác nhận.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchMyTopUps}
+                    className="inline-flex min-h-11 items-center px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:text-white"
+                  >
+                    Làm mới
+                  </button>
+                </div>
+
+                {myTopUps.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-500">
+                    Chưa có yêu cầu nạp token nào. Bấm “Mua Token” để tạo yêu cầu.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                        <tr>
+                          <th className="py-2.5 px-3">Mã yêu cầu</th>
+                          <th className="py-2.5 px-3">Thời gian</th>
+                          <th className="py-2.5 px-3">Token</th>
+                          <th className="py-2.5 px-3">Số tiền</th>
+                          <th className="py-2.5 px-3">Trạng thái</th>
+                          <th className="py-2.5 px-3 text-right">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+                        {myTopUps.map((req) => (
+                          <tr key={req.id} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-bold text-white">{req.code}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-400 whitespace-nowrap">
+                              {new Date(req.createdAt).toLocaleString('vi-VN')}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-emerald-300">+{req.tokens}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-300">{req.amountVnd.toLocaleString('vi-VN')}đ</td>
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-2xs font-semibold border ${
+                                req.status === 'approved'
+                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                  : req.status === 'pending'
+                                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                  : req.status === 'rejected'
+                                  ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                                  : 'bg-slate-800 text-slate-300 border-slate-700'
+                              }`}>
+                                {req.status === 'approved'
+                                  ? 'Đã cộng token'
+                                  : req.status === 'pending'
+                                  ? 'Chờ admin xác nhận'
+                                  : req.status === 'rejected'
+                                  ? 'Bị từ chối'
+                                  : 'Đã hủy'}
+                              </span>
+                              {req.status === 'rejected' && req.note && (
+                                <p className="text-2xs text-rose-300/80 mt-1 max-w-xs">{req.note}</p>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {req.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelTopUp(req.id)}
+                                  disabled={cancellingTopUpId === req.id}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white text-2xs font-semibold disabled:opacity-50"
+                                >
+                                  {cancellingTopUpId === req.id ? 'Đang hủy...' : 'Hủy yêu cầu'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* SUPER ADMIN: Token Management & Deposit to Users */}
@@ -950,10 +1278,92 @@ export default function AdminProfilePanel({
                       type="button"
                       onClick={fetchAdminWallets}
                       disabled={adminWalletsLoading}
-                      className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:text-white"
+                      className="inline-flex min-h-11 items-center px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:text-white"
                     >
                       Làm mới DS ví
                     </button>
+                  </div>
+
+                  {/* Pending token top-up requests */}
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/10 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <QrCode className="w-4 h-4 text-emerald-400" />
+                          Yêu Cầu Nạp Token Chờ Duyệt
+                        </h5>
+                        <p className="text-2xs text-slate-400 mt-0.5">
+                          Đối chiếu sao kê ngân hàng với mã nội dung trước khi cộng token. Hệ thống chỉ cộng một lần.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={fetchAdminTopUpRequests}
+                        disabled={adminTopUpsLoading}
+                        className="inline-flex min-h-9 items-center px-3 py-1 rounded-lg border border-slate-700 bg-slate-900 text-2xs text-slate-300 hover:text-white disabled:opacity-50"
+                      >
+                        {adminTopUpsLoading ? 'Đang tải...' : 'Làm mới yêu cầu'}
+                      </button>
+                    </div>
+
+                    {adminTopUps.length === 0 ? (
+                      <div className="py-4 text-center text-2xs text-slate-500">
+                        Không có yêu cầu nạp token nào đang chờ duyệt.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-lg border border-slate-800">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                            <tr>
+                              <th className="py-2 px-3">Mã</th>
+                              <th className="py-2 px-3">Người dùng</th>
+                              <th className="py-2 px-3">Token</th>
+                              <th className="py-2 px-3">Số tiền</th>
+                              <th className="py-2 px-3">Thời gian</th>
+                              <th className="py-2 px-3 text-right">Duyệt</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+                            {adminTopUps.map((req) => (
+                              <tr key={req.id} className="hover:bg-slate-800/30 transition-colors">
+                                <td className="py-2 px-3 font-mono font-bold text-white">{req.code}</td>
+                                <td className="py-2 px-3">
+                                  <span className="text-slate-200 font-semibold">{req.name || req.email || req.userId}</span>
+                                  {req.email && req.name && (
+                                    <span className="block text-2xs text-slate-500 font-mono">{req.email}</span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 font-mono text-emerald-300">+{req.tokens}</td>
+                                <td className="py-2 px-3 font-mono text-slate-300">{req.amountVnd.toLocaleString('vi-VN')}đ</td>
+                                <td className="py-2 px-3 font-mono text-slate-400 whitespace-nowrap">
+                                  {new Date(req.createdAt).toLocaleString('vi-VN')}
+                                </td>
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApproveTopUp(req)}
+                                      disabled={reviewingTopUpId === req.id}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-2xs font-bold disabled:opacity-50"
+                                    >
+                                      {reviewingTopUpId === req.id ? 'Đang xử lý...' : 'Đã nhận tiền'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setRejectTarget(req); setRejectReason(''); }}
+                                      disabled={reviewingTopUpId === req.id}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-500/40 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40 text-2xs font-bold disabled:opacity-50"
+                                    >
+                                      Từ chối
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
 
                   {adminWalletsLoading ? (
@@ -1133,6 +1543,238 @@ export default function AdminProfilePanel({
                         className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
                       >
                         {depositing ? 'Đang giao dịch...' : 'Xác nhận giao dịch'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Token Top-Up Modal */}
+              {topUpModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+                  <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4 shadow-2xl my-8">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <QrCode className="w-4 h-4 text-emerald-400" />
+                        {topUpPayment ? 'Quét QR để nạp Token' : 'Mua Token'}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setTopUpModalOpen(false)}
+                        className="text-slate-400 hover:text-white"
+                        aria-label="Đóng"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {!topUpPayment ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-1">
+                          <p className="text-slate-300">
+                            Tỷ lệ quy đổi: <strong className="text-emerald-300">1 Token = {tokenRateVnd.toLocaleString('vi-VN')}đ</strong>
+                          </p>
+                          <p className="text-slate-500">
+                            Nạp tối thiểu {minTopUpTokens} token. Sau khi chuyển khoản, admin sẽ đối chiếu và cộng token vào ví.
+                          </p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-slate-300 font-semibold block">Số token cần nạp:</label>
+                          <input
+                            type="number"
+                            min={minTopUpTokens}
+                            step={1}
+                            value={topUpTokens}
+                            onChange={(e) => setTopUpTokens(e.target.value)}
+                            placeholder={`Ví dụ: ${Math.max(minTopUpTokens, planCosts.pro ?? 20)}`}
+                            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        {(['pro', 'enterprise'] as const).map((plan) => {
+                          const missing = missingTokensForPlan(plan);
+                          if (missing <= 0) return null;
+                          return (
+                            <button
+                              key={plan}
+                              type="button"
+                              onClick={() => setTopUpTokens(String(Math.max(missing, minTopUpTokens)))}
+                              className="w-full text-left px-3 py-2 rounded-xl border border-slate-700 bg-slate-950 hover:border-emerald-500/50 hover:bg-emerald-950/20 text-slate-300 transition-all"
+                            >
+                              Còn thiếu <strong className="text-emerald-300">{missing} token</strong> để đủ nâng gói {plan === 'pro' ? 'Pro' : 'Enterprise'}
+                              <span className="text-slate-500"> — bấm để điền nhanh</span>
+                            </button>
+                          );
+                        })}
+
+                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 flex items-center justify-between">
+                          <span className="text-slate-400">Số tiền cần chuyển:</span>
+                          <span className="text-lg font-black text-emerald-300 font-mono">
+                            {topUpAmountVnd.toLocaleString('vi-VN')}đ
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => setTopUpModalOpen(false)}
+                            className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCreateTopUp}
+                            disabled={creatingTopUp}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            {creatingTopUp ? 'Đang tạo...' : 'Tạo mã QR chuyển khoản'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 text-xs">
+                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3">
+                          <p className="text-slate-300">
+                            Yêu cầu <strong className="text-white">{topUpPayment.code}</strong> đã được tạo.
+                            Vui lòng chuyển <strong className="text-emerald-300">{topUpPayment.amountVnd.toLocaleString('vi-VN')}đ</strong> để nhận {topUpPayment.tokens} token.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-800 bg-white p-3">
+                          {qrImageFailed ? (
+                            <div className="w-full max-w-[300px] rounded-lg bg-slate-100 p-3 text-center space-y-2">
+                              <p className="text-xs font-semibold text-slate-700">
+                                Không tải được ảnh QR
+                              </p>
+                              <p className="text-2xs text-slate-500">
+                                Vui lòng chuyển khoản theo thông tin bên dưới hoặc mở mã QR ở tab mới.
+                              </p>
+                              <a
+                                href={topUpPayment.qrUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 underline"
+                              >
+                                Mở mã QR
+                              </a>
+                            </div>
+                          ) : (
+                            <img
+                              src={topUpPayment.qrUrl}
+                              alt={`QR chuyển khoản ${topUpPayment.code}`}
+                              className="w-full max-w-[260px] h-auto"
+                              onError={() => setQrImageFailed(true)}
+                            />
+                          )}
+                          <span className="text-2xs text-slate-500 text-center">
+                            Quét bằng app ngân hàng (VietQR). Nếu ảnh không hiển thị, chuyển khoản theo thông tin bên dưới.
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-2">
+                          {[
+                            { key: 'bank', label: 'Ngân hàng', value: `${topUpPayment.bank.bankName} (${topUpPayment.bank.bankBin})` },
+                            { key: 'account', label: 'Số tài khoản', value: topUpPayment.bank.accountNumber },
+                            { key: 'owner', label: 'Chủ tài khoản', value: topUpPayment.bank.accountName },
+                            { key: 'amount', label: 'Số tiền', value: `${topUpPayment.amountVnd.toLocaleString('vi-VN')}đ` },
+                            { key: 'code', label: 'Nội dung chuyển khoản', value: topUpPayment.code },
+                          ].map((row) => (
+                            <div key={row.key} className="flex items-center justify-between gap-2">
+                              <span className="text-slate-500">{row.label}</span>
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <strong className="text-white font-mono truncate">{row.value}</strong>
+                                <button
+                                  type="button"
+                                  onClick={() => copyPayField(row.key, row.value)}
+                                  className="text-slate-400 hover:text-white shrink-0"
+                                  aria-label={`Copy ${row.label}`}
+                                >
+                                  {copiedPayField === row.key ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <p className="text-2xs text-amber-300/90 flex items-start gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          Chuyển đúng số tiền và đúng nội dung <strong>{topUpPayment.code}</strong> để admin đối chiếu. Sai nội dung có thể làm chậm việc cộng token.
+                        </p>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTopUpPayment(null);
+                              setTopUpTokens('');
+                            }}
+                            className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                          >
+                            Tạo yêu cầu khác
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTopUpModalOpen(false)}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all"
+                          >
+                            Tôi đã chuyển khoản
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Reject Top-Up Modal */}
+              {rejectTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                  <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <X className="w-4 h-4 text-rose-400" />
+                        Từ chối yêu cầu {rejectTarget.code}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => { setRejectTarget(null); setRejectReason(''); }}
+                        className="text-slate-400 hover:text-white"
+                        aria-label="Đóng"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {rejectTarget.email || rejectTarget.name || rejectTarget.userId} • {rejectTarget.tokens} token • {rejectTarget.amountVnd.toLocaleString('vi-VN')}đ
+                    </p>
+                    <div className="space-y-1 text-xs">
+                      <label className="text-slate-300 font-semibold block">Lý do từ chối (bắt buộc):</label>
+                      <textarea
+                        rows={3}
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        placeholder="Ví dụ: Chưa nhận được chuyển khoản / Sai số tiền / Sai nội dung..."
+                        className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-white focus:border-rose-500 focus:outline-none resize-none"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => { setRejectTarget(null); setRejectReason(''); }}
+                        disabled={reviewingTopUpId === rejectTarget.id}
+                        className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRejectTopUp}
+                        disabled={reviewingTopUpId === rejectTarget.id}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all disabled:opacity-50"
+                      >
+                        {reviewingTopUpId === rejectTarget.id ? 'Đang xử lý...' : 'Từ chối yêu cầu'}
                       </button>
                     </div>
                   </div>
@@ -1514,29 +2156,29 @@ export default function AdminProfilePanel({
             </div>
           )}
 
-          {/* TAB 3: Key PEM & Desktop Agent */}
+          {/* TAB 3: License key & Desktop Agent devices */}
           {activeTab === 'license' && (
             <div className="rounded-2xl border border-slate-900 bg-slate-900/40 p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-950/60 border border-sky-800/40 text-sky-300 text-xs font-semibold">
                     <Key className="w-3.5 h-3.5 text-sky-400" />
-                    Bản Quyền Desktop Agent & Key PEM
+                    Bản Quyền Desktop Agent
                   </div>
-                  <h3 className="text-lg font-bold text-white mt-1">Quản lý Khóa Kích Hoạt & File PEM</h3>
+                  <h3 className="text-lg font-bold text-white mt-1">Quản lý Khóa Kích Hoạt</h3>
                   <p className="text-xs text-slate-400">
-                    Sử dụng Key hoặc File .PEM để kích hoạt ứng dụng Desktop Agent quét tin tự động và đồng bộ Lead về CMS.
+                    Sử dụng License Key để kích hoạt ứng dụng Desktop Agent quét tin tự động và đồng bộ Lead về CMS.
                   </p>
                 </div>
 
                 <button
                   type="button"
-                  disabled={requestingPem}
-                  onClick={handleRequestFreePem}
+                  disabled={requestingLicenseKey}
+                  onClick={handleRequestFreeKey}
                   className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-rose-600 hover:from-sky-500 hover:to-rose-500 text-white font-bold text-xs px-4 py-2.5 shadow-lg active:scale-95 disabled:opacity-60 transition-all"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {requestingPem ? 'Đang tạo Key...' : 'Nhận Key PEM Free (Trial 3 ngày)'}
+                  {requestingLicenseKey ? 'Đang xử lý...' : 'Nhận / Xem Key Premium Trial'}
                 </button>
               </div>
 
@@ -1558,8 +2200,8 @@ export default function AdminProfilePanel({
                 <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-1">
                   <span className="text-slate-500 text-2xs uppercase tracking-wider font-semibold">Gói dịch vụ</span>
                   <div className="text-sm font-bold text-amber-300 uppercase flex items-center gap-1.5">
-                    <Crown className="w-4 h-4 text-amber-400" />
-                    {licenseInfo?.plan || currentPlan}
+                    <PlanBadgeIcon className="w-4 h-4 text-amber-400" />
+                    {planLabel(licenseInfo?.plan || rawPlan)}
                   </div>
                 </div>
 
@@ -1567,12 +2209,12 @@ export default function AdminProfilePanel({
                   <span className="text-slate-500 text-2xs uppercase tracking-wider font-semibold">Thời hạn hiệu lực</span>
                   <div className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-sky-400" />
-                    {licenseInfo?.expiresAt ? new Date(licenseInfo.expiresAt).toLocaleDateString('vi-VN') : '3 ngày dùng thử'}
+                    {licenseInfo?.expiresAt ? new Date(licenseInfo.expiresAt).toLocaleDateString('vi-VN') : 'Chưa kích hoạt'}
                   </div>
                 </div>
               </div>
 
-              {/* License Key & PEM Display */}
+              {/* License Key Display */}
               {licenseInfo?.hasKey && licenseInfo.licenseKey ? (
                 <div className="space-y-4">
                   {/* Raw License Key */}
@@ -1594,55 +2236,22 @@ export default function AdminProfilePanel({
                       {licenseInfo.licenseKey}
                     </div>
                   </div>
-
-                  {/* PEM Certificate Block */}
-                  {licenseInfo.pem && (
-                    <div className="rounded-xl border border-sky-500/30 bg-slate-950 p-4 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                          <Laptop className="w-4 h-4 text-sky-400" /> Chứng chỉ Desktop Agent (agent-license.pem)
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(licenseInfo.pem || '', 'pem-text', 'Đã sao chép nội dung PEM!')}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
-                          >
-                            {copiedKey === 'pem-text' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            Sao chép PEM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadPem(licenseInfo.pem || '')}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow transition-all active:scale-95"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Tải file .PEM
-                          </button>
-                        </div>
-                      </div>
-
-                      <pre className="font-mono text-2xs text-slate-300 bg-slate-900/90 p-3 rounded-lg border border-slate-800/80 overflow-x-auto max-h-40 app-scroll leading-relaxed select-all">
-                        {licenseInfo.pem}
-                      </pre>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-6 text-center space-y-3">
                   <Key className="w-10 h-10 text-slate-600 mx-auto" />
-                  <p className="text-sm font-semibold text-slate-300">Bạn chưa tạo Khóa Bản Quyền hoặc File PEM</p>
+                  <p className="text-sm font-semibold text-slate-300">Bạn chưa có Khóa Bản Quyền</p>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Bấm nút "Nhận Key PEM Free (Trial 3 ngày)" ở góc trên để kích hoạt ngay ứng dụng Desktop Agent thu thập tin BĐS tự động.
+                    Mỗi tài khoản chỉ được cấp 1 key duy nhất. Bấm nút bên dưới để nhận Premium Trial 3 ngày kèm License Key kích hoạt Desktop Agent.
                   </p>
                   <button
                     type="button"
-                    disabled={requestingPem}
-                    onClick={handleRequestFreePem}
+                    disabled={requestingLicenseKey}
+                    onClick={handleRequestFreeKey}
                     className="inline-flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2.5 shadow-md active:scale-95 disabled:opacity-60 transition-all"
                   >
                     <Sparkles className="w-4 h-4" />
-                    {requestingPem ? 'Đang tạo...' : 'Nhận Key PEM Free Ngay'}
+                    {requestingLicenseKey ? 'Đang xử lý...' : 'Nhận Key Premium Trial'}
                   </button>
                 </div>
               )}
@@ -1674,8 +2283,8 @@ export default function AdminProfilePanel({
                     <p className="text-2xs">Tải file cài đặt và mở ứng dụng Desktop Agent trên máy tính của bạn.</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="font-bold text-white">Bước 2: Nạp File .PEM</span>
-                    <p className="text-2xs">Tải file certificate .PEM ở trên hoặc nhập mã License Key vào màn hình Agent.</p>
+                    <span className="font-bold text-white">Bước 2: Nhập License Key</span>
+                    <p className="text-2xs">Sao chép License Key ở trên và dán vào màn hình đăng nhập của Agent.</p>
                   </div>
                   <div className="space-y-1">
                     <span className="font-bold text-white">Bước 3: Tự động đồng bộ</span>
@@ -1702,24 +2311,24 @@ export default function AdminProfilePanel({
 
               {/* Plans Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* Free Trial Plan */}
+                {/* Premium Trial Plan */}
                 <div className={`rounded-2xl p-5 border flex flex-col justify-between transition-all ${
-                  currentPlan === 'trial'
+                  isTrialPlan
                     ? 'border-emerald-500/50 bg-emerald-950/10 shadow-lg'
                     : 'border-slate-800 bg-slate-950/80'
                 }`}>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dùng thử</span>
-                      {currentPlan === 'trial' && (
+                      {isTrialPlan && (
                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-2xs font-bold border border-emerald-500/30">
                           Đang dùng
                         </span>
                       )}
                     </div>
                     <div>
-                      <h4 className="text-xl font-extrabold text-white">Free Trial</h4>
-                      <p className="text-2xs text-slate-400 mt-1">Trải nghiệm sức mạnh cơ bản của hệ thống</p>
+                      <h4 className="text-xl font-extrabold text-white">Premium Trial</h4>
+                      <p className="text-2xs text-slate-400 mt-1">Dùng thử 1 lần / tài khoản trong 3 ngày</p>
                     </div>
                     <div className="pt-2 border-t border-slate-800/80">
                       <span className="text-2xl font-black text-white">0đ</span>
@@ -1741,7 +2350,7 @@ export default function AdminProfilePanel({
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Cấp Key PEM Free kích hoạt ngay</span>
+                        <span>License Key cấp 1 lần, xem lại bất kỳ lúc nào</span>
                       </li>
                     </ul>
                   </div>
@@ -1749,11 +2358,10 @@ export default function AdminProfilePanel({
                   <div className="pt-6">
                     <button
                       type="button"
-                      disabled={currentPlan === 'trial'}
                       onClick={() => setActiveTab('license')}
-                      className="w-full py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition-all"
+                      className="w-full py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 transition-all"
                     >
-                      {currentPlan === 'trial' ? 'Gói Hiện Tại' : 'Xem Key Trial'}
+                      {isTrialPlan ? 'Xem Key Premium Trial' : 'Xem Key Của Tôi'}
                     </button>
                   </div>
                 </div>
@@ -1784,7 +2392,7 @@ export default function AdminProfilePanel({
                       <p className="text-2xs text-slate-400 mt-1">Dành cho Môi giới chuyên nghiệp & Trưởng nhóm</p>
                     </div>
                     <div className="pt-2 border-t border-slate-800/80">
-                      <span className="text-2xl font-black text-white">499.000đ</span>
+                      <span className="text-2xl font-black text-white">199.000đ</span>
                       <span className="text-xs text-slate-500 font-medium"> / tháng</span>
                     </div>
 
@@ -1820,12 +2428,12 @@ export default function AdminProfilePanel({
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-xs font-bold text-white shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                     >
                       <Zap className="w-4 h-4" />
-                      {currentPlan === 'pro' ? 'Đang Sử Dụng' : upgradingPlan === 'pro' ? 'Đang kích hoạt...' : 'Nâng Cấp Pro (Chuyển khoản)'}
+                      {currentPlan === 'pro' ? 'Đang Sử Dụng' : upgradingPlan === 'pro' ? 'Đang kích hoạt...' : isSuperAdmin ? 'Kích Hoạt Pro (Admin)' : 'Liên Hệ Admin Kích Hoạt Pro'}
                     </button>
 
                     <button
                       type="button"
-                      disabled={upgradingWithToken === 'pro' || currentPlan === 'pro' || (walletData?.availableBalance ?? 0) < 100}
+                      disabled={upgradingWithToken === 'pro' || currentPlan === 'pro' || (walletData?.availableBalance ?? 0) < (planCosts.pro ?? 0)}
                       onClick={() => handleUpgradeWithToken('pro')}
                       className="w-full py-2 rounded-xl bg-slate-900 border border-rose-500/40 hover:bg-rose-950/40 text-xs font-bold text-rose-300 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                     >
@@ -1834,7 +2442,7 @@ export default function AdminProfilePanel({
                         ? 'Đang Dùng'
                         : upgradingWithToken === 'pro'
                         ? 'Đang nâng cấp...'
-                        : 'Dùng 100 Token Ví Nâng Cấp'}
+                        : `Dùng ${planCosts.pro} Token Ví Nâng Cấp`}
                     </button>
                   </div>
                 </div>
@@ -1861,7 +2469,7 @@ export default function AdminProfilePanel({
                       <p className="text-2xs text-slate-400 mt-1">Dành cho Sàn BĐS, Đại lý phân phối lớn</p>
                     </div>
                     <div className="pt-2 border-t border-slate-800/80">
-                      <span className="text-2xl font-black text-white">1.990.000đ</span>
+                      <span className="text-2xl font-black text-white">999.000đ</span>
                       <span className="text-xs text-slate-500 font-medium"> / tháng</span>
                     </div>
 
@@ -1901,12 +2509,14 @@ export default function AdminProfilePanel({
                         ? 'Đang Sử Dụng'
                         : upgradingPlan === 'enterprise'
                         ? 'Đang kích hoạt...'
-                        : 'Nâng Cấp Enterprise (Chuyển khoản)'}
+                        : isSuperAdmin
+                        ? 'Kích Hoạt Enterprise (Admin)'
+                        : 'Liên Hệ Admin Kích Hoạt Enterprise'}
                     </button>
 
                     <button
                       type="button"
-                      disabled={upgradingWithToken === 'enterprise' || currentPlan === 'enterprise' || currentUser.role === 'owner' || (walletData?.availableBalance ?? 0) < 300}
+                      disabled={upgradingWithToken === 'enterprise' || currentPlan === 'enterprise' || currentUser.role === 'owner' || (walletData?.availableBalance ?? 0) < (planCosts.enterprise ?? 0)}
                       onClick={() => handleUpgradeWithToken('enterprise')}
                       className="w-full py-2 rounded-xl bg-slate-900 border border-yellow-500/40 hover:bg-yellow-950/40 text-xs font-bold text-yellow-300 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                     >
@@ -1915,7 +2525,7 @@ export default function AdminProfilePanel({
                         ? 'Đang Dùng'
                         : upgradingWithToken === 'enterprise'
                         ? 'Đang nâng cấp...'
-                        : 'Dùng 300 Token Ví Nâng Cấp'}
+                        : `Dùng ${planCosts.enterprise} Token Ví Nâng Cấp`}
                     </button>
                   </div>
                 </div>

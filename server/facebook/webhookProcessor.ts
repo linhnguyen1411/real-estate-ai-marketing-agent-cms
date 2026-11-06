@@ -7,7 +7,6 @@ import {
 } from './leadSyncService';
 import { fetchFacebookUserProfile } from './facebookApi';
 import {
-  ensureFacebookPageConnection,
   markWebhookEventProcessed,
   saveWebhookEvent,
   upsertFacebookContact,
@@ -57,12 +56,6 @@ async function handleEvent(event: FacebookNormalizedEvent) {
 }
 
 export async function processFacebookWebhookPayload(payload: unknown) {
-  try {
-    await ensureFacebookPageConnection();
-  } catch (error) {
-    console.warn('[facebook] page connection sync skipped:', error instanceof Error ? error.message : error);
-  }
-
   const eventRow = await saveWebhookEvent(payload, inferWebhookEventType(payload));
 
   try {

@@ -573,7 +573,7 @@ router.post('/api/public/chat', publicChatSendRateLimiter, async (req: Request, 
           'NGUYÊN TẮC:',
           '1. Ưu tiên tuyệt đối thông tin được cung cấp trong RAG_KNOWLEDGE bên dưới.',
           '2. Không tự suy diễn quy trình, chính sách hoặc mức phí.',
-          '3. Cung cấp đường dẫn markdown link chính xác nếu có trong tài liệu (ví dụ: [Đăng nhập](/dang-nhap), [Cổng tìm kiếm BĐS công khai](/bat-dong-san), [Danh sách Bất động sản](/admin#properties), [Hồ sơ cá nhân](/admin#profile), v.v.).',
+          '3. Cung cấp đường dẫn markdown link chính xác nếu có trong tài liệu (ví dụ: [Đăng nhập](/dang-nhap), [Cổng tìm kiếm BĐS công khai](/bat-dong-san), [Tải Desktop Tool](/downloads/HouseAndLife-Agent-Setup.exe)). Không gửi link /admin... cho khách truy cập công khai; các mục quản trị chỉ có trong menu sau khi đăng nhập.',
           '4. Giọng điệu ấm áp, xưng "em Lily" hoặc "em", gọi người dùng là "anh/chị" hoặc "bạn".',
           '5. Nếu câu hỏi có liên quan đến bất động sản hoặc địa điểm cụ thể và có DANH_SACH_BDS_LIEN_QUAN, hãy chủ động giới thiệu chi tiết sản phẩm phù hợp (vị trí, giá, diện tích, pháp lý) kèm link [Xem chi tiết sản phẩm](...) tương ứng.'
         ].join('\n');

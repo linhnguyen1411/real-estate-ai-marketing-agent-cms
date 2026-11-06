@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { prisma } from '../prisma';
 import type { AuthUser } from '../../src/types';
 import { buildCompanyScopeFilter } from '../agent/agentDb';
+import { isSuperAdminUser } from '../modules/auth/tenantScope';
 
 export async function listAgentApiCredentials(user: AuthUser) {
   const scope = buildCompanyScopeFilter(user);
@@ -20,7 +21,9 @@ export async function createAgentApiCredential(input: {
   companyId?: string | null;
 }) {
   const companyId =
-    input.user.role === 'owner' ? input.companyId ?? input.user.company_id ?? null : input.user.company_id ?? null;
+    isSuperAdminUser(input.user)
+      ? input.companyId ?? input.user.company_id ?? null
+      : input.user.company_id ?? null;
   const keyId = `key_${crypto.randomBytes(8).toString('hex')}`;
   const secret = crypto.randomBytes(24).toString('hex');
   const secretHash = crypto.createHash('sha256').update(secret).digest('hex');

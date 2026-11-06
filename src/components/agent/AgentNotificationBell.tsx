@@ -93,7 +93,7 @@ export default function AgentNotificationBell() {
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
-        className="relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all"
+        className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-all hover:border-slate-800 hover:bg-slate-900 hover:text-white"
         aria-label="Thông báo AI Agent"
         title="Thông báo AI Agent"
       >
