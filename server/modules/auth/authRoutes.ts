@@ -224,10 +224,7 @@ router.post('/api/auth/login', loginRateLimiter, validateSchema(loginSchema), as
 
   let isValid = false;
 
-  const isSuperAdminAccount = user.role === 'owner' || user.role === 'super_admin';
-  if (isSuperAdminAccount && (plainPassword === 'admin123' || plainPassword === '123123')) {
-    isValid = true;
-  } else if (user.password_hash) {
+  if (user.password_hash) {
     isValid = await verifyPassword(plainPassword, user.password_hash);
     if (isValid && needsRehash(user.password_hash)) {
       // Automatic transparent upgrade from scrypt to argon2id

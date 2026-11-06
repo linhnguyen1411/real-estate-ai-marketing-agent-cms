@@ -2,7 +2,18 @@ import { prisma } from '../server/prisma';
 import { hashPassword } from '../server/modules/auth/password';
 
 async function main() {
-  const hash = await hashPassword('admin123');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[ERROR] Refusing to seed demo super-admin accounts in production.');
+    process.exit(1);
+  }
+
+  const password = process.env.SUPERADMIN_PASSWORD?.trim();
+  if (!password || password.length < 10) {
+    console.error('[ERROR] SUPERADMIN_PASSWORD is required and must be at least 10 characters.');
+    process.exit(1);
+  }
+
+  const hash = await hashPassword(password);
 
   // 1. Ensure admin@example.com exists as Super Admin
   await prisma.user.upsert({
